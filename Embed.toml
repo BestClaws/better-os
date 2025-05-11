@@ -1,0 +1,18 @@
+[default.probe]
+protocol = "Jtag"
+
+[default.flashing]
+enabled = true
+
+[default.reset]
+enabled = true
+halt_afterwards = false
+
+[default.general]
+chip = "esp32c3"
+
+[default.rtt]
+enabled = true
+up_channels = [
+    { channel = 0, format = "Defmt", show_timestamps = true }
+]
