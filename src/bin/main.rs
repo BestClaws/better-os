@@ -97,7 +97,7 @@ async fn main(spawner: Spawner) {
 
     let io = Io::new(peripherals.IO_MUX);
     let mut led = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
-    let mut b1 = Input::new(peripherals.GPIO2, InputConfig::default().with_pull(Pull::Up));
+    let mut b1 = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
     let mut b2 = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
     let mut b3 = Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::Up));
 
@@ -226,11 +226,11 @@ async fn gatt_events_task<P: PacketPool>(
 
         match conn.next().await {
 
-            GattConnectionEvent::Bonded {
-                bond_info
-            } => {
+            GattConnectionEvent::Bonded {bond_info} => {
+                info!("bonding info: {:?}", defmt::Debug2Format(&bond_info));
 
             }
+
             GattConnectionEvent::PhyUpdated { tx_phy, rx_phy } => {
                 info!("[gatt] Phy updated. Tx phy: {}, Rx phy: {}", tx_phy, rx_phy);
             }
@@ -238,12 +238,8 @@ async fn gatt_events_task<P: PacketPool>(
             GattConnectionEvent::Disconnected { reason } => {
                 info!("[gatt] Disconnected: {:?}", reason);
                 match reason {
-                    _ => {
-                        info!("[gatt] Disconnection due to Unknown HCI Command");
-                    }
-                    Status::UNKNOWN_CONN_IDENTIFIER => {
-                        info!("[gatt] Disconnection due to Unknown Connection Identifier");
-                    }
+
+     
                     Status::HARDWARE_FAILURE => {
                         info!("[gatt] Disconnection due to Hardware Failure");
                     }
@@ -433,7 +429,16 @@ async fn gatt_events_task<P: PacketPool>(
                     Status::PACKET_TOO_LONG => {
                         info!("[gatt] Disconnection due to Packet Too Long");
                     },
-                    _ => todo!()
+
+            
+                    Status::UNKNOWN_CONN_IDENTIFIER => {
+                        info!("[gatt] Disconnection due to Unknown Connection Identifier");
+                    },
+                    
+                    _ => {
+                        info!("[gatt] Disconnection due to Unknown Error {:?}", defmt::Debug2Format(&reason));
+                    }
+                    
 
 
                 }
@@ -540,10 +545,10 @@ async fn button_task<P: PacketPool>(
         info!("[btn] Waiting for key press...");
 
         let key = select(
-            async { b1.wait_for_low().await; KEY_F7 },
+            async { b1.wait_for_low().await; KEY_A },
             select(
-                async { b2.wait_for_low().await; KEY_F8 },
-                async { b3.wait_for_low().await; KEY_F9 },
+                async { b2.wait_for_low().await; KEY_B },
+                async { b3.wait_for_low().await; KEY_C },
             ),
         ).await;
 
