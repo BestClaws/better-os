@@ -24,15 +24,22 @@ const CONNECTIONS_MAX: usize = 1;
 /// Max number of L2CAP channels.
 const L2CAP_CHANNELS_MAX: usize = 2; // Signal + att
 
+
+// USB HID Usage IDs for F7, F8, F9 keys
+const KEY_F7: u8 = 0x40;
+const KEY_F8: u8 = 0x41;
+const KEY_F9: u8 = 0x42;
+
+
 // GATT Server definition
 #[gatt_server]
 struct Server {
-    battery_service: BatteryService,
+    hid_service: HidService,
 }
 
 /// Battery service
-#[gatt_service(uuid = service::BATTERY)]
-struct BatteryService {
+#[gatt_service(uuid = service::HUMAN_INTERFACE_DEVICE)]
+struct HidService {
     /// Battery Level
     #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0, 100])]
     #[descriptor(uuid = descriptors::MEASUREMENT_DESCRIPTION, name = "hello", read, value = "Battery Level")]
@@ -40,7 +47,50 @@ struct BatteryService {
     level: u8,
     #[characteristic(uuid = "408813df-5dd4-1f87-ec11-cdb001100000", write, read, notify)]
     status: bool,
+    
+    
+    // [0x01, 0x11, 0x00, 0x03] -> 1.11 version, country 0, flags 3 (remote wake, normally connectable)
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4A), read, value = [0x01, 0x11, 0x00, 0x03])]
+    information: [u8; 4],  
+
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4B), read, value = [
+        0x05, 0x01,       // Usage Page (Generic Desktop)
+        0x09, 0x06,       // Usage (Keyboard)
+        0xA1, 0x01,       // Collection (Application)
+        0x75, 0x01,       //   Report Size (1)
+        0x95, 0x08,       //   Report Count (8)
+        0x05, 0x07,       //   Usage Page (Key Codes)
+        0x19, 0xE0,       //   Usage Minimum (224)
+        0x29, 0xE7,       //   Usage Maximum (231)
+        0x15, 0x00,       //   Logical Minimum (0)
+        0x25, 0x01,       //   Logical Maximum (1)
+        0x81, 0x02,       //   Input (Data, Variable, Absolute) ; Modifier byte
+        0x95, 0x01,       //   Report Count (1)
+        0x75, 0x08,       //   Report Size (8)
+        0x81, 0x01,       //   Input (Constant) ; Reserved byte
+        0x95, 0x06,       //   Report Count (6)
+        0x75, 0x08,       //   Report Size (8)
+        0x15, 0x00,       //   Logical Minimum (0)
+        0x25, 0x65,       //   Logical Maximum (101)
+        0x05, 0x07,       //   Usage Page (Key Codes)
+        0x19, 0x00,       //   Usage Minimum (0)
+        0x29, 0x65,       //   Usage Maximum (101)
+        0x81, 0x00,       //   Input (Data, Array)
+        0xC0              // End Collection
+    ])]  // Report Map
+    report_map: [u8; 45],
+
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, write, notify, value = [0, 0, 0, 0, 0, 0, 0, 0])]  // Report (Input)
+    input_report: [u8; 8],  // Boot keyboard report format
+
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4E), read, write, value = 0x00)]  // Protocol Mode
+    protocol_mode: u8,  // 0x00 for Boot Protocol Mode
+
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A22), read, value = [0, 0, 0, 0, 0, 0, 0, 0])]  // Boot Keyboard Input Report
+    boot_keyboard_input: [u8; 8],  // Boot keyboard format
 }
+
+
 
 
 extern crate alloc;
@@ -51,6 +101,7 @@ extern crate alloc;
 async fn main(spawner: Spawner) {
     // generator version: 0.3.1
     rtt_target::rtt_init_defmt!();
+    
     
     
 
@@ -216,7 +267,7 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
 /// This function will handle the GATT events and process them.
 /// This is how we interact with read and write requests.
 async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnection<'_, '_, P>) -> Result<(), Error> {
-    let level = server.battery_service.level;
+    let level = server.hid_service.level;
     loop {
         match conn.next().await {
             GattConnectionEvent::Disconnected { reason } => {
@@ -297,7 +348,7 @@ async fn custom_task<C: Controller, P: PacketPool>(
     stack: &Stack<'_, C, P>,
 ) {
     let mut tick: u8 = 0;
-    let level = server.battery_service.level;
+    let level = server.hid_service.level;
     loop {
         tick = tick.wrapping_add(1);
         info!("[custom_task] notifying connection of tick {}", tick);
