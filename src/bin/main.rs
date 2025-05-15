@@ -213,6 +213,7 @@ async fn gatt_events_task<P: PacketPool>(
 
             GattConnectionEvent::Disconnected { reason } => {
                 info!("[gatt] Disconnected: {:?}", reason);
+                break Ok(())
             }
             GattConnectionEvent::Gatt { event } => match event {
                 Ok(evt) => {
