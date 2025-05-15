@@ -1272,6 +1272,7 @@ dependencies = [
  "esp-wifi",
  "heapless",
  "panic-rtt-target",
+ "rand_core 0.6.4",
  "rtt-target",
  "smoltcp",
  "static_cell",

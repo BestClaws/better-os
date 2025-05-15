@@ -17,6 +17,7 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
 use panic_rtt_target as _;
 use trouble_host::{prelude::*, Address, Host, HostResources};
+use rand_core::{CryptoRng, RngCore};
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -82,13 +83,14 @@ async fn main(spawner: Spawner) {
     esp_hal_embassy::init(timer0.alarm0);
     info!("[main] Embassy initialized");
 
+    let mut rng = esp_hal::rng::Trng::new(peripherals.RNG, peripherals.ADC1);
+
     let timer1 = TimerGroup::new(peripherals.TIMG0);
     let init = esp_wifi::init(
         timer1.timer0,
-        esp_hal::rng::Rng::new(peripherals.RNG),
+        rng.rng.clone(),
         peripherals.RADIO_CLK,
-    )
-        .unwrap();
+    ).unwrap();
 
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
@@ -98,10 +100,12 @@ async fn main(spawner: Spawner) {
     let mut b1 = Input::new(peripherals.GPIO2, InputConfig::default().with_pull(Pull::Up));
     let mut b2 = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
     let mut b3 = Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::Up));
-    
+
+
+
     spawner.spawn(working()).unwrap();
 
-    run(controller, &mut b1, &mut b2, &mut b3, &mut led).await;
+    run(controller, &mut b1, &mut b2, &mut b3, &mut led, &mut rng).await;
 }
 
 #[embassy_executor::task]
@@ -112,27 +116,29 @@ async fn working() {
     }
 }
 
-async fn run<C>(
+async fn run<C, RNG>(
     controller: C,
     b1: &mut Input<'_>,
     b2: &mut Input<'_>,
     b3: &mut Input<'_>,
     led: &mut Output<'_>,
-)
+    random_generator: &mut RNG)
 where
     C: Controller,
+    RNG: RngCore + CryptoRng,
 {
     let address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("[run] Our BLE address = {:?}", address.addr);
 
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> = HostResources::new();
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
+    let stack = trouble_host::new(controller, &mut resources).set_random_address(address).set_random_generator_seed(random_generator);
     let Host { mut peripheral, runner, .. } = stack.build();
 
     info!("[run] Starting BLE advertising and GATT server setup...");
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
         name: "ESP32-HID",
         appearance: &appearance::human_interface_device::KEYBOARD,
+
     })).unwrap();
 
     let _ = join(
@@ -219,8 +225,12 @@ async fn gatt_events_task<P: PacketPool>(
         let boot_handle = server.hid.boot_keyboard_input.handle;
 
         match conn.next().await {
-            
-            _ => {}
+
+            GattConnectionEvent::Bonded {
+                bond_info
+            } => {
+
+            }
             GattConnectionEvent::PhyUpdated { tx_phy, rx_phy } => {
                 info!("[gatt] Phy updated. Tx phy: {}, Rx phy: {}", tx_phy, rx_phy);
             }
@@ -434,8 +444,10 @@ async fn gatt_events_task<P: PacketPool>(
                 Ok(evt) => {
                     info!("[gatt] Received event");
 
-                    match evt {
+                    let result = match &evt {
                         GattEvent::Read(r) => {
+
+
 
                             if r.handle() == hid_information_handle {
                                     info!("[gatt] Received read request on server_handle");
@@ -452,14 +464,12 @@ async fn gatt_events_task<P: PacketPool>(
                             } else {
                                 info!("[gatt] Received read request on {}", r.handle());
                             }
-                            match r.accept() {
-                                Ok(mut reply) => {
 
-                                    info!("[gatt] Sending read's GATT response");
 
-                                    reply.send().await;
-                                }
-                                Err(e) => warn!("[gatt] Error sending read's response: {:?}", defmt::Debug2Format(&e)),
+                            if conn.raw().encrypted() {
+                                None
+                            } else {
+                                Some(AttErrorCode::INSUFFICIENT_ENCRYPTION)
                             }
                         }
                         GattEvent::Write(w) => {
@@ -481,16 +491,29 @@ async fn gatt_events_task<P: PacketPool>(
 
 
 
-                            match w.accept() {
-                                Ok(mut reply) => {
 
-                                    info!("[gatt] Sending GATT write's response");
 
-                                    reply.send().await;
-                                }
-                                Err(e) => warn!("[gatt] Error sending write's response: {:?}", defmt::Debug2Format(&e)),
+                            if conn.raw().encrypted() {
+                                None
+                            } else {
+                                Some(AttErrorCode::INSUFFICIENT_ENCRYPTION)
                             }
                         }
+                    };
+
+                    let result = if let Some(code) = result {
+                        evt.reject(code)
+                    } else {
+                        evt.accept()
+                    };
+                    match result {
+                        Ok(mut reply) => {
+
+                            info!("[gatt] Sending read's GATT response");
+
+                            reply.send().await;
+                        }
+                        Err(e) => warn!("[gatt] Error sending read's response: {:?}", defmt::Debug2Format(&e)),
                     }
 
                 }
@@ -517,10 +540,10 @@ async fn button_task<P: PacketPool>(
         info!("[btn] Waiting for key press...");
 
         let key = select(
-            async { b1.wait_for_low().await; KEY_A },
+            async { b1.wait_for_low().await; KEY_F7 },
             select(
-                async { b2.wait_for_low().await; KEY_B },
-                async { b3.wait_for_low().await; KEY_C },
+                async { b2.wait_for_low().await; KEY_F8 },
+                async { b3.wait_for_low().await; KEY_F9 },
             ),
         ).await;
 

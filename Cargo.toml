@@ -68,6 +68,7 @@ trouble-host = { git = "https://github.com/embassy-rs/trouble", features = [
 embassy-futures = "0.1.1"
 bt-hci = "0.3.0"
 embassy-sync = { version = "0.6" }
+rand_core = "0.6.4"
 
 [profile.dev]
 # Rust debug is too slow.
