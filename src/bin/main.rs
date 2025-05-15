@@ -7,13 +7,12 @@ use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Io, Level, Output, OutputConfig};
+use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
 use trouble_host::{prelude::{AdStructure, Advertisement, AdvertisementParameters, DefaultPacketPool, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE}, Address, Host, HostResources};
 use panic_rtt_target as _;
-use rtt_target::rtt_init_defmt;
 
 extern crate alloc;
 
@@ -74,6 +73,9 @@ async fn main(spawner: Spawner) {
 
     let io = Io::new(peripherals.IO_MUX);
     let mut led = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
+    let mut b1 = Input::new(peripherals.GPIO2, InputConfig::default().with_pull(Pull::Up));
+    let mut b2 = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
+    let mut b3 = Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::Up));
 
 
     info!("Starting advertising");
@@ -94,10 +96,10 @@ async fn main(spawner: Spawner) {
                 .unwrap();
             loop {
                 info!("Still running");
-
-                Timer::after(Duration::from_secs(1)).await;
+                b1.wait_for_low().await;
                 led.set_high();
-                Timer::after(Duration::from_secs(1)).await;
+                b2.wait_for_low().await;
+                b3.wait_for_low().await;
                 led.set_low();
             }
         }
