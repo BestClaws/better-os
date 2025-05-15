@@ -1,58 +1,44 @@
+//! BLE HID Keyboard example on ESP32 (three buttons → F7, F8, F9)
 #![no_std]
 #![no_main]
 
 use bt_hci::controller::ExternalController;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
+use embassy_futures::{join::join, select::select};
+use embassy_futures::select::Either;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
-use trouble_host::{prelude::{AdStructure, Advertisement, AdvertisementParameters, DefaultPacketPool, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE}, Address, Host, HostResources};
+use trouble_host::{prelude::*, Address, Host, HostResources};
 use panic_rtt_target as _;
-
-
-use embassy_futures::select::select;
-use trouble_host::prelude::*;
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
+/// Max number of L2CAP channels (Signal + ATT)
+const L2CAP_CHANNELS_MAX: usize = 2;
 
-/// Max number of L2CAP channels.
-const L2CAP_CHANNELS_MAX: usize = 2; // Signal + att
-
-
-// USB HID Usage IDs for F7, F8, F9 keys
+/// USB HID Usage IDs for F7, F8, F9
 const KEY_F7: u8 = 0x40;
 const KEY_F8: u8 = 0x41;
 const KEY_F9: u8 = 0x42;
 
-
-// GATT Server definition
+// GATT Server definition: HID Service
 #[gatt_server]
 struct Server {
-    hid_service: HidService,
+    hid: HidService,
 }
 
-/// Battery service
 #[gatt_service(uuid = service::HUMAN_INTERFACE_DEVICE)]
 struct HidService {
-    /// Battery Level
-    #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0, 100])]
-    #[descriptor(uuid = descriptors::MEASUREMENT_DESCRIPTION, name = "hello", read, value = "Battery Level")]
-    #[characteristic(uuid = characteristic::BATTERY_LEVEL, read, notify, value = 10)]
-    level: u8,
-    #[characteristic(uuid = "408813df-5dd4-1f87-ec11-cdb001100000", write, read, notify)]
-    status: bool,
-    
-    
-    // [0x01, 0x11, 0x00, 0x03] -> 1.11 version, country 0, flags 3 (remote wake, normally connectable)
+    /// HID Information
     #[characteristic(uuid = BluetoothUuid16::new(0x2A4A), read, value = [0x01, 0x11, 0x00, 0x03])]
-    information: [u8; 4],  
+    information: [u8; 4],
 
+    /// Report Map
     #[characteristic(uuid = BluetoothUuid16::new(0x2A4B), read, value = [
         0x05, 0x01,       // Usage Page (Generic Desktop)
         0x09, 0x06,       // Usage (Keyboard)
@@ -64,10 +50,10 @@ struct HidService {
         0x29, 0xE7,       //   Usage Maximum (231)
         0x15, 0x00,       //   Logical Minimum (0)
         0x25, 0x01,       //   Logical Maximum (1)
-        0x81, 0x02,       //   Input (Data, Variable, Absolute) ; Modifier byte
+        0x81, 0x02,       //   Input (Data, Variable, Absolute)
         0x95, 0x01,       //   Report Count (1)
         0x75, 0x08,       //   Report Size (8)
-        0x81, 0x01,       //   Input (Constant) ; Reserved byte
+        0x81, 0x01,       //   Input (Constant)
         0x95, 0x06,       //   Report Count (6)
         0x75, 0x08,       //   Report Size (8)
         0x15, 0x00,       //   Logical Minimum (0)
@@ -77,43 +63,35 @@ struct HidService {
         0x29, 0x65,       //   Usage Maximum (101)
         0x81, 0x00,       //   Input (Data, Array)
         0xC0              // End Collection
-    ])]  // Report Map
+    ])]
     report_map: [u8; 45],
 
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, write, notify, value = [0, 0, 0, 0, 0, 0, 0, 0])]  // Report (Input)
-    input_report: [u8; 8],  // Boot keyboard report format
+    /// Input Report (Boot Keyboard format)
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, notify, value = [0; 8])]
+    input_report: [u8; 8],
 
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4E), read, write, value = 0x00)]  // Protocol Mode
-    protocol_mode: u8,  // 0x00 for Boot Protocol Mode
+    /// Protocol Mode (Boot / Report)
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4E), read, write, value = 0x00)]
+    protocol_mode: u8,
 
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A22), read, value = [0, 0, 0, 0, 0, 0, 0, 0])]  // Boot Keyboard Input Report
-    boot_keyboard_input: [u8; 8],  // Boot keyboard format
+    /// Boot Keyboard Input Report
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A22), read, value = [0; 8])]
+    boot_keyboard_input: [u8; 8],
 }
-
-
-
 
 extern crate alloc;
 
-
-
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
-    // generator version: 0.3.1
+async fn main(_spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
-    
-    
-    
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
-    
-
     esp_alloc::heap_allocator!(size: 72 * 1024);
-    
+
     let timer0 = SystemTimer::new(peripherals.SYSTIMER);
     esp_hal_embassy::init(timer0.alarm0);
-    info!("Embassy initialized!");
+    info!("Embassy initialized");
 
     let timer1 = TimerGroup::new(peripherals.TIMG0);
     let init = esp_wifi::init(
@@ -121,153 +99,106 @@ async fn main(spawner: Spawner) {
         esp_hal::rng::Rng::new(peripherals.RNG),
         peripherals.RADIO_CLK,
     )
-    .unwrap();
+        .unwrap();
 
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-    // // TODO: Spawn some tasks
-    // let _ = spawner;
-    // 
-    // let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
-    // info!("Our address");
-    // 
-    // let mut resources: HostResources<DefaultPacketPool, 0, 0> = HostResources::new();
-    // let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
-    // let Host {
-    //     mut peripheral,
-    //     mut runner,
-    //     ..
-    // } = stack.build();
-    // 
-    // let mut adv_data = [0; 31];
-    // let len = AdStructure::encode_slice(
-    //     &[
-    //         AdStructure::CompleteLocalName(b"Trouble Advert"),
-    //         AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-    //     ],
-    //     &mut adv_data[..],
-    // )
-    // .unwrap();
-
-
+    // GPIO setup: LED + three buttons
     let io = Io::new(peripherals.IO_MUX);
     let mut led = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
     let mut b1 = Input::new(peripherals.GPIO2, InputConfig::default().with_pull(Pull::Up));
     let mut b2 = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
     let mut b3 = Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::Up));
 
-
-    // info!("Starting advertising");
-    // let _ = join(runner.run(), async {
-    //     loop {
-    //         let mut params = AdvertisementParameters::default();
-    //         params.interval_min = Duration::from_millis(20);
-    //         params.interval_max = Duration::from_millis(20);
-    //         let _advertiser = peripheral
-    //             .advertise(
-    //                 &params,
-    //                 Advertisement::NonconnectableScannableUndirected {
-    //                     adv_data: &adv_data[..len],
-    //                     scan_data: &[],
-    //                 },
-    //             )
-    //             .await
-    //             .unwrap();
-    //         loop {
-    //             info!("Still running");
-    //             b1.wait_for_low().await;
-    //             led.set_high();
-    //             b2.wait_for_low().await;
-    //             b3.wait_for_low().await;
-    //             led.set_low();
-    //         }
-    //     }
-    // })
-    // .await;
-
-    run(controller).await;
-
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
+    run(controller, &mut b1, &mut b2, &mut b3, &mut led).await;
 }
 
-
-
-
-/// Run the BLE stack.
-pub async fn run<C>(controller: C)
+/// Run the BLE stack and tasks
+async fn run<C>(
+    controller: C,
+    b1: &mut Input<'_>,
+    b2: &mut Input<'_>,
+    b3: &mut Input<'_>,
+    led: &mut Output<'_>
+)
 where
     C: Controller,
 {
-    // Using a fixed "random" address can be useful for testing. In real scenarios, one would
-    // use e.g. the MAC 6 byte array as the address (how to get that varies by the platform).
-    let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
+    let address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("Our address = {:?}", address.addr);
 
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> = HostResources::new();
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
-    let Host {
-        mut peripheral, runner, ..
-    } = stack.build();
+    let stack = trouble_host::new(controller, &mut resources)
+        .set_random_address(address);
+    let Host { mut peripheral, runner, .. } = stack.build();
 
-    info!("Starting advertising and GATT service");
+    info!("Starting advertising and HID service");
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name: "TrouBLE",
-        appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
+        name: "ESP32-HID",
+        appearance: &appearance::human_interface_device::KEYBOARD,
     }))
         .unwrap();
 
-    let _ = join(ble_task(runner), async {
-        loop {
-            match advertise("Trouble Example", &mut peripheral, &server).await {
-                Ok(conn) => {
-                    // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                    let a = gatt_events_task(&server, &conn);
-                    let b = custom_task(&server, &conn, &stack);
-                    // run until any task ends (usually because the connection has been closed),
-                    // then return to advertising state.
-                    select(a, b).await;
-                }
-                Err(e) => {
-                    let e = defmt::Debug2Format(&e);
-                    panic!("[adv] error: {:?}", e);
+    // Run HCI event loop and advertising concurrently
+    let _ = join(
+        ble_task(runner),
+        async {
+            loop {
+                match advertise_hid(&mut peripheral, &server).await {
+                    Ok(conn) => {
+                        // On connection: run GATT event handler & button watcher
+                        let g = gatt_events_task(&server, &conn);
+                        let b = button_task(&server, &conn, b1, b2, b3, led);
+                        select(g, b).await;
+                    }
+                    Err(e) => panic!("[adv] error: {:?}", defmt::Debug2Format(&e)),
                 }
             }
         }
-    })
+    )
         .await;
 }
 
-/// This is a background task that is required to run forever alongside any other BLE tasks.
-///
-/// ## Alternative
-///
-/// If you didn't require this to be generic for your application, you could statically spawn this with i.e.
-///
-/// ```rust,ignore
-///
-/// #[embassy_executor::task]
-/// async fn ble_task(mut runner: Runner<'static, SoftdeviceController<'static>>) {
-///     runner.run().await;
-/// }
-///
-/// spawner.must_spawn(ble_task(runner));
-/// ```
 async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     loop {
         if let Err(e) = runner.run().await {
-            let e = defmt::Debug2Format(&e);
-            panic!("[ble_task] error: {:?}", e);
+            panic!("[ble_task] error: {:?}", defmt::Debug2Format(&e));
         }
     }
 }
 
-/// Stream Events until the connection closes.
-///
-/// This function will handle the GATT events and process them.
-/// This is how we interact with read and write requests.
+/// Advertise HID service and await connection
+async fn advertise_hid<'a, 'b, C: Controller>(
+    peripheral: &mut Peripheral<'a, C, DefaultPacketPool>,
+    server: &'b Server<'_>
+) -> Result<GattConnection<'a, 'b, DefaultPacketPool>, BleHostError<C::Error>> {
+    let mut adv_data = [0; 31];
+    let len = AdStructure::encode_slice(
+        &[
+            AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+            AdStructure::ServiceUuids16(&[[0x12, 0x18]]), // HID service UUID
+            AdStructure::CompleteLocalName(b"ESP32-HID"),
+        ],
+        &mut adv_data,
+    )?;
+
+    let adv = peripheral
+        .advertise(&AdvertisementParameters::default(),
+                   Advertisement::ConnectableScannableUndirected {
+                       adv_data: &adv_data[..len],
+                       scan_data: &[],
+                   }
+        )
+        .await?;
+    info!("[adv] advertising");
+    let conn = adv.accept().await?.with_attribute_server(server)?;
+    info!("[adv] connection established");
+    Ok(conn)
+}
+
+/// Handle ATT/GATT events (reads/writes)
 async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnection<'_, '_, P>) -> Result<(), Error> {
-    let level = server.hid_service.level;
     loop {
         match conn.next().await {
             GattConnectionEvent::Disconnected { reason } => {
@@ -276,24 +207,12 @@ async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnect
             }
             GattConnectionEvent::Gatt { event } => match event {
                 Ok(event) => {
-                    match &event {
-                        GattEvent::Read(event) => {
-                            if event.handle() == level.handle {
-                                let value = server.get(&level);
-                                info!("[gatt] Read Event to Level Characteristic: {:?}", defmt::Debug2Format(&value));
-                            }
-                        }
-                        GattEvent::Write(event) => {
-                            if event.handle() == level.handle {
-                                info!("[gatt] Write Event to Level Characteristic: {:?}", event.data());
-                            }
-                        }
-                    }
+                    //— handle Read vs Write here (you can omit or simplify) …
 
-                    // This step is also performed at drop(), but writing it explicitly is necessary
-                    // in order to ensure reply is sent.
+                    // **Here is the key part**:
                     match event.accept() {
-                        Ok(reply) => {
+                        Ok(mut reply) => {
+                            // this is an async method; drive it with `.await`
                             reply.send().await;
                         }
                         Err(e) => warn!("[gatt] error sending response: {:?}", defmt::Debug2Format(&e)),
@@ -304,65 +223,50 @@ async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnect
             _ => {}
         }
     }
-    info!("[gatt] task finished");
     Ok(())
 }
 
-/// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
-async fn advertise<'a, 'b, C: Controller>(
-    name: &'a str,
-    peripheral: &mut Peripheral<'a, C, DefaultPacketPool>,
-    server: &'b Server<'_>,
-) -> Result<GattConnection<'a, 'b, DefaultPacketPool>, BleHostError<C::Error>> {
-    let mut advertiser_data = [0; 31];
-    let len = AdStructure::encode_slice(
-        &[
-            AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-            AdStructure::ServiceUuids16(&[[0x0f, 0x18]]),
-            AdStructure::CompleteLocalName(name.as_bytes()),
-        ],
-        &mut advertiser_data[..],
-    )?;
-    let advertiser = peripheral
-        .advertise(
-            &Default::default(),
-            Advertisement::ConnectableScannableUndirected {
-                adv_data: &advertiser_data[..len],
-                scan_data: &[],
-            },
-        )
-        .await?;
-    info!("[adv] advertising");
-    let conn = advertiser.accept().await?.with_attribute_server(server)?;
-    info!("[adv] connection established");
-    Ok(conn)
-}
-
-/// Example task to use the BLE notifier interface.
-/// This task will notify the connected central of a counter value every 2 seconds.
-/// It will also read the RSSI value every 2 seconds.
-/// and will stop when the connection is closed by the central or an error occurs.
-async fn custom_task<C: Controller, P: PacketPool>(
+/// Watch buttons and send HID reports
+async fn button_task<P: PacketPool>(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
-    stack: &Stack<'_, C, P>,
+    b1: &mut Input<'_>,
+    b2: &mut Input<'_>,
+    b3: &mut Input<'_>,
+    led: &mut Output<'_>,
 ) {
-    let mut tick: u8 = 0;
-    let level = server.hid_service.level;
     loop {
-        tick = tick.wrapping_add(1);
-        info!("[custom_task] notifying connection of tick {}", tick);
-        if level.notify(conn, &tick).await.is_err() {
-            info!("[custom_task] error notifying connection");
-            break;
-        };
-        // read RSSI (Received Signal Strength Indicator) of the connection.
-        if let Ok(rssi) = conn.raw().rssi(stack).await {
-            info!("[custom_task] RSSI: {:?}", rssi);
-        } else {
-            info!("[custom_task] error getting RSSI");
-            break;
-        };
-        Timer::after_secs(2).await;
+
+        // Wait for any button press
+        let key = select(
+            async { b1.wait_for_low().await; KEY_F7 },
+            select(
+                async { b2.wait_for_low().await; KEY_F8 },
+                async { b3.wait_for_low().await; KEY_F9 },
+            )
+        ).await;
+
+
+        // Send key press report
+        let mut report = [0u8; 8];
+
+        match key {
+            Either::First(x) => { report[2] = x; }
+            Either::Second(y) => {
+                match y {
+                    Either::First(z) => { report[2] = z; }
+                    Either::Second(z2) => { report[2] = z2; }
+                }
+            }
+        }
+        led.set_high();
+        let _ = server.hid.input_report.notify(conn, &report).await;
+        Timer::after(Duration::from_millis(100)).await;
+        let _ = server.hid.input_report.notify(conn, &[0; 8]).await;
+        led.set_low();
+
+
     }
 }
+
+
