@@ -4,6 +4,7 @@
 
 extern crate alloc;
 use bt_hci::controller::ExternalController;
+use bt_hci::param::{DisconnectReason, Status};
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::select::Either;
@@ -54,11 +55,10 @@ struct HidService {
     0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00,
     0x29, 0x65, 0x81, 0x00, 0xC0
     ])]
-
     report_map: [u8; 45],
-
     // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef3", read, notify, value = [0; 8])]
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, notify, value = [0; 8])]
+
+    #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, notify, write, value = [0; 8])]
     input_report: [u8; 8],
 
     // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef4", read, write, value = 0x00)]
@@ -162,17 +162,30 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     }
 }
 
+
+
 async fn advertise_hid<'a, 'b, C: Controller>(
     peripheral: &mut Peripheral<'a, C, DefaultPacketPool>,
     server: &'b Server<'_>
 ) -> Result<GattConnection<'a, 'b, DefaultPacketPool>, BleHostError<C::Error>> {
     let mut adv_data = [0; 31];
+    const PNP_ID: [u8; 7] = [
+        0x01,       // Vendor ID source: Bluetooth SIG
+        0x34, 0x12, // Vendor ID (0x1234 little-endian)
+        0x78, 0x56, // Product ID (0x5678 little-endian)
+        0x00, 0x01, // Product Version (0x0100 little-endian)
+    ];
+
+
     let len = AdStructure::encode_slice(
         &[
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
             AdStructure::ServiceUuids16(&[[0x12, 0x18]]),
-            AdStructure::CompleteLocalName(b"ESP32-HID"),
-
+            AdStructure::CompleteLocalName(b"HID"),
+            AdStructure::ManufacturerSpecificData {
+                company_identifier: 0x004C,
+                payload: &[0x01, 0x02, 0x03],
+            },
         ],
         &mut adv_data,
     )?;
@@ -207,12 +220,214 @@ async fn gatt_events_task<P: PacketPool>(
 
         match conn.next().await {
             
+            _ => {}
             GattConnectionEvent::PhyUpdated { tx_phy, rx_phy } => {
                 info!("[gatt] Phy updated. Tx phy: {}, Rx phy: {}", tx_phy, rx_phy);
             }
 
             GattConnectionEvent::Disconnected { reason } => {
                 info!("[gatt] Disconnected: {:?}", reason);
+                match reason {
+                    _ => {
+                        info!("[gatt] Disconnection due to Unknown HCI Command");
+                    }
+                    Status::UNKNOWN_CONN_IDENTIFIER => {
+                        info!("[gatt] Disconnection due to Unknown Connection Identifier");
+                    }
+                    Status::HARDWARE_FAILURE => {
+                        info!("[gatt] Disconnection due to Hardware Failure");
+                    }
+                    Status::PAGE_TIMEOUT => {
+                        info!("[gatt] Disconnection due to Page Timeout");
+                    }
+                    Status::AUTHENTICATION_FAILURE => {
+                        info!("[gatt] Disconnection due to Authentication Failure");
+                    }
+                    Status::PIN_OR_KEY_MISSING => {
+                        info!("[gatt] Disconnection due to PIN or Key Missing");
+                    }
+                    Status::MEMORY_CAPACITY_EXCEEDED => {
+                        info!("[gatt] Disconnection due to Memory Capacity Exceeded");
+                    }
+                    Status::CONN_TIMEOUT => {
+                        info!("[gatt] Disconnection due to Connection Timeout");
+                    }
+                    Status::CONN_LIMIT_EXCEEDED => {
+                        info!("[gatt] Disconnection due to Connection Limit Exceeded");
+                    }
+                    Status::SYNCHRONOUS_CONN_LIMIT_EXCEEDED => {
+                        info!("[gatt] Disconnection due to Synchronous Connection Limit Exceeded");
+                    }
+                    Status::CONN_ALREADY_EXISTS => {
+                        info!("[gatt] Disconnection due to Connection Already Exists");
+                    }
+                    Status::CMD_DISALLOWED => {
+                        info!("[gatt] Disconnection due to Command Disallowed");
+                    }
+                    Status::CONN_REJECTED_LIMITED_RESOURCES => {
+                        info!("[gatt] Disconnection due to Connection Rejected (Limited Resources)");
+                    }
+                    Status::CONN_REJECTED_SECURITY_REASONS => {
+                        info!("[gatt] Disconnection due to Connection Rejected (Security Reasons)");
+                    }
+                    Status::CONN_REJECTED_UNACCEPTABLE_BD_ADDR => {
+                        info!("[gatt] Disconnection due to Connection Rejected (Unacceptable BD_ADDR)");
+                    }
+                    Status::CONN_ACCEPT_TIMEOUT_EXCEEDED => {
+                        info!("[gatt] Disconnection due to Connection Accept Timeout Exceeded");
+                    }
+                    Status::UNSUPPORTED => {
+                        info!("[gatt] Disconnection due to Unsupported Feature or Parameter Value");
+                    }
+                    Status::INVALID_HCI_PARAMETERS => {
+                        info!("[gatt] Disconnection due to Invalid HCI Command Parameters");
+                    }
+                    Status::REMOTE_USER_TERMINATED_CONN => {
+                        info!("[gatt] Disconnection due to Remote User Terminated Connection");
+                    }
+                    Status::REMOTE_DEVICE_TERMINATED_CONN_LOW_RESOURCES => {
+                        info!("[gatt] Disconnection due to Remote Device Terminated (Low Resources)");
+                    }
+                    Status::REMOTE_DEVICE_TERMINATED_CONN_POWER_OFF => {
+                        info!("[gatt] Disconnection due to Remote Device Terminated (Power Off)");
+                    }
+                    Status::CONN_TERMINATED_BY_LOCAL_HOST => {
+                        info!("[gatt] Disconnection due to Connection Terminated by Local Host");
+                    }
+                    Status::REPEATED_ATTEMPTS => {
+                        info!("[gatt] Disconnection due to Repeated Attempts");
+                    }
+                    Status::PAIRING_NOT_ALLOWED => {
+                        info!("[gatt] Disconnection due to Pairing Not Allowed");
+                    }
+                    Status::UNKNOWN_LMP_PDU => {
+                        info!("[gatt] Disconnection due to Unknown LMP PDU");
+                    }
+                    Status::UNSUPPORTED_REMOTE_FEATURE => {
+                        info!("[gatt] Disconnection due to Unsupported Remote Feature");
+                    }
+                    Status::SCO_OFFSET_REJECTED => {
+                        info!("[gatt] Disconnection due to SCO Offset Rejected");
+                    }
+                    Status::SCO_INTERVAL_REJECTED => {
+                        info!("[gatt] Disconnection due to SCO Interval Rejected");
+                    }
+                    Status::SCO_AIR_MODE_REJECTED => {
+                        info!("[gatt] Disconnection due to SCO Air Mode Rejected");
+                    }
+                    Status::INVALID_LMP_LL_PARAMETERS => {
+                        info!("[gatt] Disconnection due to Invalid LMP/LL Parameters");
+                    }
+                    Status::UNSPECIFIED => {
+                        info!("[gatt] Disconnection due to Unspecified Error");
+                    }
+                    Status::UNSUPPORTED_LMP_LL_PARAMETER_VALUE => {
+                        info!("[gatt] Disconnection due to Unsupported LMP/LL Parameter Value");
+                    }
+                    Status::ROLE_CHANGE_NOT_ALLOWED => {
+                        info!("[gatt] Disconnection due to Role Change Not Allowed");
+                    }
+                    Status::LMP_LL_RESPONSE_TIMEOUT => {
+                        info!("[gatt] Disconnection due to LMP/LL Response Timeout");
+                    }
+                    Status::LMP_LL_COLLISION => {
+                        info!("[gatt] Disconnection due to LMP/LL Procedure Collision");
+                    }
+                    Status::LMP_PDU_NOT_ALLOWED => {
+                        info!("[gatt] Disconnection due to LMP PDU Not Allowed");
+                    }
+                    Status::ENCRYPTION_MODE_NOT_ACCEPTABLE => {
+                        info!("[gatt] Disconnection due to Encryption Mode Not Acceptable");
+                    }
+                    Status::LINK_KEY_CANNOT_BE_CHANGED => {
+                        info!("[gatt] Disconnection due to Link Key Cannot Be Changed");
+                    }
+                    Status::REQUESTED_QOS_NOT_SUPPORTED => {
+                        info!("[gatt] Disconnection due to Requested QoS Not Supported");
+                    }
+                    Status::INSTANT_PASSED => {
+                        info!("[gatt] Disconnection due to Instant Passed");
+                    }
+                    Status::PAIRING_WITH_UNIT_KEY_NOT_SUPPORTED => {
+                        info!("[gatt] Disconnection due to Pairing With Unit Key Not Supported");
+                    }
+                    Status::DIFFERENT_TRANSACTION_COLLISION => {
+                        info!("[gatt] Disconnection due to Different Transaction Collision");
+                    }
+                    Status::QOS_UNACCEPTABLE_PARAMETER => {
+                        info!("[gatt] Disconnection due to QoS Unacceptable Parameter");
+                    }
+                    Status::QOS_REJECTED => {
+                        info!("[gatt] Disconnection due to QoS Rejected");
+                    }
+                    Status::CHANNEL_CLASSIFICATION_NOT_SUPPORTED => {
+                        info!("[gatt] Disconnection due to Channel Classification Not Supported");
+                    }
+                    Status::INSUFFICIENT_SECURITY => {
+                        info!("[gatt] Disconnection due to Insufficient Security");
+                    }
+                    Status::PARAMETER_OUT_OF_RANGE => {
+                        info!("[gatt] Disconnection due to Parameter Out Of Mandatory Range");
+                    }
+                    Status::ROLE_SWITCH_PENDING => {
+                        info!("[gatt] Disconnection due to Role Switch Pending");
+                    }
+                    Status::RESERVED_SLOT_VIOLATION => {
+                        info!("[gatt] Disconnection due to Reserved Slot Violation");
+                    }
+                    Status::ROLE_SWITCH_FAILED => {
+                        info!("[gatt] Disconnection due to Role Switch Failed");
+                    }
+                    Status::EXT_INQUIRY_RESPONSE_TOO_LARGE => {
+                        info!("[gatt] Disconnection due to Extended Inquiry Response Too Large");
+                    }
+                    Status::SECURE_SIMPLE_PAIRING_NOT_SUPPORTED_BY_HOST => {
+                        info!("[gatt] Disconnection due to Secure Simple Pairing Not Supported By Host");
+                    }
+                    Status::HOST_BUSY_PAIRING => {
+                        info!("[gatt] Disconnection due to Host Busy - Pairing");
+                    }
+                    Status::CONN_REJECTED_NO_SUITABLE_CHANNEL_FOUND => {
+                        info!("[gatt] Disconnection due to Connection Rejected (No Suitable Channel)");
+                    }
+                    Status::CONTROLLER_BUSY => {
+                        info!("[gatt] Disconnection due to Controller Busy");
+                    }
+                    Status::UNACCEPTABLE_CONN_PARAMETERS => {
+                        info!("[gatt] Disconnection due to Unacceptable Connection Parameters");
+                    }
+                    Status::ADV_TIMEOUT => {
+                        info!("[gatt] Disconnection due to Advertising Timeout");
+                    }
+                    Status::CONN_TERMINATED_DUE_TO_MIC_FAILURE => {
+                        info!("[gatt] Disconnection due to Connection Terminated (MIC Failure)");
+                    }
+                    Status::CONN_FAILED_SYNCHRONIZATION_TIMEOUT => {
+                        info!("[gatt] Disconnection due to Connection Failed (Synchronization Timeout)");
+                    }
+                    Status::COARSE_CLOCK_ADJUSTMENT_REJECTED => {
+                        info!("[gatt] Disconnection due to Coarse Clock Adjustment Rejected");
+                    }
+                    Status::TYPE0_SUBMAP_NOT_DEFINED => {
+                        info!("[gatt] Disconnection due to Type0 Submap Not Defined");
+                    }
+                    Status::UNKNOWN_ADV_IDENTIFIER => {
+                        info!("[gatt] Disconnection due to Unknown Advertising Identifier");
+                    }
+                    Status::LIMIT_REACHED => {
+                        info!("[gatt] Disconnection due to Limit Reached");
+                    }
+                    Status::OPERATION_CANCELLED_BY_HOST => {
+                        info!("[gatt] Disconnection due to Operation Cancelled by Host");
+                    }
+                    Status::PACKET_TOO_LONG => {
+                        info!("[gatt] Disconnection due to Packet Too Long");
+                    },
+                    _ => todo!()
+
+
+                }
+                embassy_time::Timer::after(Duration::from_millis(1000)).await;
                 break Ok(())
             }
             GattConnectionEvent::Gatt { event } => match event {
