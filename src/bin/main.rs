@@ -2,19 +2,20 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
 use bt_hci::controller::ExternalController;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
-use embassy_futures::{join::join, select::select};
 use embassy_futures::select::Either;
+use embassy_futures::{join::join, select::select};
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
-use trouble_host::{prelude::*, Address, Host, HostResources};
 use panic_rtt_target as _;
+use trouble_host::{prelude::*, Address, Host, HostResources};
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -37,34 +38,40 @@ struct Server {
     hid: HidService,
 }
 
+// #[gatt_service(uuid = "12345678-1234-5678-1234-56789abcdef0")]
 #[gatt_service(uuid = service::HUMAN_INTERFACE_DEVICE)]
 struct HidService {
+
+    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef1", read, value = [0x01, 0x11, 0x00, 0x03])]
     #[characteristic(uuid = BluetoothUuid16::new(0x2A4A), read, value = [0x01, 0x11, 0x00, 0x03])]
     information: [u8; 4],
 
+    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef2", read, value = [
     #[characteristic(uuid = BluetoothUuid16::new(0x2A4B), read, value = [
-        0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x75, 0x01, 0x95, 0x08,
-        0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01,
-        0x81, 0x02, 0x95, 0x01, 0x75, 0x08, 0x81, 0x01, 0x95, 0x06,
-        0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00,
-        0x29, 0x65, 0x81, 0x00, 0xC0
+    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x75, 0x01, 0x95, 0x08,
+    0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01,
+    0x81, 0x02, 0x95, 0x01, 0x75, 0x08, 0x81, 0x01, 0x95, 0x06,
+    0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00,
+    0x29, 0x65, 0x81, 0x00, 0xC0
     ])]
+
     report_map: [u8; 45],
 
+    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef3", read, notify, value = [0; 8])]
     #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, notify, value = [0; 8])]
     input_report: [u8; 8],
 
+    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef4", read, write, value = 0x00)]
     #[characteristic(uuid = BluetoothUuid16::new(0x2A4E), read, write, value = 0x00)]
     protocol_mode: u8,
 
+    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef5", read, value = [0; 8])]
     #[characteristic(uuid = BluetoothUuid16::new(0x2A22), read, value = [0; 8])]
     boot_keyboard_input: [u8; 8],
 }
 
-extern crate alloc;
-
 #[esp_hal_embassy::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
@@ -91,8 +98,18 @@ async fn main(_spawner: Spawner) {
     let mut b1 = Input::new(peripherals.GPIO2, InputConfig::default().with_pull(Pull::Up));
     let mut b2 = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
     let mut b3 = Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::Up));
+    
+    spawner.spawn(working()).unwrap();
 
     run(controller, &mut b1, &mut b2, &mut b3, &mut led).await;
+}
+
+#[embassy_executor::task]
+async fn working() {
+    loop {
+        info!("{:?}", embassy_time::Instant::now().as_secs());
+        embassy_time::Timer::after_secs(1).await; 
+    }
 }
 
 async fn run<C>(
@@ -155,12 +172,15 @@ async fn advertise_hid<'a, 'b, C: Controller>(
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
             AdStructure::ServiceUuids16(&[[0x12, 0x18]]),
             AdStructure::CompleteLocalName(b"ESP32-HID"),
+
         ],
         &mut adv_data,
     )?;
 
     let adv = peripheral
-        .advertise(&AdvertisementParameters::default(),
+        .advertise(&AdvertisementParameters {
+            ..AdvertisementParameters::default()
+        },
                    Advertisement::ConnectableScannableUndirected {
                        adv_data: &adv_data[..len],
                        scan_data: &[],
@@ -178,28 +198,95 @@ async fn gatt_events_task<P: PacketPool>(
     conn: &GattConnection<'_, '_, P>,
 ) -> Result<(), Error> {
     loop {
+        let hid_handle = server.hid.handle;
+        let hid_information_handle = server.hid.information.handle;
+        let report_handle = server.hid.report_map.handle;
+        let input_handle = server.hid.input_report.handle;
+        let protocol_handle = server.hid.protocol_mode.handle;
+        let boot_handle = server.hid.boot_keyboard_input.handle;
+
         match conn.next().await {
+            
+            GattConnectionEvent::PhyUpdated { tx_phy, rx_phy } => {
+                info!("[gatt] Phy updated. Tx phy: {}, Rx phy: {}", tx_phy, rx_phy);
+            }
+
             GattConnectionEvent::Disconnected { reason } => {
                 info!("[gatt] Disconnected: {:?}", reason);
-                break;
             }
             GattConnectionEvent::Gatt { event } => match event {
                 Ok(evt) => {
                     info!("[gatt] Received event");
-                    match evt.accept() {
-                        Ok(mut reply) => {
-                            info!("[gatt] Sending GATT response");
-                            reply.send().await;
+
+                    match evt {
+                        GattEvent::Read(r) => {
+
+                            if r.handle() == hid_information_handle {
+                                    info!("[gatt] Received read request on server_handle");
+                            } else if r.handle() == report_handle {
+                                info!("[gatt] Received read request on report handle");
+                            } else if r.handle() == input_handle {
+                                info!("[gatt] Received read request on input_handle");
+                            } else if r.handle() == protocol_handle {
+                                info!("[gatt] Received read request on protocol_handle");
+                            } else if r.handle() == boot_handle {
+                                info!("[gatt] Received read request on boot_handle");
+                            } else if r.handle() == hid_handle {
+                                info!("[gatt] Received read request on hid_handle");
+                            } else {
+                                info!("[gatt] Received read request on {}", r.handle());
+                            }
+                            match r.accept() {
+                                Ok(mut reply) => {
+
+                                    info!("[gatt] Sending read's GATT response");
+
+                                    reply.send().await;
+                                }
+                                Err(e) => warn!("[gatt] Error sending read's response: {:?}", defmt::Debug2Format(&e)),
+                            }
                         }
-                        Err(e) => warn!("[gatt] Error sending response: {:?}", defmt::Debug2Format(&e)),
+                        GattEvent::Write(w) => {
+                            if w.handle() == hid_information_handle {
+                                info!("[gatt] Received write request on server_handle: {:?}", defmt::Debug2Format(&w.data()));
+                            } else if w.handle() == report_handle {
+                                info!("[gatt] Received write request on report handle: {:?}", defmt::Debug2Format(&w.data()));
+                            } else if w.handle() == input_handle {
+                                info!("[gatt] Received write request on input_handle: {:?}", defmt::Debug2Format(&w.data()));
+                            } else if w.handle() == protocol_handle {
+                                info!("[gatt] Received write request on protocol_handle: {:?}", defmt::Debug2Format(&w.data()));
+                            } else if w.handle() == boot_handle {
+                                info!("[gatt] Received write request on boot_handle: {:?}", defmt::Debug2Format(&w.data()));
+                            } else if w.handle() == hid_handle {
+                                info!("[gatt] Received write request on hid_handle: {:?}", defmt::Debug2Format(&w.data()));
+                            } else {
+                                info!("[gatt] Received write request: {:?} on handle: {}", defmt::Debug2Format(&w.data()), w.handle());
+                            }
+
+
+
+                            match w.accept() {
+                                Ok(mut reply) => {
+
+                                    info!("[gatt] Sending GATT write's response");
+
+                                    reply.send().await;
+                                }
+                                Err(e) => warn!("[gatt] Error sending write's response: {:?}", defmt::Debug2Format(&e)),
+                            }
+                        }
                     }
+
                 }
                 Err(e) => warn!("[gatt] GATT event error: {:?}", defmt::Debug2Format(&e)),
             },
-            other => info!("[gatt] Unexpected event:"),
+
+            GattConnectionEvent::ConnectionParamsUpdated { conn_interval, peripheral_latency, supervision_timeout } => {
+                info!("[gatt] Connection parameters updated. Conn interval(ms): {}, Peripheral latency: {}, Supervision timeout(ms): {}", conn_interval.as_millis(), peripheral_latency, supervision_timeout.as_millis());
+            }
+
         }
     }
-    Ok(())
 }
 
 async fn button_task<P: PacketPool>(
