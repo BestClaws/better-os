@@ -24,51 +24,22 @@ const CONNECTIONS_MAX: usize = 1;
 /// Max number of L2CAP channels (Signal + ATT)
 const L2CAP_CHANNELS_MAX: usize = 2;
 
-/// USB HID Usage IDs for F7, F8, F9
-const KEY_F7: u8 = 0x40;
-const KEY_F8: u8 = 0x41;
-const KEY_F9: u8 = 0x42;
-
-const KEY_A: u8 = 0x04;
-const KEY_B: u8 = 0x05;
-const KEY_C: u8 = 0x06;
 
 
 // GATT Server definition: HID Service
 #[gatt_server]
 struct Server {
-    hid: HidService,
+    hid: CanopyService,
 }
 
 // #[gatt_service(uuid = "12345678-1234-5678-1234-56789abcdef0")]
-#[gatt_service(uuid = service::HUMAN_INTERFACE_DEVICE)]
-struct HidService {
+#[gatt_service(uuid = BluetoothUuid16::new(0xAAAA))]
+struct CanopyService {
 
-    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef1", read, value = [0x01, 0x11, 0x00, 0x03])]
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4A), read, value = [0x01, 0x11, 0x00, 0x03])]
-    information: [u8; 4],
+    #[characteristic(uuid = BluetoothUuid16::new(0xAAAB), read, write)]
+    amount: u8,
 
-    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef2", read, value = [
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4B), read, value = [
-    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x75, 0x01, 0x95, 0x08,
-    0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01,
-    0x81, 0x02, 0x95, 0x01, 0x75, 0x08, 0x81, 0x01, 0x95, 0x06,
-    0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00,
-    0x29, 0x65, 0x81, 0x00, 0xC0
-    ])]
-    report_map: [u8; 45],
-    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef3", read, notify, value = [0; 8])]
 
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4D), read, notify, write, value = [0; 8])]
-    input_report: [u8; 8],
-
-    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef4", read, write, value = 0x00)]
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A4E), read, write, value = 0x00)]
-    protocol_mode: u8,
-
-    // #[characteristic(uuid = "12345678-1234-5678-1234-56789abcdef5", read, value = [0; 8])]
-    #[characteristic(uuid = BluetoothUuid16::new(0x2A22), read, value = [0; 8])]
-    boot_keyboard_input: [u8; 8],
 }
 
 #[esp_hal_embassy::main]
@@ -95,17 +66,13 @@ async fn main(spawner: Spawner) {
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-    let io = Io::new(peripherals.IO_MUX);
-    let mut led = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
-    let mut b1 = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
-    let mut b2 = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
-    let mut b3 = Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::Up));
+    let mut vibrator = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
 
 
     spawner.spawn(working()).unwrap();
 
-    run(controller, &mut b1, &mut b2, &mut b3, &mut led, &mut rng).await;
+    run(controller,  &mut vibrator, &mut rng).await;
 }
 
 #[embassy_executor::task]
@@ -118,9 +85,6 @@ async fn working() {
 
 async fn run<C, RNG>(
     controller: C,
-    b1: &mut Input<'_>,
-    b2: &mut Input<'_>,
-    b3: &mut Input<'_>,
     led: &mut Output<'_>,
     random_generator: &mut RNG)
 where
@@ -136,8 +100,8 @@ where
 
     info!("[run] Starting BLE advertising and GATT server setup...");
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name: "ESP32-HID",
-        appearance: &appearance::human_interface_device::KEYBOARD,
+        name: "CANOPY",
+        appearance: &appearance::MEDIA_PLAYER,
 
     })).unwrap();
 
@@ -145,12 +109,10 @@ where
         ble_task(runner),
         async {
             loop {
-                match advertise_hid(&mut peripheral, &server).await {
+                match advertise(&mut peripheral, &server).await {
                     Ok(conn) => {
                         info!("[run] Connected, spawning GATT + button tasks");
-                        let g = gatt_events_task(&server, &conn);
-                        let b = button_task(&server, &conn, b1, b2, b3, led);
-                        select(g, b).await;
+                        let _ = gatt_events_task(&server, &conn, led).await;
                     }
                     Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
                 }
@@ -170,60 +132,41 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
 
 
 
-async fn advertise_hid<'a, 'b, C: Controller>(
+async fn advertise<'a, 'b, C: Controller>(
     peripheral: &mut Peripheral<'a, C, DefaultPacketPool>,
     server: &'b Server<'_>
 ) -> Result<GattConnection<'a, 'b, DefaultPacketPool>, BleHostError<C::Error>> {
-    let mut adv_data = [0; 31];
-    const PNP_ID: [u8; 7] = [
-        0x01,       // Vendor ID source: Bluetooth SIG
-        0x34, 0x12, // Vendor ID (0x1234 little-endian)
-        0x78, 0x56, // Product ID (0x5678 little-endian)
-        0x00, 0x01, // Product Version (0x0100 little-endian)
-    ];
-
-
+    let mut advertiser_data = [0; 31];
     let len = AdStructure::encode_slice(
         &[
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-            AdStructure::ServiceUuids16(&[[0x12, 0x18]]),
-            AdStructure::CompleteLocalName(b"HID"),
-            AdStructure::ManufacturerSpecificData {
-                company_identifier: 0x004C,
-                payload: &[0x01, 0x02, 0x03],
-            },
+            AdStructure::ServiceUuids16(&[[0x0f, 0x18]]),
+            AdStructure::CompleteLocalName("CANOPY".as_bytes()),
         ],
-        &mut adv_data,
+        &mut advertiser_data[..],
     )?;
-
-    let adv = peripheral
-        .advertise(&AdvertisementParameters {
-            ..AdvertisementParameters::default()
-        },
-                   Advertisement::ConnectableScannableUndirected {
-                       adv_data: &adv_data[..len],
-                       scan_data: &[],
-                   }
+    let advertiser = peripheral
+        .advertise(
+            &Default::default(),
+            Advertisement::ConnectableScannableUndirected {
+                adv_data: &advertiser_data[..len],
+                scan_data: &[],
+            },
         )
         .await?;
-    info!("[adv] BLE advertising started");
-    let conn = adv.accept().await?.with_attribute_server(server)?;
-    info!("[adv] BLE connection established");
+    info!("[adv] advertising");
+    let conn = advertiser.accept().await?.with_attribute_server(server)?;
+    info!("[adv] connection established");
     Ok(conn)
 }
 
 async fn gatt_events_task<P: PacketPool>(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
+    led: &mut Output<'_>
 ) -> Result<(), Error> {
     loop {
-        let hid_handle = server.hid.handle;
-        let hid_information_handle = server.hid.information.handle;
-        let report_handle = server.hid.report_map.handle;
-        let input_handle = server.hid.input_report.handle;
-        let protocol_handle = server.hid.protocol_mode.handle;
-        let boot_handle = server.hid.boot_keyboard_input.handle;
-
+    
         match conn.next().await {
 
             GattConnectionEvent::Bonded {bond_info} => {
@@ -449,70 +392,24 @@ async fn gatt_events_task<P: PacketPool>(
                 Ok(evt) => {
                     info!("[gatt] Received event");
 
-                    let result = match &evt {
-                        GattEvent::Read(r) => {
-
-
-
-                            if r.handle() == hid_information_handle {
-                                    info!("[gatt] Received read request on server_handle");
-                            } else if r.handle() == report_handle {
-                                info!("[gatt] Received read request on report handle");
-                            } else if r.handle() == input_handle {
-                                info!("[gatt] Received read request on input_handle");
-                            } else if r.handle() == protocol_handle {
-                                info!("[gatt] Received read request on protocol_handle");
-                            } else if r.handle() == boot_handle {
-                                info!("[gatt] Received read request on boot_handle");
-                            } else if r.handle() == hid_handle {
-                                info!("[gatt] Received read request on hid_handle");
-                            } else {
-                                info!("[gatt] Received read request on {}", r.handle());
-                            }
-
-
-                            if conn.raw().encrypted() {
-                                None
-                            } else {
-                                Some(AttErrorCode::INSUFFICIENT_ENCRYPTION)
-                            }
+                    match &evt {
+                        GattEvent::Read(_) => {
                         }
-                        GattEvent::Write(w) => {
-                            if w.handle() == hid_information_handle {
-                                info!("[gatt] Received write request on server_handle: {:?}", defmt::Debug2Format(&w.data()));
-                            } else if w.handle() == report_handle {
-                                info!("[gatt] Received write request on report handle: {:?}", defmt::Debug2Format(&w.data()));
-                            } else if w.handle() == input_handle {
-                                info!("[gatt] Received write request on input_handle: {:?}", defmt::Debug2Format(&w.data()));
-                            } else if w.handle() == protocol_handle {
-                                info!("[gatt] Received write request on protocol_handle: {:?}", defmt::Debug2Format(&w.data()));
-                            } else if w.handle() == boot_handle {
-                                info!("[gatt] Received write request on boot_handle: {:?}", defmt::Debug2Format(&w.data()));
-                            } else if w.handle() == hid_handle {
-                                info!("[gatt] Received write request on hid_handle: {:?}", defmt::Debug2Format(&w.data()));
-                            } else {
-                                info!("[gatt] Received write request: {:?} on handle: {}", defmt::Debug2Format(&w.data()), w.handle());
-                            }
+                        GattEvent::Write(_) => {
+                    
+                            info!("[gatt] Received write request");
+                            
+                            led.set_high();
+                            Timer::after(Duration::from_millis(1000)).await;
+                            led.set_low();
+                            
 
-
-
-
-
-                            if conn.raw().encrypted() {
-                                None
-                            } else {
-                                Some(AttErrorCode::INSUFFICIENT_ENCRYPTION)
-                            }
                         }
                     };
 
-                    let result = if let Some(code) = result {
-                        evt.reject(code)
-                    } else {
-                        evt.accept()
-                    };
+                    let result = evt.accept();
                     match result {
-                        Ok(mut reply) => {
+                        Ok(reply) => {
 
                             info!("[gatt] Sending read's GATT response");
 
@@ -533,49 +430,3 @@ async fn gatt_events_task<P: PacketPool>(
     }
 }
 
-async fn button_task<P: PacketPool>(
-    server: &Server<'_>,
-    conn: &GattConnection<'_, '_, P>,
-    b1: &mut Input<'_>,
-    b2: &mut Input<'_>,
-    b3: &mut Input<'_>,
-    led: &mut Output<'_>,
-) {
-    loop {
-        info!("[btn] Waiting for key press...");
-
-        let key = select(
-            async { b1.wait_for_low().await; KEY_A },
-            select(
-                async { b2.wait_for_low().await; KEY_B },
-                async { b3.wait_for_low().await; KEY_C },
-            ),
-        ).await;
-
-        let mut report = [0u8; 8];
-
-        match key {
-            Either::First(x) => { report[2] = x; info!("[btn] F7 pressed"); }
-            Either::Second(y) => match y {
-                Either::First(z) => { report[2] = z; info!("[btn] F8 pressed"); }
-                Either::Second(z2) => { report[2] = z2; info!("[btn] F9 pressed"); }
-            }
-        }
-
-        info!("[hid] Sending key press report: {:?}", report);
-        led.set_high();
-        match server.hid.input_report.notify(conn, &report).await {
-            Ok(_) => info!("[hid] Key press notification sent"),
-            Err(e) => warn!("[hid] Failed to notify key press: {:?}", defmt::Debug2Format(&e)),
-        }
-
-        Timer::after(Duration::from_millis(100)).await;
-
-        match server.hid.input_report.notify(conn, &[0; 8]).await {
-            Ok(_) => info!("[hid] Key release notification sent"),
-            Err(e) => warn!("[hid] Failed to notify key release: {:?}", defmt::Debug2Format(&e)),
-        }
-
-        led.set_low();
-    }
-}
