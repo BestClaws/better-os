@@ -427,12 +427,12 @@ async fn gatt_events_task<P: PacketPool>(
                     match &evt {
                         GattEvent::Read(_) => {
                         }
-                        GattEvent::Write(write) if write.handle == server.hid.vibration_duration.handle() => {
-                            let new_duration = write.value[0] as u32; // Assuming the value is a single byte
+                        GattEvent::Write(write) if write.handle() == server.hid.vibration_duration.handle() => {
+                            let duration_seconds: u32 = write.data().iter().map(|&byte| byte as u32).sum();
                             critical_section::with(|cs| {
-                                *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(new_duration);
+                                *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(duration_seconds * 1000); // Convert to milliseconds
                             });
-                            info!("[gatt] Updated vibration duration to {} ms", new_duration);
+                            info!("[gatt] Updated vibration duration to {} ms", duration_seconds * 1000);
                         }
                         GattEvent::Write(_) => {
                     
@@ -440,6 +440,14 @@ async fn gatt_events_task<P: PacketPool>(
 
                             critical_section::with(|cs| {
                                 VIBRATOR
+                                    .borrow_ref_mut(cs)
+                                    .as_mut()
+                                    .unwrap()
+                                    .set_high();
+                            });
+                            
+                            Timer::after(Duration::from_millis(1000)).await;
+                            critical_section::with(|cs| {
                                 VIBRATOR
                                     .borrow_ref_mut(cs)
                                     .as_mut()
