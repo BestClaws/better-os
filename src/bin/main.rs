@@ -3,8 +3,11 @@
 #![no_main]
 
 extern crate alloc;
+use core::cell::RefCell;
+
 use bt_hci::controller::ExternalController;
 use bt_hci::param::{DisconnectReason, Status};
+use critical_section::Mutex;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::select::Either;
@@ -24,7 +27,8 @@ const CONNECTIONS_MAX: usize = 1;
 /// Max number of L2CAP channels (Signal + ATT)
 const L2CAP_CHANNELS_MAX: usize = 2;
 
-
+static VIBRATOR: Mutex<RefCell<Option<Output>>> = Mutex::new(RefCell::new(None));
+static VIBRATION_DURATION: Mutex<RefCell<Option<u32>>> = Mutex::new(RefCell::new(Some(5000))); // Default 5 seconds
 
 // GATT Server definition: HID Service
 #[gatt_server]
@@ -35,11 +39,11 @@ struct Server {
 // #[gatt_service(uuid = "12345678-1234-5678-1234-56789abcdef0")]
 #[gatt_service(uuid = BluetoothUuid16::new(0xAAAA))]
 struct CanopyService {
-
     #[characteristic(uuid = BluetoothUuid16::new(0xAAAB), read, write)]
     amount: u8,
 
-
+    #[characteristic(uuid = BluetoothUuid16::new(0xAAAC), write)]
+    vibration_duration: u32, // New characteristic for vibration duration
 }
 
 #[esp_hal_embassy::main]
@@ -68,11 +72,14 @@ async fn main(spawner: Spawner) {
 
     let mut vibrator = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
-
+    critical_section::with(|cs| {
+        VIBRATOR.borrow_ref_mut(cs).replace(vibrator)
+    });
 
     spawner.spawn(working()).unwrap();
+    spawner.spawn(periodic_vibration()).unwrap(); // Spawn the new vibration task
 
-    run(controller,  &mut vibrator, &mut rng).await;
+    run(controller, &mut rng).await;
 }
 
 #[embassy_executor::task]
@@ -83,9 +90,37 @@ async fn working() {
     }
 }
 
+#[embassy_executor::task]
+async fn periodic_vibration() {
+    loop {
+        let duration = critical_section::with(|cs| {
+            *VIBRATION_DURATION.borrow_ref(cs).as_ref().unwrap_or(&5000) // Default to 5 seconds
+        });
+
+        critical_section::with(|cs| {
+            VIBRATOR
+                .borrow_ref_mut(cs)
+                .as_mut()
+                .unwrap()
+                .set_high();
+        });
+
+        Timer::after(Duration::from_millis(500)).await;
+
+        critical_section::with(|cs| {
+            VIBRATOR
+                .borrow_ref_mut(cs)
+                .as_mut()
+                .unwrap()
+                .set_low();
+        });
+
+        Timer::after(Duration::from_millis(duration.into())).await;
+    }
+}
+
 async fn run<C, RNG>(
     controller: C,
-    led: &mut Output<'_>,
     random_generator: &mut RNG)
 where
     C: Controller,
@@ -112,7 +147,7 @@ where
                 match advertise(&mut peripheral, &server).await {
                     Ok(conn) => {
                         info!("[run] Connected, spawning GATT + button tasks");
-                        let _ = gatt_events_task(&server, &conn, led).await;
+                        let _ = gatt_events_task(&server, &conn).await;
                     }
                     Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
                 }
@@ -163,12 +198,9 @@ async fn advertise<'a, 'b, C: Controller>(
 async fn gatt_events_task<P: PacketPool>(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
-    led: &mut Output<'_>
 ) -> Result<(), Error> {
     loop {
-    
         match conn.next().await {
-
             GattConnectionEvent::Bonded {bond_info} => {
                 info!("bonding info: {:?}", defmt::Debug2Format(&bond_info));
 
@@ -395,13 +427,25 @@ async fn gatt_events_task<P: PacketPool>(
                     match &evt {
                         GattEvent::Read(_) => {
                         }
+                        GattEvent::Write(write) if write.handle == server.hid.vibration_duration.handle() => {
+                            let new_duration = write.value[0] as u32; // Assuming the value is a single byte
+                            critical_section::with(|cs| {
+                                *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(new_duration);
+                            });
+                            info!("[gatt] Updated vibration duration to {} ms", new_duration);
+                        }
                         GattEvent::Write(_) => {
                     
                             info!("[gatt] Received write request");
-                            
-                            led.set_high();
-                            Timer::after(Duration::from_millis(1000)).await;
-                            led.set_low();
+
+                            critical_section::with(|cs| {
+                                VIBRATOR
+                                VIBRATOR
+                                    .borrow_ref_mut(cs)
+                                    .as_mut()
+                                    .unwrap()
+                                    .set_low();
+                            });
                             
 
                         }
