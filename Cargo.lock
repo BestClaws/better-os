@@ -1271,6 +1271,7 @@ dependencies = [
  "esp-hal-embassy",
  "esp-wifi",
  "heapless",
+ "nb 1.1.0",
  "panic-rtt-target",
  "rand_core 0.6.4",
  "rtt-target",

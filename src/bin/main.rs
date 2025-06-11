@@ -4,6 +4,7 @@
 
 extern crate alloc;
 use core::cell::RefCell;
+use nb;
 
 use bt_hci::controller::ExternalController;
 use bt_hci::param::{DisconnectReason, Status};
@@ -13,14 +14,15 @@ use embassy_executor::Spawner;
 use embassy_futures::select::Either;
 use embassy_futures::{join::join, select::select};
 use embassy_time::{Duration, Timer};
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
 use panic_rtt_target as _;
-use trouble_host::{prelude::*, Address, Host, HostResources};
 use rand_core::{CryptoRng, RngCore};
+use trouble_host::{prelude::*, Address, Host, HostResources};
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -61,23 +63,26 @@ async fn main(spawner: Spawner) {
     let mut rng = esp_hal::rng::Trng::new(peripherals.RNG, peripherals.ADC1);
 
     let timer1 = TimerGroup::new(peripherals.TIMG0);
-    let init = esp_wifi::init(
-        timer1.timer0,
-        rng.rng.clone(),
-        peripherals.RADIO_CLK,
-    ).unwrap();
+    let init = esp_wifi::init(timer1.timer0, rng.rng.clone(), peripherals.RADIO_CLK).unwrap();
 
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
     let mut vibrator = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
-    critical_section::with(|cs| {
-        VIBRATOR.borrow_ref_mut(cs).replace(vibrator)
-    });
+    critical_section::with(|cs| VIBRATOR.borrow_ref_mut(cs).replace(vibrator));
 
+    // Configure GPIO1 as an analog input
+    let analog_pin = peripherals.GPIO5;
+    let mut adc1_config = AdcConfig::new();
+    let mut pin = adc1_config.enable_pin(analog_pin, Attenuation::_11dB);
+    let mut adc1 = Adc::new(peripherals.ADC2, adc1_config);
+
+    // Spawn tasks
     spawner.spawn(working()).unwrap();
-    spawner.spawn(periodic_vibration()).unwrap(); // Spawn the new vibration task
+    spawner.spawn(periodic_vibration()).unwrap();
+    let pin_value: u16 = nb::block!(adc1.read_oneshot(&mut pin)).unwrap();
+    info!("[main] ADC read value: {}", pin_value);
 
     run(controller, &mut rng).await;
 }
@@ -86,7 +91,7 @@ async fn main(spawner: Spawner) {
 async fn working() {
     loop {
         info!("{:?}", embassy_time::Instant::now().as_secs());
-        embassy_time::Timer::after_secs(1).await; 
+        embassy_time::Timer::after_secs(1).await;
     }
 }
 
@@ -98,30 +103,20 @@ async fn periodic_vibration() {
         });
 
         critical_section::with(|cs| {
-            VIBRATOR
-                .borrow_ref_mut(cs)
-                .as_mut()
-                .unwrap()
-                .set_high();
+            VIBRATOR.borrow_ref_mut(cs).as_mut().unwrap().set_high();
         });
 
         Timer::after(Duration::from_millis(500)).await;
 
         critical_section::with(|cs| {
-            VIBRATOR
-                .borrow_ref_mut(cs)
-                .as_mut()
-                .unwrap()
-                .set_low();
+            VIBRATOR.borrow_ref_mut(cs).as_mut().unwrap().set_low();
         });
 
         Timer::after(Duration::from_millis(duration.into())).await;
     }
 }
 
-async fn run<C, RNG>(
-    controller: C,
-    random_generator: &mut RNG)
+async fn run<C, RNG>(controller: C, random_generator: &mut RNG)
 where
     C: Controller,
     RNG: RngCore + CryptoRng,
@@ -129,31 +124,36 @@ where
     let address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("[run] Our BLE address = {:?}", address.addr);
 
-    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> = HostResources::new();
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address).set_random_generator_seed(random_generator);
-    let Host { mut peripheral, runner, .. } = stack.build();
+    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
+        HostResources::new();
+    let stack = trouble_host::new(controller, &mut resources)
+        .set_random_address(address)
+        .set_random_generator_seed(random_generator);
+    let Host {
+        mut peripheral,
+        runner,
+        ..
+    } = stack.build();
 
     info!("[run] Starting BLE advertising and GATT server setup...");
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
         name: "CANOPY",
         appearance: &appearance::MEDIA_PLAYER,
+    }))
+    .unwrap();
 
-    })).unwrap();
-
-    let _ = join(
-        ble_task(runner),
-        async {
-            loop {
-                match advertise(&mut peripheral, &server).await {
-                    Ok(conn) => {
-                        info!("[run] Connected, spawning GATT + button tasks");
-                        let _ = gatt_events_task(&server, &conn).await;
-                    }
-                    Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
+    let _ = join(ble_task(runner), async {
+        loop {
+            match advertise(&mut peripheral, &server).await {
+                Ok(conn) => {
+                    info!("[run] Connected, spawning GATT + button tasks");
+                    let _ = gatt_events_task(&server, &conn).await;
                 }
+                Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
             }
         }
-    ).await;
+    })
+    .await;
 }
 
 async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
@@ -165,11 +165,9 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     }
 }
 
-
-
 async fn advertise<'a, 'b, C: Controller>(
     peripheral: &mut Peripheral<'a, C, DefaultPacketPool>,
-    server: &'b Server<'_>
+    server: &'b Server<'_>,
 ) -> Result<GattConnection<'a, 'b, DefaultPacketPool>, BleHostError<C::Error>> {
     let mut advertiser_data = [0; 31];
     let len = AdStructure::encode_slice(
@@ -201,9 +199,8 @@ async fn gatt_events_task<P: PacketPool>(
 ) -> Result<(), Error> {
     loop {
         match conn.next().await {
-            GattConnectionEvent::Bonded {bond_info} => {
+            GattConnectionEvent::Bonded { bond_info } => {
                 info!("bonding info: {:?}", defmt::Debug2Format(&bond_info));
-
             }
 
             GattConnectionEvent::PhyUpdated { tx_phy, rx_phy } => {
@@ -213,8 +210,6 @@ async fn gatt_events_task<P: PacketPool>(
             GattConnectionEvent::Disconnected { reason } => {
                 info!("[gatt] Disconnected: {:?}", reason);
                 match reason {
-
-     
                     Status::HARDWARE_FAILURE => {
                         info!("[gatt] Disconnection due to Hardware Failure");
                     }
@@ -246,7 +241,9 @@ async fn gatt_events_task<P: PacketPool>(
                         info!("[gatt] Disconnection due to Command Disallowed");
                     }
                     Status::CONN_REJECTED_LIMITED_RESOURCES => {
-                        info!("[gatt] Disconnection due to Connection Rejected (Limited Resources)");
+                        info!(
+                            "[gatt] Disconnection due to Connection Rejected (Limited Resources)"
+                        );
                     }
                     Status::CONN_REJECTED_SECURITY_REASONS => {
                         info!("[gatt] Disconnection due to Connection Rejected (Security Reasons)");
@@ -267,7 +264,9 @@ async fn gatt_events_task<P: PacketPool>(
                         info!("[gatt] Disconnection due to Remote User Terminated Connection");
                     }
                     Status::REMOTE_DEVICE_TERMINATED_CONN_LOW_RESOURCES => {
-                        info!("[gatt] Disconnection due to Remote Device Terminated (Low Resources)");
+                        info!(
+                            "[gatt] Disconnection due to Remote Device Terminated (Low Resources)"
+                        );
                     }
                     Status::REMOTE_DEVICE_TERMINATED_CONN_POWER_OFF => {
                         info!("[gatt] Disconnection due to Remote Device Terminated (Power Off)");
@@ -369,7 +368,9 @@ async fn gatt_events_task<P: PacketPool>(
                         info!("[gatt] Disconnection due to Host Busy - Pairing");
                     }
                     Status::CONN_REJECTED_NO_SUITABLE_CHANNEL_FOUND => {
-                        info!("[gatt] Disconnection due to Connection Rejected (No Suitable Channel)");
+                        info!(
+                            "[gatt] Disconnection due to Connection Rejected (No Suitable Channel)"
+                        );
                     }
                     Status::CONTROLLER_BUSY => {
                         info!("[gatt] Disconnection due to Controller Busy");
@@ -403,82 +404,79 @@ async fn gatt_events_task<P: PacketPool>(
                     }
                     Status::PACKET_TOO_LONG => {
                         info!("[gatt] Disconnection due to Packet Too Long");
-                    },
+                    }
 
-            
                     Status::UNKNOWN_CONN_IDENTIFIER => {
                         info!("[gatt] Disconnection due to Unknown Connection Identifier");
-                    },
-                    
-                    _ => {
-                        info!("[gatt] Disconnection due to Unknown Error {:?}", defmt::Debug2Format(&reason));
                     }
-                    
 
-
+                    _ => {
+                        info!(
+                            "[gatt] Disconnection due to Unknown Error {:?}",
+                            defmt::Debug2Format(&reason)
+                        );
+                    }
                 }
                 embassy_time::Timer::after(Duration::from_millis(1000)).await;
-                break Ok(())
+                break Ok(());
             }
             GattConnectionEvent::Gatt { event } => match event {
                 Ok(evt) => {
                     info!("[gatt] Received event");
 
                     match &evt {
-                        GattEvent::Read(_) => {
-                        }
-                        GattEvent::Write(write) if write.handle() == server.hid.vibration_duration.handle() => {
-                            let duration_seconds: u32 = write.data().iter().map(|&byte| byte as u32).sum();
+                        GattEvent::Read(_) => {}
+                        GattEvent::Write(write)
+                            if write.handle() == server.hid.vibration_duration.handle() =>
+                        {
+                            let duration_seconds: u32 =
+                                write.data().iter().map(|&byte| byte as u32).sum();
                             critical_section::with(|cs| {
-                                *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(duration_seconds * 1000); // Convert to milliseconds
+                                *VIBRATION_DURATION.borrow_ref_mut(cs) =
+                                    Some(duration_seconds * 1000); // Convert to milliseconds
                             });
-                            info!("[gatt] Updated vibration duration to {} ms", duration_seconds * 1000);
+                            info!(
+                                "[gatt] Updated vibration duration to {} ms",
+                                duration_seconds * 1000
+                            );
                         }
                         GattEvent::Write(_) => {
-                    
                             info!("[gatt] Received write request");
 
                             critical_section::with(|cs| {
-                                VIBRATOR
-                                    .borrow_ref_mut(cs)
-                                    .as_mut()
-                                    .unwrap()
-                                    .set_high();
+                                VIBRATOR.borrow_ref_mut(cs).as_mut().unwrap().set_high();
                             });
-                            
+
                             Timer::after(Duration::from_millis(1000)).await;
                             critical_section::with(|cs| {
-                                VIBRATOR
-                                    .borrow_ref_mut(cs)
-                                    .as_mut()
-                                    .unwrap()
-                                    .set_low();
+                                VIBRATOR.borrow_ref_mut(cs).as_mut().unwrap().set_low();
                             });
-                            
-
                         }
                     };
 
                     let result = evt.accept();
                     match result {
                         Ok(reply) => {
-
                             info!("[gatt] Sending read's GATT response");
 
                             reply.send().await;
                         }
-                        Err(e) => warn!("[gatt] Error sending read's response: {:?}", defmt::Debug2Format(&e)),
+                        Err(e) => warn!(
+                            "[gatt] Error sending read's response: {:?}",
+                            defmt::Debug2Format(&e)
+                        ),
                     }
-
                 }
                 Err(e) => warn!("[gatt] GATT event error: {:?}", defmt::Debug2Format(&e)),
             },
 
-            GattConnectionEvent::ConnectionParamsUpdated { conn_interval, peripheral_latency, supervision_timeout } => {
+            GattConnectionEvent::ConnectionParamsUpdated {
+                conn_interval,
+                peripheral_latency,
+                supervision_timeout,
+            } => {
                 info!("[gatt] Connection parameters updated. Conn interval(ms): {}, Peripheral latency: {}, Supervision timeout(ms): {}", conn_interval.as_millis(), peripheral_latency, supervision_timeout.as_millis());
             }
-
         }
     }
 }
-
