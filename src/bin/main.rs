@@ -4,23 +4,26 @@
 
 extern crate alloc;
 use core::cell::RefCell;
+use esp_hal::peripherals::ADC1;
+use esp_hal::rng::Trng;
+use esp_hal::Blocking;
+use nb;
 
 use bt_hci::controller::ExternalController;
-use bt_hci::param::{DisconnectReason, Status};
+use bt_hci::param::Status;
 use critical_section::Mutex;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
-use embassy_futures::select::Either;
-use embassy_futures::{join::join, select::select};
+use embassy_futures::join::join;
 use embassy_time::{Duration, Timer};
+use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
+use esp_hal::gpio::{GpioPin, InputPin, Level, Output, OutputConfig, OutputPin};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
 use panic_rtt_target as _;
 use trouble_host::{prelude::*, Address, Host, HostResources};
-use rand_core::{CryptoRng, RngCore};
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -28,7 +31,9 @@ const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 2;
 
 static VIBRATOR: Mutex<RefCell<Option<Output>>> = Mutex::new(RefCell::new(None));
-static VIBRATION_DURATION: Mutex<RefCell<Option<u32>>> = Mutex::new(RefCell::new(Some(5000))); // Default 5 seconds
+static VIBRATION_DURATION: Mutex<RefCell<Option<u32>>> = Mutex::new(RefCell::new(Some(60000))); // Default 5 seconds
+
+
 
 // GATT Server definition: HID Service
 #[gatt_server]
@@ -58,19 +63,19 @@ async fn main(spawner: Spawner) {
     esp_hal_embassy::init(timer0.alarm0);
     info!("[main] Embassy initialized");
 
-    let mut rng = esp_hal::rng::Trng::new(peripherals.RNG, peripherals.ADC1);
+    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
 
     let timer1 = TimerGroup::new(peripherals.TIMG0);
     let init = esp_wifi::init(
         timer1.timer0,
-        rng.rng.clone(),
+        rng.clone(),
         peripherals.RADIO_CLK,
     ).unwrap();
 
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-    let mut vibrator = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    let vibrator = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
     critical_section::with(|cs| {
         VIBRATOR.borrow_ref_mut(cs).replace(vibrator)
@@ -79,7 +84,15 @@ async fn main(spawner: Spawner) {
     spawner.spawn(working()).unwrap();
     spawner.spawn(periodic_vibration()).unwrap(); // Spawn the new vibration task
 
-    run(controller, &mut rng).await;
+    let analog_pin = peripherals.GPIO2;
+    let mut adc1_config = AdcConfig::new();
+    let mut batt_pin = adc1_config.enable_pin(analog_pin, Attenuation::_11dB);
+    let mut adc1 = Adc::new(peripherals.ADC1, adc1_config);
+    let pin_value: u16 = nb::block!(adc1.read_oneshot(&mut batt_pin)).unwrap();
+    info!("[main] ADC read value: {}", pin_value);
+
+    run(controller, adc1, batt_pin).await;
+
 }
 
 #[embassy_executor::task]
@@ -119,18 +132,19 @@ async fn periodic_vibration() {
     }
 }
 
-async fn run<C, RNG>(
+async fn run<C>(
     controller: C,
-    random_generator: &mut RNG)
-where
-    C: Controller,
-    RNG: RngCore + CryptoRng,
+    mut adc: esp_hal::analog::adc::Adc<'static, ADC1<'static>, Blocking>,
+    mut batt_pin: AdcPin<GpioPin<'static, 2>, ADC1<'static>>
+) where
+    C: Controller
+
 {
-    let address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
+    let address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xf0]);
     info!("[run] Our BLE address = {:?}", address.addr);
 
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> = HostResources::new();
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address).set_random_generator_seed(random_generator);
+    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
     let Host { mut peripheral, runner, .. } = stack.build();
 
     info!("[run] Starting BLE advertising and GATT server setup...");
@@ -147,7 +161,7 @@ where
                 match advertise(&mut peripheral, &server).await {
                     Ok(conn) => {
                         info!("[run] Connected, spawning GATT + button tasks");
-                        let _ = gatt_events_task(&server, &conn).await;
+                        let _ = gatt_events_task(&server, &conn, &mut adc, &mut batt_pin).await;
                     }
                     Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
                 }
@@ -198,13 +212,11 @@ async fn advertise<'a, 'b, C: Controller>(
 async fn gatt_events_task<P: PacketPool>(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
+    adc: &mut esp_hal::analog::adc::Adc<'static, ADC1<'static>, Blocking>,
+    batt_pin: &mut AdcPin<GpioPin<'static, 2>, ADC1<'static>>
 ) -> Result<(), Error> {
     loop {
         match conn.next().await {
-            GattConnectionEvent::Bonded {bond_info} => {
-                info!("bonding info: {:?}", defmt::Debug2Format(&bond_info));
-
-            }
 
             GattConnectionEvent::PhyUpdated { tx_phy, rx_phy } => {
                 info!("[gatt] Phy updated. Tx phy: {}, Rx phy: {}", tx_phy, rx_phy);
@@ -426,6 +438,21 @@ async fn gatt_events_task<P: PacketPool>(
 
                     match &evt {
                         GattEvent::Read(_) => {
+
+                            let value = match nb::block!(adc.read_oneshot(batt_pin)) {
+                                Ok(v) => {
+                                    let val = (v >> 4) as u8; // Scale 12-bit ADC (0–4095) to 8-bit (0–255)
+                                    info!("[gatt] Read from ADC = {}, scaled = {}", v, val);
+                                    val
+                                }
+                                Err(_) => {
+                                    warn!("[gatt] Failed to read ADC");
+                                    0
+                                }
+                            };
+                        
+                            let _ = server.hid.amount.set(server, &value);
+
                         }
                         GattEvent::Write(write) if write.handle() == server.hid.vibration_duration.handle() => {
                             let duration_seconds: u32 = write.data().iter().map(|&byte| byte as u32).sum();
