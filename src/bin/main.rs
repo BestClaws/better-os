@@ -4,7 +4,7 @@
 
 extern crate alloc;
 use core::cell::RefCell;
-use esp_hal::peripherals::ADC1;
+use esp_hal::peripherals::{ADC1, GPIO2};
 use esp_hal::rng::Trng;
 use esp_hal::Blocking;
 use nb;
@@ -18,7 +18,7 @@ use embassy_futures::join::join;
 use embassy_time::{Duration, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{GpioPin, InputPin, Level, Output, OutputConfig, OutputPin};
+use esp_hal::gpio::{InputPin, Level, Output, OutputConfig, OutputPin};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
@@ -31,7 +31,7 @@ const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 2;
 
 static VIBRATOR: Mutex<RefCell<Option<Output>>> = Mutex::new(RefCell::new(None));
-static VIBRATION_DURATION: Mutex<RefCell<Option<u32>>> = Mutex::new(RefCell::new(Some(60000))); // Default 5 seconds
+static VIBRATION_DURATION: Mutex<RefCell<Option<u32>>> = Mutex::new(RefCell::new(Some(2000))); // Default 5 seconds
 
 
 
@@ -118,7 +118,7 @@ async fn periodic_vibration() {
                 .set_high();
         });
 
-        Timer::after(Duration::from_millis(500)).await;
+        Timer::after(Duration::from_millis(50)).await;
 
         critical_section::with(|cs| {
             VIBRATOR
@@ -135,7 +135,7 @@ async fn periodic_vibration() {
 async fn run<C>(
     controller: C,
     mut adc: esp_hal::analog::adc::Adc<'static, ADC1<'static>, Blocking>,
-    mut batt_pin: AdcPin<GpioPin<'static, 2>, ADC1<'static>>
+    mut batt_pin: AdcPin<GPIO2<'static>, ADC1<'static>>
 ) where
     C: Controller
 
@@ -213,7 +213,7 @@ async fn gatt_events_task<P: PacketPool>(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
     adc: &mut esp_hal::analog::adc::Adc<'static, ADC1<'static>, Blocking>,
-    batt_pin: &mut AdcPin<GpioPin<'static, 2>, ADC1<'static>>
+    batt_pin: &mut AdcPin<GPIO2<'static>, ADC1<'static>>
 ) -> Result<(), Error> {
     loop {
         match conn.next().await {
@@ -432,11 +432,10 @@ async fn gatt_events_task<P: PacketPool>(
                 embassy_time::Timer::after(Duration::from_millis(1000)).await;
                 break Ok(())
             }
-            GattConnectionEvent::Gatt { event } => match event {
-                Ok(evt) => {
+            GattConnectionEvent::Gatt { event } =>  {
                     info!("[gatt] Received event");
 
-                    match &evt {
+                    match &event {
                         GattEvent::Read(_) => {
 
                             let value = match nb::block!(adc.read_oneshot(batt_pin)) {
@@ -483,10 +482,11 @@ async fn gatt_events_task<P: PacketPool>(
                             });
                             
 
-                        }
+                        },
+                        GattEvent::Other(_) => {}
                     };
 
-                    let result = evt.accept();
+                    let result = event.accept();
                     match result {
                         Ok(reply) => {
 
@@ -497,8 +497,6 @@ async fn gatt_events_task<P: PacketPool>(
                         Err(e) => warn!("[gatt] Error sending read's response: {:?}", defmt::Debug2Format(&e)),
                     }
 
-                }
-                Err(e) => warn!("[gatt] GATT event error: {:?}", defmt::Debug2Format(&e)),
             },
 
             GattConnectionEvent::ConnectionParamsUpdated { conn_interval, peripheral_latency, supervision_timeout } => {

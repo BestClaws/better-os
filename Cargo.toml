@@ -6,37 +6,20 @@ version = "0.1.0"
 [[bin]]
 name = "ped"
 path = "./src/bin/main.rs"
+test = false
 
 [dependencies]
-defmt = "0.3.10"
-embassy-net = { version = "0.6.0", features = [
-  "dhcpv4",
-  "medium-ethernet",
-  "tcp",
-  "udp",
-] }
+defmt = "1.0.1"
 embedded-io = "0.6.1"
 embedded-io-async = "0.6.1"
-esp-alloc = "0.7.0"
-esp-hal = { version = "1.0.0-beta.0", features = [
+esp-alloc = "0.8.0"
+esp-hal = { version = "1.0.0-beta.1", features = [
   "defmt",
   "esp32c3",
   "unstable",
 ] }
 panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
 rtt-target = { version = "0.6.1", features = ["defmt"] }
-smoltcp = { version = "0.12.0", default-features = false, features = [
-  "medium-ethernet",
-  "multicast",
-  "proto-dhcpv4",
-  "proto-dns",
-  "proto-ipv4",
-  "socket-dns",
-  "socket-icmp",
-  "socket-raw",
-  "socket-tcp",
-  "socket-udp",
-] }
 
 nb = "1.1.0"
 
@@ -46,27 +29,23 @@ embassy-executor = { version = "0.7.0", features = [
   "task-arena-size-20480",
 ] }
 embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
-esp-hal-embassy = { version = "0.7.0", features = ["esp32c3"] }
-esp-wifi = { version = "0.13.0", features = [
+esp-hal-embassy = { version = "0.8.1", features = ["esp32c3"] }
+esp-wifi = { version = "0.14.1", features = [
   "ble",
   "builtin-scheduler",
-  "coex",
   "defmt",
   "esp-alloc",
   "esp32c3",
-  "wifi",
 ] }
-heapless = { version = "0.8.0", default-features = false }
 static_cell = { version = "2.1.0", features = ["nightly"] }
 
-trouble-host = { git = "https://github.com/embassy-rs/trouble", features = [
+trouble-host = { git = "https://github.com/embassy-rs/trouble", rev = "cedb8128c09299f3e1d122104d3d344a0bb5c41a", features = [
     "default-packet-pool-mtu-255", "derive", "scan"
 ] }
 
 embassy-futures = "0.1.1"
 bt-hci = "0.3.0"
-embassy-sync = { version = "0.6" }
-rand_core = "0.6.4"
+embassy-sync = { version = "0.7.0" }
 
 [profile.dev]
 # Rust debug is too slow.
@@ -84,10 +63,3 @@ overflow-checks  = false
 
 
 
-[patch.crates-io]
-esp-wifi = {git = "https://github.com/esp-rs/esp-hal.git", rev = "56be259c41305f24276852d2af4fce16247107bd"}
-esp-backtrace = {git = "https://github.com/esp-rs/esp-hal.git", rev = "56be259c41305f24276852d2af4fce16247107bd"}
-esp-hal = {git = "https://github.com/esp-rs/esp-hal.git", rev = "56be259c41305f24276852d2af4fce16247107bd"}
-esp-hal-embassy = {git = "https://github.com/esp-rs/esp-hal.git", rev = "56be259c41305f24276852d2af4fce16247107bd"}
-esp-alloc = {git = "https://github.com/esp-rs/esp-hal.git", rev = "56be259c41305f24276852d2af4fce16247107bd"}
-esp-println = {git = "https://github.com/esp-rs/esp-hal.git", rev = "56be259c41305f24276852d2af4fce16247107bd"}
