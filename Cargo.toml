@@ -1,10 +1,10 @@
 [package]
 edition = "2021"
-name    = "ped"
+name    = "canopy"
 version = "0.1.0"
 
 [[bin]]
-name = "ped"
+name = "canopy"
 path = "./src/bin/main.rs"
 test = false
 

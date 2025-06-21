@@ -96,6 +96,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
+name = "canopy"
+version = "0.1.0"
+dependencies = [
+ "bt-hci",
+ "critical-section",
+ "defmt 1.0.1",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.7.0",
+ "embassy-time",
+ "embedded-io",
+ "embedded-io-async",
+ "esp-alloc",
+ "esp-hal",
+ "esp-hal-embassy",
+ "esp-wifi",
+ "nb 1.1.0",
+ "panic-rtt-target",
+ "rtt-target",
+ "static_cell",
+ "trouble-host",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1019,30 +1043,6 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
-name = "ped"
-version = "0.1.0"
-dependencies = [
- "bt-hci",
- "critical-section",
- "defmt 1.0.1",
- "embassy-executor",
- "embassy-futures",
- "embassy-sync 0.7.0",
- "embassy-time",
- "embedded-io",
- "embedded-io-async",
- "esp-alloc",
- "esp-hal",
- "esp-hal-embassy",
- "esp-wifi",
- "nb 1.1.0",
- "panic-rtt-target",
- "rtt-target",
- "static_cell",
- "trouble-host",
-]
 
 [[package]]
 name = "pin-project-lite"
