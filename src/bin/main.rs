@@ -13,6 +13,8 @@ use critical_section::Mutex;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
+use embassy_futures::select::select;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex};
 use embassy_time::{Duration, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::clock::CpuClock;
@@ -22,6 +24,8 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
 use panic_rtt_target as _;
 use trouble_host::{prelude::*, Address, Host, HostResources};
+use embassy_sync::signal::Signal;
+
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -29,7 +33,9 @@ const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 2;
 
 static VIBRATOR: Mutex<RefCell<Option<Output>>> = Mutex::new(RefCell::new(None));
-static VIBRATION_DURATION: Mutex<RefCell<Option<u32>>> = Mutex::new(RefCell::new(Some(2000))); // Default 5 seconds
+static PERIOD_VIBRATION_LENGTH: u64 = 1000;
+static VIBRATION_PERIOD_UPDATE_SIG: Signal<CriticalSectionRawMutex, u32> = Signal::new();
+
 
 
 
@@ -42,10 +48,13 @@ struct Server {
 // #[gatt_service(uuid = "12345678-1234-5678-1234-56789abcdef0")]
 #[gatt_service(uuid = BluetoothUuid16::new(0xAAAA))]
 struct CanopyService {
+
     #[characteristic(uuid = BluetoothUuid16::new(0xAAAB), read, write)]
+    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Amount")]
     amount: u8,
 
     #[characteristic(uuid = BluetoothUuid16::new(0xAAAC), write)]
+    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Vibration Duration")]
     vibration_duration: u32, // New characteristic for vibration duration
 }
 
@@ -103,10 +112,10 @@ async fn working() {
 
 #[embassy_executor::task]
 async fn periodic_vibration() {
+    let mut duration = Duration::from_millis(5000);
     loop {
-        let duration = critical_section::with(|cs| {
-            *VIBRATION_DURATION.borrow_ref(cs).as_ref().unwrap_or(&5000) // Default to 5 seconds
-        });
+
+        info!("[periodic_vibration] Waiting for signal");
 
         critical_section::with(|cs| {
             VIBRATOR
@@ -116,7 +125,7 @@ async fn periodic_vibration() {
                 .set_high();
         });
 
-        Timer::after(Duration::from_millis(50)).await;
+        Timer::after(Duration::from_millis(PERIOD_VIBRATION_LENGTH)).await;
 
         critical_section::with(|cs| {
             VIBRATOR
@@ -126,7 +135,13 @@ async fn periodic_vibration() {
                 .set_low();
         });
 
-        Timer::after(Duration::from_millis(duration.into())).await;
+        select(
+            Timer::after(Duration::from_millis(duration.as_millis())),
+            async {
+                duration = Duration::from_millis(VIBRATION_PERIOD_UPDATE_SIG.wait().await.into());
+            }
+        ).await;
+
     }
 }
 
@@ -242,20 +257,26 @@ async fn gatt_events_task<P: PacketPool>(
                                     0
                                 }
                             };
-                        
+
                             let _ = server.hid.amount.set(server, &value);
 
                         }
                         GattEvent::Write(write) if write.handle() == server.hid.vibration_duration.handle() => {
                             let duration_seconds: u32 = write.data().iter().map(|&byte| byte as u32).sum();
-                            critical_section::with(|cs| {
-                                *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(duration_seconds * 1000); // Convert to milliseconds
-                            });
+
+                            VIBRATION_PERIOD_UPDATE_SIG.signal(duration_seconds * 1000);
+
+                            //
+                            // critical_section::with(|cs| {
+                            //     *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(duration_seconds * 1000); // Convert to milliseconds
+                            // });
+
                             info!("[gatt] Updated vibration duration to {} ms", duration_seconds * 1000);
                         }
                         GattEvent::Write(_) => {
-                    
+
                             info!("[gatt] Received write request");
+
 
                             critical_section::with(|cs| {
                                 VIBRATOR
@@ -264,7 +285,7 @@ async fn gatt_events_task<P: PacketPool>(
                                     .unwrap()
                                     .set_high();
                             });
-                            
+
                             Timer::after(Duration::from_millis(1000)).await;
                             critical_section::with(|cs| {
                                 VIBRATOR
@@ -273,7 +294,7 @@ async fn gatt_events_task<P: PacketPool>(
                                     .unwrap()
                                     .set_low();
                             });
-                            
+
 
                         },
                         GattEvent::Other(_) => {}
@@ -304,4 +325,3 @@ async fn gatt_events_task<P: PacketPool>(
         }
     }
 }
-

@@ -106,8 +106,6 @@ dependencies = [
  "embassy-futures",
  "embassy-sync 0.7.0",
  "embassy-time",
- "embedded-io",
- "embedded-io-async",
  "esp-alloc",
  "esp-hal",
  "esp-hal-embassy",
