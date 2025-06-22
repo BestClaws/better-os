@@ -112,6 +112,7 @@ dependencies = [
  "esp-hal",
  "esp-hal-embassy",
  "esp-wifi",
+ "log",
  "nb 1.1.0",
  "panic-rtt-target",
  "rtt-target",

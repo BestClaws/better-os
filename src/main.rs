@@ -6,20 +6,16 @@ extern crate alloc;
 
 
 mod peripherals;
+mod tasks;
 
-use core::cell::RefCell;
 use esp_hal::peripherals::{ADC1, GPIO2};
 use esp_hal::Blocking;
 use nb;
 
 use bt_hci::controller::ExternalController;
-use critical_section::Mutex;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use embassy_futures::select::select;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::clock::CpuClock;
@@ -32,6 +28,7 @@ use trouble_host::{prelude::*, Address, Host, HostResources};
 
 
 use crate::peripherals::vibrator::{vibrator, VIBRATION_PERIOD_UPDATE_SIG, VIBRATION_SIG};
+use crate::tasks::ticker::ticker;
 use peripherals::vibrator::periodic_vibration;
 
 /// Max number of connections
@@ -86,30 +83,23 @@ async fn main(spawner: Spawner) {
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
 
-
-
-    spawner.spawn(working()).unwrap();
+    spawner.spawn(ticker()).unwrap();
     spawner.spawn(vibrator(peripherals.GPIO7)).unwrap(); // Spawn the new vibration task
     spawner.spawn(periodic_vibration()).unwrap();
 
-    let analog_pin = peripherals.GPIO2;
+
     let mut adc1_config = AdcConfig::new();
-    let mut batt_pin = adc1_config.enable_pin(analog_pin, Attenuation::_11dB);
+    let mut batt_pin = adc1_config.enable_pin(peripherals.GPIO2, Attenuation::_11dB);
     let mut adc1 = Adc::new(peripherals.ADC1, adc1_config);
-    let pin_value: u16 = nb::block!(adc1.read_oneshot(&mut batt_pin)).unwrap();
-    info!("[main] ADC read value: {}", pin_value);
+
+    let batt_pin_reading: u16 = nb::block!(adc1.read_oneshot(&mut batt_pin)).unwrap();
+    info!("[main] ADC read value: {}", batt_pin_reading);
 
     run(controller, adc1, batt_pin).await;
 
 }
 
-#[embassy_executor::task]
-async fn working() {
-    loop {
-        info!("{:?}", embassy_time::Instant::now().as_secs());
-        Timer::after_secs(1).await;
-    }
-}
+
 
 
 async fn run<C>(
@@ -120,8 +110,8 @@ async fn run<C>(
     C: Controller
 
 {
-    let address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xf0]);
-    info!("[run] Our BLE address = {:?}", address.addr);
+    let address = Address::random([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+    info!("[run] BLE address = {:?}", address.addr);
 
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> = HostResources::new();
     let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
@@ -174,8 +164,7 @@ async fn advertise<'a, 'b, C: Controller>(
         ],
         &mut advertiser_data[..],
     )?;
-    let advertiser = peripheral
-        .advertise(
+    let advertiser = peripheral.advertise(
             &Default::default(),
             Advertisement::ConnectableScannableUndirected {
                 adv_data: &advertiser_data[..len],
@@ -208,23 +197,29 @@ async fn gatt_events_task<P: PacketPool>(
                 break Ok(())
             }
             GattConnectionEvent::Gatt { event } =>  {
-                    info!("[gatt] Received event");
 
                     match &event {
-                        GattEvent::Read(_) => {
-                            let value = match nb::block!(adc.read_oneshot(batt_pin)) {
-                                Ok(v) => {
-                                    let val = (v >> 4) as u8; // Scale 12-bit ADC (0–4095) to 8-bit (0–255)
-                                    info!("[gatt] Read from ADC = {}, scaled = {}", v, val);
-                                    val
-                                }
-                                Err(_) => {
-                                    warn!("[gatt] Failed to read ADC");
-                                    0
-                                }
-                            };
+                        GattEvent::Read(evt) => {
+                            if server.hid.amount.handle == evt.handle() {
+                                let value = match nb::block!(adc.read_oneshot(batt_pin)) {
+                                    Ok(v) => {
+                                        let val = (v >> 4) as u8; // Scale 12-bit ADC (0–4095) to 8-bit (0–255)
+                                        info!("[gatt] Read from ADC = {}, scaled = {}", v, val);
+                                        val
+                                    }
+                                    Err(_) => {
+                                        warn!("[gatt] Failed to read ADC");
+                                        0
+                                    }
+                                };
 
-                            let _ = server.hid.amount.set(server, &value);
+                                let _ = server.hid.amount.set(server, &value);
+                            } else {
+                                info!("unprocessed gatt read event: {}", defmt::Debug2Format(&evt.payload().handle()));
+
+                            }
+
+
                         }
                         GattEvent::Write(write) => {
 
