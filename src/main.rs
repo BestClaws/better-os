@@ -3,6 +3,10 @@
 #![no_main]
 
 extern crate alloc;
+
+
+mod peripherals;
+
 use core::cell::RefCell;
 use esp_hal::peripherals::{ADC1, GPIO2};
 use esp_hal::Blocking;
@@ -14,7 +18,8 @@ use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_futures::select::select;
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::clock::CpuClock;
@@ -24,17 +29,15 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
 use panic_rtt_target as _;
 use trouble_host::{prelude::*, Address, Host, HostResources};
-use embassy_sync::signal::Signal;
 
+
+use crate::peripherals::vibrator::{vibrator, VIBRATION_PERIOD_UPDATE_SIG, VIBRATION_SIG};
+use peripherals::vibrator::periodic_vibration;
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
 /// Max number of L2CAP channels (Signal and ATT)
 const L2CAP_CHANNELS_MAX: usize = 2;
-
-static VIBRATOR: Mutex<RefCell<Option<Output>>> = Mutex::new(RefCell::new(None));
-static PERIOD_VIBRATION_LENGTH: u64 = 1000;
-static VIBRATION_PERIOD_UPDATE_SIG: Signal<CriticalSectionRawMutex, u32> = Signal::new();
 
 
 
@@ -82,14 +85,12 @@ async fn main(spawner: Spawner) {
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-    let vibrator = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
-    critical_section::with(|cs| {
-        VIBRATOR.borrow_ref_mut(cs).replace(vibrator)
-    });
+
 
     spawner.spawn(working()).unwrap();
-    spawner.spawn(periodic_vibration()).unwrap(); // Spawn the new vibration task
+    spawner.spawn(vibrator(peripherals.GPIO7)).unwrap(); // Spawn the new vibration task
+    spawner.spawn(periodic_vibration()).unwrap();
 
     let analog_pin = peripherals.GPIO2;
     let mut adc1_config = AdcConfig::new();
@@ -110,40 +111,6 @@ async fn working() {
     }
 }
 
-#[embassy_executor::task]
-async fn periodic_vibration() {
-    let mut duration = Duration::from_millis(5000);
-    loop {
-
-        info!("[periodic_vibration] Waiting for signal");
-
-        critical_section::with(|cs| {
-            VIBRATOR
-                .borrow_ref_mut(cs)
-                .as_mut()
-                .unwrap()
-                .set_high();
-        });
-
-        Timer::after(Duration::from_millis(PERIOD_VIBRATION_LENGTH)).await;
-
-        critical_section::with(|cs| {
-            VIBRATOR
-                .borrow_ref_mut(cs)
-                .as_mut()
-                .unwrap()
-                .set_low();
-        });
-
-        select(
-            Timer::after(Duration::from_millis(duration.as_millis())),
-            async {
-                duration = Duration::from_millis(VIBRATION_PERIOD_UPDATE_SIG.wait().await.into());
-            }
-        ).await;
-
-    }
-}
 
 async fn run<C>(
     controller: C,
@@ -245,7 +212,6 @@ async fn gatt_events_task<P: PacketPool>(
 
                     match &event {
                         GattEvent::Read(_) => {
-
                             let value = match nb::block!(adc.read_oneshot(batt_pin)) {
                                 Ok(v) => {
                                     let val = (v >> 4) as u8; // Scale 12-bit ADC (0–4095) to 8-bit (0–255)
@@ -259,45 +225,22 @@ async fn gatt_events_task<P: PacketPool>(
                             };
 
                             let _ = server.hid.amount.set(server, &value);
-
                         }
-                        GattEvent::Write(write) if write.handle() == server.hid.vibration_duration.handle() => {
-                            let duration_seconds: u32 = write.data().iter().map(|&byte| byte as u32).sum();
+                        GattEvent::Write(write) => {
 
-                            VIBRATION_PERIOD_UPDATE_SIG.signal(duration_seconds * 1000);
+                            let val: u64 = write.data().iter().map(|&byte| byte as u64).sum();
+                            
+    
+                            if write.handle() == server.hid.vibration_duration.handle() {
+                                VIBRATION_PERIOD_UPDATE_SIG.signal(Duration::from_secs(val));
+                                info!("[gatt] Updated vibration duration to {} ms", val * 1000);
+                            } else {
+                                VIBRATION_SIG.signal(Duration::from_secs(val));
+                                
+                            }
+                    }
 
-                            //
-                            // critical_section::with(|cs| {
-                            //     *VIBRATION_DURATION.borrow_ref_mut(cs) = Some(duration_seconds * 1000); // Convert to milliseconds
-                            // });
-
-                            info!("[gatt] Updated vibration duration to {} ms", duration_seconds * 1000);
-                        }
-                        GattEvent::Write(_) => {
-
-                            info!("[gatt] Received write request");
-
-
-                            critical_section::with(|cs| {
-                                VIBRATOR
-                                    .borrow_ref_mut(cs)
-                                    .as_mut()
-                                    .unwrap()
-                                    .set_high();
-                            });
-
-                            Timer::after(Duration::from_millis(1000)).await;
-                            critical_section::with(|cs| {
-                                VIBRATOR
-                                    .borrow_ref_mut(cs)
-                                    .as_mut()
-                                    .unwrap()
-                                    .set_low();
-                            });
-
-
-                        },
-                        GattEvent::Other(_) => {}
+                    GattEvent::Other(_) => {}
                     };
 
                     let result = event.accept();

@@ -5,10 +5,12 @@ version = "0.1.0"
 
 [[bin]]
 name = "canopy"
-path = "./src/bin/main.rs"
+path = "src/main.rs"
 test = false
 
 [dependencies]
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
 defmt = "1.0.1"
 esp-alloc = "0.8.0"
 esp-hal = { version = "1.0.0-beta.1", features = [
