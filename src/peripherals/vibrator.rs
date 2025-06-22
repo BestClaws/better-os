@@ -38,7 +38,7 @@ pub async fn periodic_vibration() {
 }
 
 #[embassy_executor::task]
-pub async fn vibrator(pin: GPIO7<'static>) {
+pub async fn vibrator_task(pin: GPIO7<'static>) {
     let vibration_len = Cell::new(Duration::from_millis(500));
     let mut vibrator = Output::new(pin, Level::Low, OutputConfig::default());
 
