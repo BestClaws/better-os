@@ -41,22 +41,28 @@ const L2CAP_CHANNELS_MAX: usize = 2;
 
 // GATT Server definition: HID Service
 #[gatt_server]
-struct Server {
-    hid: CanopyService,
+struct GattServer {
+    battery_service: BatteryService,
+    vibration_service: VibrationService
 }
 
-// #[gatt_service(uuid = "12345678-1234-5678-1234-56789abcdef0")]
-#[gatt_service(uuid = BluetoothUuid16::new(0xAAAA))]
-struct CanopyService {
-
-    #[characteristic(uuid = BluetoothUuid16::new(0xAAAB), read, write)]
-    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Amount")]
-    amount: u8,
-
-    #[characteristic(uuid = BluetoothUuid16::new(0xAAAC), write)]
-    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Vibration Duration")]
-    vibration_duration: u32, // New characteristic for vibration duration
+#[gatt_service(uuid = BluetoothUuid16::new(0x01))]
+struct BatteryService {
+    #[characteristic(uuid = BluetoothUuid16::new(0x02), read, write)]
+    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Battery Percent")]
+    percent: u8,
 }
+
+#[gatt_service(uuid = BluetoothUuid16::new(0x03))]
+struct VibrationService {
+    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Vibration With Duration")]
+    #[characteristic(uuid = BluetoothUuid16::new(0x04), write)]
+    vibrate_with_duration: u8,
+    #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Vibration Loop Period")]
+    #[characteristic(uuid = BluetoothUuid16::new(0x05), write)]
+    vibration_loop_period: u32,
+}
+
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -118,7 +124,7 @@ async fn run<C>(
     let Host { mut peripheral, runner, .. } = stack.build();
 
     info!("[run] Starting BLE advertising and GATT server setup...");
-    let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+    let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
         name: "CANOPY",
         appearance: &appearance::MEDIA_PLAYER,
 
@@ -153,7 +159,7 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
 
 async fn advertise<'a, 'b, C: Controller>(
     peripheral: &mut Peripheral<'a, C, DefaultPacketPool>,
-    server: &'b Server<'_>
+    server: &'b GattServer<'_>
 ) -> Result<GattConnection<'a, 'b, DefaultPacketPool>, BleHostError<C::Error>> {
     let mut advertiser_data = [0; 31];
     let len = AdStructure::encode_slice(
@@ -179,7 +185,7 @@ async fn advertise<'a, 'b, C: Controller>(
 }
 
 async fn gatt_events_task<P: PacketPool>(
-    server: &Server<'_>,
+    server: &GattServer<'_>,
     conn: &GattConnection<'_, '_, P>,
     adc: &mut Adc<'static, ADC1<'static>, Blocking>,
     batt_pin: &mut AdcPin<GPIO2<'static>, ADC1<'static>>
@@ -200,7 +206,7 @@ async fn gatt_events_task<P: PacketPool>(
 
                     match &event {
                         GattEvent::Read(evt) => {
-                            if server.hid.amount.handle == evt.handle() {
+                            if server.battery_service.percent.handle == evt.handle() {
                                 let value = match nb::block!(adc.read_oneshot(batt_pin)) {
                                     Ok(v) => {
                                         let val = (v >> 4) as u8; // Scale 12-bit ADC (0–4095) to 8-bit (0–255)
@@ -213,7 +219,7 @@ async fn gatt_events_task<P: PacketPool>(
                                     }
                                 };
 
-                                let _ = server.hid.amount.set(server, &value);
+                                let _ = server.battery_service.percent.set(server, &value);
                             } else {
                                 info!("unprocessed gatt read event: {}", defmt::Debug2Format(&evt.payload().handle()));
 
@@ -222,16 +228,12 @@ async fn gatt_events_task<P: PacketPool>(
 
                         }
                         GattEvent::Write(write) => {
-
                             let val: u64 = write.data().iter().map(|&byte| byte as u64).sum();
-                            
-    
-                            if write.handle() == server.hid.vibration_duration.handle() {
+                            if write.handle() == server.vibration_service.vibration_loop_period.handle() {
                                 VIBRATION_PERIOD_UPDATE_SIG.signal(Duration::from_secs(val));
-                                info!("[gatt] Updated vibration duration to {} ms", val * 1000);
-                            } else {
+                                info!("[gatt] Updated vibration loop period to {} ms", val * 1000);
+                            } else if write.handle() == server.vibration_service.vibrate_with_duration.handle() {
                                 VIBRATION_SIG.signal(Duration::from_secs(val));
-                                
                             }
                     }
 
