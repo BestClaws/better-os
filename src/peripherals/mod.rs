@@ -1,2 +1,2 @@
 pub mod vibrator;
-mod battery;
+pub mod battery;

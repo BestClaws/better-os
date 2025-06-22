@@ -8,18 +8,13 @@ extern crate alloc;
 mod peripherals;
 mod tasks;
 
-use esp_hal::peripherals::{ADC1, GPIO2};
-use esp_hal::Blocking;
-use nb;
 
 use bt_hci::controller::ExternalController;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_time::{Duration, Timer};
-use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::ble::controller::BleConnector;
@@ -30,6 +25,8 @@ use trouble_host::{prelude::*, Address, Host, HostResources};
 use crate::peripherals::vibrator::{vibrator, VIBRATION_PERIOD_UPDATE_SIG, VIBRATION_SIG};
 use crate::tasks::ticker::ticker;
 use peripherals::vibrator::periodic_vibration;
+use peripherals::battery::battery_task;
+use crate::peripherals::battery::battery_percent;
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -48,16 +45,17 @@ struct GattServer {
 
 #[gatt_service(uuid = BluetoothUuid16::new(0x01))]
 struct BatteryService {
-    #[characteristic(uuid = BluetoothUuid16::new(0x02), read, write)]
     #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Battery Percent")]
-    percent: u8,
+
+    #[characteristic(uuid = BluetoothUuid16::new(0x02), read)]
+    percent: u16,
 }
 
 #[gatt_service(uuid = BluetoothUuid16::new(0x03))]
 struct VibrationService {
     #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Vibration With Duration")]
     #[characteristic(uuid = BluetoothUuid16::new(0x04), write)]
-    vibrate_with_duration: u8,
+    vibrate_with_duration: u32,
     #[descriptor(uuid = BluetoothUuid16::new(0x2901), read, value = "Vibration Loop Period")]
     #[characteristic(uuid = BluetoothUuid16::new(0x05), write)]
     vibration_loop_period: u32,
@@ -92,28 +90,19 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ticker()).unwrap();
     spawner.spawn(vibrator(peripherals.GPIO7)).unwrap(); // Spawn the new vibration task
     spawner.spawn(periodic_vibration()).unwrap();
+    spawner.spawn(battery_task(peripherals.ADC1, peripherals.GPIO2)).unwrap();
 
 
-    let mut adc1_config = AdcConfig::new();
-    let mut batt_pin = adc1_config.enable_pin(peripherals.GPIO2, Attenuation::_11dB);
-    let mut adc1 = Adc::new(peripherals.ADC1, adc1_config);
-
-    let batt_pin_reading: u16 = nb::block!(adc1.read_oneshot(&mut batt_pin)).unwrap();
-    info!("[main] ADC read value: {}", batt_pin_reading);
-
-    run(controller, adc1, batt_pin).await;
+    run_ble_controller(controller).await;
 
 }
 
 
 
 
-async fn run<C>(
-    controller: C,
-    mut adc: Adc<'static, ADC1<'static>, Blocking>,
-    mut batt_pin: AdcPin<GPIO2<'static>, ADC1<'static>>
-) where
-    C: Controller
+async fn run_ble_controller(
+    controller: impl Controller,
+) 
 
 {
     let address = Address::random([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
@@ -137,7 +126,7 @@ async fn run<C>(
                 match advertise(&mut peripheral, &server).await {
                     Ok(conn) => {
                         info!("[run] Connected, spawning GATT + button tasks");
-                        let _ = gatt_events_task(&server, &conn, &mut adc, &mut batt_pin).await;
+                        let _ = gatt_events_task(&server, &conn).await;
                     }
                     Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
                 }
@@ -187,8 +176,7 @@ async fn advertise<'a, 'b, C: Controller>(
 async fn gatt_events_task<P: PacketPool>(
     server: &GattServer<'_>,
     conn: &GattConnection<'_, '_, P>,
-    adc: &mut Adc<'static, ADC1<'static>, Blocking>,
-    batt_pin: &mut AdcPin<GPIO2<'static>, ADC1<'static>>
+
 ) -> Result<(), Error> {
     loop {
         match conn.next().await {
@@ -207,25 +195,12 @@ async fn gatt_events_task<P: PacketPool>(
                     match &event {
                         GattEvent::Read(evt) => {
                             if server.battery_service.percent.handle == evt.handle() {
-                                let value = match nb::block!(adc.read_oneshot(batt_pin)) {
-                                    Ok(v) => {
-                                        let val = (v >> 4) as u8; // Scale 12-bit ADC (0–4095) to 8-bit (0–255)
-                                        info!("[gatt] Read from ADC = {}, scaled = {}", v, val);
-                                        val
-                                    }
-                                    Err(_) => {
-                                        warn!("[gatt] Failed to read ADC");
-                                        0
-                                    }
-                                };
-
-                                let _ = server.battery_service.percent.set(server, &value);
+                                let battery_percent = battery_percent().await;
+                                let _ = server.battery_service.percent.set(server, &battery_percent);
                             } else {
                                 info!("unprocessed gatt read event: {}", defmt::Debug2Format(&evt.payload().handle()));
 
                             }
-
-
                         }
                         GattEvent::Write(write) => {
                             let val: u64 = write.data().iter().map(|&byte| byte as u64).sum();
@@ -243,9 +218,7 @@ async fn gatt_events_task<P: PacketPool>(
                     let result = event.accept();
                     match result {
                         Ok(reply) => {
-
                             info!("[gatt] Sending read's GATT response");
-
                             reply.send().await;
                         }
                         Err(e) => warn!("[gatt] Error sending read's response: {:?}", defmt::Debug2Format(&e)),
