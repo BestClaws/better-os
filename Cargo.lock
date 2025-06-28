@@ -30,6 +30,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "better-os"
+version = "0.1.0"
+dependencies = [
+ "bt-hci",
+ "critical-section",
+ "defmt 1.0.1",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.7.0",
+ "embassy-time",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "esp-alloc",
+ "esp-hal",
+ "esp-hal-embassy",
+ "esp-wifi",
+ "log",
+ "nb 1.1.0",
+ "panic-rtt-target",
+ "rtt-target",
+ "static_cell",
+ "trouble-host",
+]
+
+[[package]]
 name = "bitfield"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -79,9 +104,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.18.1"
+version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "793db76d6187cd04dff33004d8e6c9cc4e05cd330500379d2394209271b4aeee"
+checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "bytemuck"
@@ -94,31 +119,6 @@ name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
-
-[[package]]
-name = "canopy"
-version = "0.1.0"
-dependencies = [
- "bt-hci",
- "critical-section",
- "defmt 1.0.1",
- "embassy-executor",
- "embassy-futures",
- "embassy-sync 0.7.0",
- "embassy-time",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "esp-alloc",
- "esp-hal",
- "esp-hal-embassy",
- "esp-wifi",
- "log",
- "nb 1.1.0",
- "panic-rtt-target",
- "rtt-target",
- "static_cell",
- "trouble-host",
-]
 
 [[package]]
 name = "cfg-if"
@@ -891,9 +891,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "indexmap"
-version = "2.9.0"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
+checksum = "fe4cd85333e22411419a0bcae1297d25e58c9443848b11dc6a86fefe8c78a661"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -979,9 +979,9 @@ checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
 name = "minijinja"
-version = "2.10.2"
+version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd72e8b4e42274540edabec853f607c015c73436159b06c39c7af85a20433155"
+checksum = "4e60ac08614cc09062820e51d5d94c2fce16b94ea4e5003bb81b99a95f84e876"
 dependencies = [
  "serde",
 ]
@@ -1285,9 +1285,9 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "static_cell"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89b0684884a883431282db1e4343f34afc2ff6996fe1f4a1664519b66e14c1e"
+checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
 dependencies = [
  "portable-atomic",
 ]
