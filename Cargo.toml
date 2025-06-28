@@ -4,7 +4,7 @@ name    = "better-os"
 version = "0.1.0"
 
 [[bin]]
-name = "canopy"
+name = "better-os"
 path = "src/main.rs"
 test = false
 

@@ -6,8 +6,7 @@
             "request": "launch",
             "name": "Launch",
             "cwd": "${workspaceFolder}",
-            "chip": "esp32c3", //!MODIFY
-            // probe field only needed if multiple probes connected. <Serial> is the MAC address of your esp in case of usb-jtag       
+            "chip": "esp32c3",
             "flashingConfig": {
                 "flashingEnabled": true,
                 "haltAfterReset": false,
@@ -28,20 +27,18 @@
                             "showTimestamps": true
                         }
                     ],
-                    "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}", //!MODIFY
-                    // svdFiles describe the hardware register names off the esp peripherals, such as the LEDC peripheral. 
-                    // They can be downloaded seperatly @ https://github.com/espressif/svd/tree/main/svd
-                    "svdFile": "${workspaceFolder}/esp32c3.svd" //!MODIFY (or remove) | optional field
+                    "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}",
+                    "svdFile": "${workspaceFolder}/esp32c3.svd"
                 }
             ]
         },
         {
-        
+
             "type": "probe-rs-debug",
             "request": "attach",
             "name": "Attach",
             "cwd": "${workspaceFolder}",
-            "chip": "esp32c3", //!MODIFY       
+            "chip": "esp32c3",
             "coreConfigs": [
                 {
                     
@@ -54,10 +51,8 @@
                             "showTimestamps": true
                         }
                     ],
-                    "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}", //!MODIFY
-                    // svdFiles describe the hardware register names off the esp peripherals, such as the LEDC peripheral. 
-                    // They can be downloaded seperatly @ https://github.com/espressif/svd/tree/main/svd
-                    "svdFile": "${workspaceFolder}/esp32c3.svd" //!MODIFY (or remove) | optional field
+                    "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}",
+                    "svdFile": "${workspaceFolder}/esp32c3.svd"
                 }
             ]
         }
