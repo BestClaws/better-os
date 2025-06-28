@@ -10,23 +10,32 @@ mod tasks;
 
 
 use bt_hci::controller::ExternalController;
-use defmt::{info};
+use defmt::info;
 use embassy_executor::Spawner;
+use embedded_graphics::Drawable;
+use embedded_graphics::mono_font::iso_8859_1::FONT_4X6;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use esp_hal::clock::CpuClock;
+use esp_hal::i2c;
+use esp_hal::i2c::master::I2c;
+use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
-use esp_hal::timer::timg::TimerGroup;
+use esp_hal::timer::timg::{Timer, TimerGroup};
 use esp_wifi::ble::controller::BleConnector;
 use panic_rtt_target as _;
-use trouble_host::{prelude::*};
+use ssd1306::{I2CDisplayInterface, Ssd1306Async};
+use trouble_host::prelude::*;
 
 
-use tasks::ticker::ticker;
+
 use tasks::ble::run_ble_controller;
+use tasks::ticker::ticker;
 
-use peripherals::vibrator::periodic_vibration;
 use peripherals::battery::battery_task;
+use peripherals::vibrator::periodic_vibration;
 use peripherals::vibrator::vibrator_task;
-
 
 
 #[esp_hal_embassy::main]
@@ -34,7 +43,7 @@ async fn main(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let peripherals = esp_hal::init(config);
+    let mut peripherals = esp_hal::init(config);
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     let timer0 = SystemTimer::new(peripherals.SYSTIMER);
@@ -54,14 +63,78 @@ async fn main(spawner: Spawner) {
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
 
-    spawner.spawn(ticker()).unwrap();
-    spawner.spawn(vibrator_task(peripherals.GPIO7)).unwrap(); // Spawn the new vibration task
-    spawner.spawn(periodic_vibration()).unwrap();
-    spawner.spawn(battery_task(peripherals.ADC1, peripherals.GPIO2)).unwrap();
+
+    //
+    // spawner.spawn(ticker()).unwrap();
+    // spawner.spawn(vibrator_task(peripherals.GPIO7)).unwrap(); // Spawn the new vibration task
+    // spawner.spawn(periodic_vibration()).unwrap();
+    // spawner.spawn(battery_task(peripherals.ADC1, peripherals.GPIO2)).unwrap();
 
 
-    run_ble_controller(controller).await;
+    use embedded_graphics::{
+        mono_font::{MonoTextStyleBuilder},
+        pixelcolor::BinaryColor,
+        prelude::*,
+        text::{Baseline, Text},
+    };
+    use ssd1306::prelude::*;
+
+
+
+    let i2c = I2c::new(peripherals.I2C0.reborrow(), i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
+        .unwrap()
+        .with_sda(peripherals.GPIO4)
+        .with_scl(peripherals.GPIO5)
+        .into_async();
+
+    let i2c = I2CDisplayInterface::new(i2c);
+
+    let mut display = Ssd1306Async::new(
+        i2c,
+        DisplaySize128x64,
+        DisplayRotation::Rotate0,
+    ).into_buffered_graphics_mode();
+
+
+
+    display.init().await.unwrap();
+
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_4X6)
+        .text_color(BinaryColor::On)
+        .build();
+
+    Text::with_baseline("test!", Point::zero(), text_style, Baseline::Top)
+        .draw(&mut display)
+        .unwrap();
+
+
+
+    display.flush().await.unwrap();
+
+    // run_ble_controller(controller).await;
+    loop {
+        fill_bw(&mut display, BinaryColor::On).unwrap(); // white
+        display.flush().await.unwrap();
+        defmt::info!("{}", embassy_time::Instant::now().as_millis());
+        fill_bw(&mut display, BinaryColor::Off).unwrap(); // black
+        display.flush().await.unwrap();
+        defmt::info!("{}", embassy_time::Instant::now().as_millis());
+    }
 
 }
 
+
+fn fill_bw<D>(display: &mut D, color: BinaryColor) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    let style = PrimitiveStyle::with_fill(color);
+
+    Rectangle::new(Point::zero(), display.bounding_box().size)
+        .into_styled(style)
+        .draw(display)?;
+
+    Ok(())
+}
 
