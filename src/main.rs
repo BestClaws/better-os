@@ -100,7 +100,7 @@ async fn main(spawner: Spawner) {
 
     let mut imu = Mpu6050::new(i2c);
 
-    imu.init().await.unwrap();
+    imu.init(None, None).await.unwrap();
     let mut last_orientation = Orientation::Unknown;
 
     loop {
