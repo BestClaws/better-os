@@ -57,6 +57,7 @@ ssd1306 = { version = "0.10.0", features = ["async", "graphics"] }
 display-interface-i2c = { version = "0.5.0" }
 display-interface = "0.5.0"
 
+micromath = "2.1.0"
 
 embassy-futures = "0.1.1"
 bt-hci = "0.3.0"

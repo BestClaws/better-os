@@ -7,7 +7,7 @@ extern crate alloc;
 
 mod peripherals;
 mod tasks;
-
+mod mpu;
 
 use bt_hci::controller::ExternalController;
 use defmt::info;
@@ -18,6 +18,7 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::i2c;
 use esp_hal::i2c::master::I2c;
 use esp_hal::time::Rate;
@@ -36,7 +37,7 @@ use tasks::ticker::ticker;
 use peripherals::battery::battery_task;
 use peripherals::vibrator::periodic_vibration;
 use peripherals::vibrator::vibrator_task;
-
+use crate::mpu::{Mpu6050, Orientation};
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -87,40 +88,61 @@ async fn main(spawner: Spawner) {
         .with_scl(peripherals.GPIO5)
         .into_async();
 
-    let i2c = I2CDisplayInterface::new(i2c);
+    // let i2c = I2CDisplayInterface::new(i2c);
 
-    let mut display = Ssd1306Async::new(
-        i2c,
-        DisplaySize128x64,
-        DisplayRotation::Rotate0,
-    ).into_buffered_graphics_mode();
-
-
-
-    display.init().await.unwrap();
-
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_4X6)
-        .text_color(BinaryColor::On)
-        .build();
-
-    Text::with_baseline("test!", Point::zero(), text_style, Baseline::Top)
-        .draw(&mut display)
-        .unwrap();
+    // let mut display = Ssd1306Async::new(
+    //     i2c,
+    //     DisplaySize128x64,
+    //     DisplayRotation::Rotate0,
+    // ).into_buffered_graphics_mode();
 
 
 
-    display.flush().await.unwrap();
+    let mut imu = Mpu6050::new(i2c);
 
-    // run_ble_controller(controller).await;
+    imu.init().await.unwrap();
+    let mut last_orientation = Orientation::Unknown;
+
     loop {
-        fill_bw(&mut display, BinaryColor::On).unwrap(); // white
-        display.flush().await.unwrap();
-        defmt::info!("{}", embassy_time::Instant::now().as_millis());
-        fill_bw(&mut display, BinaryColor::Off).unwrap(); // black
-        display.flush().await.unwrap();
-        defmt::info!("{}", embassy_time::Instant::now().as_millis());
+        let orientation = imu.detect_orientation().await.unwrap();
+        if orientation != last_orientation {
+            info!("Orientation changed: {:?}", orientation);
+            last_orientation = orientation;
+        }
+
+        embassy_time::Timer::after_millis(200).await;
     }
+
+
+    //
+    // display.init().await.unwrap();
+    //
+    // let text_style = MonoTextStyleBuilder::new()
+    //     .font(&FONT_4X6)
+    //     .text_color(BinaryColor::On)
+    //     .build();
+    //
+    // Text::with_baseline("test!", Point::zero(), text_style, Baseline::Top)
+    //     .draw(&mut display)
+    //     .unwrap();
+    //
+    //
+    //
+    // display.flush().await.unwrap();
+    //
+    // let mut b1 = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
+    //
+    // // run_ble_controller(controller).await;
+    // loop {
+    //     fill_bw(&mut display, BinaryColor::On).unwrap(); // white
+    //     display.flush().await.unwrap();
+    //     embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
+    //
+    //     fill_bw(&mut display, BinaryColor::Off).unwrap(); // black
+    //     display.flush().await.unwrap();
+    //
+    //     embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
+    // }
 
 }
 
