@@ -317,7 +317,7 @@ where
         Ok(())
     }
 
-    /// Sets a manual reference pose for testing or specific use cases.
+    /// Sets a manual reference pose (device resting pose - typically face up) for testing or specific use cases.
     pub fn set_manual_reference(&mut self, ax: i16, ay: i16, az: i16) -> Result<(), Mpu6050Error<I2C::Error>> {
         self.reference = Some((ax, ay, az));
         defmt::info!("Manual reference pose set: ({}, {}, {})", ax, ay, az);
@@ -325,7 +325,7 @@ where
     }
 
     /// Detects orientation using a reference pose and sensor fusion.
-    pub async fn detect_orientation(&mut self) -> Result<Orientation, Mpu6050Error<I2C::Error>> {
+    pub async fn detect_orientation_with_reference(&mut self) -> Result<Orientation, Mpu6050Error<I2C::Error>> {
         if !self.initialized {
             defmt::warn!("Sensor not initialized; call init() first");
             return Err(Mpu6050Error::NotInitialized);
@@ -537,7 +537,6 @@ where
         let z_abs = curr_norm.2.abs();
         defmt::debug!("Normalized current: ({}, {}, {})", curr_norm.0, curr_norm.1, curr_norm.2);
 
-        // Check dominant axis for orientation without Z priority
         if x_abs >= y_abs && x_abs >= z_abs && x_abs > 0.5 {
             if curr_norm.0 > 0.0 {
                 Ok(Orientation::LandscapeInverted)
