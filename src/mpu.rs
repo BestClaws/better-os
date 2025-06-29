@@ -250,7 +250,10 @@ where
             .write_read(self.address, &[TEMP_OUT_H], &mut buf)
             .await
             .map_err(|e| Mpu6050Error::I2c(e))?;
-        Ok(i16::from_be_bytes([buf[0], buf[1]]))
+        let temp_raw = i16::from_be_bytes([buf[0], buf[1]]);
+        let temp_c = temp_raw as f32 / 340.0 + 36.53;
+        Ok(temp_c as i16)
+
     }
 
     /// Computes tolerance thresholds for noise deadzone based on baseline data.

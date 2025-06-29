@@ -116,6 +116,7 @@ async fn main(spawner: Spawner) {
         }
 
         embassy_time::Timer::after_millis(200).await;
+        info!("temp: {}", imu.read_temperature().await.unwrap());
     }
 
 
