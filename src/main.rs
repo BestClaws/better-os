@@ -104,10 +104,15 @@ async fn main(spawner: Spawner) {
     let mut last_orientation = Orientation::Unknown;
 
     loop {
-        let orientation = imu.detect_orientation().await.unwrap();
-        if orientation != last_orientation {
-            info!("Orientation changed: {:?}", orientation);
-            last_orientation = orientation;
+        match imu.detect_orientation_without_reference().await {
+            Ok(Orientation::Portrait) => defmt::info!("Orientation: Portrait"),
+            Ok(Orientation::PortraitInverted) => defmt::info!("Orientation: PortraitInverted"),
+            Ok(Orientation::Landscape) => defmt::info!("Orientation: Landscape"),
+            Ok(Orientation::LandscapeInverted) => defmt::info!("Orientation: LandscapeInverted"),
+            Ok(Orientation::FaceUp) => defmt::info!("Orientation: FaceUp"),
+            Ok(Orientation::FaceDown) => defmt::info!("Orientation: FaceDown"),
+            Ok(Orientation::Unknown) => defmt::info!("Orientation: Unknown"),
+            Err(e) => defmt::error!("Error: {:?}", e),
         }
 
         embassy_time::Timer::after_millis(200).await;

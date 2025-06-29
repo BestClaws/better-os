@@ -53,7 +53,6 @@ pub enum Mpu6050Error<E> {
     InvalidSamples,
     NotInitialized,
     InvalidData,
-    InvalidCalibration,
 }
 
 /// MPU6050 driver for reading accelerometer, gyroscope, and temperature data.
@@ -102,8 +101,8 @@ where
         let baseline = self.read_avg(50).await?;
         self.tolerance = self.compute_tolerance(&baseline);
 
-        // Calibrate reference pose
-        self.recalibrate_pose().await?;
+        // Perform dynamic calibration
+        self.recalibrate_pose_dynamic().await?;
 
         self.initialized = true;
         self.last_time = Some(embassy_time::Instant::now().as_micros());
@@ -283,9 +282,8 @@ impl<I2C> Mpu6050<I2C>
 where
     I2C: I2c,
 {
-    /// Recalibrates the reference pose using averaged accelerometer data.
-    /// Ensures Z-axis dominates to confirm FaceUp/FaceDown orientation.
-    pub async fn recalibrate_pose(&mut self) -> Result<(), Mpu6050Error<I2C::Error>> {
+    /// Dynamically calibrates the reference pose based on the dominant axis.
+    pub async fn recalibrate_pose_dynamic(&mut self) -> Result<(), Mpu6050Error<I2C::Error>> {
         let SensorData { ax, ay, az, .. } = self.read_avg(25).await?;
         let accel_scale = match self.accel_range {
             AccelRange::G2 => 16384.0,
@@ -293,44 +291,40 @@ where
             AccelRange::G8 => 4096.0,
             AccelRange::G16 => 2048.0,
         };
-        let z_abs = (az as i32).abs() as f32 / accel_scale;
         let x_abs = (ax as i32).abs() as f32 / accel_scale;
         let y_abs = (ay as i32).abs() as f32 / accel_scale;
+        let z_abs = (az as i32).abs() as f32 / accel_scale;
 
-        // Check if Z-axis dominates (indicating FaceUp or FaceDown)
-        if z_abs < 0.8 || z_abs < x_abs * 1.5 || z_abs < y_abs * 1.5 {
-            defmt::warn!("Invalid calibration: Z-axis ({}) not dominant over X ({}) or Y ({})", z_abs, x_abs, y_abs);
-            return Err(Mpu6050Error::InvalidCalibration);
+        if x_abs >= y_abs && x_abs >= z_abs && x_abs > 0.5 {
+            self.reference = Some((ax, ay, az));
+            defmt::info!("Calibrated for Landscape/LandscapeInverted: ({}, {}, {})", ax, ay, az);
+        } else if y_abs >= x_abs && y_abs >= z_abs && y_abs > 0.5 {
+            self.reference = Some((ax, ay, az));
+            defmt::info!("Calibrated for Portrait/PortraitInverted: ({}, {}, {})", ax, ay, az);
+        } else if z_abs >= x_abs && z_abs >= y_abs && z_abs > 0.5 {
+            self.reference = Some((ax, ay, az));
+            defmt::info!("Calibrated for FaceUp/FaceDown: ({}, {}, {})", ax, ay, az);
+        } else {
+            defmt::warn!("No dominant axis, using default FaceUp reference");
+            let accel_scale = match self.accel_range {
+                AccelRange::G2 => 16384,
+                AccelRange::G4 => 8192,
+                AccelRange::G8 => 4096,
+                AccelRange::G16 => 2048,
+            };
+            self.reference = Some((0, 0, accel_scale));
         }
-
-        self.reference = Some((ax, ay, az));
-        defmt::info!("Reference pose updated: ({}, {}, {})", ax, ay, az);
         Ok(())
     }
 
     /// Sets a manual reference pose for testing or specific use cases.
     pub fn set_manual_reference(&mut self, ax: i16, ay: i16, az: i16) -> Result<(), Mpu6050Error<I2C::Error>> {
-        let accel_scale = match self.accel_range {
-            AccelRange::G2 => 16384.0,
-            AccelRange::G4 => 8192.0,
-            AccelRange::G8 => 4096.0,
-            AccelRange::G16 => 2048.0,
-        };
-        let z_abs = (az as i32).abs() as f32 / accel_scale;
-        let x_abs = (ax as i32).abs() as f32 / accel_scale;
-        let y_abs = (ay as i32).abs() as f32 / accel_scale;
-
-        if z_abs < 0.8 || z_abs < x_abs * 1.5 || z_abs < y_abs * 1.5 {
-            defmt::warn!("Invalid manual reference: Z-axis ({}) not dominant over X ({}) or Y ({})", z_abs, x_abs, y_abs);
-            return Err(Mpu6050Error::InvalidCalibration);
-        }
-
         self.reference = Some((ax, ay, az));
         defmt::info!("Manual reference pose set: ({}, {}, {})", ax, ay, az);
         Ok(())
     }
 
-    /// Detects the sensor's orientation using accelerometer and gyroscope data.
+    /// Detects orientation using a reference pose and sensor fusion.
     pub async fn detect_orientation(&mut self) -> Result<Orientation, Mpu6050Error<I2C::Error>> {
         if !self.initialized {
             defmt::warn!("Sensor not initialized; call init() first");
@@ -362,7 +356,7 @@ where
             let yf = y as f32 / accel_scale;
             let zf = z as f32 / accel_scale;
             let mag_sq = xf * xf + yf * yf + zf * zf;
-            if mag_sq < 0.1 || mag_sq.is_nan() || mag_sq.is_infinite() {
+            if mag_sq < 0.25 || mag_sq > 4.0 || mag_sq.is_nan() || mag_sq.is_infinite() {
                 defmt::warn!("Invalid magnitude in normalization: {}", mag_sq);
                 return None;
             }
@@ -397,15 +391,15 @@ where
             let gy_rad = gy as f32 / gyro_scale * core::f32::consts::PI / 180.0;
             let gz_rad = gz as f32 / gyro_scale * core::f32::consts::PI / 180.0;
 
-            // Complementary filter: 99% accelerometer, 1% gyroscope for stability
-            let alpha = 0.99;
+            // Complementary filter: 98% accelerometer, 2% gyroscope for stability
+            let alpha = 0.98;
             curr_norm.0 = alpha * curr_norm.0 + (1.0 - alpha) * (curr_norm.0 + gz_rad * dt);
             curr_norm.1 = alpha * curr_norm.1 + (1.0 - alpha) * (curr_norm.1 - gx_rad * dt);
             curr_norm.2 = alpha * curr_norm.2 + (1.0 - alpha) * (curr_norm.2 + gy_rad * dt);
 
             // Re-normalize after gyro integration
             let mag_sq = curr_norm.0 * curr_norm.0 + curr_norm.1 * curr_norm.1 + curr_norm.2 * curr_norm.2;
-            if mag_sq < 0.1 || mag_sq.is_nan() || mag_sq.is_infinite() {
+            if mag_sq < 0.25 || mag_sq > 4.0 || mag_sq.is_nan() || mag_sq.is_infinite() {
                 defmt::warn!("Invalid magnitude after gyro integration: {}", mag_sq);
                 return Err(Mpu6050Error::InvalidData);
             }
@@ -416,30 +410,151 @@ where
         let dot = ref_norm.0 * curr_norm.0 + ref_norm.1 * curr_norm.1 + ref_norm.2 * curr_norm.2;
         defmt::debug!("Normalized current: ({}, {}, {}), dot: {}", curr_norm.0, curr_norm.1, curr_norm.2, dot);
 
-        // Check Z-axis dominance first for FaceUp/FaceDown
-        let z_abs = curr_norm.2.abs();
+        // Determine reference orientation
+        let (ref_x_abs, ref_y_abs, ref_z_abs) = (
+            (ref_vec.0 as f32 / accel_scale).abs(),
+            (ref_vec.1 as f32 / accel_scale).abs(),
+            (ref_vec.2 as f32 / accel_scale).abs(),
+        );
+        let ref_orientation = if ref_x_abs >= ref_y_abs && ref_x_abs >= ref_z_abs && ref_x_abs > 0.5 {
+            if ref_norm.0 > 0.0 {
+                Orientation::LandscapeInverted
+            } else {
+                Orientation::Landscape
+            }
+        } else if ref_y_abs >= ref_x_abs && ref_y_abs >= ref_z_abs && ref_y_abs > 0.5 {
+            if ref_norm.1 > 0.0 {
+                Orientation::Portrait
+            } else {
+                Orientation::PortraitInverted
+            }
+        } else if ref_z_abs >= ref_x_abs && ref_z_abs >= ref_y_abs && ref_z_abs > 0.5 {
+            if ref_norm.2 > 0.0 {
+                Orientation::FaceUp
+            } else {
+                Orientation::FaceDown
+            }
+        } else {
+            Orientation::Unknown
+        };
+
+        // Map current orientation relative to reference
         let x_abs = curr_norm.0.abs();
         let y_abs = curr_norm.1.abs();
-        if z_abs > 0.7 && z_abs > x_abs * 1.5 && z_abs > y_abs * 1.5 {
-            if curr_norm.2 > 0.7 {
-                return Ok(Orientation::FaceUp);
-            } else if curr_norm.2 < -0.7 {
-                return Ok(Orientation::FaceDown);
-            }
-        }
-
-        // Fallback to X/Y checks for Portrait/Landscape
-        if x_abs > y_abs && x_abs > 0.5 {
+        let z_abs = curr_norm.2.abs();
+        if x_abs >= y_abs && x_abs >= z_abs && x_abs > 0.5 {
             if curr_norm.0 > 0.0 {
                 Ok(Orientation::LandscapeInverted)
             } else {
                 Ok(Orientation::Landscape)
             }
-        } else if y_abs > 0.5 {
+        } else if y_abs >= x_abs && y_abs >= z_abs && y_abs > 0.5 {
             if curr_norm.1 > 0.0 {
                 Ok(Orientation::Portrait)
             } else {
                 Ok(Orientation::PortraitInverted)
+            }
+        } else if z_abs >= x_abs && z_abs >= y_abs && z_abs > 0.5 {
+            if curr_norm.2 > 0.0 {
+                Ok(Orientation::FaceUp)
+            } else {
+                Ok(Orientation::FaceDown)
+            }
+        } else {
+            Ok(Orientation::Unknown)
+        }
+    }
+
+    /// Detects orientation without requiring a reference pose, using dominant axis.
+    pub async fn detect_orientation_without_reference(&mut self) -> Result<Orientation, Mpu6050Error<I2C::Error>> {
+        if !self.initialized {
+            defmt::warn!("Sensor not initialized; call init() first");
+            return Err(Mpu6050Error::NotInitialized);
+        }
+
+        let SensorData { ax, ay, az, gx, gy, gz, .. } = self.read_all().await?;
+        let accel_scale = match self.accel_range {
+            AccelRange::G2 => 16384.0,
+            AccelRange::G4 => 8192.0,
+            AccelRange::G8 => 4096.0,
+            AccelRange::G16 => 2048.0,
+        };
+        let normalize = |x: i16, y: i16, z: i16| -> Option<(f32, f32, f32)> {
+            let xf = x as f32 / accel_scale;
+            let yf = y as f32 / accel_scale;
+            let zf = z as f32 / accel_scale;
+            let mag_sq = xf * xf + yf * yf + zf * zf;
+            if mag_sq < 0.25 || mag_sq > 4.0 || mag_sq.is_nan() || mag_sq.is_infinite() {
+                defmt::warn!("Invalid magnitude in normalization: {}", mag_sq);
+                return None;
+            }
+            let mag = mag_sq.sqrt();
+            Some((xf / mag, yf / mag, zf / mag))
+        };
+
+        let mut curr_norm = match normalize(ax, ay, az) {
+            Some(v) => v,
+            None => {
+                defmt::warn!("Failed to normalize current vector");
+                return Err(Mpu6050Error::InvalidData);
+            }
+        };
+
+        let current_time = embassy_time::Instant::now().as_micros();
+        let delta_time = self.last_time.map(|t| (current_time - t) as f32 / 1_000_000.0);
+        self.last_time = Some(current_time);
+
+        // Integrate gyroscope data using a complementary filter
+        if let Some(dt) = delta_time {
+            let gyro_scale = match self.gyro_range {
+                GyroRange::Dps250 => 131.0,
+                GyroRange::Dps500 => 65.5,
+                GyroRange::Dps1000 => 32.8,
+                GyroRange::Dps2000 => 16.4,
+            };
+            let gx_rad = gx as f32 / gyro_scale * core::f32::consts::PI / 180.0;
+            let gy_rad = gy as f32 / gyro_scale * core::f32::consts::PI / 180.0;
+            let gz_rad = gz as f32 / gyro_scale * core::f32::consts::PI / 180.0;
+
+            // Complementary filter: 98% accelerometer, 2% gyroscope for stability
+            let alpha = 0.98;
+            curr_norm.0 = alpha * curr_norm.0 + (1.0 - alpha) * (curr_norm.0 + gz_rad * dt);
+            curr_norm.1 = alpha * curr_norm.1 + (1.0 - alpha) * (curr_norm.1 - gx_rad * dt);
+            curr_norm.2 = alpha * curr_norm.2 + (1.0 - alpha) * (curr_norm.2 + gy_rad * dt);
+
+            // Re-normalize after gyro integration
+            let mag_sq = curr_norm.0 * curr_norm.0 + curr_norm.1 * curr_norm.1 + curr_norm.2 * curr_norm.2;
+            if mag_sq < 0.25 || mag_sq > 4.0 || mag_sq.is_nan() || mag_sq.is_infinite() {
+                defmt::warn!("Invalid magnitude after gyro integration: {}", mag_sq);
+                return Err(Mpu6050Error::InvalidData);
+            }
+            let mag = mag_sq.sqrt();
+            curr_norm = (curr_norm.0 / mag, curr_norm.1 / mag, curr_norm.2 / mag);
+        }
+
+        let x_abs = curr_norm.0.abs();
+        let y_abs = curr_norm.1.abs();
+        let z_abs = curr_norm.2.abs();
+        defmt::debug!("Normalized current: ({}, {}, {})", curr_norm.0, curr_norm.1, curr_norm.2);
+
+        // Check dominant axis for orientation without Z priority
+        if x_abs >= y_abs && x_abs >= z_abs && x_abs > 0.5 {
+            if curr_norm.0 > 0.0 {
+                Ok(Orientation::LandscapeInverted)
+            } else {
+                Ok(Orientation::Landscape)
+            }
+        } else if y_abs >= x_abs && y_abs >= z_abs && y_abs > 0.5 {
+            if curr_norm.1 > 0.0 {
+                Ok(Orientation::Portrait)
+            } else {
+                Ok(Orientation::PortraitInverted)
+            }
+        } else if z_abs >= x_abs && z_abs >= y_abs && z_abs > 0.5 {
+            if curr_norm.2 > 0.0 {
+                Ok(Orientation::FaceUp)
+            } else {
+                Ok(Orientation::FaceDown)
             }
         } else {
             Ok(Orientation::Unknown)
