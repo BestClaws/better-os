@@ -14,10 +14,10 @@ const TEMP_OUT_H: u8 = 0x41; // Temperature sensor data registers
 pub enum Orientation {
     FaceUp,
     FaceDown,
-    PortraitUp,
-    PortraitDown,
-    LandscapeLeft,
-    LandscapeRight,
+    Portrait,
+    PortraitInverted,
+    Landscape,
+    LandscapeInverted,
     Unknown,
 }
 
@@ -73,29 +73,22 @@ impl<I2C> Mpu6050<I2C>
 where
     I2C: I2c,
 {
-    /// Creates a new MPU6050 instance with default I2C address and ranges (±2g, ±250°/s).
-    pub fn new(i2c: I2C) -> Self {
+    /// Creates a new MPU6050 instance with optional accelerometer and gyroscope ranges.
+    pub fn new(i2c: I2C, accel_range: Option<AccelRange>, gyro_range: Option<GyroRange>) -> Self {
         Self {
             i2c,
             address: MPU6050_ADDR_DEFAULT,
             tolerance: SensorData::default(),
             reference: None,
             initialized: false,
-            accel_range: AccelRange::G2,
-            gyro_range: GyroRange::Dps250,
+            accel_range: accel_range.unwrap_or(AccelRange::G2),
+            gyro_range: gyro_range.unwrap_or(GyroRange::Dps250),
             last_time: None,
         }
     }
 
-    /// Initializes the MPU6050 with custom accelerometer and gyroscope ranges.
-    pub async fn init(
-        &mut self,
-        accel_range: Option<AccelRange>,
-        gyro_range: Option<GyroRange>,
-    ) -> Result<(), Mpu6050Error<I2C::Error>> {
-        self.accel_range = accel_range.unwrap_or(AccelRange::G2);
-        self.gyro_range = gyro_range.unwrap_or(GyroRange::Dps250);
-
+    /// Initializes the MPU6050 using the stored accelerometer and gyroscope ranges.
+    pub async fn init(&mut self) -> Result<(), Mpu6050Error<I2C::Error>> {
         self.enable_sensor().await?;
         self.configure_filter().await?;
         self.configure_accelerometer().await?;
@@ -438,15 +431,15 @@ where
         // Fallback to X/Y checks for Portrait/Landscape
         if x_abs > y_abs && x_abs > 0.5 {
             if curr_norm.0 > 0.0 {
-                Ok(Orientation::LandscapeRight)
+                Ok(Orientation::LandscapeInverted)
             } else {
-                Ok(Orientation::LandscapeLeft)
+                Ok(Orientation::Landscape)
             }
         } else if y_abs > 0.5 {
             if curr_norm.1 > 0.0 {
-                Ok(Orientation::PortraitUp)
+                Ok(Orientation::Portrait)
             } else {
-                Ok(Orientation::PortraitDown)
+                Ok(Orientation::PortraitInverted)
             }
         } else {
             Ok(Orientation::Unknown)
