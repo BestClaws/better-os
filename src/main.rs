@@ -14,18 +14,20 @@ use alloc::string::String;
 use core::cell::RefCell;
 use crate::i2c::master::Config;
 use bt_hci::controller::ExternalController;
+use defmt::export::str;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
-use embedded_graphics::mono_font::iso_8859_1::FONT_4X6;
+use embedded_graphics::mono_font::iso_8859_1::{FONT_4X6, FONT_6X9};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::Drawable;
 use embedded_graphics::mono_font::ascii::FONT_5X7;
+use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
 use embedded_hal_async::digital::Wait;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
@@ -86,22 +88,7 @@ async fn main(spawner: Spawner) -> ! {
 
 
 
-    loop {
 
-        ra.wait_for_falling_edge().await;
-        embassy_time::Timer::after_millis(1).await;
-
-
-        if ra.is_low() && rb.is_high() {
-            info!("CW");
-        } else if ra.is_low() && rb.is_low(){
-            info!("CCW");
-        }
-
-        embassy_time::Timer::after_millis(50).await;
-
-
-    }
 
 
 
@@ -189,12 +176,12 @@ async fn main(spawner: Spawner) -> ! {
         mpu6050_dmp::calibration::ReferenceGravity::ZN,
     );
 
-    info!("Calibrating Sensor");
-    sensor
-        .calibrate(&mut delay, &calibration_params)
-        .await
-        .unwrap();
-    info!("Sensor Calibrated");
+    // info!("Calibrating Sensor");
+    // sensor
+    //     .calibrate(&mut delay, &calibration_params)
+    //     .await
+    //     .unwrap();
+    // info!("Sensor Calibrated");
 
     // Read the accelerometer data from the mpu6050-dmp sensor again after calibration
     let accel_data = sensor.accel().await.unwrap();
@@ -215,12 +202,41 @@ async fn main(spawner: Spawner) -> ! {
     );
 
     let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_5X7)
+        .font(&FONT_8X13_BOLD)
         .text_color(BinaryColor::On)
         .build();
 
 
-    let mut sr = String::new();
+    let mut str = String::from("");
+
+
+    loop {
+
+        ra.wait_for_falling_edge().await;
+        embassy_time::Timer::after_millis(1).await;
+
+
+
+        display.flush().await.unwrap();
+
+
+
+        if ra.is_low() && rb.is_high() {
+            str = String::from("cw");
+        } else if ra.is_low() && rb.is_low(){
+
+            str = String::from("ccw");
+        }
+
+        display.clear_buffer();
+        Text::with_baseline(str.as_str(), Point::zero(), text_style, Baseline::Top)
+            .draw(&mut display)
+            .unwrap();
+
+        embassy_time::Timer::after_millis(5).await;
+
+
+    }
 
 
 
@@ -262,6 +278,10 @@ async fn main(spawner: Spawner) -> ! {
             .unwrap();
 
         display.flush().await.unwrap();
+
+
+
+
         
 
         embassy_time::Timer::after_millis(1000).await;
