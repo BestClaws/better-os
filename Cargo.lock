@@ -43,9 +43,10 @@ dependencies = [
  "defmt 1.0.1",
  "display-interface",
  "display-interface-i2c",
+ "embassy-embedded-hal",
  "embassy-executor",
  "embassy-futures",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.6.2",
  "embassy-time",
  "embedded-graphics",
  "embedded-hal 1.0.0",
@@ -56,6 +57,7 @@ dependencies = [
  "esp-wifi",
  "log",
  "micromath",
+ "mpu6050-dmp",
  "nb 1.1.0",
  "panic-rtt-target",
  "rtt-target",
@@ -307,6 +309,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41fea5ef5bed4d3468dfd44f5c9fa4cda8f54c86d4fb4ae683eacf9d39e2ea12"
 dependencies = [
+ "defmt 0.3.100",
  "embassy-futures",
  "embassy-sync 0.6.2",
  "embassy-time",
@@ -1014,6 +1017,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libm"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
+
+[[package]]
 name = "linked_list_allocator"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1082,6 +1091,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e60ac08614cc09062820e51d5d94c2fce16b94ea4e5003bb81b99a95f84e876"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "mpu6050-dmp"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bc6140a2853ffebdcfe2c408d7e37ee7f3f5689d7d3e25302f6bb1ac4f3fccc"
+dependencies = [
+ "defmt 0.3.100",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "libm",
 ]
 
 [[package]]

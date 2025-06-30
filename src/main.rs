@@ -9,38 +9,52 @@ mod peripherals;
 mod tasks;
 mod mpu;
 
+use alloc::format;
+use alloc::string::String;
+use core::cell::RefCell;
+use crate::i2c::master::Config;
 use bt_hci::controller::ExternalController;
 use defmt::info;
+use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
-use embedded_graphics::Drawable;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::mutex::Mutex;
 use embedded_graphics::mono_font::iso_8859_1::FONT_4X6;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+use embedded_graphics::Drawable;
+use embedded_graphics::mono_font::ascii::FONT_5X7;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
-use esp_hal::i2c;
+use esp_hal::{i2c, Async};
 use esp_hal::i2c::master::I2c;
 use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::{Timer, TimerGroup};
 use esp_wifi::ble::controller::BleConnector;
+use mpu6050_dmp::calibration::CalibrationParameters;
+use mpu6050_dmp::quaternion::Quaternion;
+use mpu6050_dmp::sensor_async::Mpu6050;
+use mpu6050_dmp::yaw_pitch_roll::YawPitchRoll;
 use panic_rtt_target as _;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
+use static_cell::StaticCell;
 use trouble_host::prelude::*;
 
 
-
-use tasks::ble::run_ble_controller;
 use tasks::ticker::ticker;
 
 use peripherals::battery::battery_task;
 use peripherals::vibrator::periodic_vibration;
-use peripherals::vibrator::vibrator_task;
-use crate::mpu::{Mpu6050, Orientation};
+
+
 
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+async fn main(spawner: Spawner) -> ! {
+
+
+
     rtt_target::rtt_init_defmt!();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
@@ -65,15 +79,10 @@ async fn main(spawner: Spawner) {
 
 
 
-    //
-    // spawner.spawn(ticker()).unwrap();
-    // spawner.spawn(vibrator_task(peripherals.GPIO7)).unwrap(); // Spawn the new vibration task
-    // spawner.spawn(periodic_vibration()).unwrap();
-    // spawner.spawn(battery_task(peripherals.ADC1, peripherals.GPIO2)).unwrap();
 
 
     use embedded_graphics::{
-        mono_font::{MonoTextStyleBuilder},
+        mono_font::MonoTextStyleBuilder,
         pixelcolor::BinaryColor,
         prelude::*,
         text::{Baseline, Text},
@@ -82,73 +91,166 @@ async fn main(spawner: Spawner) {
 
 
 
-    let i2c = I2c::new(peripherals.I2C0.reborrow(), i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
+
+    static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<Async>>> = StaticCell::new();
+
+
+    let i2c = I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
         .unwrap()
         .with_sda(peripherals.GPIO4)
         .with_scl(peripherals.GPIO5)
         .into_async();
 
-    // let i2c = I2CDisplayInterface::new(i2c);
 
-    // let mut display = Ssd1306Async::new(
-    //     i2c,
-    //     DisplaySize128x64,
-    //     DisplayRotation::Rotate0,
-    // ).into_buffered_graphics_mode();
+    let i2c = Mutex::new(i2c);
+    let i2c = I2C_BUS.init(i2c);
 
 
+    let i2c_disp = I2CDisplayInterface::new(I2cDevice::new(i2c));
 
-    let mut imu = Mpu6050::new(i2c, None, None);
+    let mut display = Ssd1306Async::new(
+        i2c_disp,
+        DisplaySize128x64,
+        DisplayRotation::Rotate180,
+    ).into_buffered_graphics_mode();
 
-    imu.init().await.unwrap();
-    let mut last_orientation = Orientation::Unknown;
 
+
+    display.init().await.unwrap();
+
+
+
+
+    let mut sensor = Mpu6050::new(I2cDevice::new(i2c), mpu6050_dmp::address::Address::default()).await.unwrap();
+
+
+    let temp = sensor.temperature().await.unwrap();
+    info!("Temperature: {}°C", temp.celsius());
+
+    let mut delay  = embassy_time::Delay;
+    sensor.initialize_dmp(&mut delay).await.unwrap();
+    info!("DMP Firmware Initialized");
+
+    // Read raw accelerometer data (uncalibrated)
+    // The accelerometer measures linear acceleration in three axes (X, Y, Z)
+    // Values will be imprecise until calibration is performed
+    let accel_data = sensor.accel().await.unwrap();
+    info!(
+        "Accelerometer [mg]: x={}, y={}, z={}",
+        accel_data.x() as i32,
+        accel_data.y() as i32,
+        accel_data.z() as i32
+    );
+
+    // Read raw gyroscope data (uncalibrated)
+    // The gyroscope measures angular velocity in three axes (X, Y, Z)
+    // Values will have drift and bias until calibration is performed
+    let gyro_data = sensor.gyro().await.unwrap();
+    info!(
+        "Gyroscope [deg/s]: x={}, y={}, z={}",
+        gyro_data.x() as i32,
+        gyro_data.y() as i32,
+        gyro_data.z() as i32
+    );
+
+    // Configure sensor calibration parameters
+    // AccelFullScale options: G2, G4, G8, G16 (higher means larger range, lower precision)
+    // GyroFullScale options: Deg250, Deg500, Deg1000, Deg2000 (degrees/second range)
+    // ReferenceGravity: XN, XP, YN, YP, ZN, ZP (axis and direction of gravity during calibration)
+    let calibration_params = CalibrationParameters::new(
+        mpu6050_dmp::accel::AccelFullScale::G2,
+        mpu6050_dmp::gyro::GyroFullScale::Deg2000,
+        mpu6050_dmp::calibration::ReferenceGravity::ZN,
+    );
+
+    info!("Calibrating Sensor");
+    sensor
+        .calibrate(&mut delay, &calibration_params)
+        .await
+        .unwrap();
+    info!("Sensor Calibrated");
+
+    // Read the accelerometer data from the mpu6050-dmp sensor again after calibration
+    let accel_data = sensor.accel().await.unwrap();
+    info!(
+        "Accelerometer [mg]: x={}, y={}, z={}",
+        accel_data.x() as i32,
+        accel_data.y() as i32,
+        accel_data.z() as i32
+    );
+
+    // Read the gyroscope data from the mpu6050-dmp sensor again after calibration
+    let gyro_data = sensor.gyro().await.unwrap();
+    info!(
+        "Gyroscope [deg/s]: x={}, y={}, z={}",
+        gyro_data.x() as i32,
+        gyro_data.y() as i32,
+        gyro_data.z() as i32
+    );
+
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_5X7)
+        .text_color(BinaryColor::On)
+        .build();
+
+
+    let mut sr = String::new();
+
+
+
+    // Main loop: Read sensor data every second
+    // - Accelerometer: returns g-force per axis, including gravity
+    // - Gyroscope: returns rotational velocity in degrees/second
+    // - Temperature: returns degrees Celsius
     loop {
-        match imu.detect_orientation_without_reference().await {
-            Ok(Orientation::Portrait) => defmt::info!("Orientation: Portrait"),
-            Ok(Orientation::PortraitInverted) => defmt::info!("Orientation: PortraitInverted"),
-            Ok(Orientation::Landscape) => defmt::info!("Orientation: Landscape"),
-            Ok(Orientation::LandscapeInverted) => defmt::info!("Orientation: LandscapeInverted"),
-            Ok(Orientation::FaceUp) => defmt::info!("Orientation: FaceUp"),
-            Ok(Orientation::FaceDown) => defmt::info!("Orientation: FaceDown"),
-            Ok(Orientation::Unknown) => defmt::info!("Orientation: Unknown"),
-            Err(e) => defmt::error!("Error: {:?}", e),
-        }
+        let (accel, gyro, temp) = (
+            sensor.accel().await.unwrap(),
+            sensor.gyro().await.unwrap(),
+            sensor.temperature().await.unwrap().celsius(),
+        );
+        info!("Sensor Readings:");
+        info!(
+            "  Accelerometer [mg]: x={}, y={}, z={}",
+            accel.x() as i32,
+            accel.y() as i32,
+            accel.z() as i32
+        );
+        info!(
+            "  Gyroscope [deg/s]: x={}, y={}, z={}",
+            gyro.x() as i32,
+            gyro.y() as i32,
+            gyro.z() as i32
+        );
 
-        embassy_time::Timer::after_millis(200).await;
-        info!("temp: {}", imu.read_temperature().await.unwrap());
+
+        let str = format!(
+                "  Gyro: x={}, y={}, z={}",
+                gyro.x() as i32,
+                gyro.y() as i32,
+                gyro.z() as i32
+        );
+        info!("  Temperature: {}°C", temp);
+        display.clear_buffer();
+        Text::with_baseline(str.as_str(), Point::zero(), text_style, Baseline::Top)
+            .draw(&mut display)
+            .unwrap();
+
+        display.flush().await.unwrap();
+        
+
+        embassy_time::Timer::after_millis(1000).await;
     }
 
 
-    //
-    // display.init().await.unwrap();
-    //
-    // let text_style = MonoTextStyleBuilder::new()
-    //     .font(&FONT_4X6)
-    //     .text_color(BinaryColor::On)
-    //     .build();
-    //
-    // Text::with_baseline("test!", Point::zero(), text_style, Baseline::Top)
-    //     .draw(&mut display)
-    //     .unwrap();
-    //
-    //
-    //
-    // display.flush().await.unwrap();
-    //
-    // let mut b1 = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
-    //
-    // // run_ble_controller(controller).await;
-    // loop {
-    //     fill_bw(&mut display, BinaryColor::On).unwrap(); // white
-    //     display.flush().await.unwrap();
-    //     embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
-    //
-    //     fill_bw(&mut display, BinaryColor::Off).unwrap(); // black
-    //     display.flush().await.unwrap();
-    //
-    //     embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
-    // }
+
+
+
+
+
+
+
+
+
 
 }
 
@@ -165,4 +267,5 @@ where
 
     Ok(())
 }
+
 
