@@ -88,18 +88,17 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
 
-        match select(ra.wait_for_any_edge(), rb.wait_for_any_edge()).await {
-            Either::First(_)=> {
-                let ra = ra.is_high();
-                info!("t: {}us, ra goes {}", embassy_time::Instant::now().as_micros(), ra);
-            },
+        ra.wait_for_falling_edge().await;
+        embassy_time::Timer::after_millis(1).await;
 
-            Either::Second(_) => {
-                let rb = rb.is_high();
-                info!("t: {}us, rb goes {}", embassy_time::Instant::now().as_micros(), rb);
-            }
 
+        if ra.is_low() && rb.is_high() {
+            info!("CW");
+        } else if ra.is_low() && rb.is_low(){
+            info!("CCW");
         }
+
+        embassy_time::Timer::after_millis(50).await;
 
 
     }
