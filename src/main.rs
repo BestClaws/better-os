@@ -17,6 +17,7 @@ use bt_hci::controller::ExternalController;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embedded_graphics::mono_font::iso_8859_1::FONT_4X6;
@@ -25,6 +26,7 @@ use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::Drawable;
 use embedded_graphics::mono_font::ascii::FONT_5X7;
+use embedded_hal_async::digital::Wait;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::{i2c, Async};
@@ -76,6 +78,31 @@ async fn main(spawner: Spawner) -> ! {
 
     let connector = BleConnector::new(&init, peripherals.BT);
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
+
+
+
+    let mut ra = Input::new(peripherals.GPIO7, InputConfig::default().with_pull(Pull::Up));
+    let mut rb = Input::new(peripherals.GPIO8, InputConfig::default().with_pull(Pull::Up));
+
+
+
+    loop {
+
+        match select(ra.wait_for_any_edge(), rb.wait_for_any_edge()).await {
+            Either::First(_)=> {
+                let ra = ra.is_high();
+                info!("t: {}us, ra goes {}", embassy_time::Instant::now().as_micros(), ra);
+            },
+
+            Either::Second(_) => {
+                let rb = rb.is_high();
+                info!("t: {}us, rb goes {}", embassy_time::Instant::now().as_micros(), rb);
+            }
+
+        }
+
+
+    }
 
 
 
