@@ -1,5 +1,7 @@
 use alloc::string::String;
 use defmt::export::{display, str};
+use embedded_hal::digital::InputPin;
+use embedded_hal_async::digital::Wait;
 use esp_hal::gpio::Input;
 use crate::system::hal::encoder::EncoderState::{Ccw, Cw};
 
@@ -9,29 +11,29 @@ pub(crate) enum EncoderState {
     Ccw(u32)
 }
 
-pub(crate) trait Encoder {
+pub(crate) trait Encoder<A, B> where A: InputPin + Wait, B: InputPin + Wait {
 
-    // TODO: should be embedded-hal pins. not esp specific.
-    fn init(pin_a: &mut Input, pin_b: &mut Input) -> Self;
+    fn init(pin_a: A, pin_b: B) -> Self;
     
-    fn input_a(&mut self) -> &mut Input;
-    fn input_b(&mut self) -> &mut Input;
+    fn input_a(&mut self) -> &mut A;
+    fn input_b(&mut self) -> &mut B;
     
 
     
     /// wait for the next state of encoder.
     async fn wait_for_next_state(&mut self) -> EncoderState {
-        self.input_a().wait_for_falling_edge().await;
+        // TODO: dont use unwrap, handle error gracefully.
+        self.input_a().wait_for_falling_edge().await.unwrap();
         
         // TODO: refactor, debounce should be part of driver.
         embassy_time::Timer::after_millis(1).await;
         
-        display.flush().await.unwrap();
-
+        let a_high = self.input_a().is_high().unwrap();
+        let b_high = self.input_b().is_high().unwrap();
         
-        if self.input_a().is_low() && self.input_b().is_high() {
+        if !a_high && b_high {
             Ccw(1)
-        } else if self.input_a().is_low() && self.input_b().is_low(){
+        } else if !a_high && !b_high{
             Cw(1)
         } else {
             // TODO: don't panic on hardware failure recover gracefully.
