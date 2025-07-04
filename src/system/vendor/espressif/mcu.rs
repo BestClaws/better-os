@@ -1,8 +1,5 @@
-use defmt::info;
 use esp_hal::clock::CpuClock;
 use esp_hal::peripherals::Peripherals;
-use esp_hal::timer::systimer::SystemTimer;
-use esp_hal::timer::timg::TimerGroup;
 
 pub(crate) struct McuDriver {
     

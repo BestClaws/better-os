@@ -1,12 +1,10 @@
-use esp_hal::peripherals;
-use esp_hal::peripherals::SYSTIMER;
-use esp_hal::timer::systimer::SystemTimer;
-use esp_hal::timer::timg::TimerGroup;
+
+use esp_hal_embassy::TimeBase;
+
 const LGC: &str = module_path!();
 
-pub(crate) fn  init(system_timer: SYSTIMER) {
+pub(crate) fn  init(time_base: impl TimeBase) {
     
-    let timer0 = SystemTimer::new(system_timer);
-    esp_hal_embassy::init(timer0.alarm0);
+    esp_hal_embassy::init(time_base);
     defmt::info!("{} Embassy initialized", LGC);
 }

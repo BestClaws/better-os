@@ -1,6 +1,4 @@
-use core::clone;
-use defmt::unwrap;
-use esp_hal::peripherals;
+
 use esp_hal::peripherals::{RADIO_CLK, RNG, TIMG0};
 use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
@@ -11,8 +9,8 @@ pub struct RadioDriver<'d> {
 }
 
 
-impl RadioDriver {
-    pub fn new(rng: RNG, timer_group: TIMG0, radio_clk: RADIO_CLK) -> RadioDriver {
+impl <'d> RadioDriver<'d> {
+    pub fn new(rng: RNG, timer_group: TIMG0<'d>, radio_clk: RADIO_CLK<'d>) -> RadioDriver<'d> {
         let rng = Rng::new(rng);
         let timer1 = TimerGroup::new(timer_group);
         let esp_wifi_controller = esp_wifi::init(
