@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use bt_hci::uuid::appearance::DISPLAY as OtherDISPLAY;
 use defmt::export::display;
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
@@ -15,11 +14,13 @@ use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use static_cell::StaticCell;
 use trouble_host::new;
+use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{AsyncEncoder, EncoderDriver};
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
 pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> = StaticCell::new();
+pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> = StaticCell::new();
 
 pub(crate) type AjaxDev = PlatformDevice<'static>;
 
@@ -67,7 +68,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
 
     PlatformDevice {
-        encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder))))
+        encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
+        display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
 
     }
 

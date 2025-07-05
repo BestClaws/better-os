@@ -7,8 +7,7 @@ use crate::system::kernel::{platforms};
 use panic_rtt_target as _;
 
 use crate::system::services::compositor::compositor_service;
-
-
+use crate::system::services::human_input::human_input_service;
 // Define the static mutex for the device
 
 pub(crate) fn start(spawner: Spawner) {
@@ -24,7 +23,8 @@ pub(crate) fn start(spawner: Spawner) {
   
     // device has already started the async runtime.
     // TODO: note: this runtime start should be done in the kernel.
-    spawner.spawn(compositor_service(device.encoder.unwrap())).unwrap();
+    spawner.spawn(human_input_service(device.encoder.unwrap())).unwrap();
+    spawner.spawn(compositor_service(device.display.unwrap())).unwrap();
 
     info!("spawned compositor service");
     
