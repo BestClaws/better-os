@@ -1,7 +1,5 @@
 use core::cell::RefCell;
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
 use crate::system::kernel::{platforms};
 
 use panic_rtt_target as _;
@@ -20,11 +18,11 @@ pub(crate) fn start(spawner: Spawner) {
     // this should ideally give a device instead of storing in static cell
     // but the embassy tasks can't accept arguments with generics (platform device) so
     // we will use a static cell to store the device, and retreive it from there.
-    platforms::ajax::device::init_device();
+    let device = platforms::ajax::device::init_device();
   
     // device has already started the async runtime.
     // TODO: note: this runtime start should be done in the kernel.
-    spawner.spawn(compositor_service()).unwrap();
+    spawner.spawn(compositor_service(device)).unwrap();
 
     
 

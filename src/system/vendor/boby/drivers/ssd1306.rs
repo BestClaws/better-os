@@ -1,5 +1,5 @@
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use esp_hal::Async;
 use esp_hal::i2c::master::I2c;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
@@ -8,10 +8,10 @@ use ssd1306::prelude::*;
 use crate::system::hal::display::Display;
 
 pub(crate) struct Ssd1306Driver {
-    display: Ssd1306Async<I2CInterface<I2cDevice<'static, NoopRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>,
+    display: Ssd1306Async<I2CInterface<I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>,
 }
 impl  Ssd1306Driver {
-    pub(crate) fn init(i2c_1: I2cDevice<'static, NoopRawMutex, I2c<'static, Async>>) -> Self {
+    pub(crate) fn init(i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>) -> Self {
 
 
         let i2c_disp = I2CDisplayInterface::new(i2c_1);

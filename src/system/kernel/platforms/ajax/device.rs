@@ -1,10 +1,11 @@
+use defmt::export::display;
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
 use crate::system::vendor::boby::drivers::ssd1306::Ssd1306Driver;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex};
 use embassy_sync::mutex::Mutex;
 use esp_hal::gpio::{Input, InputConfig, Pull};
 use esp_hal::i2c::master::I2c;
@@ -12,13 +13,15 @@ use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use static_cell::StaticCell;
+use trouble_host::new;
 
-static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<Async>>> = StaticCell::new();
+static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
-pub(crate) static PLATFORM_DEVICE: StaticCell<Mutex<NoopRawMutex, PlatformDevice<EncoderDriver, Ssd1306Driver>>> = StaticCell::new();
+pub(crate) static PLATFORM_DEVICE: StaticCell<Mutex<CriticalSectionRawMutex, PlatformDevice<EncoderDriver, Ssd1306Driver>>> = StaticCell::new();
 
+pub(crate) type AjaxDev = PlatformDevice<EncoderDriver, Ssd1306Driver>;
 
-pub(crate) fn init_device()  {
+pub(crate) fn init_device() -> &'static Mutex<CriticalSectionRawMutex, AjaxDev> {
 
 
     // initialize mcu device hal
@@ -51,7 +54,7 @@ pub(crate) fn init_device()  {
 
     let i2c = Mutex::new(i2c);
     let i2c = I2C_BUS.init(i2c);
-    let i2c_1: I2cDevice<'static, NoopRawMutex, I2c<'static, Async>> = I2cDevice::new(i2c);
+    let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> = I2cDevice::new(i2c);
 
     
     // INIT DISPLAY
@@ -66,6 +69,9 @@ pub(crate) fn init_device()  {
         display: Some(display),
     };
 
-    PLATFORM_DEVICE.init(Mutex::new(device));
+    PLATFORM_DEVICE.init(Mutex::new(device))
+    
+    
+
 }
 
