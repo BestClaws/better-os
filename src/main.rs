@@ -7,25 +7,8 @@ extern crate alloc;
 // use alloc::string::String;
 // use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use esp_hal::{peripherals, Async};
-use esp_hal::time::Rate;
-use ssd1306::{I2CDisplayInterface, Ssd1306Async};
-use static_cell::StaticCell;
-use embassy_sync::mutex::Mutex;
-use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
-use embedded_graphics::mono_font::MonoTextStyleBuilder;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
-use embedded_graphics::text::{Baseline, Text};
-use embedded_graphics::Drawable;
-use embedded_hal_async::digital::Wait;
-use esp_hal::i2c::master::I2c;
-use trouble_host::prelude::*;
 
 
-use embedded_graphics::prelude::*;
-use ssd1306::prelude::*;
 
 
 mod system;

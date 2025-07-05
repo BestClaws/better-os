@@ -4,7 +4,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
-use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::peripherals::{ADC1, GPIO2};
 
 pub static BATTERY_READ_SIG: Signal<CriticalSectionRawMutex, ()> = Signal::new();

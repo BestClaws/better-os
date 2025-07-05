@@ -1,5 +1,3 @@
-use alloc::boxed::Box;
-use esp_hal::peripherals::Peripherals;
 
 use crate::system::kernel::platforms::ajax::device::get_device;
 
