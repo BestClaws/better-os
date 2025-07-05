@@ -22,7 +22,7 @@ pub(crate) fn start(spawner: Spawner) {
   
     // device has already started the async runtime.
     // TODO: note: this runtime start should be done in the kernel.
-    spawner.spawn(compositor_service(device)).unwrap();
+    spawner.spawn(compositor_service(device.display.unwrap())).unwrap();
 
     
 

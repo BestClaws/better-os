@@ -3,7 +3,7 @@ use esp_hal::gpio::{Input};
 
 use embedded_hal::digital::InputPin;
 use embedded_hal_async::digital::Wait;
-use crate::system::hal::encoder::Encoder;
+use crate::system::hal::encoder::{Encoder};
 
 pub struct EncoderDriver {
     a_pin: Input<'static>,
@@ -33,4 +33,5 @@ fn input_a(&mut self) -> &mut (impl InputPin + Wait) {
         &mut self.b_pin
     }
 }
+
 

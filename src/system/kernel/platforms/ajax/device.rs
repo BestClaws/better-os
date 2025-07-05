@@ -1,3 +1,4 @@
+use bt_hci::uuid::appearance::DISPLAY as OtherDISPLAY;
 use defmt::export::display;
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
@@ -17,11 +18,12 @@ use trouble_host::new;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
-pub(crate) static PLATFORM_DEVICE: StaticCell<Mutex<CriticalSectionRawMutex, PlatformDevice<EncoderDriver, Ssd1306Driver>>> = StaticCell::new();
+pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, EncoderDriver>> = StaticCell::new();
+pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Ssd1306Driver>> = StaticCell::new();
 
-pub(crate) type AjaxDev = PlatformDevice<EncoderDriver, Ssd1306Driver>;
+pub(crate) type AjaxDev = PlatformDevice<'static, EncoderDriver, Ssd1306Driver>;
 
-pub(crate) fn init_device() -> &'static Mutex<CriticalSectionRawMutex, AjaxDev> {
+pub(crate) fn init_device() -> AjaxDev {
 
 
     // initialize mcu device hal
@@ -64,14 +66,11 @@ pub(crate) fn init_device() -> &'static Mutex<CriticalSectionRawMutex, AjaxDev> 
     // let d_radio = RadioDriver::new(peripherals.RNG, peripherals.TIMG0, peripherals.RADIO_CLK);
 
 
-    let device = PlatformDevice {
-        encoder: Some(encoder),
-        display: Some(display),
-    };
+    PlatformDevice {
+        encoder: Some(ENCODER.init(Mutex::new(encoder))),
+        display: Some(DISPLAY.init(Mutex::new(display))),
+    }
 
-    PLATFORM_DEVICE.init(Mutex::new(device))
-    
-    
 
 }
 

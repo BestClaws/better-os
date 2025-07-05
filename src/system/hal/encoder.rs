@@ -10,13 +10,9 @@ pub(crate) enum EncoderState {
 }
 
 pub(crate) trait Encoder {
-
     fn input_a(&mut self) -> &mut (impl InputPin + Wait);
     fn input_b(&mut self) -> &mut (impl InputPin + Wait);
 
-
-
-    /// wait for the next state of encoder.
     async fn wait_for_next_state(&mut self) -> EncoderState {
         // TODO: dont use unwrap, handle error gracefully.
         self.input_a().wait_for_falling_edge().await.unwrap();
