@@ -1,5 +1,5 @@
 pub mod battery;
 pub mod encoder;
 pub mod vibrator;
-mod ssd1306;
+pub(crate) mod ssd1306;
 

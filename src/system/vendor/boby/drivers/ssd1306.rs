@@ -5,31 +5,40 @@ use esp_hal::{peripherals, Async};
 use esp_hal::i2c::master::I2c;
 use esp_hal::time::Rate;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
+use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
 use static_cell::StaticCell;
+use crate::system::hal::display::Display;
+
+pub(crate) struct Ssd1306Driver {
+    display: Ssd1306Async<I2CInterface<I2cDevice<'static, NoopRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>,
+}
+impl  Ssd1306Driver {
+    pub(crate) fn init(i2c_1: I2cDevice<'static, NoopRawMutex, I2c<'static, Async>>) -> Self {
 
 
+        let i2c_disp = I2CDisplayInterface::new(i2c_1);
 
 
-pub(crate) fn foo(i2c_1: I2cDevice) {
+        let mut display = Ssd1306Async::new(
+            i2c_disp,
+            DisplaySize128x64,
+            DisplayRotation::Rotate180,
+        ).into_buffered_graphics_mode();
 
 
-    let i2c_disp = I2CDisplayInterface::new(i2c_1);
-    
-    
-   
-    
-    
-    
-    
-    let mut display = Ssd1306Async::new(
-        i2c_disp,
-        DisplaySize128x64,
-        DisplayRotation::Rotate180,
-    ).into_buffered_graphics_mode();
-    
-    
-    
-    display.init().await.unwrap();
-    
+        Self {
+            display,
+        }
+
+        // display.init().await.unwrap();
+
+    }
+}
+
+
+impl Display for Ssd1306Driver {
+    async fn init(&mut self) {
+        self.display.init().await.unwrap();
+    }
 }

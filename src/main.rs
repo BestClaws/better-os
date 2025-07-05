@@ -66,33 +66,7 @@ async fn main(spawner: Spawner) -> ! {
     //
     //
     //
-    // static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<Async>>> = StaticCell::new();
-    // 
-    // 
-    // let i2c = I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
-    //     .unwrap()
-    //     .with_sda(peripherals.GPIO4)
-    //     .with_scl(peripherals.GPIO5)
-    //     .into_async();
-    // 
-    // 
-    // let i2c = Mutex::new(i2c);
-    // let i2c = I2C_BUS.init(i2c);
-    // 
-    // 
-    // let i2c_disp = I2CDisplayInterface::new(I2cDevice::new(i2c));
-    // 
-    // let mut display = Ssd1306Async::new(
-    //     i2c_disp,
-    //     DisplaySize128x64,
-    //     DisplayRotation::Rotate180,
-    // ).into_buffered_graphics_mode();
-    // 
-    // 
-    // 
-    // display.init().await.unwrap();
-    //
-    //
+  
     //
     //
     // let text_style = MonoTextStyleBuilder::new()
