@@ -15,11 +15,11 @@ use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use static_cell::StaticCell;
 use trouble_host::new;
-use crate::system::hal::encoder::{EncoderDriver, EncoderStateHandler};
+use crate::system::hal::encoder::{AsyncEncoderStateHandler, EncoderDriver};
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
-pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn EncoderStateHandler>>> = StaticCell::new();
+pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoderStateHandler>>> = StaticCell::new();
 
 pub(crate) type AjaxDev = PlatformDevice<'static>;
 
