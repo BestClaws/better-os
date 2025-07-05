@@ -8,8 +8,10 @@ use async_trait::async_trait;
 
 #[derive(Debug)]
 pub enum EncoderState {
-    Cw(f32),
-    Ccw(f32),
+    // Cw(f32),
+    // Ccw(f32),
+    Cw,
+    Ccw
 }
 
 #[derive(Debug)]
@@ -57,8 +59,8 @@ impl<P: InputPin + Wait> AsyncEncoder for EncoderDriver<P> {
 
         // 4) decode
         match (a, b) {
-            (false, true)  => Ok(EncoderState::Ccw(1.0)),
-            (false, false) => Ok(EncoderState::Cw(1.0)),
+            (false, true)  => Ok(EncoderState::Ccw),
+            (false, false) => Ok(EncoderState::Cw),
             _              => Err(EncoderError::InvalidState),
         }
     }

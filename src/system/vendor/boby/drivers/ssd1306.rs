@@ -1,17 +1,21 @@
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, };
 use esp_hal::Async;
 use esp_hal::i2c::master::I2c;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
+// use crate::system::driver::Driver;
 use crate::system::hal::display::AsyncDisplay;
 
 pub(crate) struct Ssd1306Driver {
     display: Ssd1306Async<I2CInterface<I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>,
 }
+
+// impl Driver for Ssd1306Driver {}
+
 impl  Ssd1306Driver {
     pub(crate) fn init(i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>) -> Self {
 
@@ -34,6 +38,8 @@ impl  Ssd1306Driver {
 
     }
 }
+
+
 
 #[async_trait(?Send)]
 impl AsyncDisplay for Ssd1306Driver {

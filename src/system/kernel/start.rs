@@ -1,7 +1,6 @@
-use core::cell::RefCell;
-use defmt::{info, unwrap};
+use defmt::{info,};
 use embassy_executor::Spawner;
-use embassy_time::Timer;
+use embassy_time::Instant;
 use crate::system::kernel::{platforms};
 
 use panic_rtt_target as _;
@@ -23,14 +22,16 @@ pub(crate) fn start(spawner: Spawner) {
   
     // device has already started the async runtime.
     // TODO: note: this runtime start should be done in the kernel.
+
+    info!("[{}s] spawned  human input service started", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(human_input_service(device.encoder.unwrap())).unwrap();
+    info!("[{}s] spawned  compositor service started", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(compositor_service(device.display.unwrap())).unwrap();
 
-    info!("spawned compositor service");
-    
 
 
-    
+
+
 
 }
 
