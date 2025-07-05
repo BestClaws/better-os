@@ -1,3 +1,3 @@
 pub(crate) mod start;
 pub(crate) mod platform;
-mod platforms;
+pub(crate) mod platforms;

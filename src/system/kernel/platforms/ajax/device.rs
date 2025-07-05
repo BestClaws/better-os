@@ -15,7 +15,10 @@ use static_cell::StaticCell;
 
 static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<Async>>> = StaticCell::new();
 
-pub(crate) fn  get_device() -> PlatformDevice<EncoderDriver, Ssd1306Driver> {
+pub(crate) static PLATFORM_DEVICE: StaticCell<Mutex<NoopRawMutex, PlatformDevice<EncoderDriver, Ssd1306Driver>>> = StaticCell::new();
+
+
+pub(crate) fn init_device()  {
 
 
     // initialize mcu device hal
@@ -24,7 +27,6 @@ pub(crate) fn  get_device() -> PlatformDevice<EncoderDriver, Ssd1306Driver> {
     // TODO: this should be something that should be present in the kernel.
     // initialize async runtime
     // the core model of multitasking.
-
     let timer0 = SystemTimer::new(peripherals.SYSTIMER);
     let time_base = timer0.alarm0;
     crate::system::kernel::platforms::ajax::async_runtime::init(time_base);
@@ -59,9 +61,11 @@ pub(crate) fn  get_device() -> PlatformDevice<EncoderDriver, Ssd1306Driver> {
     // let d_radio = RadioDriver::new(peripherals.RNG, peripherals.TIMG0, peripherals.RADIO_CLK);
 
 
-    PlatformDevice {
+    let device = PlatformDevice {
         encoder: Some(encoder),
         display: Some(display),
-    }
+    };
+
+    PLATFORM_DEVICE.init(Mutex::new(device));
 }
 

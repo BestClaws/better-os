@@ -8,9 +8,6 @@ extern crate alloc;
 // use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 
-
-
-
 mod system;
 mod tasks;
 mod mpu;
@@ -20,14 +17,16 @@ mod util;
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     loop {
+        crate::system::kernel::start::start(spawner);
+        
+    }
+}
 
 
 
 
 
-
-
-    // let rng = esp_hal::rng::Rng::new(peripherals.RNG);
+// let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     //
     // let timer1 = TimerGroup::new(peripherals.TIMG0);
     // let init = esp_wifi::init(
@@ -128,7 +127,4 @@ async fn main(spawner: Spawner) -> ! {
 //
 //     Ok(())
 // }
-
-    }
-}
 
