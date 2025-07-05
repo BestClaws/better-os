@@ -1,4 +1,5 @@
 use core::cell::RefCell;
+use defmt::unwrap;
 use embassy_executor::Spawner;
 use crate::system::kernel::{platforms};
 
@@ -22,7 +23,7 @@ pub(crate) fn start(spawner: Spawner) {
   
     // device has already started the async runtime.
     // TODO: note: this runtime start should be done in the kernel.
-    spawner.spawn(compositor_service(device.display.unwrap())).unwrap();
+    spawner.spawn(compositor_service(device.encoder.unwrap())).unwrap();
 
     
 
