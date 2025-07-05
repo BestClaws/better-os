@@ -7,25 +7,25 @@ extern crate alloc;
 // use alloc::string::String;
 // use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
-// use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-// use embassy_sync::mutex::Mutex;
-// use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
-// use embedded_graphics::mono_font::MonoTextStyleBuilder;
-// use embedded_graphics::pixelcolor::BinaryColor;
-// use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
-// use embedded_graphics::text::{Baseline, Text};
-// use embedded_graphics::Drawable;
-// use embedded_hal_async::digital::Wait;
-// use esp_hal::i2c::master::I2c;
-// use esp_hal::time::Rate;
-// use esp_hal::{peripherals, Async};
-// use ssd1306::{I2CDisplayInterface, Ssd1306Async};
-// use static_cell::StaticCell;
-// use trouble_host::prelude::*;
-// 
-// 
-// use embedded_graphics::prelude::*;
-// use ssd1306::prelude::*;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use esp_hal::{peripherals, Async};
+use esp_hal::time::Rate;
+use ssd1306::{I2CDisplayInterface, Ssd1306Async};
+use static_cell::StaticCell;
+use embassy_sync::mutex::Mutex;
+use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
+use embedded_graphics::mono_font::MonoTextStyleBuilder;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::{DrawTarget, Point, Primitive};
+use embedded_graphics::text::{Baseline, Text};
+use embedded_graphics::Drawable;
+use embedded_hal_async::digital::Wait;
+use esp_hal::i2c::master::I2c;
+use trouble_host::prelude::*;
+
+
+use embedded_graphics::prelude::*;
+use ssd1306::prelude::*;
 
 
 mod system;
@@ -38,8 +38,6 @@ mod util;
 async fn main(spawner: Spawner) -> ! {
     loop {
 
-    }
-}
 
 
 
@@ -69,29 +67,29 @@ async fn main(spawner: Spawner) -> ! {
     //
     //
     // static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<Async>>> = StaticCell::new();
-    //
-    //
+    // 
+    // 
     // let i2c = I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
     //     .unwrap()
     //     .with_sda(peripherals.GPIO4)
     //     .with_scl(peripherals.GPIO5)
     //     .into_async();
-    //
-    //
+    // 
+    // 
     // let i2c = Mutex::new(i2c);
     // let i2c = I2C_BUS.init(i2c);
-    //
-    //
+    // 
+    // 
     // let i2c_disp = I2CDisplayInterface::new(I2cDevice::new(i2c));
-    //
+    // 
     // let mut display = Ssd1306Async::new(
     //     i2c_disp,
     //     DisplaySize128x64,
     //     DisplayRotation::Rotate180,
     // ).into_buffered_graphics_mode();
-    //
-    //
-    //
+    // 
+    // 
+    // 
     // display.init().await.unwrap();
     //
     //
@@ -174,4 +172,6 @@ async fn main(spawner: Spawner) -> ! {
 //     Ok(())
 // }
 
+    }
+}
 
