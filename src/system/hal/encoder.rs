@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use embedded_hal::digital::InputPin; // v1.0.0
 use embedded_hal_async::digital::Wait; // v1.0.0
 use embassy_time::{Duration, Timer};
@@ -31,10 +32,11 @@ pub trait EncoderPins {
     fn input_b(&mut self) -> &mut dyn EncoderPin<Error = Self::Error>;
 }
 
+#[async_trait::async_trait]
 // Trait for state handling (object-safe, no async methods)
 pub trait EncoderStateHandler {
     // Synchronous method to get current state based on pin readings
-    fn get_state(&mut self) -> Result<EncoderState, EncoderError>;
+    async fn wait_for_next_state(&mut self) -> Result<EncoderState, EncoderError>;
 }
 
 // Encoder driver struct (generic over pin type)
@@ -48,24 +50,6 @@ impl<P: InputPin + Wait> EncoderDriver<P> {
         Self { a_pin, b_pin }
     }
 
-    // Async method for waiting and computing state (not part of trait)
-    pub async fn wait_for_next_state(&mut self) -> Result<EncoderState, EncoderError> {
-        // Wait for falling edge on input A with timeout (per TODO: no unwrap)
-        if let Err(_) = embassy_time::with_timeout(
-            Duration::from_millis(100),
-            self.a_pin.wait_for_falling_edge(),
-        )
-            .await
-        {
-            return Err(EncoderError::Timeout);
-        }
-
-        // Debounce (per TODO: part of driver)
-        Timer::after_millis(1).await;
-
-        // Use get_state for pin readings
-        self.get_state()
-    }
 }
 
 // Implement EncoderPins for EncoderDriver
@@ -83,24 +67,30 @@ impl<P: InputPin + Wait> EncoderPins for EncoderDriver<P> {
 
 // Implement EncoderStateHandler for EncoderDriver
 impl<P: InputPin + Wait> EncoderStateHandler for EncoderDriver<P> {
-    fn get_state(&mut self) -> Result<EncoderState, EncoderError> {
-        // Read pin states (per TODO: no unwrap)
-        let a_high = self.a_pin.is_high().map_err(|_| EncoderError::PinError)?;
-        let b_high = self.b_pin.is_high().map_err(|_| EncoderError::PinError)?;
 
-        // Determine state (per TODO: no panic)
-        match (a_high, b_high) {
-            (false, true) => Ok(EncoderState::Ccw(1.0)),  // Placeholder radians/sec
-            (false, false) => Ok(EncoderState::Cw(1.0)), // Placeholder radians/sec
-            _ => Err(EncoderError::InvalidState),
+
+    async fn wait_for_next_state(&mut self) -> Result<EncoderState, EncoderError>{
+        // Async method for waiting and computing state (not part of trait)
+
+        // Wait for falling edge on input A with timeout (per TODO: no unwrap)
+        if let Err(_) = embassy_time::with_timeout(
+            Duration::from_millis(100),
+            self.a_pin.wait_for_falling_edge(),
+        )
+            .await
+        {
+            return Err(EncoderError::Timeout);
         }
+
+        // Debounce (per TODO: part of driver)
+        Timer::after_millis(1).await;
+
+        // Use get_state for pin readings
+        Ok(EncoderState::Ccw(1f32))
     }
 }
 
-// Dynamic dispatch example (synchronous)
-fn use_encoder(encoder: &mut dyn EncoderStateHandler) -> Result<EncoderState, EncoderError> {
-    encoder.get_state()
-}
+
 
 // Async wrapper for dynamic dispatch
 async fn use_encoder_async<P: InputPin + Wait>(

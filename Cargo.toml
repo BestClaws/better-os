@@ -66,6 +66,7 @@ embassy-futures = "0.1.1"
 bt-hci = "0.3.0"
 embassy-sync = { version = "0.6.2" }
 log = "0.4.27"
+async-trait = "0.1.88"
 
 [profile.dev]
 # Rust debug is too slow.
