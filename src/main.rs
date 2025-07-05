@@ -3,10 +3,12 @@
 
 extern crate alloc;
 
+use defmt::info;
 // 
 // use alloc::string::String;
 // use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
+use embassy_time::Timer;
 
 mod system;
 mod tasks;
@@ -16,10 +18,15 @@ mod util;
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
-    loop {
         crate::system::kernel::start::start(spawner);
-        
+    
+    loop {
+        info!("awaiting");
+        Timer::after_millis(1000).await;
     }
+    
+    
+        
 }
 
 
