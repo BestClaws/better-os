@@ -15,11 +15,11 @@ use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use static_cell::StaticCell;
 use trouble_host::new;
-use crate::system::hal::encoder::{AsyncEncoderStateHandler, EncoderDriver};
+use crate::system::hal::encoder::{AsyncEncoder, EncoderDriver};
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
-pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoderStateHandler>>> = StaticCell::new();
+pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> = StaticCell::new();
 
 pub(crate) type AjaxDev = PlatformDevice<'static>;
 
@@ -44,7 +44,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let input_a = Input::new(peripherals.GPIO7, InputConfig::default().with_pull(Pull::Up));
     let input_b = Input::new(peripherals.GPIO8, InputConfig::default().with_pull(Pull::Up));
 
-    let encoder  = EncoderDriver::init(input_a, input_b);
+    let encoder  = EncoderDriver::new(input_a, input_b);
 
 
     // INIT I2C BUS
