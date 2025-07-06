@@ -7,10 +7,20 @@ use esp_hal::i2c::master::I2c;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
-// use crate::system::driver::Driver;
 use crate::system::hal::display::AsyncDisplay;
+use embedded_graphics::{
+    image::Image,
+    pixelcolor::BinaryColor,
+    prelude::*,
+};
+use tinybmp::Bmp;
+
+const BOOT1: &[u8] = include_bytes!("../../../../assets/boot_logo.bmp");
+
+const BOOT2: &[u8] = include_bytes!("../../../../assets/boot_logo2.bmp");
 
 pub(crate) struct Ssd1306Driver {
+    count: u32,
     display: Ssd1306Async<I2CInterface<I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>,
 }
 
@@ -32,6 +42,7 @@ impl  Ssd1306Driver {
 
         Self {
             display,
+            count: 0
         }
 
         // display.init().await.unwrap();
@@ -41,11 +52,30 @@ impl  Ssd1306Driver {
 
 
 
+
+
+
 #[async_trait(?Send)]
 impl AsyncDisplay for Ssd1306Driver {
     async fn init(&mut self) {
         self.display.init().await.unwrap();
-        self.display.set_pixel(50, 50, true);
+        let bmp = Bmp::from_slice(BOOT1).unwrap();
+        let image = Image::with_center(&bmp, Point::new(64, 32));
+        image.draw(&mut self.display).unwrap();
         self.display.flush().await.unwrap();
+    }
+
+    async fn draw(&mut self, angle: u8) {
+        let bmp =
+        if (self.count % 2) == 0 {
+            Bmp::from_slice(BOOT1).unwrap()
+        } else {
+            Bmp::from_slice(BOOT2).unwrap()
+        };
+
+        let image = Image::with_center(&bmp, Point::new(64, 32));
+        image.draw(&mut self.display).unwrap();
+        self.display.flush().await.unwrap();
+        self.count += 1;
     }
 }

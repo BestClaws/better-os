@@ -13,8 +13,11 @@ pub async fn human_input_service(x: &'static Mutex<CriticalSectionRawMutex, Box<
     info!("[{}s] human input service started", Instant::now().as_millis() as f32 / 1000f32);
 
     loop {
-        x.lock().await.next().await.unwrap();
-        info!("detected input");
+        let Ok(success) = x.lock().await.next().await else {
+            info!("invalid encoder state");
+            continue;
+        };
+        info!("detected input: {}", success);
 
     }
     // error!("human input service stopped");

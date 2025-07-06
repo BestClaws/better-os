@@ -14,7 +14,8 @@ pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<d
     d.init().await;
 
     loop {
-        Timer::after_millis(1).await;
+        d.draw(1).await;
+        Timer::after_millis(500).await;
     }
 
     // error!("Compositor service stopped");
