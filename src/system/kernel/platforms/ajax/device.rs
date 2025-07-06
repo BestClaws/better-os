@@ -14,7 +14,8 @@ use esp_hal::Async;
 use static_cell::StaticCell;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::hal::encoder::{AsyncEncoder, EncoderDriver};
+use crate::system::hal::encoder::{AsyncEncoder};
+use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
