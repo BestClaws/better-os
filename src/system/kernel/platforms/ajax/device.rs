@@ -12,12 +12,14 @@ use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use static_cell::StaticCell;
+use crate::system::hal::button::{AsyncButton, ButtonDriver};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{AsyncEncoder, EncoderDriver};
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
 pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> = StaticCell::new();
+pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> = StaticCell::new();
 pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> = StaticCell::new();
 
 
@@ -39,10 +41,13 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // INIT OTHER DEVICES
 
     // INIT ENCODER
-    let input_a = Input::new(peripherals.GPIO7, InputConfig::default().with_pull(Pull::Up));
-    let input_b = Input::new(peripherals.GPIO8, InputConfig::default().with_pull(Pull::Up));
+    let encoder_a_pin = Input::new(peripherals.GPIO7, InputConfig::default().with_pull(Pull::Up));
+    let encoder_b_pin = Input::new(peripherals.GPIO8, InputConfig::default().with_pull(Pull::Up));
+    let button_pin = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
 
-    let encoder  = EncoderDriver::new(input_a, input_b);
+    let encoder  = EncoderDriver::new(encoder_a_pin, encoder_b_pin);
+
+    let button  = ButtonDriver::new(button_pin);
 
 
     // INIT I2C BUS
@@ -67,6 +72,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     PlatformDevice {
         encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
+        button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
 
     }
 

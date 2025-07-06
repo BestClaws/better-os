@@ -25,7 +25,7 @@ pub(crate) fn start(spawner: Spawner) {
     // TODO: note: this runtime start should be done in the kernel.
 
     info!("[{}s] spawned  human input service started", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(human_input_service(device.encoder.unwrap())).unwrap();
+    spawner.spawn(human_input_service(device.encoder.unwrap(), device.button.unwrap())).unwrap();
     info!("[{}s] spawned  compositor service started", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(compositor_service(device.display.unwrap())).unwrap();
 
