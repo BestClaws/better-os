@@ -21,7 +21,6 @@ pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<d
     loop {
         let event = INPUT_CHANNEL.receive().await;
         INPUT_CHANNEL.clear();
-        d.draw(1).await;
 
         match event {
             HumanInputEvent::NavUp => {
@@ -46,7 +45,7 @@ pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<d
             },
         };
 
-        Timer::after_millis(500).await;
+        Timer::after_millis(1).await;
 
 
     }
