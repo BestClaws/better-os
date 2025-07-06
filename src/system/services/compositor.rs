@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use defmt::{info};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Instant, Timer};
+use embassy_time::{Duration, Instant, Timer, WithTimeout};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::services::human_input::{HumanInputEvent, INPUT_CHANNEL};
 
@@ -19,10 +19,21 @@ pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<d
 
 
     loop {
-        let event = INPUT_CHANNEL.receive().await;
+        let event = INPUT_CHANNEL.receive().with_timeout(Duration::from_millis(20)).await;
         INPUT_CHANNEL.clear();
 
-        d.draw(event).await;
+        match event {
+            Ok(event) => {
+                d.draw(event).await;
+
+            },
+            Err(_) => {
+                // No event received, continue the loop
+                d.draw(HumanInputEvent::OK_HELD).await;
+                continue;
+            }
+        };
+
 
 
 
@@ -30,6 +41,7 @@ pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<d
 
 
     }
+
 
     // error!("Compositor service stopped");
 
