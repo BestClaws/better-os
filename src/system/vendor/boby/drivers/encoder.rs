@@ -22,7 +22,7 @@ impl<P: InputPin + Wait> AsyncEncoder for EncoderDriver<P> {
     async fn next(&mut self) -> Result<EncoderState, EncoderError> {
 
         loop {
-            self.a_pin.wait_for_falling_edge().await;
+            self.a_pin.wait_for_falling_edge().await.unwrap();
 
 
 

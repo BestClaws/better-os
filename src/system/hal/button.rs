@@ -1,15 +1,12 @@
 use alloc::boxed::Box;
 use core::cmp::PartialEq;
-use core::pin::pin;
 use embedded_hal::digital::InputPin;
 // v1.0.0
 use embedded_hal_async::digital::Wait;
-use crate::system::hal::encoder::{EncoderError, EncoderState};
 use async_trait::async_trait;
 use defmt::Format;
-use embassy_futures::select::{select, Either};
 // v1.0.0
-use embassy_time::{Duration, Instant, Timer, WithTimeout};
+use embassy_time::{Duration, Instant, WithTimeout};
 
 pub struct ButtonDriver<P: InputPin + Wait> {
     pin: P,
@@ -58,7 +55,7 @@ impl<P: InputPin + Wait> AsyncButton for ButtonDriver<P> {
                     }
                 },
 
-                Ok(Err(e)) => {
+                Ok(Err(_)) => {
                     // Error waiting for pin state change
                     defmt::error!("Error waiting for pin state change");
                 },

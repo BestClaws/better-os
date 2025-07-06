@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
-use embedded_hal::digital::InputPin;       // v1.0.0
-use embedded_hal_async::digital::Wait;      // v1.0.0
-use embassy_time::{Duration, Timer};
+       // v1.0.0
+      // v1.0.0
 use async_trait::async_trait;
 use defmt::Format;
 // --- your driver and traits ---

@@ -1,7 +1,5 @@
 // Imports
 use alloc::boxed::Box;
-use defmt::export::u8;
-use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::{Duration, Instant};
@@ -31,7 +29,6 @@ const ENEMY_WIDTH: i32 = 23;
 const ENEMY_HEIGHT: i32 = 12;
 const BULLET_WIDTH: i32 = 4;
 const BULLET_HEIGHT: i32 = 5;
-const FIRE_WIDTH: i32 = 4;
 const FIRE_HEIGHT: i32 = 4;
 const SHIP_SPEED: i32 = 5;
 const BULLET_SPEED: f32 = 16.0;
@@ -214,7 +211,7 @@ impl AsyncDisplay for Ssd1306Driver {
 
     async fn draw(&mut self, event: HumanInputEvent) {
         if self.dead {
-            if let HumanInputEvent::OK_PRESSED = event {
+            if let HumanInputEvent::OkPressed = event {
                 self.reset();
             }
         } else {
@@ -225,7 +222,7 @@ impl AsyncDisplay for Ssd1306Driver {
                 HumanInputEvent::NavDown => {
                     self.ship_x = (self.ship_x + SHIP_SPEED).min(DISPLAY_WIDTH - SHIP_WIDTH / 2);
                 },
-                HumanInputEvent::OK_PRESSED => {
+                HumanInputEvent::OkPressed => {
                     if self.bullets.len() < self.bullets.capacity() {
                         self.bullets.push((self.ship_x, (DISPLAY_HEIGHT - SHIP_HEIGHT - FIRE_HEIGHT) as f32)).unwrap();
                     }

@@ -1,38 +1,17 @@
-use alloc::boxed::Box;
-use core::ops::Deref;
-use defmt::{info};
-use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_sync::mutex::Mutex;
-use embassy_time::Instant;
-use crate::system::hal::button::{AsyncButton, ButtonState};
-use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
 
 
 pub(crate) enum HumanInputEvent {
     NavUp,
     NavDown,
-    OK_PRESSED,
-    OK_RELEASED,
-    OK_HELD,
+    OkPressed,
+    OkReleased,
+    OkHeld,
 }
 
 pub(crate) static INPUT_CHANNEL: Channel<CriticalSectionRawMutex, HumanInputEvent, 8> = Channel::new();
 
-// TODO: why is there a reference to driver in the task? get rid of this.
-#[embassy_executor::task]
-pub async fn human_input_service(spawner: &'static mut Spawner, e: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>, b: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>) {
-    info!("[{}s] human input service started", Instant::now().as_millis() as f32 / 1000f32);
-
-
-
-    loop {
-
-
-    }
-}
 
 pub(crate) mod sub {
     use alloc::boxed::Box;
@@ -69,9 +48,9 @@ pub(crate) mod sub {
             };
 
             match state {
-                ButtonState::Up => INPUT_CHANNEL.send(HumanInputEvent::OK_RELEASED).await,
-                ButtonState::Down => INPUT_CHANNEL.send(HumanInputEvent::OK_PRESSED).await,
-                ButtonState::Held => INPUT_CHANNEL.send(HumanInputEvent::OK_HELD).await,
+                ButtonState::Up => INPUT_CHANNEL.send(HumanInputEvent::OkReleased).await,
+                ButtonState::Down => INPUT_CHANNEL.send(HumanInputEvent::OkPressed).await,
+                ButtonState::Held => INPUT_CHANNEL.send(HumanInputEvent::OkHeld).await,
             };
         }
     }

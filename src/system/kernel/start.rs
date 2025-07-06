@@ -8,7 +8,6 @@ use panic_rtt_target as _;
 
 use crate::system::services::compositor::compositor_service;
 use crate::system::services::human_input;
-use crate::system::services::human_input::human_input_service;
 use crate::system::services::task_spawner::task_spawner_service;
 // Define the static mutex for the device
 

@@ -29,7 +29,7 @@ pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<d
             },
             Err(_) => {
                 // No event received, continue the loop
-                d.draw(HumanInputEvent::OK_HELD).await;
+                d.draw(HumanInputEvent::OkHeld).await;
                 continue;
             }
         };
