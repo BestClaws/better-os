@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use defmt::info;
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 
@@ -13,15 +14,19 @@ use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use esp_hal::peripherals::ADC1;
+use mpu6050_dmp::calibration::CalibrationParameters;
+use mpu6050_dmp::sensor_async::Mpu6050;
 use static_cell::StaticCell;
 use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{AsyncEncoder};
+use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
+use crate::system::vendor::boby::drivers::gyro_accelerometer::GyroAccelerometerDriver;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
@@ -32,6 +37,7 @@ pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn Asy
 pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> = StaticCell::new();
 pub(crate) static AMBIENT_SENSOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>> = StaticCell::new();
 
+pub(crate) static GYRO_ACCELEROMETER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>> = StaticCell::new();
 
 pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> = StaticCell::new();
 
@@ -74,9 +80,15 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let i2c = I2C_BUS.init(i2c);
     let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> = I2cDevice::new(i2c);
 
+    let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> = I2cDevice::new(i2c);
+
 
     // INIT DISPLAY
     let display = Ssd1306Driver::init(i2c_1);
+
+    // INIT GYRO ACCELEROMETER
+    let gyro_accelerometer = GyroAccelerometerDriver::new(i2c_2);
+
 
     // todo: make a hal device for this.
     // let d_radio = RadioDriver::new(peripherals.RNG, peripherals.TIMG0, peripherals.RADIO_CLK);
@@ -98,12 +110,9 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
 
 
-    // loop {
-    //     let batt_pin_reading: u16 = nb::block!(adc.read_oneshot(&mut adc_pin)).unwrap();
-    //     info!("[main] light sensor  read value: {}", batt_pin_reading);
-    //     Timer::after_secs(1).await
-    //
-    // }
+
+
+
 
 
 
@@ -114,6 +123,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
         battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
         ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
+        gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
+
 
     }
 

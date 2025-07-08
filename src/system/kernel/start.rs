@@ -7,6 +7,7 @@ use panic_rtt_target as _;
 use crate::system::services::ambient_sensor::ambient_sensor_service;
 use crate::system::services::battery::battery_service;
 use crate::system::services::compositor::compositor_service;
+use crate::system::services::gyro_accelerometer::gyro_accelerometer_service;
 use crate::system::services::human_input;
 use crate::system::services::task_spawner::task_spawner_service;
 // Define the static mutex for the device
@@ -34,6 +35,9 @@ pub(crate) fn start(spawner: Spawner) {
 
     info!("[{}s] spawned  battery service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
+    
+    info!("[{}s] spawned  gyro accelerometer service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
 
 
     info!("[{}s] spawned  compositor service", Instant::now().as_millis() as f32 / 1000f32);
