@@ -4,8 +4,8 @@ use embassy_time::Instant;
 use crate::system::kernel::{platforms};
 
 use panic_rtt_target as _;
-
-
+use crate::system::services::ambient_sensor::ambient_sensor_service;
+use crate::system::services::battery::battery_service;
 use crate::system::services::compositor::compositor_service;
 use crate::system::services::human_input;
 use crate::system::services::task_spawner::task_spawner_service;
@@ -28,6 +28,13 @@ pub(crate) fn start(spawner: Spawner) {
     info!("[{}s] spawned  human input service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(human_input::sub::listen_encoder(device.encoder.unwrap())).unwrap();
     spawner.spawn(human_input::sub::listen_button(device.button.unwrap())).unwrap();
+
+    info!("[{}s] spawned  ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
+
+    info!("[{}s] spawned  battery service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
+
 
     info!("[{}s] spawned  compositor service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(compositor_service(device.display.unwrap())).unwrap();

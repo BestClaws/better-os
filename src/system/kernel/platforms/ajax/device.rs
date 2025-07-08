@@ -6,15 +6,21 @@ use crate::system::vendor::boby::drivers::ssd1306::Ssd1306Driver;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex};
 use embassy_sync::mutex::Mutex;
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::gpio::{Input, InputConfig, Pull};
 use esp_hal::i2c::master::I2c;
 use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
+use esp_hal::peripherals::ADC1;
 use static_cell::StaticCell;
+use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
+use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{AsyncEncoder};
+use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
+use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
@@ -22,6 +28,12 @@ static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticC
 pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> = StaticCell::new();
 pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> = StaticCell::new();
 pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> = StaticCell::new();
+
+pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> = StaticCell::new();
+pub(crate) static AMBIENT_SENSOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>> = StaticCell::new();
+
+
+pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> = StaticCell::new();
 
 
 pub(crate) fn init_device() -> PlatformDevice<'static> {
@@ -69,11 +81,39 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // todo: make a hal device for this.
     // let d_radio = RadioDriver::new(peripherals.RNG, peripherals.TIMG0, peripherals.RADIO_CLK);
 
+    let mut adc_config = AdcConfig::new();
+    let mut battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
+    let mut ambient_sensor_adc_pin = adc_config.enable_pin(peripherals.GPIO3, Attenuation::_11dB);
+    let adc1 = Adc::new(peripherals.ADC1, adc_config).into_async();
+    let adc: &'static mut Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>> = ADC_SHARED.init(Mutex::new(adc1));
+
+
+
+    // battery
+    let battery = BatteryDriver::new(adc, battery_adc_pin);
+
+
+    // ambient sensor
+    let ambient_sensor = AmbientSensorDriver::new(adc, ambient_sensor_adc_pin);
+
+
+
+    // loop {
+    //     let batt_pin_reading: u16 = nb::block!(adc.read_oneshot(&mut adc_pin)).unwrap();
+    //     info!("[main] light sensor  read value: {}", batt_pin_reading);
+    //     Timer::after_secs(1).await
+    //
+    // }
+
+
+
 
     PlatformDevice {
         encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
         button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
+        battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
+        ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
 
     }
 
