@@ -13,6 +13,7 @@ pub trait AsyncGyroAccelerometer {
     async fn get_accelerometer_data(&mut self) -> (f32, f32, f32);
     async fn get_gyroscope_data(&mut self) -> (f32, f32, f32);
     async fn get_temperature_celsius(&mut self) -> u8;
-    async fn get_yaw_pitch_roll(&mut self) -> (f32, f32, f32);
+    async fn get_yaw_pitch_roll(&mut self) -> (i32, i32, i32);
+
 }
 

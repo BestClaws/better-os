@@ -19,6 +19,7 @@ use esp_hal::Async;
 use esp_hal_embassy::TimeBase;
 use mpu6050_dmp::accel::AccelFullScale;
 use mpu6050_dmp::calibration::CalibrationParameters;
+use mpu6050_dmp::gravity::Gravity;
 use mpu6050_dmp::gyro::GyroFullScale;
 use mpu6050_dmp::quaternion::Quaternion;
 use mpu6050_dmp::sensor_async::Mpu6050;
@@ -72,7 +73,7 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         let calibration_params = CalibrationParameters::new(
             mpu6050_dmp::accel::AccelFullScale::G16,
             mpu6050_dmp::gyro::GyroFullScale::Deg2000,
-            mpu6050_dmp::calibration::ReferenceGravity::ZN,
+            mpu6050_dmp::calibration::ReferenceGravity::ZP,
         );
 
         defmt::info!("{} calibrating sensor", LGC);
@@ -138,7 +139,7 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         }
 
     }
-    async fn get_yaw_pitch_roll(&mut self) -> (f32, f32, f32) {
+    async fn get_yaw_pitch_roll(&mut self) -> (i32, i32, i32) {
         let x = self.sensor.as_mut().unwrap();
         match x {
             InitState::GyroAccelerometer(y) => {
@@ -153,22 +154,21 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
                     let ypr = YawPitchRoll::from(quat);
 
                     let to_deg = |rad: f32| rad * (180.0 / PI);
-                    let yaw_deg = to_deg(ypr.yaw);     // -180° to 180°
-                    let pitch_deg = to_deg(ypr.pitch); // -90° to 90°
-                    let roll_deg = to_deg(ypr.roll);   // -180° to 180°
+                    let yaw_deg = to_deg(ypr.yaw) as i32;   // -180° to 180°
+                    let pitch_deg = to_deg(ypr.pitch) as i32;; // -90° to 90°
+                    let roll_deg = to_deg(ypr.roll) as i32;   // -180° to 180°
 
-                    rprintln!("Yaw: {:.2}°, Pitch: {:.2}°, Roll: {:.2}°", yaw_deg, pitch_deg, roll_deg);
 
                     (yaw_deg, pitch_deg, roll_deg)
 
                 } else {
                     info!("{}: Not enough data in FIFO: {}", LGC, len);
-                    (0.0, 0.0, 0.0)
+                    (0, 0, 0)
                 }
 
 
             }
-            _ => { (0.0, 0.0, 0.0) }
+            _ => { (0,0,0) }
         }
 
     }

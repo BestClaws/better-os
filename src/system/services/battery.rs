@@ -29,7 +29,7 @@ pub(crate) async fn battery_service(sensor: &'static Mutex<CriticalSectionRawMut
             s.percent().await
         };
 
-        defmt::info!("Battery Sensor: {}%", percent);
+        // defmt::info!("Battery Sensor: {}%", percent);
         Timer::after_millis(10000).await;
 
 

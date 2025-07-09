@@ -1,7 +1,9 @@
+use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 
 
+#[derive(Format)]
 pub(crate) enum HumanInputEvent {
     NavUp,
     NavDown,
