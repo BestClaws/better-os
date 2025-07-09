@@ -20,7 +20,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
         defmt::info!("Gyro Accelerometer Sensor: Temperature: {}C", temp);
 
 
-        Timer::after_micros(1000).await;
+        Timer::after_millis(3000).await;
 
 
     }

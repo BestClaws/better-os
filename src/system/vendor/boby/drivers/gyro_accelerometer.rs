@@ -72,12 +72,12 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
 
         defmt::info!("{} calibrating sensor", LGC);
 
-        sensor
-            .calibrate(&mut delay, &calibration_params)
-            .await
-            .unwrap();
+        // sensor
+        //     .calibrate(&mut delay, &calibration_params)
+        //     .await
+        //     .unwrap();
         defmt::info!("{} sensor calibrated", LGC);
-        
+
         self.sensor = Some(InitState::GyroAccelerometer(sensor));
     }
 

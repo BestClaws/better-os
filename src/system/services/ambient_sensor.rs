@@ -29,7 +29,7 @@ pub(crate) async fn ambient_sensor_service(sensor: &'static Mutex<CriticalSectio
         };
 
         defmt::info!("Ambient Sensor: {}%", percent);
-        Timer::after_micros(1).await;
+        Timer::after_millis(10000).await;
 
 
     }
