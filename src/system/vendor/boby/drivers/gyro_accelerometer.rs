@@ -1,24 +1,29 @@
-use alloc::boxed::Box;
-use core::cell::Cell;
+use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
+use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
+use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
+use crate::system::vendor::boby::drivers::battery::BatteryDriver;
+use alloc::boxed::Box;
 use async_trait::async_trait;
+use core::cell::Cell;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use esp_hal::analog::adc::{Adc, AdcPin};
-use esp_hal::peripherals::{ADC1, GPIO1, GPIO3};
-use esp_hal::Async;
 use esp_hal::i2c::master::I2c;
 use esp_hal::interrupt::map;
+use esp_hal::peripherals::{ADC1, GPIO1, GPIO3};
 use esp_hal::riscv::asm::delay;
+use esp_hal::Async;
 use esp_hal_embassy::TimeBase;
+use mpu6050_dmp::accel::AccelFullScale;
 use mpu6050_dmp::calibration::CalibrationParameters;
+use mpu6050_dmp::gyro::GyroFullScale;
+use mpu6050_dmp::quaternion::Quaternion;
 use mpu6050_dmp::sensor_async::Mpu6050;
-use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
-use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
-use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
-use crate::system::vendor::boby::drivers::battery::BatteryDriver;
+use mpu6050_dmp::yaw_pitch_roll::YawPitchRoll;
+use rtt_target::rprintln;
 
 const LGC: &str = module_path!();
 
@@ -65,7 +70,7 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         // GyroFullScale options: Deg250, Deg500, Deg1000, Deg2000 (degrees/second range)
         // ReferenceGravity: XN, XP, YN, YP, ZN, ZP (axis and direction of gravity during calibration)
         let calibration_params = CalibrationParameters::new(
-            mpu6050_dmp::accel::AccelFullScale::G2,
+            mpu6050_dmp::accel::AccelFullScale::G16,
             mpu6050_dmp::gyro::GyroFullScale::Deg2000,
             mpu6050_dmp::calibration::ReferenceGravity::ZN,
         );
@@ -81,18 +86,18 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         self.sensor = Some(InitState::GyroAccelerometer(sensor));
     }
 
-    async fn get_accelerometer_data(&mut self) -> (i16, i16, i16) {
+    async fn get_accelerometer_data(&mut self) -> (f32, f32, f32) {
         let x = self.sensor.as_mut().unwrap();
         match x {
             InitState::GyroAccelerometer(y) => {
                 // Read raw accelerometer data (uncalibrated)
                 // The accelerometer measures linear acceleration in three axes (X, Y, Z)
                 // Values will be imprecise until calibration is performed
-                let accel_data = y.accel().await.unwrap();
+                let accel_data = y.accel().await.unwrap().scaled(AccelFullScale::G16);
                 (accel_data.x(), accel_data.y(), accel_data.z())
 
             }
-            _ => { (0, 0, 0) }
+            _ => { (0.0, 0.0, 0.0) }
         }
         
 
@@ -101,7 +106,7 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
 
     }
 
-    async fn get_gyroscope_data(&mut self) -> (i16, i16, i16) {
+    async fn get_gyroscope_data(&mut self) -> (f32, f32, f32) {
 
         let x = self.sensor.as_mut().unwrap();
         match x {
@@ -110,11 +115,11 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
                 // The gyroscope measures angular velocity in three axes (X, Y, Z)
                 // Values will have drift and bias until calibration is performed
 
-                let gyro_data = y.gyro().await.unwrap();
+                let gyro_data = y.gyro().await.unwrap().scaled(GyroFullScale::Deg2000);
                 (gyro_data.x(), gyro_data.y(), gyro_data.z())
 
             }
-            _ => { (0, 0, 0) }
+            _ => { (0.0, 0.0, 0.0) }
         }
 
     
@@ -130,6 +135,40 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
                 
             }
             _ => { 0 }
+        }
+
+    }
+    async fn get_yaw_pitch_roll(&mut self) -> (f32, f32, f32) {
+        let x = self.sensor.as_mut().unwrap();
+        match x {
+            InitState::GyroAccelerometer(y) => {
+                use core::f32::consts::PI;
+
+                let mut buf = [0u8; 28];
+
+                let len = y.get_fifo_count().await.unwrap();
+                if len >= 28 {
+                    let buf = y.read_fifo(&mut buf).await.unwrap();
+                    let quat = Quaternion::from_bytes(&buf[..16]).unwrap().normalize();
+                    let ypr = YawPitchRoll::from(quat);
+
+                    let to_deg = |rad: f32| rad * (180.0 / PI);
+                    let yaw_deg = to_deg(ypr.yaw);     // -180° to 180°
+                    let pitch_deg = to_deg(ypr.pitch); // -90° to 90°
+                    let roll_deg = to_deg(ypr.roll);   // -180° to 180°
+
+                    rprintln!("Yaw: {:.2}°, Pitch: {:.2}°, Roll: {:.2}°", yaw_deg, pitch_deg, roll_deg);
+
+                    (yaw_deg, pitch_deg, roll_deg)
+
+                } else {
+                    info!("{}: Not enough data in FIFO: {}", LGC, len);
+                    (0.0, 0.0, 0.0)
+                }
+
+
+            }
+            _ => { (0.0, 0.0, 0.0) }
         }
 
     }

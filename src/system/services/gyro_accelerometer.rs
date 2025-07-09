@@ -8,19 +8,24 @@ use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
 #[embassy_executor::task]
 pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>) {
 
+    {
+        sensor.lock().await.calibrate().await;
 
-    sensor.lock().await.calibrate().await;
+    }
 
     loop {
 
-        let acc = sensor.lock().await.get_accelerometer_data().await;
-        let gyro = sensor.lock().await.get_gyroscope_data().await;
-        let temp = sensor.lock().await.get_temperature_celsius().await;
-        defmt::info!("Gyro Accelerometer Sensor: Acc: {:?}, Gyro: {:?}", acc, gyro);
-        defmt::info!("Gyro Accelerometer Sensor: Temperature: {}C", temp);
+        // let acc = sensor.lock().await.get_accelerometer_data().await;
+        // let gyro = sensor.lock().await.get_gyroscope_data().await;
+        // let temp = sensor.lock().await.get_temperature_celsius().await;
+        let ypr = sensor.lock().await.get_yaw_pitch_roll().await;
+        // defmt::info!("Gyro Accelerometer Sensor: Acc: {:?}, Gyro: {:?}", acc, gyro);
+        // defmt::info!("Gyro Accelerometer Sensor: Temperature: {}C", temp);
+        defmt::info!("Gyro Accelerometer Sensor: Yaw: {}, Pitch: {}, Roll: {}", ypr.0, ypr.1, ypr.2);
 
 
-        Timer::after_millis(3000).await;
+
+        Timer::after_millis(20).await;
 
 
     }

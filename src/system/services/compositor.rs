@@ -10,7 +10,7 @@ use crate::system::services::human_input::{HumanInputEvent, INPUT_CHANNEL};
 #[embassy_executor::task]
 pub async fn compositor_service(x: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>) {
 
-    Timer::after_secs(1000).await;
+    Timer::after_millis(1).await;
 
     info!("[{}s] compositor  service started", Instant::now().as_millis() as f32 / 1000f32);
     let mut d = x.lock().await;
