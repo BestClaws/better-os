@@ -10,7 +10,9 @@ use crate::system::services::human_input::{HumanInputEvent, INPUT_CHANNEL};
 pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>) {
 
     {
+        defmt::info!("calibrating");
         sensor.lock().await.calibrate().await;
+        defmt::info!("calibrated");
 
     }
 

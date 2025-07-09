@@ -64,24 +64,25 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
             },
         };
 
+
         let mut delay  = embassy_time::Delay;
         sensor.initialize_dmp(&mut delay).await.unwrap();
         // Configure sensor calibration parameters
         // AccelFullScale options: G2, G4, G8, G16 (higher means larger range, lower precision)
         // GyroFullScale options: Deg250, Deg500, Deg1000, Deg2000 (degrees/second range)
         // ReferenceGravity: XN, XP, YN, YP, ZN, ZP (axis and direction of gravity during calibration)
-        let calibration_params = CalibrationParameters::new(
+        let mut calibration_params = CalibrationParameters::new(
             mpu6050_dmp::accel::AccelFullScale::G16,
             mpu6050_dmp::gyro::GyroFullScale::Deg2000,
             mpu6050_dmp::calibration::ReferenceGravity::ZP,
         );
 
+        sensor.calibrate(&mut delay, &mut calibration_params).await.unwrap();
+
+
         defmt::info!("{} calibrating sensor", LGC);
 
-        // sensor
-        //     .calibrate(&mut delay, &calibration_params)
-        //     .await
-        //     .unwrap();
+
         defmt::info!("{} sensor calibrated", LGC);
 
         self.sensor = Some(InitState::GyroAccelerometer(sensor));
