@@ -1,9 +1,11 @@
+use micromath::F32Ext;
 use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use alloc::boxed::Box;
+use alloc::format;
 use async_trait::async_trait;
 use core::cell::Cell;
 use defmt::info;
@@ -72,12 +74,18 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         // GyroFullScale options: Deg250, Deg500, Deg1000, Deg2000 (degrees/second range)
         // ReferenceGravity: XN, XP, YN, YP, ZN, ZP (axis and direction of gravity during calibration)
         let mut calibration_params = CalibrationParameters::new(
-            mpu6050_dmp::accel::AccelFullScale::G16,
-            mpu6050_dmp::gyro::GyroFullScale::Deg2000,
+            mpu6050_dmp::accel::AccelFullScale::G2,
+            mpu6050_dmp::gyro::GyroFullScale::Deg250,
             mpu6050_dmp::calibration::ReferenceGravity::ZP,
         );
 
-        sensor.calibrate(&mut delay, &mut calibration_params).await.unwrap();
+        let c = sensor.calibrate(&mut delay, &mut calibration_params).await.unwrap();
+        sensor.set_accel_calibration(&c.0).await.unwrap();
+        sensor.set_gyro_calibration(&c.1).await.unwrap();
+
+        // Configure FIFO
+        sensor.enable_fifo().await.unwrap();
+        info!("FIFO enabled");
 
 
         defmt::info!("{} calibrating sensor", LGC);
@@ -95,7 +103,7 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
                 // Read raw accelerometer data (uncalibrated)
                 // The accelerometer measures linear acceleration in three axes (X, Y, Z)
                 // Values will be imprecise until calibration is performed
-                let accel_data = y.accel().await.unwrap().scaled(AccelFullScale::G16);
+                let accel_data = y.accel().await.unwrap().scaled(AccelFullScale::G2);
                 (accel_data.x(), accel_data.y(), accel_data.z())
 
             }
@@ -117,7 +125,7 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
                 // The gyroscope measures angular velocity in three axes (X, Y, Z)
                 // Values will have drift and bias until calibration is performed
 
-                let gyro_data = y.gyro().await.unwrap().scaled(GyroFullScale::Deg2000);
+                let gyro_data = y.gyro().await.unwrap().scaled(GyroFullScale::Deg250);
                 (gyro_data.x(), gyro_data.y(), gyro_data.z())
 
             }
@@ -140,37 +148,78 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         }
 
     }
-    async fn get_yaw_pitch_roll(&mut self) -> (i32, i32, i32) {
+    async fn pitch_yaw_roll(&mut self) -> (f32, f32, f32) {
         let x = self.sensor.as_mut().unwrap();
         match x {
-            InitState::GyroAccelerometer(y) => {
-                use core::f32::consts::PI;
-
-                let mut buf = [0u8; 28];
-
-                let len = y.get_fifo_count().await.unwrap();
-                if len >= 28 {
-                    let buf = y.read_fifo(&mut buf).await.unwrap();
-                    let quat = Quaternion::from_bytes(&buf[..16]).unwrap().normalize();
-                    let ypr = YawPitchRoll::from(quat);
-
-                    let to_deg = |rad: f32| rad * (180.0 / PI);
-                    let yaw_deg = to_deg(ypr.yaw) as i32;   // -180° to 180°
-                    let pitch_deg = to_deg(ypr.pitch) as i32;; // -90° to 90°
-                    let roll_deg = to_deg(ypr.roll) as i32;   // -180° to 180°
+            InitState::GyroAccelerometer(sensor) => {
 
 
-                    (yaw_deg, pitch_deg, roll_deg)
+                // Buffer for FIFO data (DMP packets are 28 bytes)
+                let mut buffer = [0u8; 28];
 
-                } else {
-                    info!("{}: Not enough data in FIFO: {}", LGC, len);
-                    (0, 0, 0)
+                // Main loop reading quaternion data
+                loop {
+                    let fifo_count = sensor.get_fifo_count().await.unwrap();
+
+                    if fifo_count >= 28 {
+                        // Read a complete DMP packet
+                        let data = sensor.read_fifo(&mut buffer).await.unwrap();
+
+                        // First 16 bytes contain quaternion data
+                        // The quaternion represents the sensor's orientation in 3D space:
+                        // - w: cos(angle/2) - indicates amount of rotation
+                        // - x,y,z: axis * sin(angle/2) - indicates rotation axis
+                        let quat = Quaternion::from_bytes(&data[..16]).unwrap().normalize();
+
+                        // Convert quaternion to more intuitive Yaw, Pitch, Roll angles
+                        // Note: angles are in radians (-π to π)
+                        let ypr = YawPitchRoll::from(quat);
+
+
+
+                        // Convert radians to degrees for more intuitive reading
+                        let yaw_deg = ypr.yaw * 180.0 / core::f32::consts::PI;
+                        let pitch_deg = ypr.pitch * 180.0 / core::f32::consts::PI;
+                        let roll_deg = ypr.roll * 180.0 / core::f32::consts::PI;
+                        use micromath::F32Ext;
+                        // Round and clamp to nearest integer
+                        let yaw_i = yaw_deg.round() as i32;
+                        let pitch_i = pitch_deg.round() as i32;
+                        let roll_i = roll_deg.round() as i32;
+
+                        // Format with sign, pad with zeros to always be 3 digits
+                        let formatted = format!(
+                            "({:+04}, {:+04}, {:+04})",
+                            yaw_i, pitch_i, roll_i
+                        );
+
+                        info!("{}", formatted.as_str());
+                    }
+
+                    embassy_time::Timer::after_millis(100).await;
                 }
 
 
+                // let mut buf = [0u8; 28];
+                // let len = y.get_fifo_count().await.unwrap();
+                // if len >= 28 {
+                //     let buf = y.read_fifo(&mut buf).await.unwrap();
+                //     let quat = Quaternion::from_bytes(&buf[..16]).unwrap().normalize();
+                //     let ypr = YawPitchRoll::from(quat);
+                //
+                //     (ypr.pitch,ypr.roll, ypr.yaw)
+                //
+                // } else {
+                //     info!("{}: Not enough data in FIFO: {}", LGC, len);
+                //     (0., 0., 0.)
+                // }
+
+
             }
-            _ => { (0,0,0) }
+            _ => { (0.,0.,0.) }
         }
 
     }
 }
+
+
