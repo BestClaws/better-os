@@ -27,7 +27,7 @@ pub async fn app_spawner_service(
                 .expect("Failed to allocate battery window")
         };
 
-        let ctx = AppContext::new(handle, canvas, app_id, "battery");
+        let ctx = AppContext::new(handle, canvas, app_id, "battery", compositor);
         spawner.spawn(battery_task(ctx)).unwrap();
     }
 }

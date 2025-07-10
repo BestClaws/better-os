@@ -1,13 +1,14 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::framebuffer::{allocate_buffer, get_buffer_slice, release_buffer};
+use crate::system::ui::input_channels::allocate_channel;
 use crate::system::ui::window::{Window, WindowHandle};
 
+use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use alloc::boxed::Box;
+use embassy_time::{Duration, Timer};
 use heapless::Vec;
-use embassy_time::{Timer, Duration};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ViewMode {
@@ -34,7 +35,6 @@ impl UICompositor {
             view_mode: ViewMode::Single,
             composited_id: None,
             next_id: 0,
-
             display: None,
             redraw_requests: Vec::new(),
         }
@@ -73,6 +73,10 @@ impl UICompositor {
         self.windows.get(self.current_index).map(|w| w.handle()).unwrap()
     }
 
+    pub fn window_for_handle_mut(&mut self, handle: WindowHandle) -> Option<&mut Window> {
+        self.windows.iter_mut().find(|w| w.handle() == handle)
+    }
+
     pub async fn alloc_window_with_canvas(
         &mut self,
         width: usize,
@@ -80,7 +84,9 @@ impl UICompositor {
         id: usize,
     ) -> Option<(WindowHandle, Canvas)> {
         let fb = allocate_buffer().await?;
-        let window = Window::new(fb, width, height, id);
+        let input = allocate_channel().await?;
+
+        let window = Window::new(fb, input, width, height, id);
         let handle = window.handle();
 
         self.windows.push(window).ok()?;
@@ -88,18 +94,6 @@ impl UICompositor {
         let canvas = window.canvas();
 
         Some((handle, canvas))
-    }
-
-    pub async fn alloc_window(&mut self, width: usize, height: usize) -> Option<WindowHandle> {
-        let fb = allocate_buffer().await?;
-        let id = self.next_id;
-        self.next_id += 1;
-
-        let window = Window::new(fb, width, height, id);
-        let handle = window.handle();
-
-        self.windows.push(window).ok()?;
-        Some(handle)
     }
 
     pub fn toggle_view(&mut self) {
@@ -185,13 +179,13 @@ impl UICompositor {
         let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
         composed.clear();
 
-        if let Some(w1) = self.windows.iter_mut().find(|w| w.handle() == from) {
+        if let Some(w1) = self.window_for_handle_mut(from) {
             let mut canvas1 = w1.canvas();
             let x1 = offset.saturating_neg() as u32;
             composed.draw_from(&canvas1, x1.wrapping_sub(offset as u32), 0);
         }
 
-        if let Some(w2) = self.windows.iter_mut().find(|w| w.handle() == to) {
+        if let Some(w2) = self.window_for_handle_mut(to) {
             let mut canvas2 = w2.canvas();
             let x2 = (128 - offset).max(0) as u32;
             composed.draw_from(&canvas2, x2, 0);
@@ -233,6 +227,24 @@ impl UICompositor {
             self.windows.get(to)?.handle(),
         ))
     }
+
+
+    /// Check if a given window handle is currently focused.
+    pub fn is_focused(&self, handle: WindowHandle) -> bool {
+        self.windows
+            .get(self.current_index)
+            .map(|w| w.handle() == handle)
+            .unwrap_or(false)
+    }
+
+    /// Poll one input event for a window by handle (non-blocking).
+    pub fn poll_input(&mut self, handle: WindowHandle) -> Option<crate::system::services::human_input::HumanInputEvent> {
+        self.window_for_handle_mut(handle)
+            .and_then(|w| w.input_receiver().try_receive().ok())
+    }
+
+ 
+
 }
 
 #[derive(Clone, Copy)]

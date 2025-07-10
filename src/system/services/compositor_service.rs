@@ -1,8 +1,7 @@
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::Duration;
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer};
 
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::services::human_input::{HumanInputEvent, HUMAN_INPUT_CH};
@@ -13,7 +12,6 @@ pub async fn compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
 ) {
-    // === Step 1: Attach display to compositor ===
     {
         let mut comp = compositor.lock().await;
         comp.attach_display(display);
@@ -41,8 +39,11 @@ pub async fn compositor_service(
                 trigger_redraw = true;
             }
             _ => {
-                // Forward input to current window here (if needed)
-                // In future: comp.forward_input(event);
+                // Forward event to current window's input channel
+                let current = comp.current_handle();
+                if let Some(window) = comp.window_for_handle_mut(current) {
+                    let _ = window.input_sender().try_send(event); // best-effort
+                }
             }
         }
 
