@@ -9,12 +9,7 @@ use crate::system::services::human_input::{HumanInputEvent, INPUT_CHANNEL};
 #[embassy_executor::task]
 pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>) {
 
-    {
-        defmt::info!("calibrating");
-        sensor.lock().await.calibrate().await;
-        defmt::info!("calibrated");
 
-    }
 
 
     loop {
@@ -27,7 +22,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
         // let temp = sensor.lock().await.get_temperature_celsius().await;
         // defmt::info!("Gyro Accelerometer Sensor: Temperature: {}C", temp);
 
-        let ypr = sensor.lock().await.pitch_yaw_roll().await;
+        let ypr = sensor.lock().await.pitch_roll_yaw().await;
         let to_degrees = |rad: f32| rad * 180.0 / core::f32::consts::PI;
         defmt::info!("pitch: {}, yaw: {}, roll: {}", ypr.0, ypr.1, ypr.2);
 
