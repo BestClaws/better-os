@@ -3,14 +3,12 @@ use crate::system::ui::canvas::Canvas;
 use crate::system::ui::framebuffer::{allocate_buffer, get_buffer_slice, release_buffer};
 use crate::system::ui::window::{Window, WindowHandle};
 
-/// Whether we're showing a single window or split view
 #[derive(Clone, Copy, Debug)]
 pub enum ViewMode {
     Single,
     Split,
 }
 
-/// Compositor struct managing windows and rendering logic.
 pub struct UICompositor {
     windows: heapless::Vec<Window, 8>,
     current_index: usize,
@@ -18,8 +16,6 @@ pub struct UICompositor {
     composited_id: Option<usize>,
     next_id: usize,
 }
-
-
 
 impl UICompositor {
     pub fn new() -> Self {
@@ -32,6 +28,10 @@ impl UICompositor {
         }
     }
 
+    pub fn current_handle(&self) -> WindowHandle {
+        self.windows.get(self.current_index).map(|w| w.handle()).unwrap()
+    }
+
     pub async fn alloc_window_with_canvas(
         &mut self,
         width: usize,
@@ -42,17 +42,13 @@ impl UICompositor {
         let window = Window::new(fb, width, height, id);
         let handle = window.handle();
 
-        // Push the window first
         self.windows.push(window).ok()?;
-
-        // Now get mutable ref to it and extract canvas
         let window = self.windows.iter_mut().find(|w| w.handle() == handle)?;
-        let canvas = window.canvas(); // dynamically generated
+        let canvas = window.canvas();
 
         Some((handle, canvas))
     }
 
-    /// Allocates and registers a new window. Returns a handle to it.
     pub async fn alloc_window(&mut self, width: usize, height: usize) -> Option<WindowHandle> {
         let fb = allocate_buffer().await?;
         let id = self.next_id;
@@ -117,9 +113,71 @@ impl UICompositor {
         Some(get_buffer_slice(id))
     }
 
+    pub async fn composite_slide(
+        &mut self,
+        from: WindowHandle,
+        to: WindowHandle,
+        offset: i32,
+    ) -> Option<&'static [u8]> {
+        let mut fb = allocate_buffer().await?;
+        let id = fb.id();
+        let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
+        composed.clear();
+
+        if let Some(w1) = self.windows.iter_mut().find(|w| w.handle() == from) {
+            let mut canvas1 = w1.canvas();
+            let x1 = offset.saturating_neg() as u32;
+            composed.draw_from(&canvas1, x1.wrapping_sub(offset as u32), 0);
+        }
+
+        if let Some(w2) = self.windows.iter_mut().find(|w| w.handle() == to) {
+            let mut canvas2 = w2.canvas();
+            let x2 = (128 - offset).max(0) as u32;
+            composed.draw_from(&canvas2, x2, 0);
+        }
+
+        self.composited_id = Some(id);
+        Some(get_buffer_slice(id))
+    }
+
     pub fn release_last(&mut self) {
         if let Some(id) = self.composited_id.take() {
             release_buffer(id);
         }
     }
+
+    pub fn view_mode(&self) -> ViewMode {
+        self.view_mode
+    }
+
+    pub fn last_transition_handles(&self, dir: SlideDir) -> Option<(WindowHandle, WindowHandle)> {
+        if self.windows.is_empty() {
+            return None;
+        }
+
+        let from = self.current_index;
+        let to = match dir {
+            SlideDir::Left => (self.current_index + 1) % self.windows.len(),
+            SlideDir::Right => {
+                if self.current_index == 0 {
+                    self.windows.len() - 1
+                } else {
+                    self.current_index - 1
+                }
+            }
+        };
+
+        Some((
+            self.windows.get(from)?.handle(),
+            self.windows.get(to)?.handle(),
+        ))
+    }
+
+
+}
+
+#[derive(Clone, Copy)]
+pub enum SlideDir {
+    Left,
+    Right,
 }
