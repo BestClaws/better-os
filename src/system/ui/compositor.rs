@@ -1,3 +1,4 @@
+use core::cmp::PartialEq;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::framebuffer::{allocate_buffer, get_buffer_slice, release_buffer};
 use crate::system::ui::window::{Window, WindowHandle};
@@ -10,36 +11,59 @@ pub enum ViewMode {
 }
 
 /// Compositor struct managing windows and rendering logic.
-pub struct UICompositor<'a> {
-    windows: heapless::Vec<Window<'a>, 8>,
+pub struct UICompositor {
+    windows: heapless::Vec<Window, 8>,
     current_index: usize,
     view_mode: ViewMode,
     composited_id: Option<usize>,
+    next_id: usize,
 }
 
-impl<'a> UICompositor<'a> {
+
+
+impl UICompositor {
     pub fn new() -> Self {
         Self {
             windows: heapless::Vec::new(),
             current_index: 0,
             view_mode: ViewMode::Single,
             composited_id: None,
+            next_id: 0,
         }
     }
 
-    /// Allocates and registers a new window. Returns a handle to it.
-    pub async fn alloc_window(&'a mut self, width: usize, height: usize) -> Option<WindowHandle<'a>> {
-        let mut fb = allocate_buffer().await?;
-        let canvas = Canvas::new(fb.buffer_mut(), width as u32, height as u32);
-        let window = Window::new(canvas, fb);
+    pub async fn alloc_window_with_canvas(
+        &mut self,
+        width: usize,
+        height: usize,
+        id: usize,
+    ) -> Option<(WindowHandle, Canvas)> {
+        let fb = allocate_buffer().await?;
+        let window = Window::new(fb, width, height, id);
+        let handle = window.handle();
 
-        let idx = self.windows.len();
+        // Push the window first
         self.windows.push(window).ok()?;
-        let window = self.windows.get_mut(idx)?;
 
-        Some(window.handle())
+        // Now get mutable ref to it and extract canvas
+        let window = self.windows.iter_mut().find(|w| w.handle() == handle)?;
+        let canvas = window.canvas(); // dynamically generated
+
+        Some((handle, canvas))
     }
 
+    /// Allocates and registers a new window. Returns a handle to it.
+    pub async fn alloc_window(&mut self, width: usize, height: usize) -> Option<WindowHandle> {
+        let fb = allocate_buffer().await?;
+        let id = self.next_id;
+        self.next_id += 1;
+
+        let window = Window::new(fb, width, height, id);
+        let handle = window.handle();
+
+        self.windows.push(window).ok()?;
+        Some(handle)
+    }
 
     pub fn toggle_view(&mut self) {
         self.view_mode = match self.view_mode {
@@ -60,16 +84,17 @@ impl<'a> UICompositor<'a> {
         }
     }
 
-    /// Composites the visible window(s) into a framebuffer and returns its slice.
     pub async fn composite(&mut self) -> Option<&'static [u8]> {
         let mut fb = allocate_buffer().await?;
+        let id = fb.id();
         let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
         composed.clear();
 
         match self.view_mode {
             ViewMode::Single => {
                 if let Some(window) = self.windows.get_mut(self.current_index) {
-                    composed.draw_from(window.canvas(), 0, 0);
+                    let mut canvas = window.canvas();
+                    composed.draw_from(&canvas, 0, 0);
                 }
             }
             ViewMode::Split => {
@@ -77,16 +102,17 @@ impl<'a> UICompositor<'a> {
                 let i2 = (self.current_index + 1) % self.windows.len();
 
                 if let Some(w1) = self.windows.get_mut(i1) {
-                    composed.draw_from(w1.canvas(), 0, 0);
+                    let mut canvas1 = w1.canvas();
+                    composed.draw_from(&canvas1, 0, 0);
                 }
 
                 if let Some(w2) = self.windows.get_mut(i2) {
-                    composed.draw_from(w2.canvas(), 0, 32);
+                    let mut canvas2 = w2.canvas();
+                    composed.draw_from(&canvas2, 0, 32);
                 }
             }
         }
 
-        let id = fb.id();
         self.composited_id = Some(id);
         Some(get_buffer_slice(id))
     }

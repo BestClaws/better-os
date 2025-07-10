@@ -1,10 +1,38 @@
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+use crate::system::apps::context::{AppContext, AppMetadata};
 use crate::system::ui::compositor::UICompositor;
+use crate::system::apps::clock_app::clock_app; // Example app
+use defmt::info;
 
-static mut NEXT_APP_ID: usize = 0;
+static mut APP_COUNTER: usize = 0;
 
-#[embassy_executor::task]
-pub async fn app_spawner_service(
-    spawner: Spawner) {}
+pub async fn app_spawner_service(spawner: Spawner, compositor: &mut UICompositor<'_>) {
+    // Example app launch
+    let width = 128;
+    let height = 64;
+
+    if let Some((handle, canvas)) = compositor.alloc_window(width, height).await {
+        let app_id = unsafe {
+            let id = APP_COUNTER;
+            APP_COUNTER += 1;
+            id
+        };
+
+        let metadata = AppMetadata {
+            name: "Clock",
+            size: (width as u32, height as u32),
+        };
+
+        let ctx = AppContext {
+            app_id,
+            window: handle,
+            canvas,
+            metadata,
+        };
+
+        spawner.spawn(clock_app(ctx)).unwrap();
+        info!("Spawned app: Clock with ID {}", app_id);
+    } else {
+        defmt::warn!("Failed to allocate window for app");
+    }
+}

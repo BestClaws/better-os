@@ -1,71 +1,52 @@
 use crate::system::ui::canvas::Canvas;
-use crate::system::ui::framebuffer::FrameBufferHandle;
+use crate::system::ui::framebuffer::{FrameBufferHandle};
 
-/// A window managed by the compositor.
-pub struct Window<'a> {
-    width: u32,
-    height: u32,
-    canvas: Canvas<'a>,
-    fb_handle: FrameBufferHandle,
+/// Strongly-typed handle to a window.
+#[derive(Clone, Copy, PartialEq)]
+pub struct WindowHandle {
+    id: usize,
 }
 
-impl<'a> Window<'a> {
-    pub fn new(canvas: Canvas<'a>, fb_handle: FrameBufferHandle) -> Self {
+/// Represents a single UI window, backed by a framebuffer.
+pub struct Window {
+    fb: FrameBufferHandle,
+    width: u32,
+    height: u32,
+    id: usize, // App ID or Window ID — anything you use to uniquely identify this window
+}
 
-        let width = canvas.width();
-        let height = canvas.height();
+impl Window {
+    /// Create a new Window.
+    pub fn new(fb: FrameBufferHandle, width: usize, height: usize, id: usize) -> Self {
         Self {
-            canvas,
-            width,
-            height,
-            fb_handle,
+            fb,
+            width: width as u32,
+            height: height as u32,
+            id,
         }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
-        self.canvas.resize(width, height);
+    /// Returns a fresh Canvas that draws on this window's framebuffer.
+    pub fn canvas(&mut self) -> Canvas {
+        Canvas::new(self.fb.buffer_mut(), self.width, self.height)
     }
 
-    /// Returns a handle that can be passed to app code.
-    pub fn handle(&'a mut self) -> WindowHandle<'a> {
-        WindowHandle {
-            width: self.width,
-            height: self.height,
-            canvas: &mut self.canvas,
-        }
+    /// Return this window’s handle.
+    pub fn handle(&self) -> WindowHandle {
+        WindowHandle { id: self.id }
     }
 
+    /// Get ID of the framebuffer (for compositing).
+    pub fn framebuffer_id(&self) -> usize {
+        self.fb.id()
+    }
+
+    /// Return this window’s raw width.
     pub fn width(&self) -> u32 {
         self.width
     }
 
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-
-    pub fn canvas(&mut self) -> &mut Canvas<'a> {
-        &mut self.canvas
-    }
-}
-
-/// A safe handle passed to apps for rendering.
-pub struct WindowHandle<'a> {
-    width: u32,
-    height: u32,
-    canvas: &'a mut Canvas<'a>,
-}
-
-impl<'a> WindowHandle<'a> {
-    pub fn canvas(&mut self) -> &mut Canvas<'a> {
-        self.canvas
-    }
-
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
+    /// Return this window’s raw height.
     pub fn height(&self) -> u32 {
         self.height
     }
