@@ -14,10 +14,12 @@ use embedded_graphics_framebuf::FrameBuf;
 use crate::{
     system::resources::framebuffer::{request_framebuffer, FB_SEMAPHORE, FRAME_CHANNEL, SubmitFrame},
 };
+use crate::system::services::ambient_sensor::AMBIENT_CHANNEL;
+use crate::tasks::battery::BitPackedFramebuffer;
 
 #[embassy_executor::task]
-pub async fn battery() {
-    let receiver = BATTERY_CHANNEL.receiver();
+pub async fn ambient() {
+    let receiver = AMBIENT_CHANNEL.receiver();
 
     loop {
         let percent = receiver.receive().await;
@@ -31,7 +33,7 @@ pub async fn battery() {
                 .sender()
                 .send(SubmitFrame {
                     id: fb.id,
-                    app_id: 3,
+                    app_id: 1, // Unique app ID for ambient
                 })
                 .await;
 
@@ -43,7 +45,6 @@ pub async fn battery() {
 }
 
 use core::fmt::Write;
-
 
 pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
     let mut fb = BitPackedFramebuffer {
@@ -58,63 +59,13 @@ pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
         .draw(&mut fb)
         .unwrap();
 
-    // Label
+    // Text
     let mut text_buf = heapless::String::<32>::new();
-    let _ = write!(text_buf, "Battery: {}%", percent);
+    let _ = write!(text_buf, "Ambient: {}%", percent);
 
     let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    Text::new(&text_buf, Point::new(20, 28), text_style)
+    Text::new(&text_buf, Point::new(16, 28), text_style)
         .draw(&mut fb)
         .unwrap();
 }
 
-
-use embedded_graphics::{
-    prelude::*,
-    draw_target::DrawTarget,
-    geometry::{OriginDimensions},
-};
-use crate::system::hal::battery::AsyncBattery;
-use crate::system::services::battery::BATTERY_CHANNEL;
-
-pub struct BitPackedFramebuffer<'a> {
-    pub buf: &'a mut [u8; 1024],
-    pub width: u32,
-    pub height: u32,
-}
-
-impl<'a> OriginDimensions for BitPackedFramebuffer<'a> {
-    fn size(&self) -> Size {
-        Size::new(self.width, self.height)
-    }
-}
-
-impl<'a> DrawTarget for BitPackedFramebuffer<'a> {
-    type Color = BinaryColor;
-    type Error = core::convert::Infallible;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        for Pixel(Point { x, y }, color) in pixels {
-            if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
-                continue;
-            }
-
-            let x = x as usize;
-            let y = y as usize;
-
-            // SSD1306 expects vertical bit layout: each byte = 8 vertical pixels
-            let byte_index = x + (y / 8) * self.width as usize;
-            let bit_index = y % 8;
-
-            match color {
-                BinaryColor::On => self.buf[byte_index] |= 1 << bit_index,
-                BinaryColor::Off => self.buf[byte_index] &= !(1 << bit_index),
-            }
-        }
-
-        Ok(())
-    }
-}

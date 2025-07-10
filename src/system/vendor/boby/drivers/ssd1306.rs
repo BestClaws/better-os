@@ -94,7 +94,6 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn draw(&mut self, buffer: &[u8]) {
-        defmt::info!("draw call");
         self.display.draw(buffer).await;
         self.display.flush().await;
     }

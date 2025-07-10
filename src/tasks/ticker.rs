@@ -16,7 +16,7 @@ pub async fn ticker() {
 
         FRAME_CHANNEL.sender().send(SubmitFrame {
             id: fb.id,
-            app_id: 1, // unique per app
+            app_id: 2, // unique per app
         }).await;
 
 
