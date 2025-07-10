@@ -44,5 +44,5 @@ pub(crate) fn start(spawner: Spawner) {
 
     // Spawn app spawner service
     info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(app_spawner_service(compositor_ref)).unwrap();
+    spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
 }
