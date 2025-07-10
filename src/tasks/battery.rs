@@ -1,5 +1,4 @@
 use embassy_time::Timer;
-use crate::system::ui::context::UIContext;
 use crate::system::ui::canvas::Canvas;
 
 use embedded_graphics::{
@@ -13,18 +12,18 @@ use core::fmt::Write;
 use crate::system::services::battery::BATTERY_CHANNEL;
 
 #[embassy_executor::task]
-pub async fn battery_task(mut ctx: UIContext<'static>) {
-    let receiver = BATTERY_CHANNEL.receiver();
-
-    loop {
-        let percent = receiver.receive().await;
-
-        let canvas = ctx.canvas();
-        canvas.clear();
-        draw_ui(canvas, percent);
-
-        Timer::after_millis(100).await;
-    }
+pub async fn battery_task() {
+    // let receiver = BATTERY_CHANNEL.receiver();
+    // 
+    // loop {
+    //     let percent = receiver.receive().await;
+    // 
+    //     let canvas = ctx.canvas();
+    //     canvas.clear();
+    //     draw_ui(canvas, percent);
+    // 
+    //     Timer::after_millis(100).await;
+    // }
 }
 
 fn draw_ui(canvas: &mut Canvas<'_>, percent: u8) {

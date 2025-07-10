@@ -1,118 +1,96 @@
-use crate::system::ui::framebuffer::{allocate_buffer, release_buffer, get_buffer_slice, FrameBufferHandle};
-use crate::system::ui::window::Window;
 use crate::system::ui::canvas::Canvas;
+use crate::system::ui::framebuffer::{allocate_buffer, get_buffer_slice, release_buffer};
+use crate::system::ui::window::{Window, WindowHandle};
 
-/// ID to represent an app
-pub type AppId = usize;
-
-/// Whether we're showing a single app or split view
+/// Whether we're showing a single window or split view
 #[derive(Clone, Copy, Debug)]
-pub enum AppViewMode {
+pub enum ViewMode {
     Single,
     Split,
 }
 
-/// Internal state for one app
-struct AppSlot {
-    pub app_id: AppId,
-    pub window: Option<Window<'static>>,
-}
-
-/// The main UI compositor struct.
-/// It owns windows, manages transitions and tracks app view state.
-pub struct UICompositor {
-    apps: heapless::Vec<AppSlot, 8>,
+/// Compositor struct managing windows and rendering logic.
+pub struct UICompositor<'a> {
+    windows: heapless::Vec<Window<'a>, 8>,
     current_index: usize,
-    view_mode: AppViewMode,
-    composited_id: Option<usize>, // Last composited buffer
+    view_mode: ViewMode,
+    composited_id: Option<usize>,
 }
 
-impl UICompositor {
+impl<'a> UICompositor<'a> {
     pub fn new() -> Self {
         Self {
-            apps: heapless::Vec::new(),
+            windows: heapless::Vec::new(),
             current_index: 0,
-            view_mode: AppViewMode::Single,
+            view_mode: ViewMode::Single,
             composited_id: None,
         }
     }
 
-    /// Register a new app with a window.
-    pub fn register_app(&mut self, app_id: AppId) {
-        self.apps.push(AppSlot { app_id, window: None }).ok();
+    /// Allocates and registers a new window. Returns a handle to it.
+    pub async fn alloc_window(&'a mut self, width: usize, height: usize) -> Option<WindowHandle<'a>> {
+        let mut fb = allocate_buffer().await?;
+        let canvas = Canvas::new(fb.buffer_mut(), width as u32, height as u32);
+        let window = Window::new(canvas, fb);
+
+        let idx = self.windows.len();
+        self.windows.push(window).ok()?;
+        let window = self.windows.get_mut(idx)?;
+
+        Some(window.handle())
     }
 
-    /// Submit a frame for an app.
-    pub fn submit_frame(&mut self, app_id: AppId, canvas: Canvas<'static>, buffer_id: usize) {
-        if let Some(slot) = self.apps.iter_mut().find(|a| a.app_id == app_id) {
-            slot.window = Some(Window::new(app_id, canvas, 128, 64));
-            // Note: Resize support can go here in future
-        }
-    }
 
-    /// Get current app ID (used by navigation logic)
-    pub fn current_app_id(&self) -> Option<AppId> {
-        self.apps.get(self.current_index).map(|a| a.app_id)
-    }
-
-    /// Move to next app
-    pub fn next_app(&mut self) {
-        if !self.apps.is_empty() {
-            self.current_index = (self.current_index + 1) % self.apps.len();
-        }
-    }
-
-    /// Move to previous app
-    pub fn prev_app(&mut self) {
-        if !self.apps.is_empty() {
-            self.current_index = (self.current_index + self.apps.len() - 1) % self.apps.len();
-        }
-    }
-
-    /// Toggle between single and split view
     pub fn toggle_view(&mut self) {
         self.view_mode = match self.view_mode {
-            AppViewMode::Single => AppViewMode::Split,
-            AppViewMode::Split => AppViewMode::Single,
+            ViewMode::Single => ViewMode::Split,
+            ViewMode::Split => ViewMode::Single,
         };
     }
 
-    /// Compose the current frame into a framebuffer and return its ID.
-    pub fn composite(&mut self) -> Option<&'static [u8]> {
-        let fb = allocate_buffer()?;
-        let canvas = Canvas::new(fb.buffer_mut(), 128, 64);
-        let mut composed = canvas;
+    pub fn next_window(&mut self) {
+        if !self.windows.is_empty() {
+            self.current_index = (self.current_index + 1) % self.windows.len();
+        }
+    }
 
+    pub fn prev_window(&mut self) {
+        if !self.windows.is_empty() {
+            self.current_index = (self.current_index + self.windows.len() - 1) % self.windows.len();
+        }
+    }
+
+    /// Composites the visible window(s) into a framebuffer and returns its slice.
+    pub async fn composite(&mut self) -> Option<&'static [u8]> {
+        let mut fb = allocate_buffer().await?;
+        let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
         composed.clear();
 
         match self.view_mode {
-            AppViewMode::Single => {
-                if let Some(slot) = self.apps.get(self.current_index) {
-                    if let Some(window) = &slot.window {
-                        composed.draw(window.canvas()).ok();
-                    }
+            ViewMode::Single => {
+                if let Some(window) = self.windows.get_mut(self.current_index) {
+                    composed.draw_from(window.canvas(), 0, 0);
                 }
             }
-            AppViewMode::Split => {
+            ViewMode::Split => {
                 let i1 = self.current_index;
-                let i2 = (self.current_index + 1) % self.apps.len();
+                let i2 = (self.current_index + 1) % self.windows.len();
 
-                if let Some(w1) = self.apps.get(i1).and_then(|a| a.window.as_ref()) {
-                    let mut top = w1.canvas().clipped(0, 0, 128, 32);
-                    composed.draw(&top).ok();
+                if let Some(w1) = self.windows.get_mut(i1) {
+                    composed.draw_from(w1.canvas(), 0, 0);
                 }
-                if let Some(w2) = self.apps.get(i2).and_then(|a| a.window.as_ref()) {
-                    let mut bot = w2.canvas().clipped(0, 32, 128, 32);
-                    composed.draw(&bot).ok();
+
+                if let Some(w2) = self.windows.get_mut(i2) {
+                    composed.draw_from(w2.canvas(), 0, 32);
                 }
             }
         }
 
-        self.composited_id = Some(fb.id());
-        Some(fb.buffer())
+        let id = fb.id();
+        self.composited_id = Some(id);
+        Some(get_buffer_slice(id))
     }
 
-    /// Release the last composited buffer after display
     pub fn release_last(&mut self) {
         if let Some(id) = self.composited_id.take() {
             release_buffer(id);

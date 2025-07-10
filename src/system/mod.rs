@@ -5,3 +5,4 @@ pub(crate) mod vendor;
 pub(crate) mod driver;
 pub(crate) mod resources;
 pub(crate) mod ui;
+mod apps;

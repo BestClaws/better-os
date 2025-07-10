@@ -20,9 +20,9 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
         // let temp = sensor.lock().await.get_temperature_celsius().await;
         // defmt::info!("Gyro Accelerometer Sensor: Temperature: {}C", temp);
 
-        let ypr = sensor.lock().await.pitch_roll_yaw().await;
-        let to_degrees = |rad: f32| rad * 180.0 / core::f32::consts::PI;
-        defmt::info!("pitch: {}, yaw: {}, roll: {}", ypr.0, ypr.1, ypr.2);
+        // let ypr = sensor.lock().await.pitch_roll_yaw().await;
+        // let to_degrees = |rad: f32| rad * 180.0 / core::f32::consts::PI;
+        // defmt::info!("pitch: {}, yaw: {}, roll: {}", ypr.0, ypr.1, ypr.2);
 
         //
         // let gv = sensor.lock().await.get_gravity_vector().await;

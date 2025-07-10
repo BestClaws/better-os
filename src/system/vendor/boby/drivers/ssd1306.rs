@@ -1,18 +1,12 @@
-// Imports
 use alloc::boxed::Box;
+use crate::system::hal::display::AsyncDisplay;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_time::{Duration, Instant};
-use esp_hal::Async;
 use esp_hal::i2c::master::I2c;
-use ssd1306::{I2CDisplayInterface, Ssd1306Async};
+use esp_hal::Async;
 use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
-use embedded_graphics::{image::Image, pixelcolor::BinaryColor, prelude::*};
-use esp_hal::sha::Digest;
-use tinybmp::Bmp;
-use crate::system::hal::display::AsyncDisplay;
-use crate::system::services::human_input::HumanInputEvent;
+use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 
 // Assets
 const FIRE_LEFT: &[u8] = include_bytes!("../../../../assets/fire_left.bmp");
@@ -94,8 +88,8 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn draw(&mut self, buffer: &[u8]) {
-        self.display.draw(buffer).await;
-        self.display.flush().await;
+        self.display.draw(buffer).await.expect("TODO: panic message");
+        self.display.flush().await.expect("TODO: panic message");
     }
 
 }

@@ -1,4 +1,4 @@
-use core::sync::atomic::{AtomicU8, Ordering};
+use portable_atomic::{AtomicU8, Ordering};
 
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,

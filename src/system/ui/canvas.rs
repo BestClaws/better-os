@@ -42,6 +42,32 @@ impl<'a> Canvas<'a> {
         self.height = height;
     }
 
+    /// Draw contents of another canvas into this canvas at offset.
+    pub fn draw_from(&mut self, source: &Canvas, x_off: u32, y_off: u32) {
+        let src_width = source.width.min(self.width.saturating_sub(x_off));
+        let src_height = source.height.min(self.height.saturating_sub(y_off));
+
+        for y in 0..src_height {
+            for x in 0..src_width {
+                let src_idx = x + (y / 8) * source.width;
+                let dst_idx = (x + x_off) + ((y + y_off) / 8) * self.width;
+
+                let bit = 1 << (y % 8);
+                let src_byte = source.buffer[(src_idx) as usize];
+
+                let pixel_on = src_byte & bit != 0;
+
+                if dst_idx < (self.width * (self.height / 8)) {
+                    if pixel_on {
+                        self.buffer[dst_idx as usize] |= 1 << ((y + y_off) % 8);
+                    } else {
+                        self.buffer[dst_idx as usize] &= !(1 << ((y + y_off) % 8));
+                    }
+                }
+            }
+        }
+    }
+
     /// Current width.
     pub fn width(&self) -> u32 {
         self.width
@@ -75,7 +101,6 @@ impl DrawTarget for Canvas<'_> {
             let x = x as usize;
             let y = y as usize;
 
-            // SSD1306 format: 1 byte = 8 vertical pixels
             let byte_index = x + (y / 8) * self.width as usize;
             let bit_index = y % 8;
 
