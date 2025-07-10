@@ -1,25 +1,36 @@
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use crate::system::services::human_input::HumanInputEvent;
 use crate::system::ui::canvas::Canvas;
-use crate::system::ui::framebuffer::{FrameBufferHandle};
+use crate::system::ui::framebuffer::FrameBufferHandle;
+use crate::system::ui::input_channels::InputChannelHandle;
+use crate::system::ui::input_channels::CHANNEL_CAPACITY;
 
-/// Strongly-typed handle to a window.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct WindowHandle {
     id: usize,
 }
 
-/// Represents a single UI window, backed by a framebuffer.
+/// Represents a UI window backed by a framebuffer and owning an input channel.
 pub struct Window {
     fb: FrameBufferHandle,
+    input_channel: InputChannelHandle,
     width: u32,
     height: u32,
-    id: usize, // App ID or Window ID — anything you use to uniquely identify this window
+    id: usize,
 }
 
 impl Window {
     /// Create a new Window.
-    pub fn new(fb: FrameBufferHandle, width: usize, height: usize, id: usize) -> Self {
+    pub fn new(
+        fb: FrameBufferHandle,
+        input_channel: InputChannelHandle,
+        width: usize,
+        height: usize,
+        id: usize,
+    ) -> Self {
         Self {
             fb,
+            input_channel,
             width: width as u32,
             height: height as u32,
             id,
@@ -50,4 +61,16 @@ impl Window {
     pub fn height(&self) -> u32 {
         self.height
     }
+
+    /// Return reference to the input channel sender.
+    pub fn input_sender(&self) -> &embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY> {
+        self.input_channel.sender()
+    }
+
+    /// Return reference to the input channel receiver.
+    pub fn input_receiver(&self) -> &embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY> {
+        self.input_channel.receiver()
+    }
 }
+
+// Possibly implement Drop if you want to release input channel on window drop
