@@ -1,5 +1,5 @@
 use core::fmt::Write;
-use embassy_time::Timer;
+use embassy_time::{Timer, Duration};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
@@ -17,6 +17,12 @@ pub async fn battery_task(mut context: AppContext<'static>) {
     let receiver = BATTERY_CHANNEL.receiver();
 
     loop {
+        // Only update if focused
+        if !context.is_focused().await {
+            Timer::after(Duration::from_millis(100)).await;
+            continue;
+        }
+
         let percent = receiver.receive().await;
 
         context.canvas.clear();
@@ -34,9 +40,9 @@ pub async fn battery_task(mut context: AppContext<'static>) {
             .draw(&mut context.canvas)
             .unwrap();
 
-        // ✅ Fixed: Canvas does not have `.submit()`, we submit via handle
-        context.handle.submit(&context.canvas).await;
+        // Just request redraw. No direct framebuffer or submit call.
+        context.request_redraw().await;
 
-        Timer::after_millis(100).await;
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
