@@ -1,4 +1,8 @@
+use alloc::boxed::Box;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_sync::semaphore::Semaphore;
+use embassy_time::Timer;
 use embedded_graphics::Drawable;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -13,27 +17,35 @@ use crate::{
 
 #[embassy_executor::task]
 pub async fn battery() {
-    // Wait for a free framebuffer
-    FB_SEMAPHORE.acquire(1).await.unwrap();
+    let receiver = BATTERY_CHANNEL.receiver();
 
-    if let Some(fb) = request_framebuffer() {
-        draw_ui(fb.buf);
+    loop {
+        let percent = receiver.receive().await;
 
-        FRAME_CHANNEL.sender().send(SubmitFrame {
-            id: fb.id,
-            app_id: 2, // unique per app
-        }).await;
+        FB_SEMAPHORE.acquire(1).await.unwrap();
 
+        if let Some(fb) = request_framebuffer() {
+            draw_ui(fb.buf, percent);
 
-        core::mem::forget(fb); // compositor owns & drops it
+            FRAME_CHANNEL
+                .sender()
+                .send(SubmitFrame {
+                    id: fb.id,
+                    app_id: 2,
+                })
+                .await;
+
+            core::mem::forget(fb); // compositor owns and drops it
+        }
+
+        Timer::after_millis(100).await;
     }
 }
 
+use core::fmt::Write;
 
-pub fn draw_ui(buf: &mut [u8; 1024]) {
-    // Clear buffer first
-    buf.fill(0);
 
+pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
     let mut fb = BitPackedFramebuffer {
         buf,
         width: 128,
@@ -46,18 +58,24 @@ pub fn draw_ui(buf: &mut [u8; 1024]) {
         .draw(&mut fb)
         .unwrap();
 
-    // Text
-    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    Text::new("better-os UI", Point::new(28, 28), style)
+    // Label
+    let mut text_buf = heapless::String::<32>::new();
+    let _ = write!(text_buf, "Battery: {}%", percent);
+
+    let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    Text::new(&text_buf, Point::new(20, 28), text_style)
         .draw(&mut fb)
         .unwrap();
 }
+
 
 use embedded_graphics::{
     prelude::*,
     draw_target::DrawTarget,
     geometry::{OriginDimensions},
 };
+use crate::system::hal::battery::AsyncBattery;
+use crate::system::services::battery::BATTERY_CHANNEL;
 
 pub struct BitPackedFramebuffer<'a> {
     pub buf: &'a mut [u8; 1024],
