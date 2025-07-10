@@ -71,6 +71,7 @@ async-trait = "0.1.88"
 
 tinybmp = { version = "0.6.0", features = [] }
 portable-atomic = "1.11.1"
+embedded-graphics-framebuf = "0.5.0"
 
 [profile.dev]
 # Rust debug is too slow.
