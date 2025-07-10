@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+
 use embassy_sync::semaphore::Semaphore;
 use embassy_time::Timer;
 use embedded_graphics::Drawable;
@@ -10,7 +9,6 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{Point, Primitive, Size};
 use embedded_graphics::primitives::{Circle, PrimitiveStyle, Rectangle};
 use embedded_graphics::text::Text;
-use embedded_graphics_framebuf::FrameBuf;
 use crate::{
     system::resources::framebuffer::{request_framebuffer, FB_SEMAPHORE, FRAME_CHANNEL, SubmitFrame},
 };
@@ -43,7 +41,8 @@ pub async fn battery() {
 }
 
 use core::fmt::Write;
-
+use crate::system::resources::framebuffer::BitPackedFramebuffer;
+use crate::system::services::battery::BATTERY_CHANNEL;
 
 pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
     let mut fb = BitPackedFramebuffer {
@@ -68,53 +67,3 @@ pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
         .unwrap();
 }
 
-
-use embedded_graphics::{
-    prelude::*,
-    draw_target::DrawTarget,
-    geometry::{OriginDimensions},
-};
-use crate::system::hal::battery::AsyncBattery;
-use crate::system::services::battery::BATTERY_CHANNEL;
-
-pub struct BitPackedFramebuffer<'a> {
-    pub buf: &'a mut [u8; 1024],
-    pub width: u32,
-    pub height: u32,
-}
-
-impl<'a> OriginDimensions for BitPackedFramebuffer<'a> {
-    fn size(&self) -> Size {
-        Size::new(self.width, self.height)
-    }
-}
-
-impl<'a> DrawTarget for BitPackedFramebuffer<'a> {
-    type Color = BinaryColor;
-    type Error = core::convert::Infallible;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        for Pixel(Point { x, y }, color) in pixels {
-            if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
-                continue;
-            }
-
-            let x = x as usize;
-            let y = y as usize;
-
-            // SSD1306 expects vertical bit layout: each byte = 8 vertical pixels
-            let byte_index = x + (y / 8) * self.width as usize;
-            let bit_index = y % 8;
-
-            match color {
-                BinaryColor::On => self.buf[byte_index] |= 1 << bit_index,
-                BinaryColor::Off => self.buf[byte_index] &= !(1 << bit_index),
-            }
-        }
-
-        Ok(())
-    }
-}

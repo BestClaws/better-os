@@ -13,7 +13,6 @@ use crate::{
     system::resources::framebuffer::{request_framebuffer, FB_SEMAPHORE, FRAME_CHANNEL, SubmitFrame},
 };
 use crate::system::services::ambient_sensor::AMBIENT_CHANNEL;
-use crate::tasks::battery::BitPackedFramebuffer;
 
 #[embassy_executor::task]
 pub async fn ambient() {
@@ -43,6 +42,7 @@ pub async fn ambient() {
 }
 
 use core::fmt::Write;
+use crate::system::resources::framebuffer::BitPackedFramebuffer;
 
 pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
     let mut fb = BitPackedFramebuffer {
