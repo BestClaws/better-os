@@ -70,6 +70,7 @@ log = "0.4.27"
 async-trait = "0.1.88"
 
 tinybmp = { version = "0.6.0", features = [] }
+portable-atomic = "1.11.1"
 
 [profile.dev]
 # Rust debug is too slow.

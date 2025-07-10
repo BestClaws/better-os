@@ -74,6 +74,7 @@ dependencies = [
  "mpu6050-dmp",
  "nb 1.1.0",
  "panic-rtt-target",
+ "portable-atomic",
  "rtt-target",
  "ssd1306",
  "static_cell",

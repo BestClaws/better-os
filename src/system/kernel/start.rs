@@ -41,8 +41,8 @@ pub(crate) fn start(spawner: Spawner) {
     info!("[{}s] spawned  compositor service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(compositor_service(device.display.unwrap())).unwrap();
 
-    info!("[{}s] spawned  gyro accelerometer service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
+    // info!("[{}s] spawned  gyro accelerometer service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
 
 
     info!("[{}s] spawned  task spawner service", Instant::now().as_millis() as f32 / 1000f32);

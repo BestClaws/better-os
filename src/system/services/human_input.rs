@@ -12,7 +12,7 @@ pub(crate) enum HumanInputEvent {
     OkHeld,
 }
 
-pub(crate) static INPUT_CHANNEL: Channel<CriticalSectionRawMutex, HumanInputEvent, 8> = Channel::new();
+pub(crate) static HUMAN_INPUT_CH: Channel<CriticalSectionRawMutex, HumanInputEvent, 8> = Channel::new();
 
 
 pub(crate) mod sub {
@@ -21,7 +21,7 @@ pub(crate) mod sub {
     use embassy_sync::mutex::Mutex;
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
-    use crate::system::services::human_input::{HumanInputEvent, INPUT_CHANNEL};
+    use crate::system::services::human_input::{HumanInputEvent, HUMAN_INPUT_CH};
 
     #[embassy_executor::task]
     pub(crate) async fn listen_encoder(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {
@@ -35,8 +35,8 @@ pub(crate) mod sub {
             };
 
             match state {
-                EncoderState::Ccw => INPUT_CHANNEL.send(HumanInputEvent::NavUp).await,
-                EncoderState::Cw => INPUT_CHANNEL.send(HumanInputEvent::NavDown).await,
+                EncoderState::Ccw => HUMAN_INPUT_CH.send(HumanInputEvent::NavUp).await,
+                EncoderState::Cw => HUMAN_INPUT_CH.send(HumanInputEvent::NavDown).await,
             };
         }
     }
@@ -50,9 +50,9 @@ pub(crate) mod sub {
             };
 
             match state {
-                ButtonState::Up => INPUT_CHANNEL.send(HumanInputEvent::OkReleased).await,
-                ButtonState::Down => INPUT_CHANNEL.send(HumanInputEvent::OkPressed).await,
-                ButtonState::Held => INPUT_CHANNEL.send(HumanInputEvent::OkHeld).await,
+                ButtonState::Up => HUMAN_INPUT_CH.send(HumanInputEvent::OkReleased).await,
+                ButtonState::Down => HUMAN_INPUT_CH.send(HumanInputEvent::OkPressed).await,
+                ButtonState::Held => HUMAN_INPUT_CH.send(HumanInputEvent::OkHeld).await,
             };
         }
     }
