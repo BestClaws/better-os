@@ -13,10 +13,15 @@ use crate::system::resources::framebuffer::{
 };
 use crate::system::services::human_input::{HumanInputEvent, HUMAN_INPUT_CH};
 
+// Constants
 const MAX_APPS: usize = 4;
 const WIDTH: usize = 128;
 const HEIGHT: usize = 64;
 const FRAME_SIZE: usize = WIDTH * HEIGHT / 8;
+
+// Animation parameters
+const ANIM_FRAME_DELAY_MS: u64 = 8; // delay per animation frame
+const ANIM_STEP: usize = 10;         // pixels moved per frame
 
 #[embassy_executor::task]
 pub async fn compositor_service(
@@ -78,7 +83,8 @@ pub async fn compositor_service(
                     let to_buf = unsafe { &FRAMEBUFFERS[to_id] };
 
                     let mut disp = display_hal.lock().await;
-                    for step in 0..=WIDTH {
+
+                    for step in (0..=WIDTH).step_by(ANIM_STEP) {
                         let mut frame = [0u8; FRAME_SIZE];
 
                         for y in 0..HEIGHT {
@@ -90,16 +96,21 @@ pub async fn compositor_service(
                                 let to_x = x as isize - (step as isize) + WIDTH as isize;
 
                                 let mut val = 0;
+
                                 if (0..WIDTH as isize).contains(&from_x) {
                                     let from_index = from_x as usize + (y / 8) * WIDTH;
-                                    if from_buf[from_index] & (1 << bit_index) != 0 {
+                                    if from_index < FRAME_SIZE
+                                        && from_buf[from_index] & (1 << bit_index) != 0
+                                    {
                                         val |= 1;
                                     }
                                 }
 
                                 if (0..WIDTH as isize).contains(&to_x) {
                                     let to_index = to_x as usize + (y / 8) * WIDTH;
-                                    if to_buf[to_index] & (1 << bit_index) != 0 {
+                                    if to_index < FRAME_SIZE
+                                        && to_buf[to_index] & (1 << bit_index) != 0
+                                    {
                                         val |= 1;
                                     }
                                 }
@@ -111,12 +122,13 @@ pub async fn compositor_service(
                         }
 
                         disp.draw(&frame).await;
-                        Timer::after_millis(8).await;
+                        Timer::after_millis(ANIM_FRAME_DELAY_MS).await;
                     }
                 }
             }
         }
 
+        // Refresh the current frame in case it updated
         if let Some(id) = last_frame_id[current_app] {
             let buf = unsafe { &FRAMEBUFFERS[id] };
             let mut disp = display_hal.lock().await;
