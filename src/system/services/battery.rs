@@ -1,12 +1,9 @@
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
-use crate::system::hal::button::ButtonState;
-use crate::system::services::human_input::{HumanInputEvent, INPUT_CHANNEL};
 
 #[embassy_executor::task]
 pub(crate) async fn battery_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>) {

@@ -4,9 +4,8 @@ use async_trait::async_trait;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use esp_hal::analog::adc::{Adc, AdcPin};
-use esp_hal::peripherals::{ADC1, GPIO1, GPIO3};
+use esp_hal::peripherals::{ADC1, GPIO1};
 use esp_hal::Async;
-use esp_hal::interrupt::map;
 
 // TODO: hard assuming we are using ADC1, bad. even for a driver.
 pub struct BatteryDriver {

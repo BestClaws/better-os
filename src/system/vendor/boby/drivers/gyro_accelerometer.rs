@@ -75,20 +75,6 @@ impl GyroAccelerometerDriver {
 
 #[async_trait(?Send)]
 impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
-    
-    async fn calibrate(&mut self) {
-
-
-
-
-
-
-
-
-    }
-
-
-
     async fn get_accelerometer_data(&mut self) -> (f32, f32, f32) {
         let sensor = self.get_sensor().await;
         // Read raw accelerometer data (uncalibrated)
@@ -96,15 +82,12 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         // Values will be imprecise until calibration is performed
         let accel_data = sensor.accel().await.unwrap().scaled(AccelFullScale::G8);
         (accel_data.x(), accel_data.y(), accel_data.z())
-
     }
 
     async fn get_gyroscope_data(&mut self) -> (f32, f32, f32) {
         let sensor = self.get_sensor().await;
         let gyro_data = sensor.gyro().await.unwrap().scaled(GyroFullScale::Deg1000);
         (gyro_data.x(), gyro_data.y(), gyro_data.z())
-
-
     }
 
     async fn get_temperature_celsius(&mut self) -> u8 {

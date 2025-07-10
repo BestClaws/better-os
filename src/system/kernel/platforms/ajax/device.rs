@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use defmt::info;
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 
@@ -14,8 +13,6 @@ use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use esp_hal::peripherals::ADC1;
-use mpu6050_dmp::calibration::CalibrationParameters;
-use mpu6050_dmp::sensor_async::Mpu6050;
 use static_cell::StaticCell;
 use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
@@ -94,8 +91,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // let d_radio = RadioDriver::new(peripherals.RNG, peripherals.TIMG0, peripherals.RADIO_CLK);
 
     let mut adc_config = AdcConfig::new();
-    let mut battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
-    let mut ambient_sensor_adc_pin = adc_config.enable_pin(peripherals.GPIO3, Attenuation::_11dB);
+    let battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
+    let ambient_sensor_adc_pin = adc_config.enable_pin(peripherals.GPIO3, Attenuation::_11dB);
     let adc1 = Adc::new(peripherals.ADC1, adc_config).into_async();
     let adc: &'static mut Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>> = ADC_SHARED.init(Mutex::new(adc1));
 
