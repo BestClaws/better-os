@@ -31,7 +31,7 @@ pub async fn battery() {
                 .sender()
                 .send(SubmitFrame {
                     id: fb.id,
-                    app_id: 3,
+                    app_id: 2,
                 })
                 .await;
 

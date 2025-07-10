@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+
 use embassy_sync::semaphore::Semaphore;
 use embassy_time::Timer;
 use embedded_graphics::Drawable;
@@ -10,7 +9,6 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{Point, Primitive, Size};
 use embedded_graphics::primitives::{Circle, PrimitiveStyle, Rectangle};
 use embedded_graphics::text::Text;
-use embedded_graphics_framebuf::FrameBuf;
 use crate::{
     system::resources::framebuffer::{request_framebuffer, FB_SEMAPHORE, FRAME_CHANNEL, SubmitFrame},
 };
@@ -61,7 +59,7 @@ pub fn draw_ui(buf: &mut [u8; 1024], percent: u8) {
 
     // Text
     let mut text_buf = heapless::String::<32>::new();
-    let _ = write!(text_buf, "Ambient: {}%", percent);
+    let _ = write!(text_buf, "Ambient Light: {}%", percent);
 
     let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
     Text::new(&text_buf, Point::new(16, 28), text_style)

@@ -5,7 +5,7 @@ use portable_atomic::{AtomicU32, Ordering};
 pub const WIDTH: usize = 128;
 pub const HEIGHT: usize = 64;
 pub const FRAME_SIZE: usize = WIDTH * HEIGHT / 8;
-pub const NUM_BUFFERS: usize = 3;
+pub const NUM_BUFFERS: usize = 2;
 
 pub static mut FRAMEBUFFERS: [[u8; FRAME_SIZE]; NUM_BUFFERS] = [[0; FRAME_SIZE]; NUM_BUFFERS];
 pub static BUFFER_USED: AtomicU32 = AtomicU32::new(0);
