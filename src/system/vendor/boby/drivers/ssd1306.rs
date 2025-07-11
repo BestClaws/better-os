@@ -37,8 +37,8 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn draw(&mut self, buffer: &[u8]) {
-        self.display.draw(buffer).await.expect("TODO: panic message");
-        self.display.flush().await.expect("TODO: panic message");
+        self.display.draw(buffer).await.unwrap();
+        self.display.flush().await.unwrap();
     }
 
 }

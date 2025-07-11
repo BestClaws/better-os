@@ -11,9 +11,9 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::i2c::master::I2c;
 use esp_hal::Async;
 use esp_hal::riscv::asm::delay;
-use mpu6050_dmp::accel::AccelFullScale;
+use mpu6050_dmp::accel::{Accel, AccelFullScale};
 use mpu6050_dmp::calibration::{CalibrationParameters, ReferenceGravity};
-use mpu6050_dmp::gyro::GyroFullScale;
+use mpu6050_dmp::gyro::{Gyro, GyroFullScale};
 use mpu6050_dmp::quaternion::Quaternion;
 use mpu6050_dmp::sensor_async::Mpu6050;
 use mpu6050_dmp::yaw_pitch_roll::YawPitchRoll;
@@ -55,11 +55,7 @@ impl GyroAccelerometerDriver {
 
         embassy_time::Timer::after_millis(2000).await;
 
-        let calibration = CalibrationParameters::new(
-            AccelFullScale::G8,
-            GyroFullScale::Deg1000,
-            ReferenceGravity::ZP,
-        );
+
 
         sensor.set_sample_rate_divider(99).await.unwrap(); // 100Hz
         sensor.enable_fifo().await.unwrap();
@@ -68,23 +64,37 @@ impl GyroAccelerometerDriver {
             let result = sensor.initialize_dmp(&mut embassy_time::Delay).await;
             if let Ok(()) = result {
                 info!("{}: DMP initialized successfully", LGC);
-                break; // Calibration successful
+                break;
             } else {
+                info!("{}: DMP initialization failed retrying", LGC);
                 embassy_time::Timer::after_millis(100).await;
+
                 continue
             }
         }
 
-        loop {
-            let result = sensor.calibrate(&mut embassy_time::Delay, &calibration).await;
-            if let Ok((a, g)) = result {
-                info!("Calibration successful: Accel: {:?}, Gyro: {:?}", a, g);
-                break; // Calibration successful
-            } else {
-                embassy_time::Timer::after_millis(100).await;
-                continue
-            }
-        }
+        // let calibration = CalibrationParameters::new(
+        //     AccelFullScale::G8,
+        //     GyroFullScale::Deg1000,
+        //     ReferenceGravity::ZP,
+        // );
+        //
+        // loop {
+        //     let result = sensor.calibrate(&mut embassy_time::Delay, &calibration).await;
+        //     if let Ok((a, g)) = result {
+        //         sensor.set_accel_calibration(&Accel::new( 1421,  739,  870));
+        //         sensor.set_gyro_calibration(&Gyro::new(  26, -36, 7));
+        //         info!("Calibration successful: Accel: {:?}, Gyro: {:?}", a, g);
+        //         break; // Calibration successful
+        //     } else {
+        //         info!("{}: Calibration failed retrying", LGC);
+        //         embassy_time::Timer::after_millis(100).await;
+        //         continue
+        //     }
+        // }
+
+        sensor.set_accel_calibration(&Accel::new( 1421,  739,  870));
+        sensor.set_gyro_calibration(&Gyro::new(  26, -36, 7));
 
 
         // Re-insert into self.sensor and get reference
