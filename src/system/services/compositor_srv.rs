@@ -4,7 +4,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, Instant};
 
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::services::human_input::{HumanInputEvent, HUMAN_INPUT_CH};
+use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 use crate::system::ui::compositor::{SlideDir, UICompositor};
 
 #[embassy_executor::task]
@@ -12,6 +12,11 @@ pub async fn compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
 ) {
+    {
+        display.lock().await.init().await;
+    }
+
+
     {
         let mut comp = compositor.lock().await;
         comp.attach_display(display);

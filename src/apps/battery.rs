@@ -9,7 +9,7 @@ use embedded_graphics::{
 };
 
 use crate::system::app::app_context::AppContext;
-use crate::system::services::battery::BATTERY_CHANNEL;
+use crate::system::services::battery_srv::BATTERY_CHANNEL;
 
 /// Battery app: draws battery percentage onto its canvas.
 #[embassy_executor::task]

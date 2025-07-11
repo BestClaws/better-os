@@ -21,7 +21,7 @@ pub(crate) mod sub {
     use embassy_sync::mutex::Mutex;
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
-    use crate::system::services::human_input::{HumanInputEvent, HUMAN_INPUT_CH};
+    use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 
     #[embassy_executor::task]
     pub(crate) async fn listen_encoder(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {

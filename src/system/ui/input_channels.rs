@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 use portable_atomic::{AtomicU8, Ordering};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
@@ -6,7 +9,7 @@ use embassy_sync::{
     semaphore::Semaphore,
 };
 use static_cell::StaticCell;
-use crate::system::services::human_input::HumanInputEvent;
+use crate::system::services::human_input_srv::HumanInputEvent;
 
 pub const MAX_CHANNELS: usize = 8;
 pub const CHANNEL_CAPACITY: usize = 16;

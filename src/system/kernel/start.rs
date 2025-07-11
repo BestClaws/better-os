@@ -5,16 +5,16 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::Instant;
 
 use crate::system::kernel::platforms;
-use crate::system::services::ambient_sensor::ambient_sensor_service;
-use crate::system::services::battery::battery_service;
-use crate::system::services::compositor_service::compositor_service;
-use crate::system::services::app_spawner_service::app_spawner_service;
-use crate::system::services::human_input;
+use crate::system::services::ambient_srv::ambient_sensor_service;
+use crate::system::services::battery_srv::battery_service;
+use crate::system::services::compositor_srv::compositor_service;
+use crate::system::services::app_spawner_srv::app_spawner_service;
+use crate::system::services::human_input_srv;
 use crate::system::ui::compositor::UICompositor;
 
 use panic_rtt_target as _;
 use static_cell::StaticCell;
-use crate::system::services::gyro_accelerometer::gyro_accelerometer_service;
+use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
 use crate::system::ui::input_channels::init_channels;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
@@ -32,8 +32,8 @@ pub(crate) fn start(spawner: Spawner) {
 
     // Spawn input services
     info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(human_input::sub::listen_encoder(device.encoder.unwrap())).unwrap();
-    spawner.spawn(human_input::sub::listen_button(device.button.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
 
     // Spawn sensors
     info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);

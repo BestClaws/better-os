@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 use alloc::vec::Vec;
 use embassy_time::{Timer, Duration};
 use embedded_graphics::{
@@ -7,7 +10,7 @@ use embedded_graphics::{
 };
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
-use crate::system::services::battery::BATTERY_CHANNEL;
+use crate::system::services::battery_srv::BATTERY_CHANNEL;
 
 #[derive(Copy, Clone)]
 pub struct Vec3(pub f32, pub f32, pub f32);

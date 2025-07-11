@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::framebuffer::{allocate_buffer, get_buffer_slice, release_buffer};
@@ -251,7 +254,7 @@ impl UICompositor {
     pub fn poll_input(
         &mut self,
         handle: WindowHandle,
-    ) -> Option<crate::system::services::human_input::HumanInputEvent> {
+    ) -> Option<crate::system::services::human_input_srv::HumanInputEvent> {
         self.window_for_handle_mut(handle)
             .and_then(|w| w.input_receiver().try_receive().ok())
     }

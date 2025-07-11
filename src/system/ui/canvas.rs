@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::{OriginDimensions, Size},

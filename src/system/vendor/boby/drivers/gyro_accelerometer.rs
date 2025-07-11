@@ -1,10 +1,16 @@
+#![allow(unused)]
+
+
+
 use micromath::F32Ext;
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use defmt::{info, unwrap};
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::i2c::master::I2c;
 use esp_hal::Async;
+use esp_hal::riscv::asm::delay;
 use mpu6050_dmp::accel::AccelFullScale;
 use mpu6050_dmp::calibration::{CalibrationParameters, ReferenceGravity};
 use mpu6050_dmp::gyro::GyroFullScale;
@@ -40,26 +46,46 @@ impl GyroAccelerometerDriver {
 
         // Case 2: Take I2C and init
         let InitState::I2c(i2c) = self.sensor.take().unwrap() else {
-            panic!("Sensor already initialized incorrectly");
+            panic!("Sensor already initialized but incorrectly");
         };
 
         let mut sensor = Mpu6050::new(i2c, mpu6050_dmp::address::Address::default())
             .await
             .unwrap();
 
-        let mut delay = embassy_time::Delay;
-        sensor.initialize_dmp(&mut delay).await.unwrap();
+        embassy_time::Timer::after_millis(2000).await;
 
-        let mut calibration = CalibrationParameters::new(
+        let calibration = CalibrationParameters::new(
             AccelFullScale::G8,
             GyroFullScale::Deg1000,
             ReferenceGravity::ZP,
         );
 
-        let _ = sensor.calibrate(&mut delay, &mut calibration).await.unwrap();
-
         sensor.set_sample_rate_divider(99).await.unwrap(); // 100Hz
         sensor.enable_fifo().await.unwrap();
+
+        loop {
+            let result = sensor.initialize_dmp(&mut embassy_time::Delay).await;
+            if let Ok(()) = result {
+                info!("{}: DMP initialized successfully", LGC);
+                break; // Calibration successful
+            } else {
+                embassy_time::Timer::after_millis(100).await;
+                continue
+            }
+        }
+
+        loop {
+            let result = sensor.calibrate(&mut embassy_time::Delay, &calibration).await;
+            if let Ok((a, g)) = result {
+                info!("Calibration successful: Accel: {:?}, Gyro: {:?}", a, g);
+                break; // Calibration successful
+            } else {
+                embassy_time::Timer::after_millis(100).await;
+                continue
+            }
+        }
+
 
         // Re-insert into self.sensor and get reference
         self.sensor = Some(InitState::GyroAccelerometer(sensor));
@@ -80,8 +106,17 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         // Read raw accelerometer data (uncalibrated)
         // The accelerometer measures linear acceleration in three axes (X, Y, Z)
         // Values will be imprecise until calibration is performed
-        let accel_data = sensor.accel().await.unwrap().scaled(AccelFullScale::G8);
-        (accel_data.x(), accel_data.y(), accel_data.z())
+        loop {
+            let result = sensor.accel().await;
+            if let Ok(accel_data) = result {
+                // Scale the raw data to Gs (gravitational units)
+                let accel_data = accel_data.scaled(AccelFullScale::G8);
+                return (accel_data.x(), accel_data.y(), accel_data.z());
+            } else {
+                continue;
+            }
+
+        }
     }
 
     async fn get_gyroscope_data(&mut self) -> (f32, f32, f32) {

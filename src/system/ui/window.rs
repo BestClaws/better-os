@@ -1,5 +1,7 @@
+#![allow(unused)]
+
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use crate::system::services::human_input::HumanInputEvent;
+use crate::system::services::human_input_srv::HumanInputEvent;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::framebuffer::FrameBufferHandle;
 use crate::system::ui::input_channels::InputChannelHandle;

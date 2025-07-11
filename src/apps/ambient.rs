@@ -9,7 +9,7 @@ use embedded_graphics::{
 };
 
 use crate::system::app::app_context::AppContext;
-use crate::system::services::ambient_sensor::AMBIENT_CHANNEL;
+use crate::system::services::ambient_srv::AMBIENT_CHANNEL;
 
 #[embassy_executor::task]
 pub async fn ambience_app(mut context: AppContext<'static>) {
