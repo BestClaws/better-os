@@ -139,40 +139,44 @@ impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
         self.get_sensor().await.temperature().await.unwrap().celsius() as u8
     }
 
-    async fn pitch_roll_yaw(&mut self) -> (i16, i16, i16) {
+    async fn get_roatation_quat(&mut self) -> (f32, f32, f32, f32) {
         let sensor = self.get_sensor().await;
         // Buffer for FIFO data (DMP packets are 28 bytes)
         let mut buffer = [0u8; 28];
-        loop {
-            let fifo_count = sensor.get_fifo_count().await.unwrap();
 
-            if fifo_count >= 28 {
-                // Read a complete DMP packet
-                let data = sensor.read_fifo(&mut buffer).await.unwrap();
-                // First 16 bytes contain quaternion data
-                // The quaternion represents the sensor's orientation in 3D space:
-                // - w: cos(angle/2) - indicates amount of rotation
-                // - x,y,z: axis * sin(angle/2) - indicates rotation axis
-                let q = Quaternion::from_bytes(&data[..16]).unwrap().normalize();
-                let ypr = YawPitchRoll::from(q);
 
-                // Convert radians to degrees for more intuitive reading
-                let yaw_deg = ypr.yaw * 180.0 / core::f32::consts::PI;
-                let pitch_deg = ypr.pitch * 180.0 / core::f32::consts::PI;
-                let roll_deg = ypr.roll * 180.0 / core::f32::consts::PI;
 
-                // Round and clamp to nearest integer
-                let yaw_rounded = yaw_deg.round() as i16;
-                let pitch_rounded = pitch_deg.round() as i16;
-                let roll_rounded = roll_deg.round() as i16;
+            loop {
 
-                // // Format with sign, pad with zeros to always be 3 digits
-                // let formatted = format!("({yaw_rounded:+04}, {pitch_rounded:+04}, {roll_rounded:+04})");
-                // info!("{}", formatted.as_str());
-                return (pitch_rounded, roll_rounded, yaw_rounded)
+                let Ok(fifo_count) = sensor.get_fifo_count().await else {
+                    embassy_time::Timer::after_millis(1).await;
+                    continue;
+                };
+
+                if fifo_count >= 28 {
+                    // Read a complete DMP packet
+                    let res = sensor.read_fifo(&mut buffer).await;
+                    if let Ok(data) = res {
+                        // First 16 bytes contain quaternion data
+                        // The quaternion represents the sensor's orientation in 3D space:
+                        // - w: cos(angle/2) - indicates amount of rotation
+                        // - x,y,z: axis * sin(angle/2) - indicates rotation axis
+                        let q = Quaternion::from_bytes(&data[..16]).unwrap().normalize();
+                        return (q.w, q.x, q.y, q.z);
+                    } else {
+                        embassy_time::Timer::after_millis(1).await;
+                        continue;
+                    }
+
+                } else {
+                    embassy_time::Timer::after_millis(1).await;
+                    continue
+                }
+
             }
 
-        }
+
+
 
     }
 }

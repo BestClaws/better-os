@@ -1,0 +1,66 @@
+use defmt::Format;
+use micromath::F32Ext;
+
+#[derive(Copy, Clone, Format)]
+pub struct Vec3(pub f32, pub f32, pub f32);
+
+impl Vec3 {
+    pub fn add(self, rhs: Vec3) -> Vec3 {
+        Vec3(self.0 + rhs.0, self.1 + rhs.1, self.2 + rhs.2)
+    }
+
+    pub fn sub(self, rhs: Vec3) -> Vec3 {
+        Vec3(self.0 - rhs.0, self.1 - rhs.1, self.2 - rhs.2)
+    }
+
+    pub fn dot(self, rhs: Vec3) -> f32 {
+        self.0 * rhs.0 + self.1 * rhs.1 + self.2 * rhs.2
+    }
+
+    pub fn cross(self, rhs: Vec3) -> Vec3 {
+        Vec3(
+            self.1 * rhs.2 - self.2 * rhs.1,
+            self.2 * rhs.0 - self.0 * rhs.2,
+            self.0 * rhs.1 - self.1 * rhs.0,
+        )
+    }
+
+    pub fn scale(self, s: f32) -> Vec3 {
+        Vec3(self.0 * s, self.1 * s, self.2 * s)
+    }
+
+    pub fn normalize(self) -> Vec3 {
+        let mag = (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt();
+        if mag > 0.0 {
+            self.scale(1.0 / mag)
+        } else {
+            self
+        }
+    }
+}
+
+
+/// A quaternion representing rotation
+#[derive(Copy, Clone)]
+pub struct Quaternion {
+    pub w: f32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+
+impl Quaternion {
+    /// Rotates a vector by this quaternion
+    pub fn rotate_vector(self, v: Vec3) -> Vec3 {
+        let u = Vec3(self.x, self.y, self.z);
+        let s = self.w;
+
+        let uv = u.cross(v);
+        let uuv = u.cross(uv);
+
+        v.add(uv.scale(2.0 * s)).add(uuv.scale(2.0))
+    }
+
+}
+

@@ -2,6 +2,7 @@
 
 
 use alloc::vec::Vec;
+use defmt::info;
 use embassy_time::{Timer, Duration};
 use embedded_graphics::{
     pixelcolor::BinaryColor,
@@ -11,44 +12,8 @@ use embedded_graphics::{
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::battery_srv::BATTERY_CHANNEL;
-
-#[derive(Copy, Clone)]
-pub struct Vec3(pub f32, pub f32, pub f32);
-
-impl Vec3 {
-    pub fn add(self, rhs: Vec3) -> Vec3 {
-        Vec3(self.0 + rhs.0, self.1 + rhs.1, self.2 + rhs.2)
-    }
-
-    pub fn sub(self, rhs: Vec3) -> Vec3 {
-        Vec3(self.0 - rhs.0, self.1 - rhs.1, self.2 - rhs.2)
-    }
-
-    pub fn dot(self, rhs: Vec3) -> f32 {
-        self.0 * rhs.0 + self.1 * rhs.1 + self.2 * rhs.2
-    }
-
-    pub fn cross(self, rhs: Vec3) -> Vec3 {
-        Vec3(
-            self.1 * rhs.2 - self.2 * rhs.1,
-            self.2 * rhs.0 - self.0 * rhs.2,
-            self.0 * rhs.1 - self.1 * rhs.0,
-        )
-    }
-
-    pub fn scale(self, s: f32) -> Vec3 {
-        Vec3(self.0 * s, self.1 * s, self.2 * s)
-    }
-
-    pub fn normalize(self) -> Vec3 {
-        let mag = (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt();
-        if mag > 0.0 {
-            self.scale(1.0 / mag)
-        } else {
-            self
-        }
-    }
-}
+use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
+use crate::util::math::primitives::Vec3;
 
 pub fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<(i32, i32)> {
     if v.2 <= 0.1 {
@@ -181,7 +146,7 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
 
 #[embassy_executor::task]
 pub async fn slab_app(mut context: AppContext<'static>) {
-    let receiver = BATTERY_CHANNEL.receiver();
+    let receiver = ORIENTATION_CHANNEL.receiver();
 
 
 
@@ -202,6 +167,11 @@ pub async fn slab_app(mut context: AppContext<'static>) {
         let slab_height = 0.5;
         let slab_length = 2.0;
 
+
+        let v = receiver.receive().await;
+        
+        info!("received v");
+
         draw_arrow(
             &mut context.canvas,
             Vec3(0.0, 0.0, 8.0),
@@ -209,7 +179,7 @@ pub async fn slab_app(mut context: AppContext<'static>) {
             45.0,
             w,
             h,
-            Vec3(1., 0., 0.),
+            v,
             slab_width,
             slab_height,
             slab_length,
