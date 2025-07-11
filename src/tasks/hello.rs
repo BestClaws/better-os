@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::fmt::Write;
 use defmt::info;
 use embassy_time::{Timer, Duration};
@@ -5,7 +6,7 @@ use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{Line, PrimitiveStyle},
+    primitives::{Triangle, Line, PrimitiveStyle},
     text::Text,
 };
 use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
@@ -113,34 +114,52 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
     angle_x: f32,
     angle_y: f32,
     angle_z: f32,
-    rod_length: f32,
-    l_length: f32,
+    slab_width: f32,
+    slab_height: f32,
+    slab_length: f32,
 ) {
-    // Define vertices: rod + two L-shapes
-    let half_rod_length = rod_length / 2.0;
-    let rotation_center_z = -rod_length / 4.0; // Three-fourths from back to front
+    // Define vertices: cuboid (slab)
+    let half_width = slab_width / 2.0;
+    let half_height = slab_height / 2.0;
+    let half_length = slab_length / 2.0;
+    let rotation_center_z = 0.0; // Center of cuboid
 
-    let vertices: [Vec3; 5] = [
-        // Rod: back to front
-        Vec3(0.0, 0.0, -half_rod_length - rotation_center_z), // 0 (rod back)
-        Vec3(0.0, 0.0,  half_rod_length - rotation_center_z), // 1 (rod front, intersection)
-        // First L (X-Z plane): extends in X
-        Vec3(l_length, 0.0, half_rod_length - rotation_center_z), // 2 (end of first L's X leg)
-        // Second L (Y-Z plane): extends in Y
-        Vec3(0.0, l_length, half_rod_length - rotation_center_z), // 3 (end of second L's Y leg)
-        Vec3(0.0, -l_length, half_rod_length - rotation_center_z), // 4 (end of second L's -Y leg)
+    let vertices: [Vec3; 8] = [
+        Vec3(-half_width, -half_height, -half_length - rotation_center_z), // 0 (back bottom left)
+        Vec3(half_width, -half_height, -half_length - rotation_center_z),  // 1 (back bottom right)
+        Vec3(half_width, half_height, -half_length - rotation_center_z),   // 2 (back top right)
+        Vec3(-half_width, half_height, -half_length - rotation_center_z),  // 3 (back top left)
+        Vec3(-half_width, -half_height, half_length - rotation_center_z),  // 4 (front bottom left)
+        Vec3(half_width, -half_height, half_length - rotation_center_z),   // 5 (front bottom right)
+        Vec3(half_width, half_height, half_length - rotation_center_z),    // 6 (front top right)
+        Vec3(-half_width, half_height, half_length - rotation_center_z),   // 7 (front top left)
     ];
 
-    // Define edges: rod + two Ls
-    let edges: [(usize, usize); 5] = [
-        (0, 1), // Rod
-        (1, 2), // First L: X leg
-        (2, 1), // First L: Z leg (back to intersection)
-        (1, 3), // Second L: +Y leg
-        (1, 4), // Second L: -Y leg
+    // Define faces for cuboid (6 rectangles as 12 triangles)
+    let faces: [(&[usize], &str); 12] = [
+        (&[0, 1, 2], "cuboid_back1"),    // Back face (triangle 1)
+        (&[2, 3, 0], "cuboid_back2"),    // Back face (triangle 2)
+        (&[4, 5, 6], "cuboid_front1"),   // Front face (triangle 1)
+        (&[6, 7, 4], "cuboid_front2"),   // Front face (triangle 2)
+        (&[0, 1, 5], "cuboid_bottom1"),  // Bottom face (triangle 1)
+        (&[5, 4, 0], "cuboid_bottom2"),  // Bottom face (triangle 2)
+        (&[2, 3, 7], "cuboid_top1"),     // Top face (triangle 1)
+        (&[7, 6, 2], "cuboid_top2"),     // Top face (triangle 2)
+        (&[0, 3, 7], "cuboid_left1"),    // Left face (triangle 1)
+        (&[7, 4, 0], "cuboid_left2"),    // Left face (triangle 2)
+        (&[1, 2, 6], "cuboid_right1"),   // Right face (triangle 1)
+        (&[6, 5, 1], "cuboid_right2"),   // Right face (triangle 2)
     ];
 
-    let mut projected: [Option<Point>; 5] = [None; 5];
+    // Define edges for cuboid (12 edges)
+    let edges: [(usize, usize); 12] = [
+        (0, 1), (1, 2), (2, 3), (3, 0), // Back face
+        (4, 5), (5, 6), (6, 7), (7, 4), // Front face
+        (0, 4), (1, 5), (2, 6), (3, 7), // Connecting edges
+    ];
+
+    let mut projected: [Option<Point>; 8] = [None; 8];
+    let mut world_vertices: [Vec3; 8] = [Vec3(0.0, 0.0, 0.0); 8];
 
     // Transform and project vertices
     for (i, &v) in vertices.iter().enumerate() {
@@ -151,15 +170,42 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
             origin.1 + v.1 * size,
             origin.2 + v.2 * size,
         );
+        world_vertices[i] = world;
         projected[i] = project(world, fov_deg, width, height)
             .map(|(x, y)| Point::new(x, y));
     }
 
-    // Draw edges
+    // Sort faces by average Z-depth (back to front)
+    let mut sorted_faces: Vec<(&[usize], &str, f32)> = faces
+        .iter()
+        .map(|(indices, name)| {
+            let avg_z = indices
+                .iter()
+                .map(|&i| world_vertices[i].2)
+                .sum::<f32>()
+                / indices.len() as f32;
+            (*indices, *name, avg_z)
+        })
+        .collect();
+
+    sorted_faces.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(core::cmp::Ordering::Equal));
+
+    // Draw filled faces
+    for (indices, _, _) in sorted_faces {
+        if let (Some(p0), Some(p1), Some(p2)) =
+            (projected[indices[0]], projected[indices[1]], projected[indices[2]])
+        {
+            let _ = Triangle::new(p0, p1, p2)
+                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                .draw(display);
+        }
+    }
+
+    // Draw edges with BinaryColor::Off
     for &(i1, i2) in edges.iter() {
         if let (Some(p1), Some(p2)) = (projected[i1], projected[i2]) {
             let _ = Line::new(p1, p2)
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 1))
                 .draw(display);
         }
     }
@@ -176,8 +222,8 @@ pub async fn hello_app(mut context: AppContext<'static>) {
     loop {
         // Increment angles for smooth rotation
         angle_x += 0.03;
-        angle_y += 0.04;
-        angle_z += 0.02;
+        angle_y += 0.03;
+        angle_z += 0.03;
 
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
@@ -193,12 +239,13 @@ pub async fn hello_app(mut context: AppContext<'static>) {
         let direction = Vec3(0.0, 0.0, 1.0).normalize();
 
         // Configurable parameters
-        let rod_length = 2.0;
-        let l_length = 0.5;
+        let slab_width = 1.0;
+        let slab_height = 0.5;
+        let slab_length = 2.0;
 
         draw_arrow(
             &mut context.canvas,
-            Vec3(0.0, 0.0, 5.0), // Z distance for visibility
+            Vec3(0.0, 0.0, 8.0), // Z distance for visibility
             2.0,                 // Size for large arrow
             45.0,                // Balanced FOV to reduce warping
             w,
@@ -207,12 +254,13 @@ pub async fn hello_app(mut context: AppContext<'static>) {
             angle_x,
             angle_y,
             angle_z,
-            rod_length,
-            l_length,
+            slab_width,
+            slab_height,
+            slab_length,
         );
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(16)).await;
+        Timer::after(Duration::from_millis(1)).await;
         info!("Hello app tick");
     }
 }
