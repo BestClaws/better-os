@@ -60,11 +60,9 @@ pub fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<(i32, i
     let aspect = width as f32 / height as f32;
     let f = 1.0 / (fov_rad / 2.0).tan(); // Focal length for perspective
 
-    // Normalized projection to reduce warping
     let x_proj = (v.0 * f) / v.2;
     let y_proj = (v.1 * f) / (v.2 * aspect);
 
-    // Center on screen
     Some((
         ((x_proj + 1.0) * (width as f32 / 2.0)) as i32,
         ((1.0 - y_proj) * (height as f32 / 2.0)) as i32,
@@ -97,7 +95,6 @@ pub fn orient_to_direction(v: Vec3, dir: Vec3) -> Vec3 {
     let right = dir.cross(up).normalize();
     let new_up = right.cross(dir).normalize();
 
-    // Transform vertex using the new basis
     Vec3(
         v.0 * right.0 + v.1 * new_up.0 + v.2 * dir.0,
         v.0 * right.1 + v.1 * new_up.1 + v.2 * dir.1,
@@ -105,31 +102,33 @@ pub fn orient_to_direction(v: Vec3, dir: Vec3) -> Vec3 {
     )
 }
 
-// Define arrow vertices: cuboid body + extruded rectangle, centered at (0,0,0)
+// Define arrow vertices: cuboid body + extruded triangular prism
+// Centered at z=-0.5 (three-fourths of cuboid length from z=-2.0 to z=0.0)
 pub const ARROW_VERTICES: [Vec3; 12] = [
-    // Cuboid body (rectangular prism, centered around z=0)
-    Vec3(-0.5, -0.5, -1.5), // 0
+    // Cuboid body (z=-2.0 to z=0.0, centered at z=-0.5)
+    Vec3(-0.5, -0.5, -1.5), // 0 (back face)
     Vec3( 0.5, -0.5, -1.5), // 1
     Vec3( 0.5,  0.5, -1.5), // 2
     Vec3(-0.5,  0.5, -1.5), // 3
-    Vec3(-0.5, -0.5,  0.5), // 4
+    Vec3(-0.5, -0.5,  0.5), // 4 (front face, connects to arrowhead)
     Vec3( 0.5, -0.5,  0.5), // 5
     Vec3( 0.5,  0.5,  0.5), // 6
     Vec3(-0.5,  0.5,  0.5), // 7
-    // Arrowhead (extruded rectangle at z=0.5)
-    Vec3(-1.2, -0.7,  0.5), // 8
-    Vec3( 1.2, -0.7,  0.5), // 9
-    Vec3( 0.7,  0.7,  0.5), // 10
-    Vec3(-0.7,  0.7,  0.5), // 11
+    // Triangular prism arrowhead (base at z=0.5, tip at z=1.5)
+    Vec3(-1.2,  0.0,  0.5), // 8 (base triangle, wider for large face)
+    Vec3( 1.2,  0.0,  0.5), // 9
+    Vec3( 0.0,  0.8,  0.5), // 10 (base top)
+    Vec3( 0.0,  0.0,  1.5), // 11 (tip)
 ];
 
-pub const ARROW_EDGES: [(usize, usize); 16] = [
+pub const ARROW_EDGES: [(usize, usize); 18] = [
     // Cuboid body edges
     (0, 1), (1, 2), (2, 3), (3, 0),
     (4, 5), (5, 6), (6, 7), (7, 4),
     (0, 4), (1, 5), (2, 6), (3, 7),
-    // Arrowhead edges
-    (8, 9), (9, 10), (10, 11), (11, 8),
+    // Triangular prism arrowhead edges
+    (8, 9), (9, 10), (10, 8), // Base triangle
+    (8, 11), (9, 11), (10, 11), // Edges to tip
 ];
 
 pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
@@ -147,7 +146,7 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
     let mut projected: [Option<Point>; 12] = [None; 12];
 
     for (i, &v) in ARROW_VERTICES.iter().enumerate() {
-        // Apply rotation first, then orient to direction
+        // Apply rotation around center (z=-0.5), then orient to direction
         let v = rotate_xyz(v, angle_x, angle_y, angle_z);
         let v = orient_to_direction(v, direction);
         let world = Vec3(
@@ -199,7 +198,7 @@ pub async fn hello_app(mut context: AppContext<'static>) {
         draw_arrow(
             &mut context.canvas,
             Vec3(0.0, 0.0, 5.0), // Z distance for visibility
-            2.0,                 // Larger size
+            2.0,                 // Size for large arrow
             45.0,                // Balanced FOV to reduce warping
             w,
             h,
