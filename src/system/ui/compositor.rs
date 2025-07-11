@@ -9,6 +9,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use heapless::Vec;
+use libm::sqrtf;
+
+// Animation tuning globals
+const ANIM_STEPS: usize = 16;
+const ANIM_FRAME_DELAY_MS: u64 = 20;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ViewMode {
@@ -52,7 +57,7 @@ impl UICompositor {
 
     pub fn request_redraw(&mut self, handle: WindowHandle) {
         if !self.redraw_requests.contains(&handle) {
-            let _ = self.redraw_requests.push(handle);
+            self.redraw_requests.push(handle).ok();
         }
     }
 
@@ -119,29 +124,62 @@ impl UICompositor {
     }
 
     pub async fn animate_slide(&mut self, dir: SlideDir) {
-        if self.windows.is_empty() {
+        if self.windows.len() < 2 {
             return;
         }
 
         let from_index = self.current_index;
-
-        match dir {
+        let to_index = match dir {
             SlideDir::Left => {
                 if self.current_index == 0 {
-                    self.current_index = self.windows.len() - 1;
+                    self.windows.len() - 1
                 } else {
-                    self.current_index -= 1;
+                    self.current_index - 1
                 }
             }
-            SlideDir::Right => {
-                self.current_index = (self.current_index + 1) % self.windows.len();
-            }
-        }
+            SlideDir::Right => (self.current_index + 1) % self.windows.len(),
+        };
 
         let from_handle = self.windows[from_index].handle();
-        let to_handle = self.windows[self.current_index].handle();
+        let to_handle = self.windows[to_index].handle();
 
-        self.composite_slide(from_handle, to_handle, dir).await;
+        for step in 0..=ANIM_STEPS {
+            let t = step as f32 / ANIM_STEPS as f32;
+            let eased = ease_in_out_circular(t);
+            let offset = (eased * 128.0) as i32;
+
+            let mut fb = allocate_buffer().await.unwrap();
+            let id = fb.id();
+            let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
+            composed.clear();
+
+            let (from_x, to_x) = match dir {
+                SlideDir::Left => (0 - offset, 128 - offset),
+                SlideDir::Right => (offset, offset - 128),
+            };
+
+            if let Some(w1) = self.window_for_handle_mut(from_handle) {
+                let canvas1 = w1.canvas();
+                composed.draw_from(&canvas1, from_x as u32, 0);
+            }
+
+            if let Some(w2) = self.window_for_handle_mut(to_handle) {
+                let canvas2 = w2.canvas();
+                composed.draw_from(&canvas2, to_x as u32, 0);
+            }
+
+            self.composited_id = Some(id);
+            if let Some(display) = self.display {
+                let mut disp = display.lock().await;
+                disp.draw(get_buffer_slice(id)).await;
+            }
+
+            release_buffer(id);
+            Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
+        }
+
+        // Finally update the current index
+        self.current_index = to_index;
     }
 
     pub async fn composite(&mut self) -> Option<&'static [u8]> {
@@ -177,55 +215,6 @@ impl UICompositor {
         Some(get_buffer_slice(id))
     }
 
-    pub async fn composite_slide(
-        &mut self,
-        from: WindowHandle,
-        to: WindowHandle,
-        dir: SlideDir,
-    ) -> Option<()> {
-        const WIDTH: usize = 128;
-        const HEIGHT: usize = 64;
-        const STEP: usize = 16;
-
-        for offset in (0..=WIDTH).step_by(STEP) {
-            let mut fb = allocate_buffer().await?;
-            let id = fb.id();
-            let mut composed = Canvas::new(fb.buffer_mut(), WIDTH as u32, HEIGHT as u32);
-            composed.clear();
-
-            let (from_x, to_x) = match dir {
-                SlideDir::Left => (0 - offset as i32, WIDTH as i32 - offset as i32),
-                SlideDir::Right => (offset as i32, offset as i32 - WIDTH as i32),
-            };
-
-            if let Some(w1) = self.window_for_handle_mut(from) {
-                let canvas1 = w1.canvas();
-                if from_x >= -(WIDTH as i32) && from_x < WIDTH as i32 {
-                    composed.draw_from(&canvas1, from_x as u32, 0);
-                }
-            }
-
-            if let Some(w2) = self.window_for_handle_mut(to) {
-                let canvas2 = w2.canvas();
-                if to_x >= -(WIDTH as i32) && to_x < WIDTH as i32 {
-                    composed.draw_from(&canvas2, to_x as u32, 0);
-                }
-            }
-
-            self.composited_id = Some(id);
-
-            if let Some(display) = self.display {
-                let mut disp = display.lock().await;
-                disp.draw(get_buffer_slice(id)).await;
-            }
-
-            release_buffer(id);
-            Timer::after(Duration::from_millis(5)).await;
-        }
-
-        Some(())
-    }
-
     pub fn release_last(&mut self) {
         if let Some(id) = self.composited_id.take() {
             release_buffer(id);
@@ -251,3 +240,13 @@ impl UICompositor {
             .and_then(|w| w.input_receiver().try_receive().ok())
     }
 }
+
+// === Easing function ===
+fn ease_in_out_circular(t: f32) -> f32 {
+    if t < 0.5 {
+        0.5 * (1.0 - sqrtf(1.0 - 4.0 * t * t))
+    } else {
+        0.5 * (sqrtf(1.0 - (2.0 * t - 2.0).powf(2.0)) + 1.0)
+    }
+}
+use micromath::F32Ext;

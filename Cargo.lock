@@ -70,6 +70,7 @@ dependencies = [
  "esp-hal-embassy",
  "esp-wifi",
  "heapless",
+ "libm",
  "log",
  "micromath",
  "mpu6050-dmp",
