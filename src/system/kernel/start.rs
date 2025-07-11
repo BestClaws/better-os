@@ -14,6 +14,7 @@ use crate::system::ui::compositor::UICompositor;
 
 use panic_rtt_target as _;
 use static_cell::StaticCell;
+use crate::system::services::gyro_accelerometer::gyro_accelerometer_service;
 use crate::system::ui::input_channels::init_channels;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
@@ -44,6 +45,12 @@ pub(crate) fn start(spawner: Spawner) {
     // Spawn compositor service
     info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
+
+
+    // Spawn accel service
+    info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
+
 
     // Spawn app spawner service
     info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);

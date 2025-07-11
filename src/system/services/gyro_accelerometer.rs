@@ -12,8 +12,8 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
     loop {
 
-        // let acc = sensor.lock().await.get_accelerometer_data().await;
-        // defmt::info!(" Accelerometer Sensor: {:?}", acc);
+        let acc = sensor.lock().await.get_accelerometer_data().await;
+        defmt::info!(" Accelerometer Sensor: {:?}", acc);
 
         // let gyro = sensor.lock().await.get_gyroscope_data().await;
         // defmt::info!("Gyro  Sensor: {:?}", gyro);
@@ -32,7 +32,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
 
 
-        Timer::after_millis(1000).await;
+        Timer::after_millis(100).await;
 
 
     }
