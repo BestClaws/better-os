@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
 use micromath::F32Ext;
-use crate::system::apps::app_context::AppContext;
+use crate::system::app::app_context::AppContext;
 use crate::system::services::battery::BATTERY_CHANNEL;
 
 #[derive(Copy, Clone)]
@@ -212,7 +212,7 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
 }
 
 #[embassy_executor::task]
-pub async fn hello_app(mut context: AppContext<'static>) {
+pub async fn slab_app(mut context: AppContext<'static>) {
     let receiver = BATTERY_CHANNEL.receiver();
 
     let mut angle_x = 0.0f32;
@@ -261,6 +261,5 @@ pub async fn hello_app(mut context: AppContext<'static>) {
 
         context.request_redraw().await;
         Timer::after(Duration::from_millis(1)).await;
-        info!("Hello app tick");
     }
 }

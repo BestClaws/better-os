@@ -8,12 +8,13 @@ use embedded_graphics::{
     text::Text,
 };
 
-use crate::system::apps::app_context::AppContext;
-use crate::system::services::ambient_sensor::AMBIENT_CHANNEL;
+use crate::system::app::app_context::AppContext;
+use crate::system::services::battery::BATTERY_CHANNEL;
 
+/// Battery app: draws battery percentage onto its canvas.
 #[embassy_executor::task]
-pub async fn ambient_task(mut context: AppContext<'static>) {
-    let receiver = AMBIENT_CHANNEL.receiver();
+pub async fn battery_app(mut context: AppContext<'static>) {
+    let receiver = BATTERY_CHANNEL.receiver();
 
     loop {
         // Only update if focused
@@ -32,14 +33,16 @@ pub async fn ambient_task(mut context: AppContext<'static>) {
             .unwrap();
 
         let mut text_buf = heapless::String::<32>::new();
-        write!(text_buf, "ambient: {}%", percent).ok();
+        write!(text_buf, "Battery: {}%", percent).ok();
 
         let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
         Text::new(&text_buf, Point::new(20, 28), style)
             .draw(&mut context.canvas)
             .unwrap();
 
+        // Just request redraw. No direct framebuffer or submit call.
         context.request_redraw().await;
+
         Timer::after(Duration::from_millis(100)).await;
     }
 }

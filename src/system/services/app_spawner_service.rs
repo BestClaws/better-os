@@ -2,13 +2,13 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
-use crate::system::apps::app_context::AppContext;
+use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
-use crate::tasks::ambient::ambient_task;
-use crate::tasks::battery::battery_task;
-use crate::tasks::hello::hello_app;
+use crate::apps::ambient::ambience_app;
+use crate::apps::battery::battery_app;
+use crate::apps::slab::{ slab_app};
 
 #[embassy_executor::task]
 pub async fn app_spawner_service(
@@ -38,7 +38,7 @@ pub async fn app_spawner_service(
 
     // === Step 2: Construct app context and spawn ===
     let ctx = AppContext::new(handle, canvas, 0, "Battery", compositor);
-    spawner.spawn(battery_task(ctx)).unwrap();
+    spawner.spawn(battery_app(ctx)).unwrap();
 
 
 
@@ -66,7 +66,7 @@ pub async fn app_spawner_service(
 
     // === Step 2: Construct app context and spawn ===
     let ctx = AppContext::new(handle, canvas, 1, "ambient", compositor);
-    spawner.spawn(ambient_task(ctx)).unwrap();
+    spawner.spawn(ambience_app(ctx)).unwrap();
 
 
     // === Step 1: Allocate window and get canvas inside a separate scope ===
@@ -92,5 +92,5 @@ pub async fn app_spawner_service(
 
     // === Step 2: Construct app context and spawn ===
     let ctx = AppContext::new(handle, canvas, 2, "hello", compositor);
-    spawner.spawn(hello_app(ctx)).unwrap();
+    spawner.spawn(slab_app(ctx)).unwrap();
 }

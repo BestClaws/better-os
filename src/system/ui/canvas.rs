@@ -6,7 +6,7 @@ use embedded_graphics::{
 };
 
 /// A lightweight, resizable draw target over a bit-packed framebuffer.
-/// Used by windows and apps.
+/// Used by windows and app.
 pub struct Canvas<'a> {
     buffer: &'a mut [u8],
     width: u32,
