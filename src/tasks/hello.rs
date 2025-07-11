@@ -50,31 +50,34 @@ pub fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<(i32, i
     let fov_rad = fov_deg.to_radians();
     let aspect = width as f32 / height as f32;
 
-    let x_proj = (v.0 / v.2) * (1.0 / fov_rad.tan());
-    let y_proj = (v.1 / v.2) * (1.0 / fov_rad.tan()) / aspect;
+    // Adjusted projection to ensure proper centering
+    let x_proj = (v.0 / v.2) * (1.0 / (fov_rad / 2.0).tan());
+    let y_proj = (v.1 / v.2) * (1.0 / (fov_rad / 2.0).tan()) / aspect;
 
+    // Center the projection on the screen
     Some((
         ((x_proj + 1.0) * (width as f32 / 2.0)) as i32,
         ((1.0 - y_proj) * (height as f32 / 2.0)) as i32,
     ))
 }
 
-pub fn rotate_xyz(v: Vec3, angle_rad: f32) -> Vec3 {
-    let (s, c) = angle_rad.sin_cos();
-
-    // Rotate around X
-    let y1 = v.1 * c - v.2 * s;
-    let z1 = v.1 * s + v.2 * c;
+pub fn rotate_xyz(v: Vec3, angle_x: f32, angle_y: f32, angle_z: f32) -> Vec3 {
+    // Rotate around X axis
+    let (sx, cx) = angle_x.sin_cos();
+    let y1 = v.1 * cx - v.2 * sx;
+    let z1 = v.1 * sx + v.2 * cx;
     let v = Vec3(v.0, y1, z1);
 
-    // Rotate around Y
-    let x2 = v.0 * c + v.2 * s;
-    let z2 = -v.0 * s + v.2 * c;
+    // Rotate around Y axis
+    let (sy, cy) = angle_y.sin_cos();
+    let x2 = v.0 * cy + v.2 * sy;
+    let z2 = -v.0 * sy + v.2 * cy;
     let v = Vec3(x2, v.1, z2);
 
-    // Rotate around Z
-    let x3 = v.0 * c - v.1 * s;
-    let y3 = v.0 * s + v.1 * c;
+    // Rotate around Z axis
+    let (sz, cz) = angle_z.sin_cos();
+    let x3 = v.0 * cz - v.1 * sz;
+    let y3 = v.0 * sz + v.1 * cz;
     Vec3(x3, y3, v.2)
 }
 
@@ -102,12 +105,15 @@ pub fn draw_cube<D: DrawTarget<Color = BinaryColor>>(
     fov_deg: f32,
     width: u32,
     height: u32,
-    angle : f32,
+    angle_x: f32,
+    angle_y: f32,
+    angle_z: f32,
 ) {
     let mut projected: [Option<Point>; 8] = [None; 8];
 
     for (i, &v) in CUBE_VERTICES.iter().enumerate() {
-        let v = rotate_xyz(v, angle);
+        // Apply rotations for all axes
+        let v = rotate_xyz(v, angle_x, angle_y, angle_z);
         let world = Vec3(
             origin.0 + v.0 * size,
             origin.1 + v.1 * size,
@@ -127,15 +133,19 @@ pub fn draw_cube<D: DrawTarget<Color = BinaryColor>>(
     }
 }
 
-/// Battery app: draws battery percentage and 3D cube onto its canvas.
 #[embassy_executor::task]
 pub async fn hello_app(mut context: AppContext<'static>) {
     let receiver = BATTERY_CHANNEL.receiver();
 
-    let mut angle = 0.0f32.to_radians();
+    let mut angle_x = 0.0f32.to_radians();
+    let mut angle_y = 0.0f32.to_radians();
+    let mut angle_z = 0.0f32.to_radians();
 
     loop {
-        angle += 0.5;
+        // Increment angles for smooth rotation
+        angle_x += 0.03;
+        angle_y += 0.04;
+        angle_z += 0.02;
 
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
@@ -144,33 +154,23 @@ pub async fn hello_app(mut context: AppContext<'static>) {
 
         context.canvas.clear();
 
-        let mut text_buf = heapless::String::<32>::new();
-        write!(text_buf, "Battery").ok();
-
-        let style = MonoTextStyle::new(&FONT_8X13_BOLD, BinaryColor::On);
-        Text::new(&text_buf, Point::new(20, 10), style)
-            .draw(&mut context.canvas)
-            .unwrap();
-
-
-
-
         let w = context.width();
         let h = context.height();
+        // Center the cube by setting origin at (0, 0, distance)
         draw_cube(
             &mut context.canvas,
-            Vec3(0.0, 0.0, 4.5),
-            1.0,
-            30.0,
+            Vec3(0.0, 0.0, 4.0), // Adjusted Z to ensure visibility
+            1.0,                 // Cube size
+            60.0,                // Increased FOV for better perspective
             w,
             h,
-            angle
+            angle_x,
+            angle_y,
+            angle_z
         );
 
-
-
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(30)).await;
+        Timer::after(Duration::from_millis(16)).await;
         info!("Hello app tick");
     }
 }
