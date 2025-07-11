@@ -58,14 +58,37 @@ pub fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<(i32, i
 
     let fov_rad = fov_deg.to_radians();
     let aspect = width as f32 / height as f32;
+    let f = 1.0 / (fov_rad / 2.0).tan(); // Focal length for perspective
 
-    let x_proj = (v.0 / v.2) * (1.0 / (fov_rad / 2.0).tan());
-    let y_proj = (v.1 / v.2) * (1.0 / (fov_rad / 2.0).tan()) / aspect;
+    // Normalized projection to reduce warping
+    let x_proj = (v.0 * f) / v.2;
+    let y_proj = (v.1 * f) / (v.2 * aspect);
 
+    // Center on screen
     Some((
         ((x_proj + 1.0) * (width as f32 / 2.0)) as i32,
         ((1.0 - y_proj) * (height as f32 / 2.0)) as i32,
     ))
+}
+
+pub fn rotate_xyz(v: Vec3, angle_x: f32, angle_y: f32, angle_z: f32) -> Vec3 {
+    // Rotate around X axis
+    let (sx, cx) = angle_x.sin_cos();
+    let y1 = v.1 * cx - v.2 * sx;
+    let z1 = v.1 * sx + v.2 * cx;
+    let v = Vec3(v.0, y1, z1);
+
+    // Rotate around Y axis
+    let (sy, cy) = angle_y.sin_cos();
+    let x2 = v.0 * cy + v.2 * sy;
+    let z2 = -v.0 * sy + v.2 * cy;
+    let v = Vec3(x2, v.1, z2);
+
+    // Rotate around Z axis
+    let (sz, cz) = angle_z.sin_cos();
+    let x3 = v.0 * cz - v.1 * sz;
+    let y3 = v.0 * sz + v.1 * cz;
+    Vec3(x3, y3, v.2)
 }
 
 pub fn orient_to_direction(v: Vec3, dir: Vec3) -> Vec3 {
@@ -82,22 +105,22 @@ pub fn orient_to_direction(v: Vec3, dir: Vec3) -> Vec3 {
     )
 }
 
-// Define arrow vertices: cuboid body + extruded rectangle for arrowhead
+// Define arrow vertices: cuboid body + extruded rectangle, centered at (0,0,0)
 pub const ARROW_VERTICES: [Vec3; 12] = [
-    // Cuboid body (rectangular prism)
-    Vec3(-0.2, -0.2, -1.0), // 0
-    Vec3( 0.2, -0.2, -1.0), // 1
-    Vec3( 0.2,  0.2, -1.0), // 2
-    Vec3(-0.2,  0.2, -1.0), // 3
-    Vec3(-0.2, -0.2,  0.0), // 4
-    Vec3( 0.2, -0.2,  0.0), // 5
-    Vec3( 0.2,  0.2,  0.0), // 6
-    Vec3(-0.2,  0.2,  0.0), // 7
-    // Arrowhead (extruded rectangle, wider base)
-    Vec3(-0.5, -0.3,  0.0), // 8
-    Vec3( 0.5, -0.3,  0.0), // 9
-    Vec3( 0.3,  0.3,  0.0), // 10
-    Vec3(-0.3,  0.3,  0.0), // 11
+    // Cuboid body (rectangular prism, centered around z=0)
+    Vec3(-0.5, -0.5, -1.5), // 0
+    Vec3( 0.5, -0.5, -1.5), // 1
+    Vec3( 0.5,  0.5, -1.5), // 2
+    Vec3(-0.5,  0.5, -1.5), // 3
+    Vec3(-0.5, -0.5,  0.5), // 4
+    Vec3( 0.5, -0.5,  0.5), // 5
+    Vec3( 0.5,  0.5,  0.5), // 6
+    Vec3(-0.5,  0.5,  0.5), // 7
+    // Arrowhead (extruded rectangle at z=0.5)
+    Vec3(-1.2, -0.7,  0.5), // 8
+    Vec3( 1.2, -0.7,  0.5), // 9
+    Vec3( 0.7,  0.7,  0.5), // 10
+    Vec3(-0.7,  0.7,  0.5), // 11
 ];
 
 pub const ARROW_EDGES: [(usize, usize); 16] = [
@@ -117,10 +140,15 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
     width: u32,
     height: u32,
     direction: Vec3,
+    angle_x: f32,
+    angle_y: f32,
+    angle_z: f32,
 ) {
     let mut projected: [Option<Point>; 12] = [None; 12];
 
     for (i, &v) in ARROW_VERTICES.iter().enumerate() {
+        // Apply rotation first, then orient to direction
+        let v = rotate_xyz(v, angle_x, angle_y, angle_z);
         let v = orient_to_direction(v, direction);
         let world = Vec3(
             origin.0 + v.0 * size,
@@ -135,7 +163,7 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
     for &(i1, i2) in ARROW_EDGES.iter() {
         if let (Some(p1), Some(p2)) = (projected[i1], projected[i2]) {
             let _ = Line::new(p1, p2)
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
                 .draw(display);
         }
     }
@@ -145,10 +173,15 @@ pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
 pub async fn hello_app(mut context: AppContext<'static>) {
     let receiver = BATTERY_CHANNEL.receiver();
 
-    let mut angle = 0.0f32;
+    let mut angle_x = 0.0f32;
+    let mut angle_y = 0.0f32;
+    let mut angle_z = 0.0f32;
 
     loop {
-        angle += 0.05;
+        // Increment angles for smooth rotation
+        angle_x += 0.03;
+        angle_y += 0.04;
+        angle_z += 0.02;
 
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
@@ -160,21 +193,20 @@ pub async fn hello_app(mut context: AppContext<'static>) {
         let w = context.width();
         let h = context.height();
 
-        // Dynamic direction vector (rotating for demonstration)
-        let direction = Vec3(
-            angle.sin(),
-            angle.cos(),
-            1.0
-        ).normalize();
+        // Base direction (can be modified for navigation)
+        let direction = Vec3(0.0, 0.0, 1.0).normalize();
 
         draw_arrow(
             &mut context.canvas,
-            Vec3(0.0, 0.0, 4.0), // Centered origin
-            1.0,                 // Arrow size
-            60.0,                // FOV for perspective
+            Vec3(0.0, 0.0, 5.0), // Z distance for visibility
+            2.0,                 // Larger size
+            45.0,                // Balanced FOV to reduce warping
             w,
             h,
-            direction
+            direction,
+            angle_x,
+            angle_y,
+            angle_z
         );
 
         context.request_redraw().await;
