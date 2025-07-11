@@ -1,15 +1,10 @@
 use alloc::vec::Vec;
-use core::fmt::Write;
-use defmt::info;
 use embassy_time::{Timer, Duration};
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{Triangle, Line, PrimitiveStyle},
-    text::Text,
 };
-use embedded_graphics::mono_font::iso_8859_16::FONT_8X13_BOLD;
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::battery::BATTERY_CHANNEL;

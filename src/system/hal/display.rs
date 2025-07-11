@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use crate::system::services::human_input::HumanInputEvent;
 
 #[async_trait(?Send)]
 pub(crate) trait AsyncDisplay {

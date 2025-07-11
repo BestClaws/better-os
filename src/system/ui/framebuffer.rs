@@ -5,7 +5,6 @@ use embassy_sync::{
     semaphore::GreedySemaphore,
 };
 use embassy_sync::semaphore::Semaphore;
-use crate::system::ui::canvas::Canvas;
 
 // === Display Config ===
 
