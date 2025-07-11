@@ -142,30 +142,47 @@ impl UICompositor {
 
         let from_handle = self.windows[from_index].handle();
         let to_handle = self.windows[to_index].handle();
+        let screen_width = 128; // Screen width in pixels
 
         for step in 0..=ANIM_STEPS {
             let t = step as f32 / ANIM_STEPS as f32;
             let eased = ease_in_out_circular(t);
-            let offset = (eased * 128.0) as i32;
+            let offset = (eased * screen_width as f32) as i32;
 
             let mut fb = allocate_buffer().await.unwrap();
             let id = fb.id();
             let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
             composed.clear();
 
+            // Calculate positions
             let (from_x, to_x) = match dir {
-                SlideDir::Left => (0 - offset, 128 - offset),
-                SlideDir::Right => (offset, offset - 128),
+                SlideDir::Left => {
+                    let from_x = -offset; // Outgoing moves left
+                    let to_x = from_x + screen_width; // Incoming follows right edge
+                    (from_x, to_x)
+                }
+                SlideDir::Right => {
+                    let from_x = offset; // Outgoing moves right
+                    let to_x = from_x - screen_width; // Incoming follows left edge
+                    (from_x, to_x)
+                }
             };
 
+            // Draw windows, ensuring we handle negative coordinates safely
             if let Some(w1) = self.window_for_handle_mut(from_handle) {
                 let canvas1 = w1.canvas();
-                composed.draw_from(&canvas1, from_x as u32, 0);
+                // Only draw if from_x is within bounds to avoid clipping issues
+                if from_x < screen_width as i32 {
+                    composed.draw_from(&canvas1, (from_x.max(0)) as u32, 0);
+                }
             }
 
             if let Some(w2) = self.window_for_handle_mut(to_handle) {
                 let canvas2 = w2.canvas();
-                composed.draw_from(&canvas2, to_x as u32, 0);
+                // Only draw if to_x is within bounds
+                if to_x < screen_width as i32 {
+                    composed.draw_from(&canvas2, (to_x.max(0)) as u32, 0);
+                }
             }
 
             self.composited_id = Some(id);
@@ -178,7 +195,6 @@ impl UICompositor {
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
         }
 
-        // Finally update the current index
         self.current_index = to_index;
     }
 
@@ -249,4 +265,5 @@ fn ease_in_out_circular(t: f32) -> f32 {
         0.5 * (sqrtf(1.0 - (2.0 * t - 2.0).powf(2.0)) + 1.0)
     }
 }
+
 use micromath::F32Ext;
