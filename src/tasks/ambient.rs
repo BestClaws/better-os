@@ -1,7 +1,5 @@
-use embassy_time::Timer;
-use crate::system::services::ambient_sensor::AMBIENT_CHANNEL;
-use crate::system::ui::canvas::Canvas;
-
+use core::fmt::Write;
+use embassy_time::{Timer, Duration};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
@@ -9,34 +7,39 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
     text::Text,
 };
-use core::fmt::Write;
+
+use crate::system::apps::app_context::AppContext;
+use crate::system::services::ambient_sensor::AMBIENT_CHANNEL;
 
 #[embassy_executor::task]
-pub async fn ambient_task() {
-    // let receiver = AMBIENT_CHANNEL.receiver();
-    //
-    // loop {
-    //     let percent = receiver.receive().await;
-    //
-    //     let canvas = ctx.canvas();
-    //     canvas.clear();
-    //     draw_ui(canvas, percent);
-    //
-    //     Timer::after_millis(100).await;
-    // }
-}
+pub async fn ambient_task(mut context: AppContext<'static>) {
+    let receiver = AMBIENT_CHANNEL.receiver();
 
-fn draw_ui(canvas: &mut Canvas<'_>, percent: u8) {
-    Rectangle::new(Point::zero(), canvas.size())
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(canvas)
-        .unwrap();
+    loop {
+        // Only update if focused
+        if !context.is_focused().await {
+            Timer::after(Duration::from_millis(100)).await;
+            continue;
+        }
 
-    let mut text_buf = heapless::String::<32>::new();
-    let _ = write!(text_buf, "Ambient Light: {}%", percent);
+        let percent = receiver.receive().await;
 
-    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    Text::new(&text_buf, Point::new(16, 28), style)
-        .draw(canvas)
-        .unwrap();
+        context.canvas.clear();
+
+        Rectangle::new(Point::zero(), Size::new(context.width(), context.height()))
+            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+            .draw(&mut context.canvas)
+            .unwrap();
+
+        let mut text_buf = heapless::String::<32>::new();
+        write!(text_buf, "ambient: {}%", percent).ok();
+
+        let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+        Text::new(&text_buf, Point::new(20, 28), style)
+            .draw(&mut context.canvas)
+            .unwrap();
+
+        context.request_redraw().await;
+        Timer::after(Duration::from_millis(100)).await;
+    }
 }

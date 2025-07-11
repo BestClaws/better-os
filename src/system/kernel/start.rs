@@ -14,6 +14,7 @@ use crate::system::ui::compositor::UICompositor;
 
 use panic_rtt_target as _;
 use static_cell::StaticCell;
+use crate::system::ui::input_channels::init_channels;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
 
@@ -22,6 +23,8 @@ pub(crate) fn start(spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     let device = platforms::ajax::device::init_device();
+
+    init_channels();
 
     // Initialize the global compositor
     let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
