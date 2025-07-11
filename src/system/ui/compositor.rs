@@ -52,7 +52,7 @@ impl UICompositor {
 
     pub fn request_redraw(&mut self, handle: WindowHandle) {
         if !self.redraw_requests.contains(&handle) {
-            self.redraw_requests.push(handle).ok();
+            let _ = self.redraw_requests.push(handle);
         }
     }
 
@@ -119,9 +119,29 @@ impl UICompositor {
     }
 
     pub async fn animate_slide(&mut self, dir: SlideDir) {
-        if let Some((from, to)) = self.last_transition_handles(dir) {
-            self.composite_slide(from, to, dir).await;
+        if self.windows.is_empty() {
+            return;
         }
+
+        let from_index = self.current_index;
+
+        match dir {
+            SlideDir::Left => {
+                if self.current_index == 0 {
+                    self.current_index = self.windows.len() - 1;
+                } else {
+                    self.current_index -= 1;
+                }
+            }
+            SlideDir::Right => {
+                self.current_index = (self.current_index + 1) % self.windows.len();
+            }
+        }
+
+        let from_handle = self.windows[from_index].handle();
+        let to_handle = self.windows[self.current_index].handle();
+
+        self.composite_slide(from_handle, to_handle, dir).await;
     }
 
     pub async fn composite(&mut self) -> Option<&'static [u8]> {
@@ -165,7 +185,7 @@ impl UICompositor {
     ) -> Option<()> {
         const WIDTH: usize = 128;
         const HEIGHT: usize = 64;
-        const STEP: usize = 32;
+        const STEP: usize = 16;
 
         for offset in (0..=WIDTH).step_by(STEP) {
             let mut fb = allocate_buffer().await?;
@@ -174,18 +194,22 @@ impl UICompositor {
             composed.clear();
 
             let (from_x, to_x) = match dir {
-                SlideDir::Left => (0_i32 - offset as i32, WIDTH as i32 - offset as i32),
+                SlideDir::Left => (0 - offset as i32, WIDTH as i32 - offset as i32),
                 SlideDir::Right => (offset as i32, offset as i32 - WIDTH as i32),
             };
 
             if let Some(w1) = self.window_for_handle_mut(from) {
                 let canvas1 = w1.canvas();
-                composed.draw_from(&canvas1, from_x as u32, 0);
+                if from_x >= -(WIDTH as i32) && from_x < WIDTH as i32 {
+                    composed.draw_from(&canvas1, from_x as u32, 0);
+                }
             }
 
             if let Some(w2) = self.window_for_handle_mut(to) {
                 let canvas2 = w2.canvas();
-                composed.draw_from(&canvas2, to_x as u32, 0);
+                if to_x >= -(WIDTH as i32) && to_x < WIDTH as i32 {
+                    composed.draw_from(&canvas2, to_x as u32, 0);
+                }
             }
 
             self.composited_id = Some(id);
@@ -196,7 +220,7 @@ impl UICompositor {
             }
 
             release_buffer(id);
-            Timer::after(Duration::from_millis(8)).await;
+            Timer::after(Duration::from_millis(5)).await;
         }
 
         Some(())
@@ -210,29 +234,6 @@ impl UICompositor {
 
     pub fn view_mode(&self) -> ViewMode {
         self.view_mode
-    }
-
-    pub fn last_transition_handles(&self, dir: SlideDir) -> Option<(WindowHandle, WindowHandle)> {
-        if self.windows.is_empty() {
-            return None;
-        }
-
-        let from = self.current_index;
-        let to = match dir {
-            SlideDir::Left => {
-                if self.current_index == 0 {
-                    self.windows.len() - 1
-                } else {
-                    self.current_index - 1
-                }
-            }
-            SlideDir::Right => (self.current_index + 1) % self.windows.len(),
-        };
-
-        Some((
-            self.windows.get(from)?.handle(),
-            self.windows.get(to)?.handle(),
-        ))
     }
 
     pub fn is_focused(&self, handle: WindowHandle) -> bool {

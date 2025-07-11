@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use defmt::info;
 use embassy_time::{Timer, Duration};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
@@ -22,6 +23,9 @@ pub async fn hello_app(mut context: AppContext<'static>) {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
+
+
+        info!("kjlk");
 
 
         context.canvas.clear();
