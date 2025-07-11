@@ -1,11 +1,11 @@
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, Instant};
 
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::services::human_input::{HumanInputEvent, HUMAN_INPUT_CH};
-use crate::system::ui::compositor::{SlideDir, UICompositor, ViewMode};
+use crate::system::ui::compositor::{SlideDir, UICompositor};
 
 #[embassy_executor::task]
 pub async fn compositor_service(
@@ -18,44 +18,57 @@ pub async fn compositor_service(
     }
 
     loop {
-        let event = HUMAN_INPUT_CH.receive().await;
+        let idle_start = Instant::now();
+        let mut last_slide: Option<SlideDir> = None;
+        let mut toggle_view = false;
 
-        let mut comp = compositor.lock().await;
-
-        let mut slide_direction = None;
-        let mut trigger_redraw = false;
-
-        match event {
-            HumanInputEvent::NavUp => {
-                comp.prev_window();
-                slide_direction = Some(SlideDir::Right);
-            }
-            HumanInputEvent::NavDown => {
-                comp.next_window();
-                slide_direction = Some(SlideDir::Left);
-            }
-            HumanInputEvent::OkPressed => {
-                comp.toggle_view();
-                trigger_redraw = true;
-            }
-            _ => {
-                // Forward event to current window's input channel
-                let current = comp.current_handle();
-                if let Some(window) = comp.window_for_handle_mut(current) {
-                    let _ = window.input_sender().try_send(event); // best-effort
+        // Drain all available input events
+        while let Ok(event) = HUMAN_INPUT_CH.try_receive() {
+            match event {
+                HumanInputEvent::NavUp => {
+                    last_slide = Some(SlideDir::Right);
+                }
+                HumanInputEvent::NavDown => {
+                    last_slide = Some(SlideDir::Left);
+                }
+                HumanInputEvent::OkPressed => {
+                    toggle_view = true;
+                }
+                other => {
+                    // Forward input to current app
+                    let mut comp = compositor.lock().await;
+                    let current = comp.current_handle();
+                    if let Some(window) = comp.window_for_handle_mut(current) {
+                        let _ = window.input_sender().try_send(other); // best effort
+                    }
                 }
             }
         }
 
-        if let Some(dir) = slide_direction {
+        // Apply slide or view toggle logic
+        if let Some(dir) = last_slide {
+            let mut comp = compositor.lock().await;
             comp.animate_slide(dir).await;
-        }
-
-        if trigger_redraw {
+            comp.step().await;
+        } else if toggle_view {
+            let mut comp = compositor.lock().await;
+            comp.toggle_view();
             let current = comp.current_handle();
             comp.request_redraw(current);
+            comp.step().await;
+        } else {
+            // No user input: step once every ~100ms for idle refresh
+            Timer::after(Duration::from_millis(100)).await;
+            let mut comp = compositor.lock().await;
+            let current = comp.current_handle();
+            comp.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
+            comp.step().await;
         }
 
-        comp.step().await;
+        // Sleep remaining time if loop was too fast (ensure ~10Hz)
+        let elapsed = Instant::now() - idle_start;
+        if elapsed < Duration::from_millis(30) {
+            Timer::after(Duration::from_millis(100) - elapsed).await;
+        }
     }
 }

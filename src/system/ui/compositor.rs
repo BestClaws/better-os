@@ -16,13 +16,17 @@ pub enum ViewMode {
     Split,
 }
 
+#[derive(Clone, Copy)]
+pub enum SlideDir {
+    Left,
+    Right,
+}
+
 pub struct UICompositor {
     windows: Vec<Window, 8>,
     current_index: usize,
     view_mode: ViewMode,
     composited_id: Option<usize>,
-    next_id: usize,
-
     display: Option<&'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>>,
     redraw_requests: Vec<WindowHandle, 4>,
 }
@@ -34,7 +38,6 @@ impl UICompositor {
             current_index: 0,
             view_mode: ViewMode::Single,
             composited_id: None,
-            next_id: 0,
             display: None,
             redraw_requests: Vec::new(),
         }
@@ -48,7 +51,7 @@ impl UICompositor {
     }
 
     pub fn request_redraw(&mut self, handle: WindowHandle) {
-        if !self.redraw_requests.iter().any(|h| *h == handle) {
+        if !self.redraw_requests.contains(&handle) {
             self.redraw_requests.push(handle).ok();
         }
     }
@@ -117,21 +120,7 @@ impl UICompositor {
 
     pub async fn animate_slide(&mut self, dir: SlideDir) {
         if let Some((from, to)) = self.last_transition_handles(dir) {
-            for offset in (0..=128).step_by(8) {
-                let offset = match dir {
-                    SlideDir::Left => offset,
-                    SlideDir::Right => 128 - offset,
-                };
-
-                if let Some(frame) = self.composite_slide(from, to, offset).await {
-                    if let Some(display) = self.display {
-                        let mut disp = display.lock().await;
-                        disp.draw(frame).await;
-                    }
-                    Timer::after(Duration::from_millis(10)).await;
-                    self.release_last();
-                }
-            }
+            self.composite_slide(from, to, dir).await;
         }
     }
 
@@ -144,7 +133,7 @@ impl UICompositor {
         match self.view_mode {
             ViewMode::Single => {
                 if let Some(window) = self.windows.get_mut(self.current_index) {
-                    let mut canvas = window.canvas();
+                    let canvas = window.canvas();
                     composed.draw_from(&canvas, 0, 0);
                 }
             }
@@ -153,13 +142,13 @@ impl UICompositor {
                 let i2 = (self.current_index + 1) % self.windows.len();
 
                 if let Some(w1) = self.windows.get_mut(i1) {
-                    let mut canvas1 = w1.canvas();
+                    let canvas1 = w1.canvas();
                     composed.draw_from(&canvas1, 0, 0);
                 }
 
                 if let Some(w2) = self.windows.get_mut(i2) {
-                    let mut canvas2 = w2.canvas();
-                    composed.draw_from(&canvas2, 0, 32);
+                    let canvas2 = w2.canvas();
+                    composed.draw_from(&canvas2, 64, 0); // right half
                 }
             }
         }
@@ -172,27 +161,45 @@ impl UICompositor {
         &mut self,
         from: WindowHandle,
         to: WindowHandle,
-        offset: i32,
-    ) -> Option<&'static [u8]> {
-        let mut fb = allocate_buffer().await?;
-        let id = fb.id();
-        let mut composed = Canvas::new(fb.buffer_mut(), 128, 64);
-        composed.clear();
+        dir: SlideDir,
+    ) -> Option<()> {
+        const WIDTH: usize = 128;
+        const HEIGHT: usize = 64;
+        const STEP: usize = 32;
 
-        if let Some(w1) = self.window_for_handle_mut(from) {
-            let mut canvas1 = w1.canvas();
-            let x1 = offset.saturating_neg() as u32;
-            composed.draw_from(&canvas1, x1.wrapping_sub(offset as u32), 0);
+        for offset in (0..=WIDTH).step_by(STEP) {
+            let mut fb = allocate_buffer().await?;
+            let id = fb.id();
+            let mut composed = Canvas::new(fb.buffer_mut(), WIDTH as u32, HEIGHT as u32);
+            composed.clear();
+
+            let (from_x, to_x) = match dir {
+                SlideDir::Left => (0_i32 - offset as i32, WIDTH as i32 - offset as i32),
+                SlideDir::Right => (offset as i32, offset as i32 - WIDTH as i32),
+            };
+
+            if let Some(w1) = self.window_for_handle_mut(from) {
+                let canvas1 = w1.canvas();
+                composed.draw_from(&canvas1, from_x as u32, 0);
+            }
+
+            if let Some(w2) = self.window_for_handle_mut(to) {
+                let canvas2 = w2.canvas();
+                composed.draw_from(&canvas2, to_x as u32, 0);
+            }
+
+            self.composited_id = Some(id);
+
+            if let Some(display) = self.display {
+                let mut disp = display.lock().await;
+                disp.draw(get_buffer_slice(id)).await;
+            }
+
+            release_buffer(id);
+            Timer::after(Duration::from_millis(8)).await;
         }
 
-        if let Some(w2) = self.window_for_handle_mut(to) {
-            let mut canvas2 = w2.canvas();
-            let x2 = (128 - offset).max(0) as u32;
-            composed.draw_from(&canvas2, x2, 0);
-        }
-
-        self.composited_id = Some(id);
-        Some(get_buffer_slice(id))
+        Some(())
     }
 
     pub fn release_last(&mut self) {
@@ -212,14 +219,14 @@ impl UICompositor {
 
         let from = self.current_index;
         let to = match dir {
-            SlideDir::Left => (self.current_index + 1) % self.windows.len(),
-            SlideDir::Right => {
+            SlideDir::Left => {
                 if self.current_index == 0 {
                     self.windows.len() - 1
                 } else {
                     self.current_index - 1
                 }
             }
+            SlideDir::Right => (self.current_index + 1) % self.windows.len(),
         };
 
         Some((
@@ -228,8 +235,6 @@ impl UICompositor {
         ))
     }
 
-
-    /// Check if a given window handle is currently focused.
     pub fn is_focused(&self, handle: WindowHandle) -> bool {
         self.windows
             .get(self.current_index)
@@ -237,18 +242,11 @@ impl UICompositor {
             .unwrap_or(false)
     }
 
-    /// Poll one input event for a window by handle (non-blocking).
-    pub fn poll_input(&mut self, handle: WindowHandle) -> Option<crate::system::services::human_input::HumanInputEvent> {
+    pub fn poll_input(
+        &mut self,
+        handle: WindowHandle,
+    ) -> Option<crate::system::services::human_input::HumanInputEvent> {
         self.window_for_handle_mut(handle)
             .and_then(|w| w.input_receiver().try_receive().ok())
     }
-
- 
-
-}
-
-#[derive(Clone, Copy)]
-pub enum SlideDir {
-    Left,
-    Right,
 }
