@@ -13,6 +13,7 @@ use esp_hal::Async;
 use esp_hal::riscv::asm::delay;
 use mpu6050_dmp::accel::{Accel, AccelFullScale};
 use mpu6050_dmp::calibration::{CalibrationParameters, ReferenceGravity};
+use mpu6050_dmp::config::DigitalLowPassFilter;
 use mpu6050_dmp::gyro::{Gyro, GyroFullScale};
 use mpu6050_dmp::quaternion::Quaternion;
 use mpu6050_dmp::sensor_async::Mpu6050;
@@ -59,6 +60,8 @@ impl GyroAccelerometerDriver {
 
         sensor.set_sample_rate_divider(99).await.unwrap(); // 100Hz
         sensor.enable_fifo().await.unwrap();
+        sensor.set_digital_lowpass_filter(DigitalLowPassFilter::Filter6);
+
 
         loop {
             let result = sensor.initialize_dmp(&mut embassy_time::Delay).await;
@@ -72,6 +75,8 @@ impl GyroAccelerometerDriver {
                 continue
             }
         }
+        sensor.set_digital_lowpass_filter(DigitalLowPassFilter::Filter6);
+
 
         // let calibration = CalibrationParameters::new(
         //     AccelFullScale::G8,

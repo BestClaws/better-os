@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use defmt::export::display;
 use crate::system::hal::display::AsyncDisplay;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -37,7 +38,7 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn draw(&mut self, buffer: &[u8]) {
-        self.display.draw(buffer).await.unwrap();
+        let _ = self.display.draw(buffer).await;
         self.display.flush().await.unwrap();
     }
 
