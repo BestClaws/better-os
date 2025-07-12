@@ -62,5 +62,28 @@ impl Quaternion {
         v.add(uv.scale(2.0 * s)).add(uuv.scale(2.0))
     }
 
+    pub fn magnitude(&self) -> f32 {
+        libm::sqrt((self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z) as f64)
+            as f32
+    }
+
+    /// Normalizes the quaternion to have magnitude 1.
+    ///
+    /// Normalization is important because:
+    /// 1. Only unit quaternions (magnitude = 1) represent pure rotations
+    /// 2. Prevents scaling effects from accumulating during calculations
+    /// 3. Maintains numerical stability in orientation tracking
+    ///
+    /// The process divides each component by the quaternion's magnitude.
+    pub fn normalize(&self) -> Self {
+        let m = self.magnitude();
+        Self {
+            w: self.w / m,
+            x: self.x / m,
+            y: self.y / m,
+            z: self.z / m,
+        }
+    }
+
 }
 

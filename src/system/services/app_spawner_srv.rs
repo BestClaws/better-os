@@ -23,7 +23,7 @@ pub async fn app_spawner_service(
 
             // Step 1b: Allocate and get canvas
             let (handle, canvas) = comp
-                .alloc_window_with_canvas(128, 64, 0)
+                .alloc_window_with_canvas(128, 64, 2)
                 .await
                 .expect("Failed to allocate battery window");
 
@@ -37,7 +37,7 @@ pub async fn app_spawner_service(
     };
 
     // === Step 2: Construct app context and spawn ===
-    let ctx = AppContext::new(handle, canvas, 0, "Battery", compositor);
+    let ctx = AppContext::new(handle, canvas, 2, "Battery", compositor);
     spawner.spawn(battery_app(ctx)).unwrap();
 
 
@@ -77,7 +77,7 @@ pub async fn app_spawner_service(
 
             // Step 1b: Allocate and get canvas
             let (handle, canvas) = comp
-                .alloc_window_with_canvas(128, 64, 2)
+                .alloc_window_with_canvas(128, 64, 0)
                 .await
                 .expect("Failed to allocate battery window");
 
@@ -91,6 +91,6 @@ pub async fn app_spawner_service(
     };
 
     // === Step 2: Construct app context and spawn ===
-    let ctx = AppContext::new(handle, canvas, 2, "hello", compositor);
+    let ctx = AppContext::new(handle, canvas, 0, "hello", compositor);
     spawner.spawn(slab_app(ctx)).unwrap();
 }
