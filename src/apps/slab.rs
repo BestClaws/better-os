@@ -169,8 +169,7 @@ pub async fn slab_app(mut context: AppContext<'static>) {
 
 
         let v = receiver.receive().await;
-        
-        info!("received v");
+
 
         draw_arrow(
             &mut context.canvas,

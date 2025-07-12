@@ -37,7 +37,6 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
 
         let _ = sender.send(rotated_direction).await;
-        defmt::info!("sent Orientation: {:?}", rotated_direction);
 
 
         // Timer::after_millis(100).await;

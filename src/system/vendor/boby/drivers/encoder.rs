@@ -22,7 +22,7 @@ impl<P: InputPin + Wait> AsyncEncoder for EncoderDriver<P> {
     async fn next(&mut self) -> Result<EncoderState, EncoderError> {
 
         loop {
-            self.a_pin.wait_for_falling_edge().await.unwrap();
+            self.a_pin.wait_for_any_edge().await.unwrap();
 
 
 
@@ -37,6 +37,8 @@ impl<P: InputPin + Wait> AsyncEncoder for EncoderDriver<P> {
             return match (a, b) {
                 (false, true)  => Ok(EncoderState::Ccw),
                 (false, false) => Ok(EncoderState::Cw),
+                (true, false) => Ok(EncoderState::Ccw),
+                (true, true)  => Ok(EncoderState::Cw),
                 _              => continue,
             }
         }

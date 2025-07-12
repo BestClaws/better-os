@@ -19,6 +19,7 @@ pub(crate) mod sub {
     use alloc::boxed::Box;
     use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
     use embassy_sync::mutex::Mutex;
+    use defmt::info;
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
     use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
@@ -33,6 +34,8 @@ pub(crate) mod sub {
                 defmt::error!("Failed to read encoder state");
                 continue; // Skip this iteration if there's an error
             };
+
+            info!("Encoder state: {:?}", state);
 
             match state {
                 EncoderState::Ccw => HUMAN_INPUT_CH.send(HumanInputEvent::NavUp).await,
