@@ -14,6 +14,7 @@ use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use esp_hal::peripherals::ADC1;
 use static_cell::StaticCell;
+use trouble_host::new;
 use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
@@ -23,7 +24,7 @@ use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
-use crate::system::vendor::boby::drivers::gyro_accelerometer::GyroAccelerometerDriver;
+use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
@@ -84,7 +85,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let display = Ssd1306Driver::init(i2c_1);
 
     // INIT GYRO ACCELEROMETER
-    let gyro_accelerometer = GyroAccelerometerDriver::new(i2c_2);
+    let gyro_accelerometer = MPU6050::new(i2c_2);
 
 
     // todo: make a hal device for this.

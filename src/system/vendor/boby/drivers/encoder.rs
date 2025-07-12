@@ -39,7 +39,6 @@ impl<P: InputPin + Wait> AsyncEncoder for EncoderDriver<P> {
                 (false, false) => Ok(EncoderState::Cw),
                 (true, false) => Ok(EncoderState::Ccw),
                 (true, true)  => Ok(EncoderState::Cw),
-                _              => continue,
             }
         }
 
