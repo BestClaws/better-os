@@ -41,7 +41,7 @@ impl Vec3 {
 
 
 /// A quaternion representing rotation
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Format)]
 pub struct Quaternion {
     pub w: f32,
     pub x: f32,
