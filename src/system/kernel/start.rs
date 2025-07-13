@@ -32,8 +32,8 @@ pub(crate) fn start(spawner: Spawner) {
 
     // Spawn input services
     info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
-    spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::encoder_emitter(device.encoder.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::button_emitter(device.button.unwrap())).unwrap();
 
     // Spawn sensors
     info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);

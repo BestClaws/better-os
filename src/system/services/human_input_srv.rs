@@ -23,9 +23,10 @@ pub(crate) mod sub {
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
     use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
+    use crate::util::math::primitives::Vec3;
 
     #[embassy_executor::task]
-    pub(crate) async fn listen_encoder(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {
+    pub(crate) async fn encoder_emitter(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {
         loop {
             let Ok(state) = ({
                 let mut e = encoder.lock().await;
@@ -45,13 +46,23 @@ pub(crate) mod sub {
     }
 
     #[embassy_executor::task]
-    pub(crate) async fn listen_button(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>) {
+    pub(crate) async fn button_emitter(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>) {
         loop {
             let state = {
                 let mut e = button.lock().await;
                 e.next().await
             };
 
+            match state {
+                ButtonState::Up => HUMAN_INPUT_CH.send(HumanInputEvent::OkReleased).await,
+                ButtonState::Down => HUMAN_INPUT_CH.send(HumanInputEvent::OkPressed).await,
+                ButtonState::Held => HUMAN_INPUT_CH.send(HumanInputEvent::OkHeld).await,
+            };
+        }
+    }
+
+    pub(crate) async fn accel_emitter(accel: Vec3) {
+     
             match state {
                 ButtonState::Up => HUMAN_INPUT_CH.send(HumanInputEvent::OkReleased).await,
                 ButtonState::Down => HUMAN_INPUT_CH.send(HumanInputEvent::OkPressed).await,

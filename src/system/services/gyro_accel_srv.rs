@@ -9,25 +9,29 @@ use crate::util::math::primitives::{Quaternion, Vec3};
 pub static ORIENTATION_CHANNEL: Channel<CriticalSectionRawMutex, Vec3, 10> =
     Channel::new();
 
+pub static ACCEL_VECTOR_CH: Channel<CriticalSectionRawMutex, Vec3, 10> =
+    Channel::new();
+
+
 
 #[embassy_executor::task]
 pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>) {
 
 
-    let sender = ORIENTATION_CHANNEL.sender();
+    let sender = ACCEL_VECTOR_CH.sender();
 
     loop {
 
-        // let acc = sensor.lock().await.get_accelerometer_data().await;
-        // defmt::info!(" Accelerometer Sensor: {:?}", acc);
+        let acc = sensor.lock().await.get_acceleration().await;
+        defmt::info!(" Accelerometer Sensor: {:?}", acc);
 
         // let gyro = sensor.lock().await.get_gyroscope_data().await;
         // defmt::info!("Gyro  Sensor: {:?}", gyro);
         // let temp = sensor.lock().await.get_temperature_celsius().await;
         // defmt::info!("Gyro Accelerometer Sensor: Temperature: {}C", temp);
-
-        let (qw, qx, qy, qz) = sensor.lock().await.get_roatation_quat().await;
-        let rotated_direction = Quaternion { w: qw, x: qx, y:qy, z: qz }.rotate_vector(Vec3(0.0, 0.0, 1.0));
+        //
+        // let (qw, qx, qy, qz) = sensor.lock().await.get_roatation_quat().await;
+        // let rotated_direction = Quaternion { w: qw, x: qx, y:qy, z: qz }.rotate_vector(Vec3(0.0, 0.0, 1.0));
 
 
         //
@@ -36,7 +40,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
 
 
-        let _ = sender.send(rotated_direction).await;
+        let _ = sender.send(Vec3(acc.0, acc.1, acc.2).normalize()).await;
 
 
         // Timer::after_millis(100).await;

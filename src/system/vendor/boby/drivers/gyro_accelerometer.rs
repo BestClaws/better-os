@@ -111,16 +111,12 @@ impl GyroAccelerometerDriver {
 
 #[async_trait(?Send)]
 impl AsyncGyroAccelerometer for GyroAccelerometerDriver {
-    async fn get_accelerometer_data(&mut self) -> (f32, f32, f32) {
+    async fn get_acceleration(&mut self) -> (f32, f32, f32) {
         let sensor = self.get_sensor().await;
-        // Read raw accelerometer data (uncalibrated)
-        // The accelerometer measures linear acceleration in three axes (X, Y, Z)
-        // Values will be imprecise until calibration is performed
         loop {
             let result = sensor.accel().await;
             if let Ok(accel_data) = result {
-                // Scale the raw data to Gs (gravitational units)
-                let accel_data = accel_data.scaled(AccelFullScale::G8);
+                let accel_data = accel_data.scaled(AccelFullScale::G2);
                 return (accel_data.x(), accel_data.y(), accel_data.z());
             } else {
                 continue;
