@@ -38,7 +38,8 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
 }
 
 
-impl<I> MPU6050<I> where I: I2c {
+impl<I> MPU6050<I> where I: I2c
+{
     pub fn new(i2c: I) -> Self {
         Self {
             i2c,
@@ -55,27 +56,183 @@ impl<I> MPU6050<I> where I: I2c {
         // Implementation for setting the clock source
         Ok(())
     }
-
-
-
-
-
-
-
 }
 
-impl<I> I2cHelpers<I> for MPU6050<I> where I: I2c {
-    fn write_bits(&mut self, address: u8, register: u8, bitStart: u8, length: u8, mut data: u8) -> Result<(), I::Error> {
-        let mut b: u8 = 0;
-        if (readByte(devAddr, regAddr, &b, I2Cdev::readTimeout, wireObj) != 0) {
-            let mask: u8  = ((1 << length) - 1) << (bitStart - length + 1);
-            data <<= (bitStart - length + 1); // shift data into correct position
-            data &= mask; // zero all non-important bits in data
-            b &= !(mask); // zero all important bits in existing byte
-            b |= data; // combine data with existing byte
-            return writeByte(devAddr, regAddr, b, wireObj);
-        } else {
-            return Ok(false);
+
+
+
+
+
+
+impl<I> I2cHelpers<I> for MPU6050<I>
+where
+    I: I2c + 'static,
+{
+    async fn read_bit(
+        &mut self,
+        address: u8,
+        register: u8,
+        bit_num: u8,
+        data: &mut [u8],
+        _timeout: Duration,
+    ) -> Result<u8, I::Error> {
+        let mut buf = [0u8; 1];
+        self.i2c.write_read(address, &[register], &mut buf).await?;
+        data[0] = (buf[0] >> bit_num) & 0x01;
+        Ok(1)
+    }
+
+    async fn read_bits(
+        &mut self,
+        address: u8,
+        register: u8,
+        bit_start: u8,
+        length: u8,
+        data: &mut [u8],
+        _timeout: Duration,
+    ) -> Result<u8, I::Error> {
+        let mut b = [0u8; 1];
+        self.i2c.write_read(address, &[register], &mut b).await?;
+        let mask = ((1 << length) - 1) << (bit_start - length + 1);
+        data[0] = (b[0] & mask) >> (bit_start - length + 1);
+        Ok(1)
+    }
+
+    async fn read_byte(
+        &mut self,
+        address: u8,
+        register: u8,
+        data: &mut [u8],
+        timeout: Duration,
+    ) -> Result<u8, I::Error> {
+        self.read_bytes(address, register, 1, data, timeout).await
+    }
+
+    async fn read_word(
+        &mut self,
+        address: u8,
+        register: u8,
+        data: &mut [u16],
+        timeout: Duration,
+    ) -> Result<u8, I::Error> {
+        self.read_words(address, register, 1, data, timeout).await
+    }
+
+    async fn read_bytes(
+        &mut self,
+        address: u8,
+        register: u8,
+        length: u8,
+        data: &mut [u8],
+        _timeout: Duration,
+    ) -> Result<u8, I::Error> {
+        self.i2c.write_read(address, &[register], &mut data[..length as usize]).await?;
+        Ok(length)
+    }
+
+    async fn read_words(
+        &mut self,
+        address: u8,
+        register: u8,
+        length: u8,
+        data: &mut [u16],
+        _timeout: Duration,
+    ) -> Result<u8, I::Error> {
+        let mut buf = [0u8; 128];
+        let byte_len = (length as usize) * 2;
+        self.i2c.write_read(address, &[register], &mut buf[..byte_len]).await?;
+
+        for i in 0..length as usize {
+            data[i] = ((buf[2 * i] as u16) << 8) | buf[2 * i + 1] as u16;
         }
+        Ok(length)
+    }
+
+    async fn write_bit(
+        &mut self,
+        address: u8,
+        register: u8,
+        bit_num: u8,
+        data: &[u8],
+    ) {
+        let mut buf = [0u8; 1];
+        if self.i2c.write_read(address, &[register], &mut buf).await.is_ok() {
+            let b = if data[0] != 0 {
+                buf[0] | (1 << bit_num)
+            } else {
+                buf[0] & !(1 << bit_num)
+            };
+            let _ = self.i2c.write(address, &[register, b]).await;
+        }
+    }
+
+    async fn write_bits(
+        &mut self,
+        address: u8,
+        register: u8,
+        bit_start: u8,
+        length: u8,
+        data: &[u8],
+    ) {
+        let mut buf = [0u8; 1];
+        if self.i2c.write_read(address, &[register], &mut buf).await.is_ok() {
+            let mut b = buf[0];
+            let mask = ((1 << length) - 1) << (bit_start - length + 1);
+            let mut value = data[0] << (bit_start - length + 1);
+            value &= mask;
+            b &= !mask;
+            b |= value;
+            let _ = self.i2c.write(address, &[register, b]).await;
+        }
+    }
+
+    async fn write_byte(
+        &mut self,
+        address: u8,
+        register: u8,
+        data: &[u8],
+    ) {
+        let _ = self.i2c.write(address, &[register, data[0]]).await;
+    }
+
+    async fn write_word(
+        &mut self,
+        address: u8,
+        register: u8,
+        data: &[u16],
+    ) {
+        let mut buf = [0u8; 2];
+        buf[0] = (data[0] >> 8) as u8;
+        buf[1] = (data[0] & 0xFF) as u8;
+        let _ = self.i2c.write(address, &[register, buf[0], buf[1]]).await;
+    }
+
+    async fn write_bytes(
+        &mut self,
+        address: u8,
+        register: u8,
+        length: u8,
+        data: &mut [u8],
+    ) {
+        let mut buf = [0u8; 128];
+        buf[0] = register;
+        buf[1..=length as usize].copy_from_slice(&data[..length as usize]);
+        let _ = self.i2c.write(address, &buf[..=length as usize]).await;
+    }
+
+    async fn write_words(
+        &mut self,
+        address: u8,
+        register: u8,
+        length: u8,
+        data: &mut [u16],
+    ) {
+        let mut buf = [0u8; 128];
+        buf[0] = register;
+        for i in 0..length as usize {
+            buf[1 + 2 * i] = (data[i] >> 8) as u8;
+            buf[1 + 2 * i + 1] = (data[i] & 0xFF) as u8;
+        }
+        let _ = self.i2c.write(address, &buf[..1 + (length as usize * 2)]).await;
     }
 }
