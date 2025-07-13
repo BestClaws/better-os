@@ -1,0 +1,1 @@
+pub const MPU6050_CLOCK_PLL_XGYRO: u8 = 0x01;
