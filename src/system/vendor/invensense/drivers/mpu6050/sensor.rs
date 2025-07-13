@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use core::fmt::Debug;
 use async_trait::async_trait;
 use defmt::export::u8;
+use defmt::{info, println};
 use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
 use embedded_hal_async::i2c::I2c;
 use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
@@ -17,6 +18,7 @@ const MPU6050_DEFAULT_ADDRESS: u8 = 0x68; // Default I2C address for MPU6050
 pub struct MPU6050<I> where I: I2c {
     i2c: I,
     address: u8,
+    gyroscopeResolution: f32,
 }
 
 #[async_trait(?Send)]
@@ -44,17 +46,45 @@ impl<I> MPU6050<I> where I: I2c
         Self {
             i2c,
             address: MPU6050_DEFAULT_ADDRESS,
+            gyroscopeResolution: 2000.0 / 32768.0
         }
     }
 
 
     pub async fn initialize(&mut self) {
-        self.set_clock_source(MPU6050_CLOCK_PLL_XGYRO).await.unwrap();
+        self.set_clock_source(MPU6050_CLOCK_PLL_XGYRO).await;
+        self.set_full_scale_gyro_range(MPU6050_GYRO_FS_250).await;
+
     }
 
-    async fn set_clock_source(&mut self, source: u8) -> Result<(), Error<I>> {
-        // Implementation for setting the clock source
-        Ok(())
+
+    async fn set_full_scale_gyro_range(&mut self, mut range: u8) {
+
+        match range {
+            MPU6050_GYRO_FS_250 =>
+                self.gyroscopeResolution = 250.0 / 32768.0,
+            MPU6050_GYRO_FS_500 =>
+                self.gyroscopeResolution = 500.0 / 32768.0,
+            MPU6050_GYRO_FS_1000 =>
+                self.gyroscopeResolution = 1000.0 / 32768.0,
+            MPU6050_GYRO_FS_2000 =>
+                self.gyroscopeResolution = 2000.0 / 32768.0,
+            _ => {
+                info!("Init gyroRange not valid, setting maximum gyro range");
+                range = MPU6050_GYRO_FS_2000;
+                self.gyroscopeResolution = 2000.0 / 32768.0;
+            }
+        }
+
+
+        self.write_bits(self.address, MPU6050_RA_GYRO_CONFIG, MPU6050_GCONFIG_FS_SEL_BIT, MPU6050_GCONFIG_FS_SEL_LENGTH, &[range]).await;
+
+
+
+        }
+
+    async fn set_clock_source(&mut self, source: u8)  {
+        self.write_bits(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_CLKSEL_BIT, MPU6050_PWR1_CLKSEL_LENGTH, &[source]).await;
     }
 }
 
@@ -64,9 +94,9 @@ impl<I> MPU6050<I> where I: I2c
 
 
 
-impl<I> I2cHelpers<I> for MPU6050<I>
+impl<'a, I> I2cHelpers<'a, I> for MPU6050<I>
 where
-    I: I2c + 'static,
+    I: I2c + 'a,
 {
     async fn read_bit(
         &mut self,

@@ -1,7 +1,7 @@
 use embassy_time::Duration;
 use embedded_hal_async::i2c::I2c;
 
-pub trait I2cHelpers<I> where I: I2c {
+pub trait I2cHelpers<'a, I> where I: I2c + 'a{
 
     async fn  read_bit(&mut self, address: u8, register: u8, bit_num: u8, data: &mut [u8], timeout: Duration) -> Result<u8, I::Error>;
     async fn read_bits(&mut self, address: u8, register: u8, bit_start: u8, length: u8, data: &mut [u8], timeout: Duration) -> Result<u8, I::Error>;
