@@ -18,7 +18,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
     let sender = ORIENTATION_CHANNEL.sender();
     info!("initializing gyro accelerometer service...");
-    sensor.lock().await.init().await;
+    sensor.lock().await.initialize().await;
     info!("gyro accelerometer service initialized");
 
     loop {

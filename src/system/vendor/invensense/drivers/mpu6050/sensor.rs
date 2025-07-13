@@ -18,17 +18,18 @@ const MPU6050_DEFAULT_ADDRESS: u8 = 0x68; // Default I2C address for MPU6050
 pub struct MPU6050<I> where I: I2c {
     i2c: I,
     address: u8,
-    gyroscopeResolution: f32,
+    gyroscope_resolution: f32,
+    acceleration_resolution: f32,
 }
 
 #[async_trait(?Send)]
 impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
 
-    async fn init(&mut self) {
-
-
-
-
+    async fn initialize(&mut self) {
+        self.set_clock_source(MPU6050_CLOCK_PLL_XGYRO).await;
+        self.set_full_scale_gyro_range(MPU6050_GYRO_FS_250).await;
+        self.set_full_scale_accel_range(MPU6050_ACCEL_FS_2).await;
+        self.set_sleep_enabled(false).await;
 
     }
 
@@ -46,15 +47,15 @@ impl<I> MPU6050<I> where I: I2c
         Self {
             i2c,
             address: MPU6050_DEFAULT_ADDRESS,
-            gyroscopeResolution: 2000.0 / 32768.0
+            gyroscope_resolution: 2000.0 / 32768.0,
+            acceleration_resolution: 16.0 / 32768.0,
         }
     }
 
 
-    pub async fn initialize(&mut self) {
-        self.set_clock_source(MPU6050_CLOCK_PLL_XGYRO).await;
-        self.set_full_scale_gyro_range(MPU6050_GYRO_FS_250).await;
 
+    async fn set_sleep_enabled(&mut self, enabled: bool) {
+        self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_SLEEP_BIT, &[enabled as u8]).await;
     }
 
 
@@ -62,26 +63,43 @@ impl<I> MPU6050<I> where I: I2c
 
         match range {
             MPU6050_GYRO_FS_250 =>
-                self.gyroscopeResolution = 250.0 / 32768.0,
+                self.gyroscope_resolution = 250.0 / 32768.0,
             MPU6050_GYRO_FS_500 =>
-                self.gyroscopeResolution = 500.0 / 32768.0,
+                self.gyroscope_resolution = 500.0 / 32768.0,
             MPU6050_GYRO_FS_1000 =>
-                self.gyroscopeResolution = 1000.0 / 32768.0,
+                self.gyroscope_resolution = 1000.0 / 32768.0,
             MPU6050_GYRO_FS_2000 =>
-                self.gyroscopeResolution = 2000.0 / 32768.0,
+                self.gyroscope_resolution = 2000.0 / 32768.0,
             _ => {
                 info!("Init gyroRange not valid, setting maximum gyro range");
                 range = MPU6050_GYRO_FS_2000;
-                self.gyroscopeResolution = 2000.0 / 32768.0;
+                self.gyroscope_resolution = 2000.0 / 32768.0;
             }
         }
-
-
         self.write_bits(self.address, MPU6050_RA_GYRO_CONFIG, MPU6050_GCONFIG_FS_SEL_BIT, MPU6050_GCONFIG_FS_SEL_LENGTH, &[range]).await;
 
+    }
 
+    async fn set_full_scale_accel_range(&mut self, mut range: u8) {
 
+        match range {
+            MPU6050_ACCEL_FS_2 =>
+                self.acceleration_resolution = 2.0 / 32768.0,
+            MPU6050_ACCEL_FS_4 =>
+                self.acceleration_resolution  = 4.0 / 32768.0,
+            MPU6050_ACCEL_FS_8 =>
+                self.acceleration_resolution  = 8.0 / 32768.0,
+            MPU6050_ACCEL_FS_16 =>
+                self.acceleration_resolution  = 16.0 / 32768.0,
+            _ => {
+                info!("Init accelRange not valid, setting maximum accel range");
+                range = MPU6050_ACCEL_FS_16;
+                self.acceleration_resolution  = 16.0 / 32768.0;
+            }
         }
+        self.write_bits(self.address, MPU6050_RA_ACCEL_CONFIG, MPU6050_ACONFIG_AFS_SEL_BIT, MPU6050_ACONFIG_AFS_SEL_LENGTH, &[range]).await;
+
+    }
 
     async fn set_clock_source(&mut self, source: u8)  {
         self.write_bits(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_CLKSEL_BIT, MPU6050_PWR1_CLKSEL_LENGTH, &[source]).await;
