@@ -16,17 +16,14 @@ pub static ORIENTATION_CHANNEL: Channel<CriticalSectionRawMutex, Vec3, 10> =
 pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>) {
 
 
-    let sender = ORIENTATION_CHANNEL.sender();
     info!("initializing gyro accelerometer service...");
     sensor.lock().await.initialize().await;
     info!("gyro accelerometer service initialized");
 
     loop {
-
         info!("looping service");
 
 
-        //
         let q = sensor.lock().await.get_orientation().await;
         info!("{}, {}, {}, {}, norm: {}", q.x, q.y, q.z, q.w, q.normalize());
 
