@@ -9,11 +9,11 @@ use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
 use crate::util::math::primitives::{Quaternion, Vec3};
 use micromath::F32Ext;
 use crate::system::vendor::invensense::drivers::mpu6050::error::Error;
-use crate::system::vendor::invensense::drivers::mpu6050::registers::*;
 use crate::system::vendor::invensense::drivers::mpu6050::constants::*;
 use crate::system::vendor::invensense::drivers::mpu6050::i2c_helpers::I2cHelpers;
 
 const MPU6050_DEFAULT_ADDRESS: u8 = 0x68; // Default I2C address for MPU6050
+const TIMEOUT: Duration = Duration::from_millis(1000);
 
 pub struct MPU6050<I> where I: I2c {
     i2c: I,
@@ -57,10 +57,25 @@ impl<I> MPU6050<I> where I: I2c
         self.reset_device().await;
         self.set_sleep_enabled(false).await;
         self.set_memory_bank(0x10, true, true).await;
+        self.set_memory_start_addres(0x06).await;
+        info!("checking HW revision.");
+        let rev = self.read_memory_byte().await?;
+        info!("Revision @ user[16][6] = {}", rev);
+
 
 
 
         Ok(())
+    }
+
+
+    async fn read_memory_byte(&mut self) -> Result<u8, Error<I>> {
+        let  buffer = &mut [0u8];
+        self.read_byte(self.address, MPU6050_RA_MEM_R_W, buffer, TIMEOUT).await.map_err(|e| Error::I2cError(e))?;
+        Ok(buffer[0])
+    }
+    async fn set_memory_start_addres(&mut self, address: u8) {
+        self.write_byte(self.address, MPU6050_RA_MEM_START_ADDR, address).await;
     }
 
 
@@ -73,7 +88,8 @@ impl<I> MPU6050<I> where I: I2c
 
 
     async fn reset_device(&mut self) {
-        self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_DEVICE_RESET_BIT, &[true as u8]).await;
+        info!("below error is expected cuz device got reset");
+        self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_DEVICE_RESET_BIT, true as u8).await;
         Timer::after(Duration::from_millis(50)).await; // Wait for reset to complete
     }
 
@@ -105,7 +121,7 @@ impl<I> MPU6050<I> where I: I2c
 
 
     async fn set_sleep_enabled(&mut self, enabled: bool) {
-        self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_SLEEP_BIT, &[enabled as u8]).await;
+        self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_SLEEP_BIT, enabled as u8).await;
     }
 
 
@@ -252,22 +268,22 @@ where
         address: u8,
         register: u8,
         bit_num: u8,
-        data: &[u8],
+        data: u8,
     ) {
         let mut buf = [0u8; 1];
         if self.i2c.write_read(address, &[register], &mut buf).await.is_ok() {
-            let b = if data[0] != 0 {
+            let b= if data != 0 {
                 buf[0] | (1 << bit_num)
             } else {
                 buf[0] & !(1 << bit_num)
             };
-            let _ = self.i2c.write(address, &[register, b]).await;
+            self.i2c.write(address, &[register, b]).await.unwrap();
         }
         // read bit again to verify
         let mut read_buf = [0u8; 1];
         if self.read_bit(address, register, bit_num, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            if read_buf[0] != data[0] {
-                error!("Error in written bit: expected {}, got {}", data[0], read_buf[0]);
+            if read_buf[0] != data {
+                error!("Error in written bit: expected {}, got {}", data, read_buf[0]);
             }
         } else {
             warn!("Failed to read back written bit");
@@ -315,16 +331,20 @@ where
         register: u8,
         data: u8,
     ) {
-        let _ = self.i2c.write(address, &[register, data]).await;
+        self.i2c.write(address, &[register, data]).await.unwrap();
+        Timer::after_millis(1000).await;
         // verify
         let mut read_buf = [0u8; 1];
-        if self.read_byte(address, register, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
+        if self.read_byte(address, register, &mut read_buf, Duration::from_millis(1000)).await.is_ok() {
             if read_buf[0] != data {
                 error!("Error in written byte: expected {}, got {}", data, read_buf[0]);
+            } else {
+                info!("write byte succcess. got: {}, expected: {}", read_buf[0], data);
             }
         } else {
             warn!("Failed to read back written byte");
         }
+
     }
 
     async fn write_word(
