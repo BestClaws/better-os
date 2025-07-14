@@ -1,17 +1,19 @@
+use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
+use crate::system::vendor::invensense::drivers::mpu6050::constants::*;
+use crate::system::vendor::invensense::drivers::mpu6050::dmp_firmware::DMP_FIRMWARE;
+use crate::system::vendor::invensense::drivers::mpu6050::error::Error;
+use crate::system::vendor::invensense::drivers::mpu6050::i2c_helpers::I2cHelpers;
+use crate::util::math::primitives::{Quaternion, Vec3};
 use alloc::boxed::Box;
-use core::fmt::Debug;
+use alloc::vec;
 use async_trait::async_trait;
+use core::fmt::Debug;
 use defmt::export::u8;
 use defmt::{error, info, println, warn};
 use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
 use embedded_graphics::prelude::RawData;
 use embedded_hal_async::i2c::I2c;
-use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
-use crate::util::math::primitives::{Quaternion, Vec3};
 use micromath::F32Ext;
-use crate::system::vendor::invensense::drivers::mpu6050::error::Error;
-use crate::system::vendor::invensense::drivers::mpu6050::constants::*;
-use crate::system::vendor::invensense::drivers::mpu6050::i2c_helpers::I2cHelpers;
 
 const MPU6050_DEFAULT_ADDRESS: u8 = 0x68; // Default I2C address for MPU6050
 const TIMEOUT: Duration = Duration::from_millis(1000);
@@ -84,8 +86,102 @@ impl<I> MPU6050<I> where I: I2c
         self.set_rate(4).await; // 1khz / (1 + 4) = 200 Hz
         info!("Setting external frame sync to TEMP_OUT_L[0]...");
         self.set_external_frame_sync(MPU6050_EXT_SYNC_TEMP_OUT_L).await;
+        info!("Setting DLPF bandwidth to 42Hz...");
+        self.set_dlpf_mode(MPU6050_DLPF_BW_42).await;
+        info!("Setting gyro sensitivity to +/- 2000 deg/sec...");
+        self.set_full_scale_gyro_range(MPU6050_GYRO_FS_2000).await;
+
+        // load DMP code into memory banks
+        info!("Writing DMP code to MPU memory banks ({}) bytes", MPU6050_DMP_CODE_SIZE);
+        if self.write_program_memory_block(DMP_FIRMWARE, MPU6050_DMP_CODE_SIZE, 0, 0, true).await.is_err() {
+            error!("Failed to write DMP code to MPU memory banks");
+            return Err(Error::FirmwareUploadVerificationFailed);
+        } // Failed
+        info!("Success! DMP code written and verified.");
 
         Ok(())
+    }
+
+
+    async fn write_program_memory_block(&mut self, data: &[u8], data_size: u16, bank: u8, address: u8, verify: bool) -> Result<(), Error<I>> {
+        self.write_memory_block(data, data_size, bank, address, verify).await
+    }
+
+    async fn write_memory_block(
+        &mut self,
+        data: &[u8],
+        data_size: u16,
+        mut bank: u8,
+        mut address: u8,
+        verify: bool,
+    ) -> Result<(), Error<I>> {
+        let mut i = 0;
+
+        while i < data_size {
+            info!("writing memory block");
+            // Determine chunk size
+            let mut chunk_size = MPU6050_DMP_MEMORY_CHUNK_SIZE as u16;
+            if i + chunk_size > data_size {
+                chunk_size = data_size - i;
+            }
+            if chunk_size > (256 - address as u16) {
+                chunk_size = 256 - address as u16;
+            }
+
+            // Get current chunk
+            let chunk = &data[i as usize..(i + chunk_size) as usize];
+
+            info!("settings memory banks");
+            // Set memory bank/address
+            self.set_memory_bank(bank, false, false).await;
+            self.set_memory_start_address(address).await;
+
+            // Write chunk
+            let mut chunk_buf = [0u8; MPU6050_DMP_MEMORY_CHUNK_SIZE as usize];
+            chunk_buf[..chunk_size as usize].copy_from_slice(chunk);
+            self.write_bytes(
+                self.address,
+                MPU6050_RA_MEM_R_W,
+                chunk_size as u8,
+                &mut chunk_buf[..chunk_size as usize],
+            ).await;
+
+            info!("verifying");
+
+            // Verify chunk
+            if verify {
+                let mut verify_buf = [0u8; MPU6050_DMP_MEMORY_CHUNK_SIZE as usize];
+                self.set_memory_bank(bank, false, false).await;
+                self.set_memory_start_address(address).await;
+                self.read_bytes(
+                    self.address,
+                    MPU6050_RA_MEM_R_W,
+                    chunk_size as u8,
+                    &mut verify_buf[..chunk_size as usize],
+                    TIMEOUT,
+                ).await.map_err(Error::I2cError)?;
+
+                if &verify_buf[..chunk_size as usize] != chunk {
+                    error!("Verification failed at bank {}, address {}", bank, address);
+                    return Err(Error::FirmwareUploadVerificationFailed);
+                }
+            }
+
+            i += chunk_size;
+            address = address.wrapping_add(chunk_size as u8); // Wraps at 256
+
+            if i < data_size && address == 0 {
+                bank += 1;
+            }
+        }
+
+        Ok(())
+    }
+
+
+
+    async fn set_dlpf_mode(&mut self, mode: u8) {
+        self.write_bits(self.address, MPU6050_RA_CONFIG, MPU6050_CFG_DLPF_CFG_BIT, MPU6050_CFG_DLPF_CFG_LENGTH, mode).await;
     }
 
     async fn set_external_frame_sync(&mut self, sync: u8) {
