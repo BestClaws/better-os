@@ -57,8 +57,9 @@ impl<I> MPU6050<I> where I: I2c
         self.reset_device().await;
         self.set_sleep_enabled(false).await;
         self.set_memory_bank(0x10, true, true).await;
-        self.set_memory_start_addres(0x06).await;
+        self.set_memory_start_address(0x06).await;
         info!("checking HW revision.");
+        // don't read this again, doing so will change its value.
         let rev = self.read_memory_byte().await?;
         info!("Revision @ user[16][6] = {}", rev);
 
@@ -74,7 +75,7 @@ impl<I> MPU6050<I> where I: I2c
         self.read_byte(self.address, MPU6050_RA_MEM_R_W, buffer, TIMEOUT).await.map_err(|e| Error::I2cError(e))?;
         Ok(buffer[0])
     }
-    async fn set_memory_start_addres(&mut self, address: u8) {
+    async fn set_memory_start_address(&mut self, address: u8) {
         self.write_byte(self.address, MPU6050_RA_MEM_START_ADDR, address).await;
     }
 
@@ -88,7 +89,7 @@ impl<I> MPU6050<I> where I: I2c
 
 
     async fn reset_device(&mut self) {
-        info!("below error is expected cuz device got reset");
+        // don't try to read this again. as it will always return 0x00
         self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_DEVICE_RESET_BIT, true as u8).await;
         Timer::after(Duration::from_millis(50)).await; // Wait for reset to complete
     }
@@ -279,15 +280,15 @@ where
             };
             self.i2c.write(address, &[register, b]).await.unwrap();
         }
-        // read bit again to verify
-        let mut read_buf = [0u8; 1];
-        if self.read_bit(address, register, bit_num, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            if read_buf[0] != data {
-                error!("Error in written bit: expected {}, got {}", data, read_buf[0]);
-            }
-        } else {
-            warn!("Failed to read back written bit");
-        }
+        // // read bit again to verify
+        // let mut read_buf = [0u8; 1];
+        // if self.read_bit(address, register, bit_num, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
+        //     if read_buf[0] != data {
+        //         error!("Error in written bit: expected {}, got {}", data, read_buf[0]);
+        //     }
+        // } else {
+        //     warn!("Failed to read back written bit");
+        // }
     }
 
     async fn write_bits(
@@ -308,16 +309,16 @@ where
             b |= value;
             let _ = self.i2c.write(address, &[register, b]).await;
 
-            // verify
-            let mut read_buf = [0u8; 1];
-            if self.read_bits(address, register, bit_start, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-                let expected_value = (data[0] << (1 + bit_start - length)) & mask;
-                if (read_buf[0] & mask) != expected_value {
-                    error!("Error in written bits: expected {}, got {}", expected_value, read_buf[0] & mask);
-                }
-            } else {
-                warn!("Failed to read back written bits");
-            }
+            // // verify
+            // let mut read_buf = [0u8; 1];
+            // if self.read_bits(address, register, bit_start, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
+            //     let expected_value = (data[0] << (1 + bit_start - length)) & mask;
+            //     if (read_buf[0] & mask) != expected_value {
+            //         error!("Error in written bits: expected {}, got {}", expected_value, read_buf[0] & mask);
+            //     }
+            // } else {
+            //     warn!("Failed to read back written bits");
+            // }
         } else {
             error!("Failed to read register {} at address {} so as to  modify bits", register, address);
         }
@@ -333,17 +334,17 @@ where
     ) {
         self.i2c.write(address, &[register, data]).await.unwrap();
         Timer::after_millis(1000).await;
-        // verify
-        let mut read_buf = [0u8; 1];
-        if self.read_byte(address, register, &mut read_buf, Duration::from_millis(1000)).await.is_ok() {
-            if read_buf[0] != data {
-                error!("Error in written byte: expected {}, got {}", data, read_buf[0]);
-            } else {
-                info!("write byte succcess. got: {}, expected: {}", read_buf[0], data);
-            }
-        } else {
-            warn!("Failed to read back written byte");
-        }
+        // // verify
+        // let mut read_buf = [0u8; 1];
+        // if self.read_byte(address, register, &mut read_buf, Duration::from_millis(1000)).await.is_ok() {
+        //     if read_buf[0] != data {
+        //         error!("Error in written byte: expected {}, got {}", data, read_buf[0]);
+        //     } else {
+        //         info!("write byte succcess. got: {}, expected: {}", read_buf[0], data);
+        //     }
+        // } else {
+        //     warn!("Failed to read back written byte");
+        // }
 
     }
 
@@ -358,17 +359,17 @@ where
         buf[1] = (data & 0xFF) as u8;
         let _ = self.i2c.write(address, &[register, buf[0], buf[1]]).await;
 
-        // verify
-        let mut read_buf = [0u16; 1];
-        if self.read_word(address, register, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            let expected_value = data;
-            let read_value = read_buf[0];
-            if read_value != expected_value {
-                error!("Error in written word: expected {}, got {}", expected_value, read_value);
-            }
-        } else {
-            warn!("Failed to read back written word");
-        }
+        // // verify
+        // let mut read_buf = [0u16; 1];
+        // if self.read_word(address, register, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
+        //     let expected_value = data;
+        //     let read_value = read_buf[0];
+        //     if read_value != expected_value {
+        //         error!("Error in written word: expected {}, got {}", expected_value, read_value);
+        //     }
+        // } else {
+        //     warn!("Failed to read back written word");
+        // }
     }
 
     async fn write_bytes(
@@ -383,15 +384,15 @@ where
         buf[1..=length as usize].copy_from_slice(&data[..length as usize]);
         let _ = self.i2c.write(address, &buf[..=length as usize]).await;
 
-        // verify
-        let mut read_buf = [0u8; 128];
-        if self.read_bytes(address, register, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            if read_buf[..length as usize] != data[..length as usize] {
-                error!("Error in written bytes: expected {:?}, got {:?}", &data[..length as usize], &read_buf[..length as usize]);
-            }
-        } else {
-            warn!("Failed to read back written bytes");
-        }
+        // // verify
+        // let mut read_buf = [0u8; 128];
+        // if self.read_bytes(address, register, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
+        //     if read_buf[..length as usize] != data[..length as usize] {
+        //         error!("Error in written bytes: expected {:?}, got {:?}", &data[..length as usize], &read_buf[..length as usize]);
+        //     }
+        // } else {
+        //     warn!("Failed to read back written bytes");
+        // }
     }
 
     async fn write_words(
@@ -409,16 +410,16 @@ where
         }
         let _ = self.i2c.write(address, &buf[..1 + (length as usize * 2)]).await;
 
-        // verify
-        let mut read_buf = [0u16; 128];
-        if self.read_words(address, register, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            for i in 0..length as usize {
-                if read_buf[i] != data[i] {
-                    error!("Error in written word {}: expected {}, got {}", i, data[i], read_buf[i]);
-                }
-            }
-        } else {
-            warn!("Failed to read back written words");
-        }
+        // // verify
+        // let mut read_buf = [0u16; 128];
+        // if self.read_words(address, register, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
+        //     for i in 0..length as usize {
+        //         if read_buf[i] != data[i] {
+        //             error!("Error in written word {}: expected {}, got {}", i, data[i], read_buf[i]);
+        //         }
+        //     }
+        // } else {
+        //     warn!("Failed to read back written words");
+        // }
     }
 }
