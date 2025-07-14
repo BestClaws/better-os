@@ -28,6 +28,7 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
     async fn init(&mut self) {
         self.initialize().await;
         self.test_connection().await.unwrap();
+        self.dmp_initialize().await.unwrap();
 
     }
 
@@ -48,6 +49,32 @@ impl<I> MPU6050<I> where I: I2c
             gyroscope_resolution: 2000.0 / 32768.0,
             acceleration_resolution: 16.0 / 32768.0,
         }
+    }
+
+
+    async fn dmp_initialize(&mut self) -> Result<(), Error<I>> {
+        info!("resetting MPU");
+        self.reset_device().await;
+        self.set_sleep_enabled(false).await;
+        self.set_memory_bank(0x10, true, true).await;
+
+
+
+        Ok(())
+    }
+
+
+    async fn  set_memory_bank(&mut self, mut bank: u8, prefetch_enabled: bool, user_bank: bool) {
+        bank &= 0x1F;
+        if user_bank {bank |= 0x20};
+        if prefetch_enabled { bank |= 0x40};
+        self.write_byte(self.address, MPU6050_RA_BANK_SEL, bank).await;
+    }
+
+
+    async fn reset_device(&mut self) {
+        self.write_bit(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_DEVICE_RESET_BIT, &[true as u8]).await;
+        Timer::after(Duration::from_millis(50)).await; // Wait for reset to complete
     }
 
     async fn initialize(&mut self) {
@@ -286,14 +313,14 @@ where
         &mut self,
         address: u8,
         register: u8,
-        data: &[u8],
+        data: u8,
     ) {
-        let _ = self.i2c.write(address, &[register, data[0]]).await;
+        let _ = self.i2c.write(address, &[register, data]).await;
         // verify
         let mut read_buf = [0u8; 1];
         if self.read_byte(address, register, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            if read_buf[0] != data[0] {
-                error!("Error in written byte: expected {}, got {}", data[0], read_buf[0]);
+            if read_buf[0] != data {
+                error!("Error in written byte: expected {}, got {}", data, read_buf[0]);
             }
         } else {
             warn!("Failed to read back written byte");
@@ -304,17 +331,17 @@ where
         &mut self,
         address: u8,
         register: u8,
-        data: &[u16],
+        data: u16,
     ) {
         let mut buf = [0u8; 2];
-        buf[0] = (data[0] >> 8) as u8;
-        buf[1] = (data[0] & 0xFF) as u8;
+        buf[0] = (data >> 8) as u8;
+        buf[1] = (data & 0xFF) as u8;
         let _ = self.i2c.write(address, &[register, buf[0], buf[1]]).await;
 
         // verify
         let mut read_buf = [0u16; 1];
         if self.read_word(address, register, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            let expected_value = data[0];
+            let expected_value = data;
             let read_value = read_buf[0];
             if read_value != expected_value {
                 error!("Error in written word: expected {}, got {}", expected_value, read_value);
