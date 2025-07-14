@@ -141,8 +141,8 @@ where
     ) -> Result<u8, I::Error> {
         let mut b = [0u8; 1];
         self.i2c.write_read(address, &[register], &mut b).await?;
-        let mask = ((1 << length) - 1) << (bit_start - length + 1);
-        data[0] = (b[0] & mask) >> (bit_start - length + 1);
+        let mask = ((1 << length) - 1) << (1 + bit_start  - length);
+        data[0] = (b[0] & mask) >> (1 + bit_start - length);
         Ok(1)
     }
 
@@ -234,8 +234,8 @@ where
         let mut buf = [0u8; 1];
         if self.i2c.write_read(address, &[register], &mut buf).await.is_ok() {
             let mut b = buf[0];
-            let mask = ((1 << length) - 1) << (bit_start - length + 1);
-            let mut value = data[0] << (bit_start - length + 1);
+            let mask = ((1 << length) - 1) << (1 + bit_start - length);
+            let mut value = data[0] << (1 + bit_start - length);
             value &= mask;
             b &= !mask;
             b |= value;
@@ -244,7 +244,7 @@ where
             // verify
             let mut read_buf = [0u8; 1];
             if self.read_bits(address, register, bit_start, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-                let expected_value = (data[0] << (bit_start - length + 1)) & mask;
+                let expected_value = (data[0] << (1 + bit_start - length)) & mask;
                 if (read_buf[0] & mask) != expected_value {
                     error!("Error in written bits: expected {}, got {}", expected_value, read_buf[0] & mask);
                 }
