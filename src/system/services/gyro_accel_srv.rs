@@ -17,7 +17,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
 
     info!("initializing gyro accelerometer service...");
-    sensor.lock().await.initialize().await;
+    sensor.lock().await.init().await;
     info!("gyro accelerometer service initialized");
 
     loop {

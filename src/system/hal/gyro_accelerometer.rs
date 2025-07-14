@@ -8,7 +8,7 @@ use crate::util::math::primitives::Quaternion;
 #[async_trait(?Send)]
 pub trait AsyncGyroAccelerometer {
 
-    async fn initialize(&mut self);
+    async fn init(&mut self);
 
 
     // async fn get_acceleration(&mut self) -> (f32, f32, f32);

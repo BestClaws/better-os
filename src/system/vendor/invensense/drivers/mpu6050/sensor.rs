@@ -25,11 +25,9 @@ pub struct MPU6050<I> where I: I2c {
 #[async_trait(?Send)]
 impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
 
-    async fn initialize(&mut self) {
-        self.set_clock_source(MPU6050_CLOCK_PLL_XGYRO).await;
-        self.set_full_scale_gyro_range(MPU6050_GYRO_FS_250).await;
-        self.set_full_scale_accel_range(MPU6050_ACCEL_FS_2).await;
-        self.set_sleep_enabled(false).await;
+    async fn init(&mut self) {
+        self.initialize().await;
+        self.test_connection().await.unwrap();
 
     }
 
@@ -52,6 +50,31 @@ impl<I> MPU6050<I> where I: I2c
         }
     }
 
+    async fn initialize(&mut self) {
+        self.set_clock_source(MPU6050_CLOCK_PLL_XGYRO).await;
+        self.set_full_scale_gyro_range(MPU6050_GYRO_FS_250).await;
+        self.set_full_scale_accel_range(MPU6050_ACCEL_FS_2).await;
+        self.set_sleep_enabled(false).await;
+
+
+    }
+
+    async fn test_connection(&mut self) -> Result<(), Error<I>> {
+        let device_id = self.get_device_id().await?;
+        if  (device_id == 0x34) || (device_id == 0xC) || (device_id == 0x3A) {
+            Ok(())
+        } else {
+            Err(Error::WrongDevice)
+        }
+
+    }
+
+    async fn get_device_id(&mut self) -> Result<u8, Error<I>> {
+        let buffer = &mut [0];
+        self.read_bits(self.address, MPU6050_RA_WHO_AM_I, MPU6050_WHO_AM_I_BIT, MPU6050_WHO_AM_I_LENGTH, buffer, Duration::from_millis(100))
+            .await.map_err(|e| Error::I2cError(e))?;
+        Ok(buffer[0])
+    }
 
 
     async fn set_sleep_enabled(&mut self, enabled: bool) {
@@ -196,6 +219,7 @@ where
         Ok(length)
     }
 
+    // todo: return error
     async fn write_bit(
         &mut self,
         address: u8,

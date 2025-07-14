@@ -4,6 +4,7 @@ use embedded_hal_async::i2c::I2c;
 pub enum Error<I> where I: I2c {
     I2cError(I::Error),
     Other,
+    WrongDevice,
     Timeout,
     FirmwareUploadVerificationFailed,
 }
@@ -15,6 +16,7 @@ impl<I> Debug for Error<I> where I: I2c {
             Error::Other => write!(f, "Other error"),
             Error::Timeout => write!(f, "Operation timed out"),
             Error::FirmwareUploadVerificationFailed => write!(f, "Firmware upload verification failed"),
+            Error::WrongDevice => write!(f, "Wrong device"),
         }
     }
 }
