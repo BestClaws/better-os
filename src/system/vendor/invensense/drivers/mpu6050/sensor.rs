@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use defmt::export::u8;
 use defmt::{error, info, println, warn};
 use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
+use embedded_graphics::prelude::RawData;
 use embedded_hal_async::i2c::I2c;
 use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
 use crate::util::math::primitives::{Quaternion, Vec3};
@@ -58,17 +59,70 @@ impl<I> MPU6050<I> where I: I2c
         self.set_sleep_enabled(false).await;
         self.set_memory_bank(0x10, true, true).await;
         self.set_memory_start_address(0x06).await;
-        info!("checking HW revision.");
         // don't read this again, doing so will change its value.
         let rev = self.read_memory_byte().await?;
-        info!("Revision @ user[16][6] = {}", rev);
+        info!("HW Revision @ user[16][6] = {}", rev);
+        info!("Resetting memory bank selection to 0...");
+        self.set_memory_bank(0, false, false).await;
+        info!("reading OTP bank validity... OTP Bank Valid: {}", self.get_otp_bank_valid().await?);
 
-
-
+        // setup weird slave stuff
+        // setup weird slave stuff (?)
+        info!("Setting slave 0 address to 0x7F...");
+        self.set_slave_address(0, 0x7F).await;
+        info!("Disabling I2C Master mode...");
+        self.set_i2c_master_mode_enabled(false).await;
+        info!("Setting slave 0 address to 0x68 (self)...");
+        self.set_slave_address(0, 0x68).await;
+        info!("Resetting I2C Master control...");
+        self.reset_i2c_master().await;
+        info!("settings clock source to z gyro");
+        self.set_clock_source(MPU6050_CLOCK_PLL_ZGYRO).await;
+        info!("Setting DMP and FIFO_OFLOW interrupts enabled...");
+        self.set_int_enabled(1<<MPU6050_INTERRUPT_FIFO_OFLOW_BIT|1<<MPU6050_INTERRUPT_DMP_INT_BIT).await;
+        info!("Setting sample rate to 200Hz...");
+        self.set_rate(4).await; // 1khz / (1 + 4) = 200 Hz
+        info!("Setting external frame sync to TEMP_OUT_L[0]...");
+        self.set_external_frame_sync(MPU6050_EXT_SYNC_TEMP_OUT_L).await;
 
         Ok(())
     }
 
+    async fn set_external_frame_sync(&mut self, sync: u8) {
+        self.write_bits(self.address, MPU6050_RA_CONFIG, MPU6050_CFG_EXT_SYNC_SET_BIT, MPU6050_CFG_EXT_SYNC_SET_LENGTH, &[sync]).await;
+    }
+
+    async fn set_rate(&mut self, rate: u8) {
+        self.write_byte(self.address, MPU6050_RA_SMPLRT_DIV, rate).await;
+    }
+
+    async fn set_int_enabled(&mut self, enabled: u8) {
+        self.write_byte(self.address, MPU6050_RA_INT_ENABLE, enabled).await;
+    }
+
+
+    async fn reset_i2c_master(&mut self) {
+        self.write_bit(self.address, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_I2C_MST_RESET_BIT, true as u8).await;
+        Timer::after(Duration::from_millis(20)).await; // Wait for reset to complete
+    }
+
+    async fn set_i2c_master_mode_enabled(&mut self, enabled: bool) {
+        self.write_bit(self.address, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_I2C_MST_EN_BIT, enabled as u8).await;
+    }
+
+    async fn set_slave_address(&mut self, num: u8, address: u8) {
+        if (num > 3) {
+            return
+        }
+        self.write_byte(self.address, MPU6050_RA_I2C_SLV0_ADDR + num*3, address).await;
+    }
+
+    async fn get_otp_bank_valid(&mut self) -> Result<bool, Error<I>> {
+        let buffer = &mut [0];
+        self.read_bit(self.address, MPU6050_RA_XG_OFFS_TC, MPU6050_TC_OTP_BNK_VLD_BIT, buffer, TIMEOUT)
+            .await.map_err(|e| Error::I2cError(e))?;
+        Ok(buffer[0] != 0)
+    }
 
     async fn read_memory_byte(&mut self) -> Result<u8, Error<I>> {
         let  buffer = &mut [0u8];
