@@ -34,6 +34,8 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
         self.initialize().await;
         self.test_connection().await.unwrap();
         self.dmp_initialize().await.unwrap();
+        // TODO: should be done after calibrating
+        self.set_dmp_enabled(true).await;
 
     }
 
@@ -136,6 +138,24 @@ impl<I> MPU6050<I> where I: I2c
         self.reset_fifo().await;
         self.get_int_status().await?;
         Ok(())
+    }
+
+    async fn get_fifo_count(&mut self) -> u16 {
+        let buffer = &mut [0u8; 2];
+        self.read_bytes(self.address, MPU6050_RA_FIFO_COUNTH, 2, buffer, TIMEOUT).await.unwrap();
+        ((buffer[0] as u16) << 8) | buffer[1] as u16
+    }
+
+    async fn get_fifo_bytes(&mut self, data: &mut [u8], length: u8) {
+        if(length > 0){
+            self.read_bytes(self.address, MPU6050_RA_FIFO_R_W, length, data, TIMEOUT).await.unwrap();
+        } else {
+            data.fill(0);
+        }
+    }
+
+    async fn get_fifo_packet_size(&self) -> u16 {
+        self.dmp_packet_size
     }
 
     async fn get_int_status(&mut self) -> Result<u8, Error<I>> {
