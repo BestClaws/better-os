@@ -483,7 +483,6 @@ where
         data: u8,
     ) {
         self.i2c.write(address, &[register, data]).await.unwrap();
-        Timer::after_millis(1000).await;
         // // verify
         // let mut read_buf = [0u8; 1];
         // if self.read_byte(address, register, &mut read_buf, Duration::from_millis(1000)).await.is_ok() {
