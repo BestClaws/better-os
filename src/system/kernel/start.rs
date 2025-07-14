@@ -25,26 +25,26 @@ pub(crate) fn start(spawner: Spawner) {
 
     let device = platforms::ajax::device::init_device();
 
-    // init_channels();
+    init_channels();
 
     // Initialize the global compositor
-    // let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
+    let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
 
     // Spawn input services
-    // info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
-    // spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
-    //
-    // // Spawn sensors
-    // info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
-    //
-    // info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
-    //
-    // // Spawn compositor service
-    // info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
+    info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
+
+    // Spawn sensors
+    info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
+
+    info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
+
+    // Spawn compositor service
+    info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
 
 
     // Spawn accel service
@@ -52,7 +52,7 @@ pub(crate) fn start(spawner: Spawner) {
     spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
 
 
-    // // Spawn app spawner service
-    // info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
+    // Spawn app spawner service
+    info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
 }

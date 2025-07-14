@@ -14,6 +14,7 @@ use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
 use embedded_graphics::prelude::RawData;
 use embedded_hal_async::i2c::I2c;
 use esp_hal::riscv::asm::delay;
+use esp_hal::riscv::register::Permission::X;
 use libm::sqrt;
 use log::__private_api::enabled;
 use micromath::F32Ext;
@@ -46,13 +47,19 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
     async fn get_orientation(&mut self) -> Quaternion {
         loop {
             let packet_size = self.get_fifo_packet_size().await;
-            let mut fifo_count = self.get_fifo_count().await;
+            let Ok(mut fifo_count) = self.get_fifo_count().await else {
+                Timer::after(Duration::from_millis(10)).await;
+                continue;
+            };
             let buffer = &mut [0u8; 64];
 
             if (fifo_count >= packet_size) {
                 // Keep the latest complete packet
                 while (fifo_count > packet_size) {
-                    self.get_fifo_bytes(buffer, packet_size as u8).await;
+                    let Ok(_) = self.get_fifo_bytes(buffer, packet_size as u8).await else {
+                        Timer::after_millis(10).await;
+                        continue;
+                    };
                     fifo_count -= packet_size;
                 }
                 return MPU6050::<I>::get_orientation_from_fifo_bytes(buffer).await;
@@ -184,18 +191,19 @@ impl<I> MPU6050<I> where I: I2c
     }
 
 
-    async fn get_fifo_count(&mut self) -> u16 {
+    async fn get_fifo_count(&mut self) -> Result<u16, Error<I>> {
         let buffer = &mut [0u8; 2];
-        self.read_bytes(self.address, MPU6050_RA_FIFO_COUNTH, 2, buffer, TIMEOUT).await.unwrap();
-        ((buffer[0] as u16) << 8) | buffer[1] as u16
+        self.read_bytes(self.address, MPU6050_RA_FIFO_COUNTH, 2, buffer, TIMEOUT).await.map_err(Error::I2cError)?;
+        Ok(((buffer[0] as u16) << 8) | buffer[1] as u16)
     }
 
-    async fn get_fifo_bytes(&mut self, data: &mut [u8], length: u8) {
+    async fn get_fifo_bytes(&mut self, data: &mut [u8], length: u8) -> Result<(), Error<I>> {
         if(length > 0){
-            self.read_bytes(self.address, MPU6050_RA_FIFO_R_W, length, data, TIMEOUT).await.unwrap();
+            self.read_bytes(self.address, MPU6050_RA_FIFO_R_W, length, data, TIMEOUT).await.map_err(Error::I2cError)?;
         } else {
             data.fill(0);
         }
+        Ok(())
     }
 
     async fn get_fifo_packet_size(&self) -> u16 {

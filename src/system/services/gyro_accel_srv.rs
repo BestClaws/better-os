@@ -14,7 +14,7 @@ pub static ORIENTATION_CHANNEL: Channel<CriticalSectionRawMutex, Vec3, 10> =
 
 #[embassy_executor::task]
 pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>) {
-
+    let sender = ORIENTATION_CHANNEL.sender();
 
     info!("initializing gyro accelerometer service...");
     sensor.lock().await.init().await;
@@ -26,8 +26,12 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
         let q = sensor.lock().await.get_orientation().await;
         info!("{}, {}, {}, {}, mag: {}", q.x, q.y, q.z, q.w, q.magnitude());
+        let rotated_direction = q.rotate_vector(Vec3(0.0, 0.0, 1.0));
+        let _ = sender.send(rotated_direction).await;
 
-        Timer::after_millis(100).await;
+
+
+
 
 
     }
