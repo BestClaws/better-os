@@ -13,6 +13,8 @@ use defmt::{error, info, println, warn};
 use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
 use embedded_graphics::prelude::RawData;
 use embedded_hal_async::i2c::I2c;
+use esp_hal::riscv::asm::delay;
+use libm::sqrt;
 use log::__private_api::enabled;
 use micromath::F32Ext;
 
@@ -42,7 +44,21 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
 
 
     async fn get_orientation(&mut self) -> Quaternion {
-        todo!()
+        loop {
+            let packet_size = self.get_fifo_packet_size().await;
+            let mut fifo_count = self.get_fifo_count().await;
+            let buffer = &mut [0u8; 64];
+
+            if (fifo_count >= packet_size) {
+                // Keep the latest complete packet
+                while (fifo_count > packet_size) {
+                    self.get_fifo_bytes(buffer, packet_size as u8).await;
+                    fifo_count -= packet_size;
+                }
+                return MPU6050::<I>::get_orientation_from_fifo_bytes(buffer).await;
+            }
+            Timer::after_millis(50).await;// Sample rate ~20Hz
+        }
     }
 }
 
@@ -139,6 +155,34 @@ impl<I> MPU6050<I> where I: I2c
         self.get_int_status().await?;
         Ok(())
     }
+
+    /// Extracts a Quaternion from a 14-byte DMP packet (MPU6050 FIFO output)
+    async fn get_orientation_from_fifo_bytes(fifo_bytes: &mut [u8]) -> Quaternion {
+        // If `fifo_bytes` is too short, return identity quaternion (or handle as error)
+        if fifo_bytes.len() < 14 {
+            return Quaternion {
+                w: 1.0,
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
+        }
+
+        let q_i = [
+            ((fifo_bytes[0] as i16) << 8) | fifo_bytes[1] as i16,
+            ((fifo_bytes[4] as i16) << 8) | fifo_bytes[5] as i16,
+            ((fifo_bytes[8] as i16) << 8) | fifo_bytes[9] as i16,
+            ((fifo_bytes[12] as i16) << 8) | fifo_bytes[13] as i16,
+        ];
+
+        Quaternion {
+            w: q_i[0] as f32 / 16384.0,
+            x: q_i[1] as f32 / 16384.0,
+            y: q_i[2] as f32 / 16384.0,
+            z: q_i[3] as f32 / 16384.0,
+        }
+    }
+
 
     async fn get_fifo_count(&mut self) -> u16 {
         let buffer = &mut [0u8; 2];
