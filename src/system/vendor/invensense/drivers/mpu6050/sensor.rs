@@ -8,11 +8,12 @@ use alloc::boxed::Box;
 use alloc::vec;
 use async_trait::async_trait;
 use core::fmt::Debug;
-use defmt::export::u8;
+use defmt::export::{char, u8};
 use defmt::{error, info, println, warn};
 use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
 use embedded_graphics::prelude::RawData;
 use embedded_hal_async::i2c::I2c;
+use log::__private_api::enabled;
 use micromath::F32Ext;
 
 const MPU6050_DEFAULT_ADDRESS: u8 = 0x68; // Default I2C address for MPU6050
@@ -23,6 +24,7 @@ pub struct MPU6050<I> where I: I2c {
     address: u8,
     gyroscope_resolution: f32,
     acceleration_resolution: f32,
+    dmp_packet_size: u16,
 }
 
 #[async_trait(?Send)]
@@ -51,6 +53,7 @@ impl<I> MPU6050<I> where I: I2c
             address: MPU6050_DEFAULT_ADDRESS,
             gyroscope_resolution: 2000.0 / 32768.0,
             acceleration_resolution: 16.0 / 32768.0,
+            dmp_packet_size: 42, // Default DMP packet size
         }
     }
 
@@ -99,7 +102,91 @@ impl<I> MPU6050<I> where I: I2c
         } // Failed
         info!("Success! DMP code written and verified.");
 
+        // Set the FIFO Rate Divisor into the DMP Firmware Memory
+        let dmp_update = [0x00, MPU6050_DMP_FIFO_RATE_DIVISOR];
+        self.write_memory_block(&dmp_update, 0x02, 0x02, 0x16, true).await.expect("dmp update"); // Lets write the dmpUpdate data to the Firmware image, we have 2 bytes to write in bank 0x02 with the Offset 0x16
+
+        //write start address MSB into register
+        self.set_dmp_config1(0x03).await;
+        //write start address LSB into register
+        self.set_dmp_config2(0x00).await;
+
+        info!("Clearing OTP Bank flag...");
+        self.set_otp_bank_valid(false).await;
+
+        info!("Setting motion detection threshold to 2...");
+        self.set_motion_detection_threshold(2).await;
+        info!("Setting zero-motion detection threshold to 156...");
+        self.set_zero_motion_detection_threshold(156).await;
+
+        info!("Setting motion detection duration to 80...");
+        self.set_motion_detection_duration(80).await;
+        info!("Setting zero-motion detection duration to 0...");
+        self.set_zero_motion_detection_duration(0).await;
+        info!("Enabling FIFO...");
+        self.set_fifo_enabled(true).await;
+        info!("resetting DMP");
+        self.reset_dmp().await;
+        info!("DMP is good to go!");
+        info!("Disabling DMP (you turn it on later)...");
+        self.set_dmp_enabled(false).await;
+        info!("Setting up internal 42-byte (default) DMP packet buffer...");
+        self.dmp_packet_size = 42;
+        info!("Resetting FIFO and clearing INT status one last time...");
+        self.reset_fifo().await;
+        self.get_int_status().await?;
         Ok(())
+    }
+
+    async fn get_int_status(&mut self) -> Result<u8, Error<I>> {
+        let buffer = &mut [0];
+        self.read_byte(self.address, MPU6050_RA_INT_STATUS, buffer, TIMEOUT).await.map_err(Error::I2cError)?;
+        Ok(buffer[0])
+    }
+
+    async fn reset_fifo(&mut self) {
+        self.write_bit(self.address, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_FIFO_RESET_BIT, true as u8).await;
+    }
+
+    async fn set_dmp_enabled(&mut self, enabled: bool) {
+        self.write_bit(self.address, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_DMP_EN_BIT, enabled as u8).await;
+    }
+
+    async fn reset_dmp(&mut self) {
+        self.write_bit(self.address, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_DMP_RESET_BIT, true as u8).await;
+    }
+
+    async fn set_fifo_enabled(&mut self, enabled: bool) {
+        self.write_bit(self.address, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_FIFO_EN_BIT, enabled as u8).await;
+    }
+
+    async fn set_zero_motion_detection_duration(&mut self, duration: u8) {
+        self.write_byte(self.address, MPU6050_RA_ZRMOT_DUR, duration).await;
+    }
+
+    async fn set_motion_detection_duration(&mut self, duration: u8) {
+        self.write_byte(self.address, MPU6050_RA_MOT_DUR, duration).await;
+    }
+
+    async fn set_zero_motion_detection_threshold(&mut self, threshold: u8) {
+        self.write_byte(self.address, MPU6050_RA_ZRMOT_THR, threshold).await;
+    }
+
+    async fn set_motion_detection_threshold(&mut self, threshold: u8) {
+        self.write_byte(self.address, MPU6050_RA_MOT_THR, threshold).await;
+    }
+
+    async fn set_otp_bank_valid(&mut self, enabled: bool) {
+        self.write_bit(self.address, MPU6050_RA_XG_OFFS_TC, MPU6050_TC_OTP_BNK_VLD_BIT, enabled as u8).await;
+    }
+
+
+    async fn set_dmp_config1(&mut self, config: u8) {
+        self.write_byte(self.address, MPU6050_RA_DMP_CFG_1, config).await;
+    }
+
+    async fn set_dmp_config2(&mut self, config: u8) {
+        self.write_byte(self.address, MPU6050_RA_DMP_CFG_2, config).await;
     }
 
 
@@ -131,7 +218,6 @@ impl<I> MPU6050<I> where I: I2c
             // Get current chunk
             let chunk = &data[i as usize..(i + chunk_size) as usize];
 
-            info!("settings memory banks");
             // Set memory bank/address
             self.set_memory_bank(bank, false, false).await;
             self.set_memory_start_address(address).await;
@@ -145,8 +231,6 @@ impl<I> MPU6050<I> where I: I2c
                 chunk_size as u8,
                 &mut chunk_buf[..chunk_size as usize],
             ).await;
-
-            info!("verifying");
 
             // Verify chunk
             if verify {
