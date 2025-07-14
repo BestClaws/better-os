@@ -89,7 +89,7 @@ impl<I> MPU6050<I> where I: I2c
     }
 
     async fn set_external_frame_sync(&mut self, sync: u8) {
-        self.write_bits(self.address, MPU6050_RA_CONFIG, MPU6050_CFG_EXT_SYNC_SET_BIT, MPU6050_CFG_EXT_SYNC_SET_LENGTH, &[sync]).await;
+        self.write_bits(self.address, MPU6050_RA_CONFIG, MPU6050_CFG_EXT_SYNC_SET_BIT, MPU6050_CFG_EXT_SYNC_SET_LENGTH, sync).await;
     }
 
     async fn set_rate(&mut self, rate: u8) {
@@ -197,7 +197,7 @@ impl<I> MPU6050<I> where I: I2c
                 self.gyroscope_resolution = 2000.0 / 32768.0;
             }
         }
-        self.write_bits(self.address, MPU6050_RA_GYRO_CONFIG, MPU6050_GCONFIG_FS_SEL_BIT, MPU6050_GCONFIG_FS_SEL_LENGTH, &[range]).await;
+        self.write_bits(self.address, MPU6050_RA_GYRO_CONFIG, MPU6050_GCONFIG_FS_SEL_BIT, MPU6050_GCONFIG_FS_SEL_LENGTH, range).await;
 
     }
 
@@ -218,12 +218,12 @@ impl<I> MPU6050<I> where I: I2c
                 self.acceleration_resolution  = 16.0 / 32768.0;
             }
         }
-        self.write_bits(self.address, MPU6050_RA_ACCEL_CONFIG, MPU6050_ACONFIG_AFS_SEL_BIT, MPU6050_ACONFIG_AFS_SEL_LENGTH, &[range]).await;
+        self.write_bits(self.address, MPU6050_RA_ACCEL_CONFIG, MPU6050_ACONFIG_AFS_SEL_BIT, MPU6050_ACONFIG_AFS_SEL_LENGTH, range).await;
 
     }
 
     async fn set_clock_source(&mut self, source: u8)  {
-        self.write_bits(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_CLKSEL_BIT, MPU6050_PWR1_CLKSEL_LENGTH, &[source]).await;
+        self.write_bits(self.address, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_CLKSEL_BIT, MPU6050_PWR1_CLKSEL_LENGTH, source).await;
     }
 }
 
@@ -351,13 +351,13 @@ where
         register: u8,
         bit_start: u8,
         length: u8,
-        data: &[u8],
+        data: u8,
     ) {
         let mut buf = [0u8; 1];
         if self.i2c.write_read(address, &[register], &mut buf).await.is_ok() {
             let mut b = buf[0];
             let mask = ((1 << length) - 1) << (1 + bit_start - length);
-            let mut value = data[0] << (1 + bit_start - length);
+            let mut value = data << (1 + bit_start - length);
             value &= mask;
             b &= !mask;
             b |= value;
@@ -366,7 +366,7 @@ where
             // // verify
             // let mut read_buf = [0u8; 1];
             // if self.read_bits(address, register, bit_start, length, &mut read_buf, Duration::from_millis(10)).await.is_ok() {
-            //     let expected_value = (data[0] << (1 + bit_start - length)) & mask;
+            //     let expected_value = (data << (1 + bit_start - length)) & mask;
             //     if (read_buf[0] & mask) != expected_value {
             //         error!("Error in written bits: expected {}, got {}", expected_value, read_buf[0] & mask);
             //     }
