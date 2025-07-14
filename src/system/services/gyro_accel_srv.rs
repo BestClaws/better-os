@@ -24,8 +24,8 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
         info!("looping service");
 
 
-        // let q = sensor.lock().await.get_orientation().await;
-        // info!("{}, {}, {}, {}, norm: {}", q.x, q.y, q.z, q.w, q.normalize());
+        let q = sensor.lock().await.get_orientation().await;
+        info!("{}, {}, {}, {}, mag: {}", q.x, q.y, q.z, q.w, q.magnitude());
 
         Timer::after_millis(100).await;
 
