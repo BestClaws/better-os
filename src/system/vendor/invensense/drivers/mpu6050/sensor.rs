@@ -3,9 +3,9 @@ use crate::system::vendor::invensense::drivers::mpu6050::constants::*;
 use crate::system::vendor::invensense::drivers::mpu6050::dmp_firmware::DMP_FIRMWARE;
 use crate::system::vendor::invensense::drivers::mpu6050::error::Error;
 use crate::system::vendor::invensense::drivers::mpu6050::i2c_helpers::I2cHelpers;
-use crate::util::math::primitives::{Quaternion, Vec3};
 use alloc::boxed::Box;
 use alloc::vec;
+use core::f32::consts::PI;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use defmt::export::{char, u8};
@@ -15,10 +15,11 @@ use embedded_graphics::prelude::RawData;
 use embedded_hal_async::i2c::I2c;
 use esp_hal::riscv::asm::delay;
 use esp_hal::riscv::register::Permission::X;
-use libm::sqrt;
+use libm::{ sqrt, };
 use log::__private_api::enabled;
 use micromath::F32Ext;
-
+use crate::util::math::primitives::{Quaternion, Vec3};
+use libm::{atan2f, sqrtf};
 const MPU6050_DEFAULT_ADDRESS: u8 = 0x68; // Default I2C address for MPU6050
 const TIMEOUT: Duration = Duration::from_millis(1000);
 
@@ -62,7 +63,7 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
                     };
                     fifo_count -= packet_size;
                 }
-                return MPU6050::<I>::get_orientation_from_fifo_bytes(buffer).await;
+                return get_orientation_from_fifo_bytes(buffer).await;
             }
             Timer::after_millis(50).await;// Sample rate ~20Hz
         }
@@ -163,33 +164,6 @@ impl<I> MPU6050<I> where I: I2c
         Ok(())
     }
 
-    /// Extracts a Quaternion from a 14-byte DMP packet (MPU6050 FIFO output)
-    async fn get_orientation_from_fifo_bytes(fifo_bytes: &mut [u8]) -> Quaternion {
-        // If `fifo_bytes` is too short, return identity quaternion (or handle as error)
-        if fifo_bytes.len() < 14 {
-            return Quaternion {
-                w: 1.0,
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            };
-        }
-
-        let q_i = [
-            ((fifo_bytes[0] as i16) << 8) | fifo_bytes[1] as i16,
-            ((fifo_bytes[4] as i16) << 8) | fifo_bytes[5] as i16,
-            ((fifo_bytes[8] as i16) << 8) | fifo_bytes[9] as i16,
-            ((fifo_bytes[12] as i16) << 8) | fifo_bytes[13] as i16,
-        ];
-
-        Quaternion {
-            w: q_i[0] as f32 / 16384.0,
-            x: q_i[1] as f32 / 16384.0,
-            y: q_i[2] as f32 / 16384.0,
-            z: q_i[3] as f32 / 16384.0,
-        }
-    }
-
 
     async fn get_fifo_count(&mut self) -> Result<u16, Error<I>> {
         let buffer = &mut [0u8; 2];
@@ -277,7 +251,6 @@ impl<I> MPU6050<I> where I: I2c
         let mut i = 0;
 
         while i < data_size {
-            info!("writing memory block");
             // Determine chunk size
             let mut chunk_size = MPU6050_DMP_MEMORY_CHUNK_SIZE as u16;
             if i + chunk_size > data_size {
@@ -728,3 +701,77 @@ where
         // }
     }
 }
+
+
+
+/// Calculates gravity vector from a quaternion.
+/// The result represents the direction of gravity (down) in the device's frame.
+pub fn get_gravity(q: &Quaternion) -> Vec3 {
+    let x = 2.0 * (q.x * q.z - q.w * q.y);
+    let y = 2.0 * (q.w * q.x + q.y * q.z);
+    let z = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
+
+    Vec3(x, y, z)
+}
+
+
+
+/// Computes yaw (Z), pitch (Y), and roll (X) angles from a quaternion and gravity vector.
+/// Returns a tuple: `(yaw, pitch, roll)` in **radians**.
+pub fn get_yaw_pitch_roll(q: &Quaternion, gravity: &Vec3) -> (f32, f32, f32) {
+    // Yaw (rotation around Z axis)
+    let yaw = atan2f(
+        2.0 * q.x * q.y - 2.0 * q.w * q.z,
+        2.0 * q.w * q.w + 2.0 * q.x * q.x - 1.0,
+    );
+
+    // Pitch (nose up/down, rotation around Y axis)
+    let mut pitch = atan2f(
+        gravity.0, // x
+        sqrtf(gravity.1 * gravity.1 + gravity.2 * gravity.2), // sqrt(y² + z²)
+    );
+
+    // Roll (tilt left/right, rotation around X axis)
+    let roll = atan2f(gravity.1, gravity.2); // atan2(y, z)
+
+    // Handle discontinuity when gravity.z is negative
+    if gravity.2 < 0.0 {
+        if pitch > 0.0 {
+            pitch = PI - pitch;
+        } else {
+            pitch = -PI - pitch;
+        }
+    }
+
+    (yaw, pitch, roll)
+}
+
+
+
+/// Extracts a Quaternion from a 14-byte DMP packet (MPU6050 FIFO output)
+async fn get_orientation_from_fifo_bytes(fifo_bytes: &mut [u8]) -> Quaternion {
+    // If `fifo_bytes` is too short, return identity quaternion (or handle as error)
+    if fifo_bytes.len() < 14 {
+        return Quaternion {
+            w: 1.0,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+    }
+
+    let q_i = [
+        ((fifo_bytes[0] as i16) << 8) | fifo_bytes[1] as i16,
+        ((fifo_bytes[4] as i16) << 8) | fifo_bytes[5] as i16,
+        ((fifo_bytes[8] as i16) << 8) | fifo_bytes[9] as i16,
+        ((fifo_bytes[12] as i16) << 8) | fifo_bytes[13] as i16,
+    ];
+
+    Quaternion {
+        w: q_i[0] as f32 / 16384.0,
+        x: q_i[1] as f32 / 16384.0,
+        y: q_i[2] as f32 / 16384.0,
+        z: q_i[3] as f32 / 16384.0,
+    }
+}
+
