@@ -4,11 +4,9 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
-use embedded_hal_async::i2c::I2c;
 use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
-use crate::util::math::primitives::{Quaternion, Vec3};
-use micromath::F32Ext;
-use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll, MPU6050};
+use crate::util::math::primitives::{Vec3};
+use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll};
 
 pub static ORIENTATION_CHANNEL: Channel<CriticalSectionRawMutex, Vec3, 1> =
     Channel::new();

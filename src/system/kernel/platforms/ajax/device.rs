@@ -14,7 +14,6 @@ use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use esp_hal::peripherals::ADC1;
 use static_cell::StaticCell;
-use trouble_host::new;
 use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};

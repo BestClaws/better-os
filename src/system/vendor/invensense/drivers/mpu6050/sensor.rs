@@ -4,19 +4,12 @@ use crate::system::vendor::invensense::drivers::mpu6050::dmp_firmware::DMP_FIRMW
 use crate::system::vendor::invensense::drivers::mpu6050::error::Error;
 use crate::system::vendor::invensense::drivers::mpu6050::i2c_helpers::I2cHelpers;
 use alloc::boxed::Box;
-use alloc::vec;
 use core::f32::consts::PI;
 use async_trait::async_trait;
-use core::fmt::Debug;
-use defmt::export::{char, u8};
-use defmt::{error, info, println, warn};
-use embassy_time::{with_timeout, Duration, Timer, WithTimeout};
-use embedded_graphics::prelude::RawData;
+use defmt::{error, info};
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c::I2c;
-use esp_hal::riscv::asm::delay;
-use esp_hal::riscv::register::Permission::X;
-use libm::{ sqrt, };
-use log::__private_api::enabled;
+#[allow(unused_imports)]
 use micromath::F32Ext;
 use crate::util::math::primitives::{Quaternion, Vec3};
 use libm::{atan2f, sqrtf};
@@ -54,9 +47,9 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
             };
             let buffer = &mut [0u8; 64];
 
-            if (fifo_count >= packet_size) {
+            if fifo_count >= packet_size {
                 // Keep the latest complete packet
-                while (fifo_count > packet_size) {
+                while fifo_count > packet_size {
                     let Ok(_) = self.get_fifo_bytes(buffer, packet_size as u8).await else {
                         Timer::after_millis(10).await;
                         continue;
@@ -172,7 +165,7 @@ impl<I> MPU6050<I> where I: I2c
     }
 
     async fn get_fifo_bytes(&mut self, data: &mut [u8], length: u8) -> Result<(), Error<I>> {
-        if(length > 0){
+        if length > 0 {
             self.read_bytes(self.address, MPU6050_RA_FIFO_R_W, length, data, TIMEOUT).await.map_err(Error::I2cError)?;
         } else {
             data.fill(0);
@@ -336,7 +329,7 @@ impl<I> MPU6050<I> where I: I2c
     }
 
     async fn set_slave_address(&mut self, num: u8, address: u8) {
-        if (num > 3) {
+        if num > 3 {
             return
         }
         self.write_byte(self.address, MPU6050_RA_I2C_SLV0_ADDR + num*3, address).await;

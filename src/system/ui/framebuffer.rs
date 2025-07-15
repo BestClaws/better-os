@@ -1,16 +1,13 @@
 #![allow(unused)]
 
 
-
 use portable_atomic::{AtomicU8, Ordering};
-
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     semaphore::GreedySemaphore,
 };
 use embassy_sync::semaphore::Semaphore;
 
-// === Display Config ===
 
 pub const DISPLAY_WIDTH: usize = 128;
 pub const DISPLAY_HEIGHT: usize = 64;

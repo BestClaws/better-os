@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use defmt::export::display;
 use crate::system::hal::display::AsyncDisplay;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
