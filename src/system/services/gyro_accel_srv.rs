@@ -10,7 +10,7 @@ use crate::util::math::primitives::{Quaternion, Vec3};
 use micromath::F32Ext;
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll, MPU6050};
 
-pub static ORIENTATION_CHANNEL: Channel<CriticalSectionRawMutex, Vec3, 10> =
+pub static ORIENTATION_CHANNEL: Channel<CriticalSectionRawMutex, Vec3, 1> =
     Channel::new();
 
 
@@ -26,12 +26,12 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
 
         let q = sensor.lock().await.get_orientation().await;
-        info!("q: {}, {}, {}, {} norm: {}", q.w, q.x, q.y, q.z, q.magnitude());
-        // let g = get_gravity(&q);
-        // let ypr = get_yaw_pitch_roll(&q, &g);
-        // info!("yaw: {}, pitch: {}, roll: {}", ypr.0 * 57.296, ypr.1 * 57.296, ypr.2 * 57.296,);
-        // let rotated_direction = q.rotate_vector(Vec3(0.0, 0.0, 1.0));
-        // let _ = sender.send(rotated_direction).await;
+        // info!("q: {}, {}, {}, {} norm: {}", q.w, q.x, q.y, q.z, q.magnitude());
+        let g = get_gravity(&q);
+        let ypr = get_yaw_pitch_roll(&q, &g);
+        info!("yaw: {}, pitch: {}, roll: {}", ypr.0 * 57.296, ypr.1 * 57.296, ypr.2 * 57.296,);
+        let rotated_direction = q.rotate_vector(Vec3(0.0, 0.0, 1.0));
+        let _ = sender.send(rotated_direction).await;
         Timer::after_millis(100).await;
 
 

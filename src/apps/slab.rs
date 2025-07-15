@@ -1,13 +1,13 @@
+// Allow unused code for prototyping
 #![allow(unused)]
-
 
 use alloc::vec::Vec;
 use defmt::info;
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{Triangle, Line, PrimitiveStyle},
+    primitives::{Line, PrimitiveStyle, Triangle},
 };
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
@@ -15,185 +15,240 @@ use crate::system::services::battery_srv::BATTERY_CHANNEL;
 use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
 use crate::util::math::primitives::Vec3;
 
-pub fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<(i32, i32)> {
+// Projects a 3D point to 2D screen coordinates
+fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<(i32, i32)> {
+    // Ensure point is in front of camera (z > 0.1)
     if v.2 <= 0.1 {
-        return None; // behind camera
+        return None;
     }
 
     let fov_rad = fov_deg.to_radians();
     let aspect = width as f32 / height as f32;
-    let f = 1.0 / (fov_rad / 2.0).tan(); // Focal length for perspective
+    let f = 1.0 / (fov_rad / 2.0).tan(); // Focal length for perspective projection
 
+    // Project to screen coordinates
+    // X-axis: positive to right, Y-axis: positive up, Z-axis: positive into screen
     let x_proj = (v.0 * f) / v.2;
     let y_proj = (v.1 * f) / (v.2 * aspect);
 
+    // Map to screen pixels (origin at center)
     Some((
         ((x_proj + 1.0) * (width as f32 / 2.0)) as i32,
         ((1.0 - y_proj) * (height as f32 / 2.0)) as i32,
     ))
 }
 
-pub fn rotate_xyz(v: Vec3, angle_x: f32, angle_y: f32, angle_z: f32) -> Vec3 {
-    let (sx, cx) = angle_x.sin_cos();
-    let y1 = v.1 * cx - v.2 * sx;
-    let z1 = v.1 * sx + v.2 * cx;
-    let v = Vec3(v.0, y1, z1);
+// Computes a rotation matrix to align the slab's Z-axis with a target direction
+fn align_to_direction(v: Vec3, target: Vec3) -> [[f32; 3]; 3] {
+    // Normalize input vectors
+    let v = {
+        let mag = (v.0 * v.0 + v.1 * v.1 + v.2 * v.2).sqrt();
+        if mag < 0.0001 {
+            Vec3(0.0, 0.0, 1.0) // Default to Z-axis if zero vector
+        } else {
+            Vec3(v.0 / mag, v.1 / mag, v.2 / mag)
+        }
+    };
+    let target = {
+        let mag = (target.0 * target.0 + target.1 * target.1 + target.2 * target.2).sqrt();
+        if mag < 0.0001 {
+            Vec3(0.0, 0.0, 1.0) // Default to Z-axis if zero vector
+        } else {
+            Vec3(target.0 / mag, target.1 / mag, target.2 / mag)
+        }
+    };
 
-    let (sy, cy) = angle_y.sin_cos();
-    let x2 = v.0 * cy + v.2 * sy;
-    let z2 = -v.0 * sy + v.2 * cy;
-    let v = Vec3(x2, v.1, z2);
+    // Compute rotation axis (cross product) and angle (dot product)
+    let axis = Vec3(
+        v.1 * target.2 - v.2 * target.1,
+        v.2 * target.0 - v.0 * target.2,
+        v.0 * target.1 - v.1 * target.0,
+    );
+    let axis_mag = (axis.0 * axis.0 + axis.1 * axis.1 + axis.2 * axis.2).sqrt();
+    let dot = v.0 * target.0 + v.1 * target.1 + v.2 * target.2;
+    let angle = dot.clamp(-1.0, 1.0).acos();
 
-    let (sz, cz) = angle_z.sin_cos();
-    let x3 = v.0 * cz - v.1 * sz;
-    let y3 = v.0 * sz + v.1 * cz;
-    Vec3(x3, y3, v.2)
+    // If vectors are aligned, return identity matrix
+    if axis_mag < 0.0001 || angle < 0.0001 {
+        return [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+    }
+
+    // Normalize rotation axis
+    let axis = Vec3(axis.0 / axis_mag, axis.1 / axis_mag, axis.2 / axis_mag);
+    let (s, c) = angle.sin_cos();
+    let one_minus_c = 1.0 - c;
+
+    // Rotation matrix from axis-angle formula
+    [
+        [
+            c + axis.0 * axis.0 * one_minus_c,
+            axis.0 * axis.1 * one_minus_c - axis.2 * s,
+            axis.0 * axis.2 * one_minus_c + axis.1 * s,
+        ],
+        [
+            axis.0 * axis.1 * one_minus_c + axis.2 * s,
+            c + axis.1 * axis.1 * one_minus_c,
+            axis.1 * axis.2 * one_minus_c - axis.0 * s,
+        ],
+        [
+            axis.0 * axis.2 * one_minus_c - axis.1 * s,
+            axis.1 * axis.2 * one_minus_c + axis.0 * s,
+            c + axis.2 * axis.2 * one_minus_c,
+        ],
+    ]
 }
 
-pub fn draw_arrow<D: DrawTarget<Color = BinaryColor>>(
+// Applies a rotation matrix to a 3D vector
+fn apply_rotation(v: Vec3, rotation: &[[f32; 3]; 3]) -> Vec3 {
+    Vec3(
+        v.0 * rotation[0][0] + v.1 * rotation[0][1] + v.2 * rotation[0][2],
+        v.0 * rotation[1][0] + v.1 * rotation[1][1] + v.2 * rotation[1][2],
+        v.0 * rotation[2][0] + v.1 * rotation[2][1] + v.2 * rotation[2][2],
+    )
+}
+
+// Draws a 3D slab (cuboid) on the display
+fn draw_slab<D: DrawTarget<Color = BinaryColor>>(
     display: &mut D,
     origin: Vec3,
     size: f32,
     fov_deg: f32,
     width: u32,
     height: u32,
-    angles: Vec3,
+    direction: Vec3,
     slab_width: f32,
     slab_height: f32,
     slab_length: f32,
-) {
+) -> Result<(), D::Error> {
+    // Define slab dimensions
     let half_width = slab_width / 2.0;
     let half_height = slab_height / 2.0;
     let half_length = slab_length / 2.0;
-    let rotation_center_z = 0.0;
 
-    let vertices: [Vec3; 8] = [
-        Vec3(-half_width, -half_height, -half_length - rotation_center_z),
-        Vec3(half_width, -half_height, -half_length - rotation_center_z),
-        Vec3(half_width, half_height, -half_length - rotation_center_z),
-        Vec3(-half_width, half_height, -half_length - rotation_center_z),
-        Vec3(-half_width, -half_height, half_length - rotation_center_z),
-        Vec3(half_width, -half_height, half_length - rotation_center_z),
-        Vec3(half_width, half_height, half_length - rotation_center_z),
-        Vec3(-half_width, half_height, half_length - rotation_center_z),
+    // Define slab vertices (local coordinates, long axis along Z)
+    let vertices = [
+        Vec3(-half_width, -half_height, -half_length), // Back bottom left
+        Vec3(half_width, -half_height, -half_length),  // Back bottom right
+        Vec3(half_width, half_height, -half_length),   // Back top right
+        Vec3(-half_width, half_height, -half_length),  // Back top left
+        Vec3(-half_width, -half_height, half_length),  // Front bottom left
+        Vec3(half_width, -half_height, half_length),   // Front bottom right
+        Vec3(half_width, half_height, half_length),    // Front top right
+        Vec3(-half_width, half_height, half_length),   // Front top left
     ];
 
-    let faces: [(&[usize], &str); 12] = [
-        (&[0, 1, 2], "cuboid_back1"),
-        (&[2, 3, 0], "cuboid_back2"),
-        (&[4, 5, 6], "cuboid_front1"),
-        (&[6, 7, 4], "cuboid_front2"),
-        (&[0, 1, 5], "cuboid_bottom1"),
-        (&[5, 4, 0], "cuboid_bottom2"),
-        (&[2, 3, 7], "cuboid_top1"),
-        (&[7, 6, 2], "cuboid_top2"),
-        (&[0, 3, 7], "cuboid_left1"),
-        (&[7, 4, 0], "cuboid_left2"),
-        (&[1, 2, 6], "cuboid_right1"),
-        (&[6, 5, 1], "cuboid_right2"),
+    // Define edges for wireframe rendering
+    let edges = [
+        (0, 1), (1, 2), (2, 3), (3, 0), // Back face
+        (4, 5), (5, 6), (6, 7), (7, 4), // Front face
+        (0, 4), (1, 5), (2, 6), (3, 7), // Connecting edges
     ];
 
-    let edges: [(usize, usize); 12] = [
-        (0, 1), (1, 2), (2, 3), (3, 0),
-        (4, 5), (5, 6), (6, 7), (7, 4),
-        (0, 4), (1, 5), (2, 6), (3, 7),
+    // Define triangular faces for rendering (two triangles per face)
+    let faces = [
+        [0, 1, 2], // Back face 1
+        [2, 3, 0], // Back face 2
+        [4, 5, 6], // Front face 1
+        [6, 7, 4], // Front face 2
+        [0, 1, 5], // Bottom face 1
+        [5, 4, 0], // Bottom face 2
+        [2, 3, 7], // Top face 1
+        [7, 6, 2], // Top face 2
+        [0, 3, 7], // Left face 1
+        [7, 4, 0], // Left face 2
+        [1, 2, 6], // Right face 1
+        [6, 5, 1], // Right face 2
     ];
 
-    let mut projected: [Option<Point>; 8] = [None; 8];
-    let mut world_vertices: [Vec3; 8] = [Vec3(0.0, 0.0, 0.0); 8];
+    // Compute rotation matrix to align slab's Z-axis with direction
+    let rotation = align_to_direction(Vec3(0.0, 0.0, 1.0), direction);
 
+    // Transform and project vertices
+    let mut projected = [None; 8];
     for (i, &v) in vertices.iter().enumerate() {
-        let v = rotate_xyz(v, angles.0, angles.1, angles.2);
+        // Rotate vertex
+        let rotated = apply_rotation(v, &rotation);
+        // Translate to world position and scale
         let world = Vec3(
-            origin.0 + v.0 * size,
-            origin.1 + v.1 * size,
-            origin.2 + v.2 * size,
+            origin.0 + rotated.0 * size,
+            origin.1 + rotated.1 * size,
+            origin.2 + rotated.2 * size,
         );
-        world_vertices[i] = world;
         projected[i] = project(world, fov_deg, width, height).map(Point::from);
     }
 
-    let mut sorted_faces: Vec<(&[usize], &str, f32)> = faces
-        .iter()
-        .map(|(indices, name)| {
-            let avg_z = indices.iter().map(|&i| world_vertices[i].2).sum::<f32>() / indices.len() as f32;
-            (*indices, *name, avg_z)
-        })
-        .collect();
-
-    sorted_faces.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(core::cmp::Ordering::Equal));
-
-    for (indices, _, _) in sorted_faces {
+    // Draw filled triangles for all faces (no sorting)
+    for indices in faces.iter() {
         if let (Some(p0), Some(p1), Some(p2)) = (
             projected[indices[0]],
             projected[indices[1]],
             projected[indices[2]],
         ) {
-            let _ = Triangle::new(p0, p1, p2)
+            Triangle::new(p0, p1, p2)
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(display);
+                .draw(display)?;
         }
     }
 
+    // Draw edges for wireframe
     for &(i1, i2) in edges.iter() {
         if let (Some(p1), Some(p2)) = (projected[i1], projected[i2]) {
-            let _ = Line::new(p1, p2)
+            Line::new(p1, p2)
                 .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 1))
-                .draw(display);
+                .draw(display)?;
         }
     }
+
+    Ok(())
 }
 
+// Main application task to render the slab based on orientation input
 #[embassy_executor::task]
 pub async fn slab_app(mut context: AppContext<'static>) {
     let receiver = ORIENTATION_CHANNEL.receiver();
 
-
-
     loop {
+        // Wait for orientation update
+        let direction = receiver.receive().await;
 
-
+        // Skip rendering if app is not focused
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
 
-        context.canvas.clear();
+        // Get display dimensions
+        let width = context.width();
+        let height = context.height();
 
-        let w = context.width();
-        let h = context.height();
-
+        // Define slab dimensions
         let slab_width = 1.0;
         let slab_height = 0.5;
         let slab_length = 2.0;
 
-
-        let v = receiver.receive().await;
-
-
-        draw_arrow(
+        // Clear canvas and draw slab
+        context.canvas.clear();
+        if let Err(e) = draw_slab(
             &mut context.canvas,
-            Vec3(0.0, 0.0, 8.0),
-            2.0,
-            45.0,
-            w,
-            h,
-            v,
+            Vec3(0.0, 0.0, 5.0), // Position slab in front of camera
+            2.0,                 // Scale
+            45.0,                // Field of view
+            width,
+            height,
+            direction,           // Use orientation as direction vector
             slab_width,
             slab_height,
             slab_length,
-        );
+        ) {
+            info!("Draw error: {:?}", e);
+        }
 
+        // Request redraw and wait briefly
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_millis(16)).await; // ~60 FPS
     }
-}
-
-/// Returns (pitch, yaw, roll) in **radians**
-pub fn vector_to_angles(v: Vec3) -> (f32, f32, f32) {
-    let v = v.normalize();
-    let pitch = (-v.1).asin();
-    let yaw = v.0.atan2(v.2);
-    let roll = 0.0;
-    (pitch, yaw, roll)
 }
