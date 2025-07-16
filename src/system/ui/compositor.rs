@@ -5,6 +5,7 @@ use crate::system::ui::canvas::Canvas;
 use crate::system::ui::window::{Window, WindowHandle};
 
 use alloc::boxed::Box;
+use defmt::info;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
@@ -16,7 +17,7 @@ use crate::system::resources::framebuffer::{FRAMEBUFFER_POOL, FrameBufferHandle}
 // Screen constants matching your pool
 const SCREEN_WIDTH: usize = 128;
 const SCREEN_HEIGHT: usize = 64;
-const FRAME_BUFFER_SIZE: usize = 256; // matches your pool FRAME_BUFFER_SIZE
+ // matches your pool FRAME_BUFFER_SIZE
 
 // Animation tuning globals
 const ANIM_STEPS: usize = 16;
@@ -36,9 +37,8 @@ pub enum SlideDir {
 
 pub struct UICompositor {
     windows: Vec<Window, 8>,
-    current_index: usize,
+    current_window: usize,
     view_mode: ViewMode,
-    composited_handle: Option<FrameBufferHandle>,
     display: Option<&'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>>,
     redraw_requests: Vec<WindowHandle, 4>,
 }
@@ -47,9 +47,8 @@ impl UICompositor {
     pub fn new() -> Self {
         Self {
             windows: Vec::new(),
-            current_index: 0,
+            current_window: 0,
             view_mode: ViewMode::Single,
-            composited_handle: None,
             display: None,
             redraw_requests: Vec::new(),
         }
@@ -76,11 +75,10 @@ impl UICompositor {
         }
 
         if let Some(display) = self.display {
-            if let Some(frame) = self.composite().await {
-                let mut disp = display.lock().await;
-                disp.draw(frame).await;
-                self.release_last();
-            }
+            let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
+            self.composite(working_buff.as_mut()).await;
+            let mut disp = display.lock().await;
+            disp.draw(working_buff.as_mut()).await;
         }
 
         self.redraw_requests.clear();
@@ -88,16 +86,16 @@ impl UICompositor {
 
     /// Return the handle of the currently focused window
     pub fn current_handle(&self) -> WindowHandle {
-        self.windows[self.current_index].handle()
+        self.windows[self.current_window].handle()
     }
 
     /// Find a mutable reference to a window by its handle (for external callers)
-    pub fn window_for_handle_mut(&mut self, handle: WindowHandle) -> Option<&mut Window> {
+    pub fn get_window_mut(&mut self, handle: WindowHandle) -> Option<&mut Window> {
         self.windows.iter_mut().find(|w| w.handle() == handle)
     }
 
-    /// Allocate a new window and return its handle and canvas
-    pub async fn alloc_window_with_canvas(
+
+    pub async fn alloc_window(
         &mut self,
         width: usize,
         height: usize,
@@ -124,32 +122,32 @@ impl UICompositor {
 
     pub fn next_window(&mut self) {
         if !self.windows.is_empty() {
-            self.current_index = (self.current_index + 1) % self.windows.len();
+            self.current_window = (self.current_window + 1) % self.windows.len();
         }
     }
 
     pub fn prev_window(&mut self) {
         if !self.windows.is_empty() {
-            self.current_index = (self.current_index + self.windows.len() - 1) % self.windows.len();
+            self.current_window = (self.current_window + self.windows.len() - 1) % self.windows.len();
         }
     }
 
-    /// Animate sliding between windows using stack buffer (no framebuffer pool)
+
     pub async fn animate_slide(&mut self, dir: SlideDir) {
         if self.windows.len() < 2 {
             return;
         }
 
-        let from_index = self.current_index;
+        let from_index = self.current_window;
         let to_index = match dir {
             SlideDir::Left => {
-                if self.current_index == 0 {
+                if self.current_window == 0 {
                     self.windows.len() - 1
                 } else {
-                    self.current_index - 1
+                    self.current_window - 1
                 }
             }
-            SlideDir::Right => (self.current_index + 1) % self.windows.len(),
+            SlideDir::Right => (self.current_window + 1) % self.windows.len(),
         };
 
         let mut composed_buf = [0u8; FRAME_BUFFER_SIZE];
@@ -178,7 +176,7 @@ impl UICompositor {
             let src1_win = &mut self.windows[from_index];
             let src1_canvas = src1_win.canvas().await;
             let src1_buf = src1_canvas.buffer();
-            blit_into(
+            blit(
                 &mut composed_buf,
                 SCREEN_WIDTH as u32,
                 SCREEN_HEIGHT as u32,
@@ -192,7 +190,7 @@ impl UICompositor {
             let mut src2_win = &mut self.windows[to_index];
             let src2_canvas = src2_win.canvas().await;
             let src2_buf = src2_canvas.buffer();
-            blit_into(
+            blit(
                 &mut composed_buf,
                 SCREEN_WIDTH as u32,
                 SCREEN_HEIGHT as u32,
@@ -211,75 +209,26 @@ impl UICompositor {
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
         }
 
-        self.current_index = to_index;
+        self.current_window = to_index;
     }
 
-    /// Compose current windows into a freshly allocated framebuffer from pool
-    pub async fn composite(&mut self) -> Option<&'static [u8]> {
-        let handle = FRAMEBUFFER_POOL.allocate().await?;
-        let buf = FRAMEBUFFER_POOL.get_mut(&handle);
-        buf.fill(0);
+    pub async fn composite(&mut self, working_buff: &mut [u8])  {
 
         match self.view_mode {
             ViewMode::Single => {
-                let window = &mut self.windows[self.current_index];
-                let src_canvas = window.canvas().await;
-                let src_buf = src_canvas.buffer();
-                blit_into(
-                    buf,
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    src_buf,
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    0,
-                    0,
-                );
+                let canvas = &mut self.windows[self.current_window].canvas().await;
+                info!("canvas size: {}x{}, length: {}", canvas.width(), canvas.height(), canvas.buffer().len());
+                working_buff.copy_from_slice(canvas.buffer());
             }
             ViewMode::Split => {
-                let i1 = self.current_index;
-                let i2 = (self.current_index + 1) % self.windows.len();
 
-                let src1_win = &mut self.windows[i1];
-                let src1_canvas = src1_win.canvas().await;
-                blit_into(
-                    buf,
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    src1_canvas.buffer(),
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    0,
-                    0,
-                );
-
-                let src2_win = &mut self.windows[i2];
-                let src2_canvas = src2_win.canvas().await;
-                blit_into(
-                    buf,
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    src2_canvas.buffer(),
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    (SCREEN_WIDTH / 2) as i32,
-                    0,
-                );
             }
         }
 
-        self.release_last(); // Release previous buffer if any
-        self.composited_handle = Some(handle);
 
-        Some(buf)
     }
 
-    /// Release last composited framebuffer handle back to pool
-    pub fn release_last(&mut self) {
-        if let Some(handle) = self.composited_handle.take() {
-            FRAMEBUFFER_POOL.release(&handle);
-        }
-    }
+
 
     pub fn view_mode(&self) -> ViewMode {
         self.view_mode
@@ -287,7 +236,7 @@ impl UICompositor {
 
     /// Check if a window handle is the currently focused window
     pub fn is_focused(&self, handle: WindowHandle) -> bool {
-        self.windows[self.current_index].handle() == handle
+        self.windows[self.current_window].handle() == handle
     }
 
     /// Poll input event from a window's input receiver (if available)
@@ -295,14 +244,14 @@ impl UICompositor {
         &mut self,
         handle: WindowHandle,
     ) -> Option<crate::system::services::human_input_srv::HumanInputEvent> {
-        self.window_for_handle_mut(handle)
+        self.get_window_mut(handle)
             .and_then(|w| w.input_receiver().try_receive().ok())
     }
 }
 
 // Blit (copy) pixels from src buffer into dest buffer at x,y offset.
 // Assumes 1 bit per pixel packed vertically in bytes.
-fn blit_into(
+fn blit(
     dest: &mut [u8],
     dest_width: u32,
     dest_height: u32,
@@ -349,3 +298,4 @@ fn ease_in_out_circular(t: f32) -> f32 {
 }
 
 use micromath::F32Ext;
+use crate::system::kernel::config::resources::FRAME_BUFFER_SIZE;

@@ -18,7 +18,7 @@ pub async fn app_spawner_service(
             let mut comp = compositor.lock().await;
             // Step 1b: Allocate and get canvas
             let whandle = comp
-                .alloc_window_with_canvas(128, 64, 0)
+                .alloc_window(128, 64, 0)
                 .await
                 .expect("Failed to allocate battery window");
 

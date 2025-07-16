@@ -48,7 +48,7 @@ impl AppContext {
         f: impl FnOnce(&mut Canvas) + Send,
     ) {
         let mut comp = self.compositor.lock().await;
-        if let Some(window) = comp.window_for_handle_mut(self.handle) {
+        if let Some(window) = comp.get_window_mut(self.handle) {
             let mut canvas = window.canvas().await;
             f(&mut canvas);
         }

@@ -43,8 +43,8 @@ pub async fn compositor_service(
                     // Forward input to current app
                     let mut comp = compositor.lock().await;
                     let current = comp.current_handle();
-                    if let Some(window) = comp.window_for_handle_mut(current) {
-                        let _ = window.input_sender().try_send(other); // best effort
+                    if let Some(window) = comp.get_window_mut(current) {
+                        let _ = window.input_sender().try_send(other);
                     }
                 }
             }
