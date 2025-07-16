@@ -37,7 +37,7 @@ impl<'a> RadioDriver<'a> {
 
 #[async_trait(?Send)]
 impl<'a> AsyncRadio<'a> for RadioDriver<'a> {
-    async fn get_stack(&'a mut self) -> Stack<'a,ExternalController<BleConnector<'a>, 20>, DefaultPacketPool> {
+    async fn get_stack(&'_ mut self) -> Stack<'a,ExternalController<BleConnector<'a>, 20>, DefaultPacketPool> {
         self.stack.take().unwrap()
     }
 }

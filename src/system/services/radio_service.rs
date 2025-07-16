@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use core::contracts::requires;
 use trouble_host::prelude::*;
 use bt_hci::uuid::{appearance, BluetoothUuid16};
 use defmt::{info, warn};
@@ -159,13 +158,10 @@ pub(crate) async fn radio_service(radio: &'static Mutex<CriticalSectionRawMutex,
 
 
     let mut radi = radio.lock().await;
-    match radio.lock().await {
-        radi => {
-            let mut stack = radi.get_foo().await;
-        }
-    }
-    loop {}
+    let mut stack = radi.get_stack().await;
 
+
+    loop {}
 
 }
 
