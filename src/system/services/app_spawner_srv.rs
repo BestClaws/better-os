@@ -6,8 +6,7 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
-use crate::apps::ambient::ambience_app;
-use crate::apps::battery::battery_app;
+
 use crate::apps::slab::{ slab_app};
 
 #[embassy_executor::task]
@@ -18,7 +17,7 @@ pub async fn app_spawner_service(
 
             let mut comp = compositor.lock().await;
             // Step 1b: Allocate and get canvas
-            let (handle, canvas) = comp
+            let whandle = comp
                 .alloc_window_with_canvas(128, 64, 0)
                 .await
                 .expect("Failed to allocate battery window");
@@ -27,6 +26,6 @@ pub async fn app_spawner_service(
 
 
     // === Step 2: Construct app context and spawn ===
-    let ctx = AppContext::new(handle, canvas, 0, "hello", compositor);
+    let ctx = AppContext::new(whandle, 1, "hello", compositor);
     spawner.spawn(slab_app(ctx)).unwrap();
 }

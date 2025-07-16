@@ -102,7 +102,7 @@ impl UICompositor {
         width: usize,
         height: usize,
         id: usize,
-    ) -> Option<(WindowHandle, Canvas)> {
+    ) -> Option<WindowHandle> {
         let window = Window::new(width, height, id).await;
         let handle = window.handle();
 
@@ -112,7 +112,7 @@ impl UICompositor {
         let window = self.windows.last_mut()?;
         let canvas = window.canvas().await;
 
-        Some((handle, canvas))
+        Some(handle)
     }
 
     pub fn toggle_view(&mut self) {

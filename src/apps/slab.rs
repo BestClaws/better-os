@@ -208,11 +208,11 @@ fn draw_slab<D: DrawTarget<Color = BinaryColor>>(
 
 // Main application task to render the slab based on orientation input
 #[embassy_executor::task]
-pub async fn slab_app(mut context: AppContext<'static>) {
+pub async fn slab_app(mut context: AppContext) {
     let receiver = ORIENTATION_CHANNEL.receiver();
 
     loop {
-        // Wait for orientation update
+
         let direction = receiver.receive().await;
 
         // Skip rendering if app is not focused
@@ -221,34 +221,44 @@ pub async fn slab_app(mut context: AppContext<'static>) {
             continue;
         }
 
-        // Get display dimensions
-        let width = context.width();
-        let height = context.height();
+        context.draw(async |mut canvas| {
 
-        // Define slab dimensions
-        let slab_width = 1.0;
-        let slab_height = 0.5;
-        let slab_length = 2.0;
+            // Get display dimensions
+            let width = canvas.width();
+            let height = canvas.height();
 
-        // Clear canvas and draw slab
-        context.canvas.clear();
-        if let Err(e) = draw_slab(
-            &mut context.canvas,
-            Vec3(0.0, 0.0, 5.0), // Position slab in front of camera
-            2.0,                 // Scale
-            45.0,                // Field of view
-            width,
-            height,
-            direction,           // Use orientation as direction vector
-            slab_width,
-            slab_height,
-            slab_length,
-        ) {
-            info!("Draw error: {:?}", e);
-        }
+            // Define slab dimensions
+            let slab_width = 1.0;
+            let slab_height = 0.5;
+            let slab_length = 2.0;
 
-        // Request redraw and wait briefly
-        context.request_redraw().await;
-        Timer::after(Duration::from_millis(16)).await; // ~60 FPS
+            // Clear canvas and draw slab
+            canvas.clear();
+            if let Err(e) = draw_slab(
+                &mut canvas,
+                Vec3(0.0, 0.0, 5.0), // Position slab in front of camera
+                2.0,                 // Scale
+                45.0,                // Field of view
+                width,
+                height,
+                direction,           // Use orientation as direction vector
+                slab_width,
+                slab_height,
+                slab_length,
+            ) {
+                info!("Draw error: {:?}", e);
+            }
+
+            // Request redraw and wait briefly
+            context.request_redraw().await;
+            Timer::after(Duration::from_millis(16)).await; // ~60 FPS
+        });
+
+        // Wait for orientation update
+
+
+
+
+
     }
 }
