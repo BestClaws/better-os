@@ -7,6 +7,7 @@ use crate::system::hal::button::AsyncButton;
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{ AsyncEncoder};
 use crate::system::hal::imu::AsyncGyroAccelerometer;
+use crate::system::hal::radio::AsyncRadio;
 
 pub(crate) struct PlatformDevice<'s> {
     pub(crate) encoder: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncEncoder>>>,
@@ -15,5 +16,6 @@ pub(crate) struct PlatformDevice<'s> {
     pub(crate) battery: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncBattery>>>,
     pub(crate) ambient_sensor: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncAmbientSensor>>>,
     pub(crate) gyro_accelerometer: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncGyroAccelerometer>>>,
+    pub(crate) radio: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncRadio<'s>>>>,
     
 }

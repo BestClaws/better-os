@@ -23,6 +23,7 @@ use crate::system::hal::button::{AsyncButton, ButtonDriver};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{AsyncEncoder};
 use crate::system::hal::imu::AsyncGyroAccelerometer;
+use crate::system::hal::radio::AsyncRadio;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
@@ -38,6 +39,8 @@ pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn Asy
 pub(crate) static AMBIENT_SENSOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>> = StaticCell::new();
 pub(crate) static GYRO_ACCELEROMETER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>> = StaticCell::new();
 pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> = StaticCell::new();
+
+pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>> = StaticCell::new();
 
 pub(crate) fn init_device() -> PlatformDevice<'static> {
 
@@ -112,14 +115,11 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let radio_init = esp_wifi::init(
         timer_group_0.timer0,
         rng,
-        peripherals.RADIO_CLK,
     ).unwrap();
 
 
-    let connector = BleConnector::new(&radio_init, peripherals.BT);
-    let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-    let radio_driver = RadioDriver::new(controller);
+    let radio_driver = RadioDriver::new(radio_init, peripherals.BT);
 
 
 
@@ -132,6 +132,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
         ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
         gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
+        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver))))
+
 
 
     }
