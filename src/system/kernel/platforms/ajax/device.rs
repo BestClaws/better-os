@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use bt_hci::controller::ExternalController;
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 
@@ -13,16 +14,19 @@ use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::Async;
 use esp_hal::peripherals::ADC1;
+use esp_hal::timer::timg::TimerGroup;
+use esp_wifi::ble::controller::BleConnector;
 use static_cell::StaticCell;
-use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
+use crate::system::hal::ambience::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{AsyncEncoder};
-use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
+use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
+use crate::system::vendor::espressif::drivers::radio_driver::RadioDriver;
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
@@ -30,14 +34,10 @@ static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticC
 pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> = StaticCell::new();
 pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> = StaticCell::new();
 pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> = StaticCell::new();
-
 pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> = StaticCell::new();
 pub(crate) static AMBIENT_SENSOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>> = StaticCell::new();
-
 pub(crate) static GYRO_ACCELEROMETER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>> = StaticCell::new();
-
 pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> = StaticCell::new();
-
 
 pub(crate) fn init_device() -> PlatformDevice<'static> {
 
@@ -48,9 +48,9 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // TODO: this should be something that should be present in the kernel.
     // initialize async runtime
     // the core model of multitasking.
-    let timer0 = SystemTimer::new(peripherals.SYSTIMER);
-    let time_base = timer0.alarm0;
-    crate::system::kernel::platforms::ajax::async_runtime::init(time_base);
+    let system_timer = SystemTimer::new(peripherals.SYSTIMER);
+    let st_alarm = system_timer.alarm0;
+    crate::system::kernel::platforms::ajax::async_runtime::init(st_alarm);
 
 
 
@@ -87,8 +87,6 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let gyro_accelerometer = MPU6050::new(i2c_2);
 
 
-    // todo: make a hal device for this.
-    // let d_radio = RadioDriver::new(peripherals.RNG, peripherals.TIMG0, peripherals.RADIO_CLK);
 
     let mut adc_config = AdcConfig::new();
     let battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
@@ -108,7 +106,20 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
 
 
+    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
 
+    let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+    let radio_init = esp_wifi::init(
+        timer_group_0.timer0,
+        rng,
+        peripherals.RADIO_CLK,
+    ).unwrap();
+
+
+    let connector = BleConnector::new(&radio_init, peripherals.BT);
+    let controller: ExternalController<_, 20> = ExternalController::new(connector);
+
+    let radio_driver = RadioDriver::new(controller);
 
 
 

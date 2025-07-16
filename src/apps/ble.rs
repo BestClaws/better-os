@@ -15,28 +15,36 @@ use embedded_graphics::primitives::Rectangle;
 use embedded_graphics::text::Text;
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
+use crate::system::services::battery_srv::BATTERY_CHANNEL;
+use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
 use crate::system::ui::canvas::Canvas;
 use crate::util::math::primitives::Vec3;
 
 #[embassy_executor::task]
-pub async fn ble_app(context: AppContext) {
+pub async fn battery_app(context: AppContext) {
+    let receiver = BATTERY_CHANNEL.receiver();
 
     loop {
+        let direction = receiver.receive().await;
 
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
 
+        let percent = receiver.receive().await;
+
         context.draw(|mut canvas| {
 
             let mut text_buf = heapless::String::<32>::new();
-            write!(text_buf, "BLE").ok();
+            write!(text_buf, "Battery: {}%", percent).ok();
 
             let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
             Text::new(&text_buf, Point::new(20, 28), style)
                 .draw(canvas)
                 .unwrap();
+
+
 
 
         }).await;

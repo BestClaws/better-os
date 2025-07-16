@@ -4,7 +4,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
-use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
+use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::util::math::primitives::{Vec3};
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll};
 

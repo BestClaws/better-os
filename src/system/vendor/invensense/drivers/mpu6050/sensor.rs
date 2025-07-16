@@ -1,4 +1,4 @@
-use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
+use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::system::vendor::invensense::drivers::mpu6050::constants::*;
 use crate::system::vendor::invensense::drivers::mpu6050::dmp_firmware::DMP_FIRMWARE;
 use crate::system::vendor::invensense::drivers::mpu6050::error::Error;

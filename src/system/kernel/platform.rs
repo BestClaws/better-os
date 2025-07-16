@@ -1,12 +1,12 @@
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use crate::system::hal::ambient_sensor::AsyncAmbientSensor;
+use crate::system::hal::ambience::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::AsyncButton;
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{ AsyncEncoder};
-use crate::system::hal::gyro_accelerometer::AsyncGyroAccelerometer;
+use crate::system::hal::imu::AsyncGyroAccelerometer;
 
 pub(crate) struct PlatformDevice<'s> {
     pub(crate) encoder: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncEncoder>>>,
