@@ -5,9 +5,9 @@ use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use portable_atomic::{AtomicU8, Ordering};
 use core::cell::UnsafeCell;
+use crate::system::kernel::config::resources::FRAME_BUFFER_SIZE;
 
 // Constants defining the buffer size and total number of buffers
-const FRAME_BUFFER_SIZE: usize = 256;
 const FRAME_BUFFER_COUNT: usize = 4;
 
 /// A handle uniquely representing an allocated framebuffer slot.

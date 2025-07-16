@@ -17,11 +17,10 @@ use crate::system::resources::framebuffer::{FRAMEBUFFER_POOL, FrameBufferHandle}
 // Screen constants matching your pool
 const SCREEN_WIDTH: usize = 128;
 const SCREEN_HEIGHT: usize = 64;
- // matches your pool FRAME_BUFFER_SIZE
 
 // Animation tuning globals
 const ANIM_STEPS: usize = 16;
-const ANIM_FRAME_DELAY_MS: u64 = 20;
+const ANIM_FRAME_DELAY_MS: u64 = 5;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ViewMode {
@@ -76,6 +75,7 @@ impl UICompositor {
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
+            info!("working buffer size: {}", working_buff.len());
             self.composite(working_buff.as_mut()).await;
             let mut disp = display.lock().await;
             disp.draw(working_buff.as_mut()).await;
@@ -217,8 +217,17 @@ impl UICompositor {
         match self.view_mode {
             ViewMode::Single => {
                 let canvas = &mut self.windows[self.current_window].canvas().await;
-                info!("canvas size: {}x{}, length: {}", canvas.width(), canvas.height(), canvas.buffer().len());
                 working_buff.copy_from_slice(canvas.buffer());
+                // blit(
+                //     working_buff,
+                //     SCREEN_WIDTH as u32,
+                //     SCREEN_HEIGHT as u32,
+                //     canvas.buffer(),
+                //     SCREEN_WIDTH as u32,
+                //     SCREEN_HEIGHT as u32,
+                //     0,
+                //     0,
+                // );
             }
             ViewMode::Split => {
 
@@ -248,10 +257,9 @@ impl UICompositor {
             .and_then(|w| w.input_receiver().try_receive().ok())
     }
 }
-
-// Blit (copy) pixels from src buffer into dest buffer at x,y offset.
-// Assumes 1 bit per pixel packed vertically in bytes.
-fn blit(
+/// Blit (copy) pixels from `src` into `dest` at `x_off`, `y_off` (signed offsets).
+/// 1bpp, vertically packed.
+pub fn blit(
     dest: &mut [u8],
     dest_width: u32,
     dest_height: u32,
@@ -261,32 +269,47 @@ fn blit(
     x_off: i32,
     y_off: i32,
 ) {
-    for y in 0..src_height {
-        let dest_y = y as i32 + y_off;
+    let dest_stride = dest_width as usize;
+    let src_stride = src_width as usize;
+    let dest_total_bytes = (dest_width * (dest_height / 8)) as usize;
+    let src_total_bytes = (src_width * (src_height / 8)) as usize;
+
+    for y in 0..src_height as i32 {
+        let dest_y = y + y_off;
         if dest_y < 0 || dest_y >= dest_height as i32 {
             continue;
         }
-        for x in 0..src_width {
-            let dest_x = x as i32 + x_off;
+
+        for x in 0..src_width as i32 {
+            let dest_x = x + x_off;
             if dest_x < 0 || dest_x >= dest_width as i32 {
                 continue;
             }
 
-            let src_byte_index = (x + (y / 8) * src_width) as usize;
-            let bit_mask = 1 << (y % 8);
+            let src_idx = x as usize + ((y as usize) / 8) * src_stride;
+            if src_idx >= src_total_bytes {
+                continue;
+            }
 
-            if src[src_byte_index] & bit_mask != 0 {
-                let dest_byte_index =
-                    (dest_x as usize) + ((dest_y as usize / 8) * dest_width as usize);
-                dest[dest_byte_index] |= 1 << (dest_y as usize % 8);
+            let dst_idx = dest_x as usize + ((dest_y as usize) / 8) * dest_stride;
+            if dst_idx >= dest_total_bytes {
+                continue;
+            }
+
+            let bit = 1 << (y as usize % 8);
+            let src_byte = src[src_idx];
+            let pixel_on = src_byte & bit != 0;
+
+            if pixel_on {
+                dest[dst_idx] |= 1 << (dest_y as usize % 8);
             } else {
-                let dest_byte_index =
-                    (dest_x as usize) + ((dest_y as usize / 8) * dest_width as usize);
-                dest[dest_byte_index] &= !(1 << (dest_y as usize % 8));
+                dest[dst_idx] &= !(1 << (dest_y as usize % 8));
             }
         }
     }
 }
+
+
 
 // === Easing function ===
 fn ease_in_out_circular(t: f32) -> f32 {
