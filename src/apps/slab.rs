@@ -13,6 +13,7 @@ use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::battery_srv::BATTERY_CHANNEL;
 use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
+use crate::system::ui::canvas::Canvas;
 use crate::util::math::primitives::Vec3;
 
 // Projects a 3D point to 2D screen coordinates
@@ -205,60 +206,40 @@ fn draw_slab<D: DrawTarget<Color = BinaryColor>>(
 
     Ok(())
 }
-
-// Main application task to render the slab based on orientation input
 #[embassy_executor::task]
-pub async fn slab_app(mut context: AppContext) {
+pub async fn slab_app(context: AppContext) {
     let receiver = ORIENTATION_CHANNEL.receiver();
 
     loop {
-
         let direction = receiver.receive().await;
 
-        // Skip rendering if app is not focused
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
 
-        context.draw(async |mut canvas| {
-
-            // Get display dimensions
-            let width = canvas.width();
-            let height = canvas.height();
-
-            // Define slab dimensions
-            let slab_width = 1.0;
-            let slab_height = 0.5;
-            let slab_length = 2.0;
-
-            // Clear canvas and draw slab
+        context.draw(|canvas| {
             canvas.clear();
+
             if let Err(e) = draw_slab(
-                &mut canvas,
-                Vec3(0.0, 0.0, 5.0), // Position slab in front of camera
-                2.0,                 // Scale
-                45.0,                // Field of view
-                width,
-                height,
-                direction,           // Use orientation as direction vector
-                slab_width,
-                slab_height,
-                slab_length,
+                canvas,
+                Vec3(0.0, 0.0, 5.0),
+                2.0,
+                45.0,
+                canvas.width(),
+                canvas.height(),
+                direction,
+                1.0,
+                0.5,
+                2.0,
             ) {
-                info!("Draw error: {:?}", e);
+                defmt::info!("Draw error: {:?}", e);
             }
+        }).await;
 
-            // Request redraw and wait briefly
-            context.request_redraw().await;
-            Timer::after(Duration::from_millis(16)).await; // ~60 FPS
-        });
-
-        // Wait for orientation update
-
-
-
-
-
+        context.request_redraw().await;
+        Timer::after(Duration::from_millis(16)).await;
     }
+
 }
+

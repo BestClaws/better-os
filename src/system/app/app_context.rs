@@ -1,13 +1,10 @@
-#![allow(unused)]
-
-
+use core::future::Future;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::canvas::Canvas;
 use crate::system::services::human_input_srv::HumanInputEvent;
 use crate::system::ui::compositor::UICompositor;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use trouble_host::new;
 
 pub struct AppContext {
     pub handle: WindowHandle,
@@ -16,7 +13,7 @@ pub struct AppContext {
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
 }
 
-impl<'a> AppContext {
+impl AppContext {
     pub fn new(
         handle: WindowHandle,
         app_id: usize,
@@ -30,9 +27,6 @@ impl<'a> AppContext {
             compositor,
         }
     }
-
-
-
 
     pub async fn is_focused(&self) -> bool {
         let comp = self.compositor.lock().await;
@@ -49,14 +43,15 @@ impl<'a> AppContext {
         comp.request_redraw(self.handle);
     }
 
-    pub async fn draw<Fut>(&self, f: impl FnOnce(&mut Canvas) -> Fut)
-    where
-        Fut: core::future::Future<Output = ()>,
-    {
+    pub async fn draw(
+        &self,
+        f: impl FnOnce(&mut Canvas) + Send,
+    ) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.window_for_handle_mut(self.handle) {
-            let mut canvas = window.canvas().await  ;
-            f(&mut canvas).await;
+            let mut canvas = window.canvas().await;
+            f(&mut canvas);
         }
     }
+
 }
