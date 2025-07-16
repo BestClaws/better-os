@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use core::contracts::requires;
 use trouble_host::prelude::*;
 use bt_hci::uuid::{appearance, BluetoothUuid16};
 use defmt::{info, warn};
@@ -18,9 +19,7 @@ use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll};
 use crate::util::math::primitives::Vec3;
 
-const CONNECTIONS_MAX: usize = 1;
-/// Max number of L2CAP channels (Signal and ATT)
-const L2CAP_CHANNELS_MAX: usize = 2;
+
 
 
 // // GATT Server definition: HID Service
@@ -157,37 +156,58 @@ const L2CAP_CHANNELS_MAX: usize = 2;
 #[embassy_executor::task]
 pub(crate) async fn radio_service(radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio<'static>>>) {
 
-    let mut radio = radio.lock().await;
-    let mut controller = radio.get_controller().await;
 
-    let address = Address::random([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-    info!("[run] BLE address = {:?}", address.addr);
 
-    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> = HostResources::new();
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
-    let Host { mut peripheral, runner, .. } = stack.build();
+    let mut radi = radio.lock().await;
+    match radio.lock().await {
+        radi => {
+            let mut stack = radi.get_foo().await;
+        }
+    }
+    loop {}
 
-    // info!("[run] Starting BLE advertising and GATT server setup...");
-    // let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-    //     name: "CANOPY",
-    //     appearance: &appearance::MEDIA_PLAYER,
-    //
-    // })).unwrap();
-    //
-    // let _ = join(
-    //     ble_task(runner),
-    //     async {
-    //         loop {
-    //             match advertise(&mut peripheral, &server).await {
-    //                 Ok(conn) => {
-    //                     info!("[run] Connected, spawning GATT + button tasks");
-    //                     let _ = gatt_events_task(&server, &conn).await;
-    //                 }
-    //                 Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
-    //             }
-    //         }
-    //     }
-    // ).await;
 
 }
+
+// error[E0597]: `radi` does not live long enough
+// --> src/system/services/radio_service.rs:160:21
+// |
+// 156 | pub(crate) async fn radio_service(radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio<'static>>>) {
+//     |                                   ----- lifetime `'1` appears in the type of `radio`
+//     157 |
+//         158 |     let mut radi = radio.lock().await;
+//     |         --------   ------------ argument requires that `radi` is borrowed for `'1`
+//     |         |
+//         |         binding `radi` declared here
+//     159 |
+//         160 |     let mut stack = radi.get_stack().await;
+//     |                     ^^^^ borrowed value does not live long enough
+//         ...
+//         169 | }
+// | - `radi` dropped here while still borrowed
+
+
+
+
+// info!("[run] Starting BLE advertising and GATT server setup...");
+// let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+//     name: "CANOPY",
+//     appearance: &appearance::MEDIA_PLAYER,
+//
+// })).unwrap();
+//
+// let _ = join(
+//     ble_task(runner),
+//     async {
+//         loop {
+//             match advertise(&mut peripheral, &server).await {
+//                 Ok(conn) => {
+//                     info!("[run] Connected, spawning GATT + button tasks");
+//                     let _ = gatt_events_task(&server, &conn).await;
+//                 }
+//                 Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
+//             }
+//         }
+//     }
+// ).await;
 

@@ -15,6 +15,7 @@ use crate::system::ui::compositor::UICompositor;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
 use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
+use crate::system::services::radio_service::radio_service;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
 
@@ -49,8 +50,12 @@ pub(crate) fn start(spawner: Spawner) {
     info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
 
-
+    info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(radio_service(device.radio)).unwrap();
     // Spawn app spawner service
     info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
+
+    // Spawn app spawner service
+
 }
