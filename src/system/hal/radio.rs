@@ -7,7 +7,7 @@ use trouble_host::prelude::DefaultPacketPool;
 use trouble_host::Stack;
 
 #[async_trait(?Send)]
-pub trait AsyncRadio<'a> {
-    async fn get_stack(&mut self) -> Stack<'a,ExternalController<BleConnector<'a>, 20>, DefaultPacketPool>;
+pub trait AsyncRadio {
+    async fn get_stack(&mut self) -> Stack<ExternalController<BleConnector, 20>, DefaultPacketPool>;
 
 }

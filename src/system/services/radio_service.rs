@@ -153,7 +153,7 @@ async fn gatt_events_task<P: PacketPool>(
 
 
 #[embassy_executor::task]
-pub(crate) async fn radio_service(radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio<'static>>>) {
+pub(crate) async fn radio_service(radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>) {
 
 
 
