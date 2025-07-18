@@ -1,0 +1,35 @@
+[
+  {
+    "type": "probe-rs-debug",
+    "request": "launch",
+    "name": "Launch",
+    "chip": "esp32c3",
+    "flashingConfig": {
+      "flashingEnabled": true,
+      "haltAfterReset": false,
+      "formatOptions": {
+        "binaryFormat": "idf"
+      }
+    },
+    "coreConfigs": [
+      {
+        "rttEnabled": true,
+        "coreIndex": 0,
+        "rttChannelFormats": [
+          {
+            "channelNumber": 0,
+            "rttChannel": 0,
+            "dataFormat": "Defmt",
+            "showTimestamps": true
+          }
+        ],
+        "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}",
+        "svdFile": "${workspaceFolder}/esp32c3.svd"
+      }
+    ],
+    "label": "probe-rs launch",
+    "adapter": "probe-rs",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "server": "127.0.0.1:5000"
+  }
+]
