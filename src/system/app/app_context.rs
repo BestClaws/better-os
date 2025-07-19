@@ -1,8 +1,7 @@
-use core::future::Future;
-use crate::system::ui::window::WindowHandle;
-use crate::system::ui::canvas::Canvas;
 use crate::system::services::human_input_srv::HumanInputEvent;
+use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
+use crate::system::ui::window::WindowHandle;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
@@ -43,15 +42,11 @@ impl AppContext {
         comp.request_redraw(self.handle);
     }
 
-    pub async fn draw(
-        &self,
-        f: impl FnOnce(&mut Canvas) + Send,
-    ) {
+    pub async fn draw(&self, f: impl FnOnce(&mut Canvas) + Send) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.get_window_mut(self.handle) {
             let mut canvas = window.canvas().await;
             f(&mut canvas);
         }
     }
-
 }

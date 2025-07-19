@@ -6,6 +6,8 @@ use embassy_futures::join::join;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
+use esp_wifi::ble::controller::BleConnector;
+use static_cell::StaticCell;
 use trouble_host::{peripheral, Address, BleHostError, Controller, Error, Host, HostResources, PacketPool};
 use trouble_host::advertise::{AdStructure, Advertisement, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE};
 use trouble_host::gap::{GapConfig, PeripheralConfig};
@@ -152,23 +154,14 @@ async fn gatt_events_task<P: PacketPool>(
 }
 
 
+
 #[embassy_executor::task]
-pub(crate) async fn radio_service(radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>) {
-
-
-
-    let mut radi = radio.lock().await;
-    let  stack = radi.get_stack().await;
-
-    let Host {
-        mut peripheral,
-        runner,
-        ..
-    } = stack.build();
-
-
-
-
+pub(crate) async fn radio_service(
+    radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>,
+) {
+    let mut radio_g = radio.lock().await;
+    let stack = radio_g.get_stack().await;
+    let Host { peripheral, runner, ..} = stack.build();
 }
 
 
