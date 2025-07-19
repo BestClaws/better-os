@@ -18,7 +18,6 @@ const CONNECTIONS_MAX: usize = 1;
 /// Max number of L2CAP channels (Signal and ATT)
 const L2CAP_CHANNELS_MAX: usize = 2;
 
-pub static WIFI_INIT: StaticCell<EspWifiController> = static_cell::StaticCell::new();
 
 
 pub struct RadioDriver {
@@ -41,14 +40,12 @@ impl RadioDriver {
 #[async_trait(?Send)]
 impl AsyncRadio for RadioDriver {
     async fn get_stack(&mut self)
-    -> Stack<ExternalController<BleConnector, 20>, DefaultPacketPool>
+    -> Stack<ExternalController<BleConnector<'static>, 20>, DefaultPacketPool>
     {
             let timer = self.timer.take().unwrap();
             let bt = self.bt.take().unwrap();
-            let rng = self.rng.clone();
-            let i = esp_wifi::init(timer, rng).unwrap();
-            let radio_init = WIFI_INIT.init(i);
-
+            let i = esp_wifi::init(timer, self.rng).unwrap();
+            let radio_init = Box::leak(Box::new(i));
             let connector= BleConnector::new(radio_init, bt);
             let controller = ExternalController::new(connector);
             let address = Address::random([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);

@@ -13,7 +13,7 @@ use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
 use crate::system::vendor::boby::drivers::ssd1306::Ssd1306Driver;
-use crate::system::vendor::espressif::drivers::radio_driver::{RadioDriver, WIFI_INIT};
+use crate::system::vendor::espressif::drivers::radio_driver::{RadioDriver};
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

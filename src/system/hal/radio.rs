@@ -8,5 +8,5 @@ use trouble_host::Stack;
 
 #[async_trait(?Send)]
 pub trait AsyncRadio {
-    async fn get_stack(&mut self) -> Stack<ExternalController<BleConnector, 20>, DefaultPacketPool>;
+    async fn get_stack(&mut self) -> Stack<ExternalController<BleConnector<'static>, 20>, DefaultPacketPool>;
 }

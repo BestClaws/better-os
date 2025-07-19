@@ -161,7 +161,31 @@ pub(crate) async fn radio_service(
 ) {
     let mut radio_g = radio.lock().await;
     let stack = radio_g.get_stack().await;
-    let Host { peripheral, runner, ..} = stack.build();
+    let Host { mut peripheral, runner, ..} = stack.build();
+
+
+
+    info!("[run] Starting BLE advertising and GATT server setup...");
+    let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+        name: "CANOPY",
+        appearance: &appearance::MEDIA_PLAYER,
+
+    })).unwrap();
+
+    let _ = join(
+        ble_task(runner),
+        async {
+            loop {
+                match advertise(&mut peripheral, &server).await {
+                    Ok(conn) => {
+                        info!("[run] Connected, spawning GATT + button tasks");
+                        let _ = gatt_events_task(&server, &conn).await;
+                    }
+                    Err(e) => warn!("[adv] Advertising error: {:?}", defmt::Debug2Format(&e)),
+                }
+            }
+        }
+    ).await;
 }
 
 
