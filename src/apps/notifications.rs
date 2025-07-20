@@ -3,7 +3,7 @@
 use core::fmt::Write;
 use alloc::vec::Vec;
 use defmt::info;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::*,
@@ -22,6 +22,8 @@ use crate::util::math::primitives::Vec3;
 #[embassy_executor::task]
 pub async fn notifications_app(context: AppContext) {
 
+    let mut last_here = Instant::now();
+
     loop {
 
         if !context.is_focused().await {
@@ -35,8 +37,12 @@ pub async fn notifications_app(context: AppContext) {
 
             canvas.clear();
 
+            let now = Instant::now();
+            let dt = now - last_here;
+            last_here = now;
+
             let mut text_buf = heapless::String::<32>::new();
-            write!(text_buf, "BLE").ok();
+            write!(text_buf, "BLE.\nlast: {}",dt.as_micros()).ok();
 
             let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
             Text::new(&text_buf, Point::new(20, 28), style)

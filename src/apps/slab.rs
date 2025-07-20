@@ -14,6 +14,7 @@ use crate::system::app::app_context::AppContext;
 use crate::system::services::battery_srv::BATTERY_CHANNEL;
 use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
 use crate::system::ui::canvas::Canvas;
+use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll};
 use crate::util::math::primitives::Vec3;
 
 // Projects a 3D point to 2D screen coordinates
@@ -208,7 +209,6 @@ fn draw_slab<D: DrawTarget<Color = BinaryColor>>(
 }
 #[embassy_executor::task]
 pub async fn slab_app(context: AppContext) {
-    let receiver = ORIENTATION_CHANNEL.receiver();
 
     loop {
 
@@ -218,7 +218,13 @@ pub async fn slab_app(context: AppContext) {
             continue;
         }
 
-        let direction = receiver.receive().await;
+        let q = ORIENTATION_CHANNEL.wait().await;
+
+        // info!("q: {}, {}, {}, {} norm: {}", q.w, q.x, q.y, q.z, q.magnitude());
+        let g = get_gravity(&q);
+        let ypr = get_yaw_pitch_roll(&q, &g);
+        info!("ypr: {}, {}, {}", ypr.0, ypr.1, ypr.2);
+        let rotated_direction = q.rotate_vector(Vec3(0.0, 0.0, 1.0));
 
         context.draw(|canvas| {
             canvas.clear();
@@ -230,7 +236,7 @@ pub async fn slab_app(context: AppContext) {
                 45.0,
                 canvas.width(),
                 canvas.height(),
-                direction,
+                rotated_direction,
                 1.0,
                 0.5,
                 2.0,

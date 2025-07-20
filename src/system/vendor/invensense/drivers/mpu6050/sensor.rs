@@ -39,6 +39,7 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
 
 
     async fn get_orientation(&mut self) -> Quaternion {
+
         loop {
             let packet_size = self.get_fifo_packet_size().await;
             let Ok(mut fifo_count) = self.get_fifo_count().await else {
@@ -92,7 +93,6 @@ impl<I> MPU6050<I> where I: I2c
         self.set_memory_bank(0, false, false).await;
         info!("reading OTP bank validity... OTP Bank Valid: {}", self.get_otp_bank_valid().await?);
 
-        // setup weird slave stuff
         // setup weird slave stuff (?)
         info!("Setting slave 0 address to 0x7F...");
         self.set_slave_address(0, 0x7F).await;
