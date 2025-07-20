@@ -75,7 +75,6 @@ impl UICompositor {
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
-            info!("working buffer size: {}", working_buff.len());
             self.composite(working_buff.as_mut()).await;
             let mut disp = display.lock().await;
             disp.draw(working_buff.as_mut()).await;
