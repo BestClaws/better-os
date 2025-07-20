@@ -107,7 +107,7 @@ impl FrameBufferPool {
     /// - The caller must guarantee exclusive access.
     /// - This is ensured externally by only issuing a single valid `FrameBufferHandle`
     ///   per slot, and disallowing duplication or aliasing.
-    pub fn get_mut(&self, handle: &FrameBufferHandle) -> &mut [u8; FRAME_BUFFER_SIZE] {
+    pub fn get_mut(&mut self, handle: &FrameBufferHandle) -> &mut [u8; FRAME_BUFFER_SIZE] {
         // SAFETY: Access is gated by handle ownership — only one valid mutable reference
         // should exist at any time, and `UnsafeCell` permits interior mutability.
         unsafe { &mut *self.buffers[handle.id].get() }
