@@ -7,6 +7,7 @@ use embassy_time::Timer;
 mod system;
 mod apps;
 mod util;
+mod libs;
 
 extern crate alloc;
 
