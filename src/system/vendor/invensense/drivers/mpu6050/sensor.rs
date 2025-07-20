@@ -42,7 +42,7 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
         loop {
             let packet_size = self.get_fifo_packet_size().await;
             let Ok(mut fifo_count) = self.get_fifo_count().await else {
-                Timer::after(Duration::from_millis(10)).await;
+                Timer::after_micros(1).await;
                 continue;
             };
             let buffer = &mut [0u8; 64];
@@ -51,14 +51,16 @@ impl<I> AsyncGyroAccelerometer for MPU6050<I>  where I: I2c {
                 // Keep the latest complete packet
                 while fifo_count > packet_size {
                     let Ok(_) = self.get_fifo_bytes(buffer, packet_size as u8).await else {
-                        Timer::after_millis(10).await;
+                        Timer::after_micros(1).await;
                         continue;
                     };
                     fifo_count -= packet_size;
                 }
                 return get_orientation_from_fifo_bytes(buffer).await;
+            } else {
+                Timer::after_micros(1).await;
+                continue;
             }
-            Timer::after_millis(50).await;// Sample rate ~20Hz
         }
     }
 }

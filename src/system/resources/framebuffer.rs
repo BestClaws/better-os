@@ -5,13 +5,20 @@ use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use portable_atomic::{AtomicU8, Ordering};
 use core::cell::UnsafeCell;
-use crate::system::kernel::config::resources::FRAME_BUFFER_SIZE;
+use embassy_time::Timer;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_COUNT, FRAME_BUFFER_SIZE};
 
-// Constants defining the buffer size and total number of buffers
-const FRAME_BUFFER_COUNT: usize = 4;
+
+/// Global singleton framebuffer pool.
+pub static FRAMEBUFFER_POOL: FrameBufferPool = FrameBufferPool::new();
+
+
+
+
+
+
 
 /// A handle uniquely representing an allocated framebuffer slot.
-///
 /// The handle is used to safely access a buffer in the pool,
 /// ensuring exclusive access via controlled allocation.
 #[derive(Debug)]
@@ -20,6 +27,9 @@ pub struct FrameBufferHandle {
     _private: (),         // Prevent external construction (sealing)
 }
 
+
+
+
 impl FrameBufferHandle {
     /// Create a new handle for internal use.
     /// External code should only get handles via allocation.
@@ -27,6 +37,9 @@ impl FrameBufferHandle {
         Self { id, _private: () }
     }
 }
+
+
+
 
 /// A static pool managing a fixed number of reusable framebuffers.
 ///
@@ -59,7 +72,6 @@ impl FrameBufferPool {
     }
 
     /// Attempt to allocate a buffer slot non-blockingly.
-    ///
     /// Returns `Some(FrameBufferHandle)` if successful, or `None` if all are taken.
     pub fn try_allocate(&self) -> Option<FrameBufferHandle> {
         for id in 0..FRAME_BUFFER_COUNT {
@@ -78,13 +90,12 @@ impl FrameBufferPool {
     pub async fn allocate(&self) -> Option<FrameBufferHandle> {
         // Wait until a permit is available (non-blocking under async executor)
         self.permits.acquire(1).await.ok()?;
-
         loop {
             // Try to acquire an unused buffer
             if let Some(handle) = self.try_allocate() {
                 return Some(handle);
             }
-            // Should not spin infinitely — scheduler will reschedule
+            Timer::after_micros(100).await;
         }
     }
 
@@ -104,10 +115,11 @@ impl FrameBufferPool {
     /// Get a mutable reference to the buffer at `handle.id`.
     ///
     /// # Safety
-    /// - The caller must guarantee exclusive access.
-    /// - This is ensured externally by only issuing a single valid `FrameBufferHandle`
-    ///   per slot, and disallowing duplication or aliasing.
-    pub fn get_mut(&mut self, handle: &FrameBufferHandle) -> &mut [u8; FRAME_BUFFER_SIZE] {
+    /// - The caller must ensure exclusive access to the buffer.
+    /// - This is guaranteed by the pool’s allocation system, which issues a single valid
+    ///   `FrameBufferHandle` per slot and prevents duplication or aliasing.
+    #[allow(clippy::mut_from_ref)]
+    pub fn get_mut(&self, handle: &FrameBufferHandle) -> &mut [u8; FRAME_BUFFER_SIZE] {
         // SAFETY: Access is gated by handle ownership — only one valid mutable reference
         // should exist at any time, and `UnsafeCell` permits interior mutability.
         unsafe { &mut *self.buffers[handle.id].get() }
@@ -130,8 +142,3 @@ impl Drop for FrameBufferHandle {
         println!("Dropping FrameBufferHandle id={}", self.id);
     }
 }
-
-/// Global singleton framebuffer pool.
-///
-/// SAFE because it is only accessed via public APIs which enforce usage correctness.
-pub static FRAMEBUFFER_POOL: FrameBufferPool = FrameBufferPool::new();

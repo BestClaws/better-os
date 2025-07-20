@@ -211,12 +211,14 @@ pub async fn slab_app(context: AppContext) {
     let receiver = ORIENTATION_CHANNEL.receiver();
 
     loop {
-        let direction = receiver.receive().await;
+
 
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
+
+        let direction = receiver.receive().await;
 
         context.draw(|canvas| {
             canvas.clear();
