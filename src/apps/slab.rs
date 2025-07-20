@@ -13,7 +13,7 @@ use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse
 use crate::system::app::app_context::AppContext;
 
 // Embed the binary STL file (place cube.stl in assets/ directory)
-const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow.stl");
+const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow2.stl");
 
 #[embassy_executor::task]
 pub async fn cube_app(context: AppContext) {
@@ -63,7 +63,7 @@ pub async fn cube_app(context: AppContext) {
             if let Err(e) = draw_model(
                 canvas,
                 &model,
-                Vec3(0.0, 0.0, 3.0),
+                Vec3(0.0, 0.0, 2.0),
                 rotation,
                 canvas.width(),
                 canvas.height(),
