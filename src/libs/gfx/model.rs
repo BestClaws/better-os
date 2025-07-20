@@ -2,8 +2,8 @@ use super::math::Vec3;
 use defmt::Format;
 
 // Maximum triangles supported (adjust based on MCU memory)
-pub(crate) const MAX_TRIANGLES: usize = 50;
-pub(crate) const MAX_VERTICES: usize = 50;
+pub(crate) const MAX_TRIANGLES: usize = 500;
+pub(crate) const MAX_VERTICES: usize = 500;
 
 #[derive(Clone, Copy)]
 pub struct Triangle {
