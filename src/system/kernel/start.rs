@@ -9,13 +9,14 @@ use crate::system::services::ambient_srv::ambient_sensor_service;
 use crate::system::services::battery_srv::battery_service;
 use crate::system::services::compositor_srv::compositor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
-use crate::system::services::human_input_srv;
+use crate::system::services::{human_input_srv, vibrator_srv};
 use crate::system::ui::compositor::UICompositor;
 
 use panic_rtt_target as _;
 use static_cell::StaticCell;
 use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
 use crate::system::services::radio_service::radio_service;
+use crate::system::services::vibrator_srv::vibrator_service;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
 
@@ -33,6 +34,9 @@ pub(crate) fn start(spawner: Spawner) {
     info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
     spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
+
+    info!("[{}s] spawned vibrator service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(vibrator_service(device.vibrator.unwrap())).unwrap();
 
     // Spawn sensors
     info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);

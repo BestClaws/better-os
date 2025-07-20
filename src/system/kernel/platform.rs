@@ -8,9 +8,11 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::{ AsyncEncoder};
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::system::hal::radio::AsyncRadio;
+use crate::system::hal::vibrator::AsyncVibrator;
 
 pub(crate) struct PlatformDevice<'s> {
     pub(crate) encoder: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncEncoder>>>,
+    pub(crate) vibrator: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncVibrator>>>,
     pub(crate) display: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncDisplay>>>,
     pub(crate) button: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncButton>>>,
     pub(crate) battery: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncBattery>>>,

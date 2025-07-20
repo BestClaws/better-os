@@ -28,12 +28,18 @@ use esp_hal::{
     gpio::{Input, InputConfig, Pull},
     i2c::master::I2c,
 };
+use esp_hal::gpio::{Level, Output, OutputConfig};
 use static_cell::StaticCell;
+use crate::system::hal::vibrator::AsyncVibrator;
+use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
 pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> =
     StaticCell::new();
+pub(crate) static VIBRATOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncVibrator>>> =
+    StaticCell::new();
+
 pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> =
     StaticCell::new();
 pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
@@ -74,12 +80,20 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         peripherals.GPIO8,
         InputConfig::default().with_pull(Pull::Up),
     );
+
+    let encoder = EncoderDriver::new(encoder_a_pin, encoder_b_pin);
+
+
+
+    let vibrator_pin = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
+
+    let vibrator = VibratorDriver::new(vibrator_pin);
+
+
     let button_pin = Input::new(
         peripherals.GPIO9,
         InputConfig::default().with_pull(Pull::Up),
     );
-
-    let encoder = EncoderDriver::new(encoder_a_pin, encoder_b_pin);
 
     let button = ButtonDriver::new(button_pin);
 
@@ -127,8 +141,14 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
     let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
 
+
+
+
+
+
     PlatformDevice {
         encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
+        vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
         button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
         battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),

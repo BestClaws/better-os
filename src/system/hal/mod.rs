@@ -5,3 +5,4 @@ pub(crate) mod battery;
 pub(crate) mod ambience;
 pub(crate) mod imu;
 pub(crate) mod radio;
+pub(crate) mod vibrator;
