@@ -19,8 +19,8 @@ const SCREEN_WIDTH: usize = 128;
 const SCREEN_HEIGHT: usize = 64;
 
 // Animation tuning globals
-const ANIM_STEPS: usize = 16;
-const ANIM_FRAME_DELAY_MS: u64 = 5;
+const ANIM_STEPS: usize = 8;
+const ANIM_FRAME_DELAY_MS: u64 = 2;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ViewMode {
@@ -217,19 +217,37 @@ impl UICompositor {
             ViewMode::Single => {
                 let canvas = &mut self.windows[self.current_window].canvas().await;
                 working_buff.copy_from_slice(canvas.buffer());
-                // blit(
-                //     working_buff,
-                //     SCREEN_WIDTH as u32,
-                //     SCREEN_HEIGHT as u32,
-                //     canvas.buffer(),
-                //     SCREEN_WIDTH as u32,
-                //     SCREEN_HEIGHT as u32,
-                //     0,
-                //     0,
-                // );
+
             }
             ViewMode::Split => {
+                let i1 = self.current_window;
+                let i2 = (self.current_window + 1) % self.windows.len();
 
+                let src1_win = &mut self.windows[i1];
+                let src1_canvas = src1_win.canvas().await;
+                blit(
+                    working_buff,
+                    SCREEN_WIDTH as u32,
+                    SCREEN_HEIGHT as u32,
+                    src1_canvas.buffer(),
+                    SCREEN_WIDTH as u32,
+                    SCREEN_HEIGHT as u32,
+                    0,
+                    0,
+                );
+
+                let src2_win = &mut self.windows[i2];
+                let src2_canvas = src2_win.canvas().await;
+                blit(
+                    working_buff,
+                    SCREEN_WIDTH as u32,
+                    SCREEN_HEIGHT as u32,
+                    src2_canvas.buffer(),
+                    SCREEN_WIDTH as u32,
+                    SCREEN_HEIGHT as u32,
+                    (SCREEN_WIDTH / 2) as i32,
+                    0,
+                );
             }
         }
 

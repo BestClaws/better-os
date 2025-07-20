@@ -20,6 +20,7 @@ pub(crate) mod sub {
     use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
     use embassy_sync::mutex::Mutex;
     use defmt::info;
+    use embassy_time::Timer;
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
     use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
@@ -41,6 +42,9 @@ pub(crate) mod sub {
                 EncoderState::Ccw => HUMAN_INPUT_CH.send(HumanInputEvent::NavUp).await,
                 EncoderState::Cw => HUMAN_INPUT_CH.send(HumanInputEvent::NavDown).await,
             };
+
+            Timer::after_millis(500).await; // cooldown
+            info!("Cooldown done");
         }
     }
 

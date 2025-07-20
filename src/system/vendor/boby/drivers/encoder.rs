@@ -30,8 +30,7 @@ impl<P: InputPin + Wait> AsyncEncoder for EncoderDriver<P> {
         let a = self.a_pin.is_high().map_err(|_| EncoderError::PinError)?;
         let b = self.b_pin.is_high().map_err(|_| EncoderError::PinError)?;
 
-        // cooldown
-        Timer::after(Duration::from_millis(10)).await;
+ 
         // 4) decode
         return match (a, b) {
             (false, true)  => Ok(EncoderState::Ccw),
