@@ -42,7 +42,7 @@ embassy-executor = { version = "0.7.0", features = [
   "defmt",
   "task-arena-size-20480",
 ] }
-embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
+embassy-time = { version = "0.4.0", features = ["generic-queue-8", "defmt"] }
 
 
 static_cell = { version = "2.1.0", features = [] }
@@ -58,6 +58,8 @@ ssd1306 = { version = "0.10.0", features = ["async", "graphics"] }
 
 display-interface-i2c = { version = "0.5.0" }
 display-interface = "0.5.0"
+display-interface-spi = { version = "0.5.0"}
+ili9341 = { version = "0.6.0", features = ["embedded-graphics-core", "graphics"] }
 
 mpu6050-dmp = { version = "0.6.0", features = ["async", "defmt-03"] }
 embassy-embedded-hal = { version = "0.3.0", features = ["defmt"] }

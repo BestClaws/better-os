@@ -7,6 +7,7 @@ use esp_hal::Async;
 use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
+use display_interface_i2c::I2CInterface;
 
 // Assets
 

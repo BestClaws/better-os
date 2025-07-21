@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use core::cmp::PartialEq;
-use embedded_hal::digital::InputPin;
+use
+embedded_hal::digital::InputPin;
 // v1.0.0
 use embedded_hal_async::digital::Wait;
 use async_trait::async_trait;

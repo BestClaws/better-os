@@ -1,7 +1,7 @@
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 use alloc::boxed::Box;
-
+use core::cell::RefCell;
 use crate::system::hal::ambience::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
@@ -16,47 +16,54 @@ use crate::system::vendor::boby::drivers::ssd1306::Ssd1306Driver;
 use crate::system::vendor::espressif::drivers::radio_driver::{RadioDriver};
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
+use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+use embassy_sync::blocking_mutex::Mutex;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
-use esp_hal::peripherals::ADC1;
+// use esp_hal::peripherals::ADC1;
 use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::Async;
+use esp_hal::{Async, Blocking};
 use esp_hal::{
     gpio::{Input, InputConfig, Pull},
     i2c::master::I2c,
 };
 use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::spi::master::{Config, Spi};
+use esp_hal::spi::Mode;
 use static_cell::StaticCell;
 use crate::system::hal::vibrator::AsyncVibrator;
+use crate::system::vendor::boby::drivers::ili9341_driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 
-static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
 
-pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> =
-    StaticCell::new();
-pub(crate) static VIBRATOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncVibrator>>> =
-    StaticCell::new();
+static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, RefCell<Spi<Blocking>>>> = StaticCell::new();
 
-pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> =
+// static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
+//
+// pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>> =
+//     StaticCell::new();
+// pub(crate) static VIBRATOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncVibrator>>> =
+//     StaticCell::new();
+//
+// pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> =
+//     StaticCell::new();
+pub(crate) static DISPLAY: StaticCell<embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
     StaticCell::new();
-pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
-    StaticCell::new();
-pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> =
-    StaticCell::new();
-pub(crate) static AMBIENT_SENSOR: StaticCell<
-    Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>,
-> = StaticCell::new();
-pub(crate) static GYRO_ACCELEROMETER: StaticCell<
-    Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>,
-> = StaticCell::new();
-pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> =
-    StaticCell::new();
-
-pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>> =
-    StaticCell::new();
+// pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> =
+//     StaticCell::new();
+// pub(crate) static AMBIENT_SENSOR: StaticCell<
+//     Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>,
+// > = StaticCell::new();
+// pub(crate) static GYRO_ACCELEROMETER: StaticCell<
+//     Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>,
+// > = StaticCell::new();
+// pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> =
+//     StaticCell::new();
+//
+// pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>> =
+//     StaticCell::new();
 
 pub(crate) fn init_device() -> PlatformDevice<'static> {
     // initialize mcu device hal
@@ -71,89 +78,123 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
     // INIT OTHER DEVICES
 
-    // INIT ENCODER
-    let encoder_a_pin = Input::new(
-        peripherals.GPIO7,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-    let encoder_b_pin = Input::new(
-        peripherals.GPIO8,
-        InputConfig::default().with_pull(Pull::Up),
-    );
+    // // INIT ENCODER
+    // let encoder_a_pin = Input::new(
+    //     peripherals.GPIO7,
+    //     InputConfig::default().with_pull(Pull::Up),
+    // );
+    // let encoder_b_pin = Input::new(
+    //     peripherals.GPIO8,
+    //     InputConfig::default().with_pull(Pull::Up),
+    // );
+    //
+    // let encoder = EncoderDriver::new(encoder_a_pin, encoder_b_pin);
+    //
+    //
+    //
+    // let vibrator_pin = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
+    //
+    // let vibrator = VibratorDriver::new(vibrator_pin);
+    //
+    //
+    // let button_pin = Input::new(
+    //     peripherals.GPIO9,
+    //     InputConfig::default().with_pull(Pull::Up),
+    // );
+    //
+    // let button = ButtonDriver::new(button_pin);
 
-    let encoder = EncoderDriver::new(encoder_a_pin, encoder_b_pin);
+    // // INIT I2C BUS
+    // let i2c = I2c::new(
+    //     peripherals.I2C0,
+    //     esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
+    // )
+    // .unwrap()
+    // .with_sda(peripherals.GPIO4)
+    // .with_scl(peripherals.GPIO5)
+    // .into_async();
+    //
+    // let i2c = Mutex::new(i2c);
+    // let i2c = I2C_BUS.init(i2c);
+    // let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
+    //     I2cDevice::new(i2c);
+    //
+    // let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
+    //     I2cDevice::new(i2c);
+    //
+    // // INIT DISPLAY
+    // let display = Ssd1306Driver::init(i2c_1);
+    //
 
 
+    let sclk = peripherals.GPIO0;
+    let miso = peripherals.GPIO2;
+    let mosi = peripherals.GPIO4;
 
-    let vibrator_pin = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
 
-    let vibrator = VibratorDriver::new(vibrator_pin);
+    let dc = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
+    let r = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    let cs = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
 
-
-    let button_pin = Input::new(
-        peripherals.GPIO9,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-
-    let button = ButtonDriver::new(button_pin);
-
-    // INIT I2C BUS
-    let i2c = I2c::new(
-        peripherals.I2C0,
-        esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
+    let mut spi = Spi::new(
+        peripherals.SPI2,
+        Config::default()
+            .with_frequency(Rate::from_mhz(40))
+            .with_mode(Mode::_0),
     )
-    .unwrap()
-    .with_sda(peripherals.GPIO4)
-    .with_scl(peripherals.GPIO5)
-    .into_async();
+        .unwrap()
+        .with_sck(sclk)
+        .with_mosi(mosi)
+        .with_miso(miso);
 
-    let i2c = Mutex::new(i2c);
-    let i2c = I2C_BUS.init(i2c);
-    let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
-        I2cDevice::new(i2c);
+    let spi = Mutex::new(RefCell::new(spi));
+    let spi = SPI_BUS.init(spi);
+    let spi_1  = SpiDevice::new(spi, cs);
 
-    let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
-        I2cDevice::new(i2c);
 
     // INIT DISPLAY
-    let display = Ssd1306Driver::init(i2c_1);
-
-    // INIT GYRO ACCELEROMETER
-    let gyro_accelerometer = MPU6050::new(i2c_2);
-
-    let mut adc_config = AdcConfig::new();
-    let battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
-    let ambient_sensor_adc_pin = adc_config.enable_pin(peripherals.GPIO3, Attenuation::_11dB);
-    let adc1 = Adc::new(peripherals.ADC1, adc_config).into_async();
-    let adc: &'static mut Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>> =
-        ADC_SHARED.init(Mutex::new(adc1));
-
-    // battery
-    let battery = BatteryDriver::new(adc, battery_adc_pin);
-
-    // ambient sensor
-    let ambient_sensor = AmbientSensorDriver::new(adc, ambient_sensor_adc_pin);
-
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
-
-    let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
-    let timer_group_0_timer_0 = timer_group_0.timer0;
-
-    let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
+    let display = Ili9341Driver::init(spi_1, dc, r);
 
 
 
+    //
+    // // INIT GYRO ACCELEROMETER
+    // let gyro_accelerometer = MPU6050::new(i2c_2);
+    //
+    // let mut adc_config = AdcConfig::new();
+    // let battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
+    // let ambient_sensor_adc_pin = adc_config.enable_pin(peripherals.GPIO3, Attenuation::_11dB);
+    // let adc1 = Adc::new(peripherals.ADC1, adc_config).into_async();
+    // let adc: &'static mut Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>> =
+    //     ADC_SHARED.init(Mutex::new(adc1));
+    //
+    // // battery
+    // let battery = BatteryDriver::new(adc, battery_adc_pin);
+    //
+    // // ambient sensor
+    // let ambient_sensor = AmbientSensorDriver::new(adc, ambient_sensor_adc_pin);
+    //
+    // let rng = esp_hal::rng::Rng::new(peripherals.RNG);
+    //
+    // let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+    // let timer_group_0_timer_0 = timer_group_0.timer0;
+    //
+    // let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
+    //
+    //
+    //
 
 
 
     PlatformDevice {
-        encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
-        vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
-        display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
-        button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
-        battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
-        ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
-        gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
-        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+        // encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
+        // vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
+        display: Some(DISPLAY.init(embassy_sync::mutex::Mutex::new(Box::new(display)))),
+        // button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
+        // battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
+        // ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
+        // gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
+        // radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+
     }
 }
