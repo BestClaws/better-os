@@ -29,6 +29,7 @@ esp-hal-embassy = { version = "0.9.0", features = ["esp32c3"] }
 
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
+embedded-graphics-core = { version = "0.4.0", features = ["defmt"] }
 
 defmt = "1.0.1"
 

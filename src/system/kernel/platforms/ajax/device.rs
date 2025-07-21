@@ -35,7 +35,7 @@ use esp_hal::spi::Mode;
 use static_cell::StaticCell;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
-use crate::system::vendor::boby::drivers::ili9341_driver::Ili9341Driver;
+use crate::system::vendor::boby::drivers::ili9341::ili9341_driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 
@@ -50,8 +50,8 @@ static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticC
 //
 // pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> =
 //     StaticCell::new();
-// pub(crate) static DISPLAY: StaticCell<embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
-//     StaticCell::new();
+pub(crate) static DISPLAY: StaticCell<embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
+    StaticCell::new();
 
 pub(crate) static TOUCH: StaticCell<embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>> =
     StaticCell::new();
@@ -154,16 +154,16 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let reset = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     let cs_display = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
 
-    // let spi_display  = SpiDevice::new(spi, cs_display);
+    let spi_display  = SpiDevice::new(spi, cs_display);
 
 
 
     // INIT DISPLAY
-    // let display = Ili9341Driver::init(spi_display, dc, r);
+    let display = Ili9341Driver::init(spi_display, dc, reset);
 
     let touch_irq = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
     let cs_touch = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
-    
+
     let spi_touch = SpiDevice::new(spi, cs_touch);
     let touch = XPT2046::new(spi_touch, touch_irq);
 
@@ -203,7 +203,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     PlatformDevice {
         // encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
         // vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
-        // display: Some(DISPLAY.init(embassy_sync::mutex::Mutex::new(Box::new(display)))),
+        display: Some(DISPLAY.init(embassy_sync::mutex::Mutex::new(Box::new(display)))),
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         // button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
         // battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),

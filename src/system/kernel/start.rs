@@ -28,9 +28,7 @@ pub(crate) fn start(spawner: Spawner) {
     let device = platforms::ajax::device::init_device();
 
 
-    // // Initialize the global compositor
-    // let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
-    // 
+
     // // Spawn input services
     // info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
@@ -50,11 +48,14 @@ pub(crate) fn start(spawner: Spawner) {
     // 
     // info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
-    // 
-    // // Spawn compositor service
-    // info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
-    // 
+    //
+
+    // Initialize the global compositor
+    let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
+    // Spawn compositor service
+    info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
+
     // 
     // // Spawn accel service
     // info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);

@@ -42,4 +42,7 @@ impl AsyncDisplay for Ssd1306Driver {
         self.display.flush().await.unwrap();
     }
 
+    async fn clear(&mut self, color: u16) {
+        todo!()
+    }
 }
