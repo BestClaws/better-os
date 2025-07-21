@@ -10,17 +10,17 @@ use crate::system::ui::compositor::{SlideDir, UICompositor};
 #[embassy_executor::task]
 pub async fn compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
-    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    _compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
 ) {
 
 
     let mut display = display.lock().await;
 
-        display.clear(2016).await;;
 
 
     loop {
-
+        display.clear(2016).await;;
+        Timer::after(Duration::from_millis(100)).await;
     }
     // {
     //     display.lock().await.init().await;

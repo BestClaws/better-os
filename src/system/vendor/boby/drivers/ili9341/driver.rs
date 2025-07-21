@@ -165,7 +165,7 @@ where
     }
 
     pub async fn clear_screen(&mut self, color: u16) -> Result {
-        let color = core::iter::repeat(color).take(self.width * self.height);
+        let color = core::iter::repeat_n(color, self.width * self.height);
         self.draw_raw_iter(0, 0, self.width as u16 - 1, self.height as u16 - 1, color).await
     }
 

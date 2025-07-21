@@ -50,10 +50,10 @@ static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticC
 //
 // pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> =
 //     StaticCell::new();
-pub(crate) static DISPLAY: StaticCell<embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
+pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
     StaticCell::new();
 
-pub(crate) static TOUCH: StaticCell<embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>> =
+pub(crate) static TOUCH: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>> =
     StaticCell::new();
 // pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> =
 //     StaticCell::new();
