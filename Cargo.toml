@@ -27,8 +27,8 @@ esp-wifi = { version = "0.15.0", features = [
 esp-alloc = "0.8.0"
 esp-hal-embassy = { version = "0.9.0", features = ["esp32c3"] }
 
-embedded-hal = "1.0.0"
-embedded-hal-async = "1.0.0"
+embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
+embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 
 defmt = "1.0.1"
 
