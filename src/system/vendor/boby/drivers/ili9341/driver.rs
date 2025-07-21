@@ -131,8 +131,10 @@ where
 
     async fn write_iter<I: IntoIterator<Item = u16>>(&mut self, data: I) -> Result {
         self.command(Command::MemoryWrite, &[]).await?;
-        self.interface.send_data(U16BEIter(&mut data.into_iter())).await
+        let mut iter = data.into_iter();
+        self.interface.send_data(U16BEIter(&mut iter)).await
     }
+
 
     async fn set_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result {
         self.command(

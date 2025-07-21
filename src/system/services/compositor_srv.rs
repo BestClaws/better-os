@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use defmt::info;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, Instant};
@@ -19,7 +20,9 @@ pub async fn compositor_service(
 
 
     loop {
-        display.clear(2016).await;;
+        info!("Display clear");
+        display.clear(2016).await;
+        info!("Display clear done");
         Timer::after(Duration::from_millis(100)).await;
     }
     // {
