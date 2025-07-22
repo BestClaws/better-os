@@ -8,6 +8,7 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 
 use crate::apps::slab::{ cube_app };
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
 #[embassy_executor::task]
 pub async fn app_spawner_service(
@@ -33,7 +34,7 @@ pub async fn app_spawner_service(
     // spawner.spawn(battery_app(ctx)).unwrap();
 
     let whandle = comp
-        .alloc_window(128, 64, 1)
+        .alloc_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, 1)
         .await
         .expect("Failed to allocate battery window");
     let ctx = AppContext::new(whandle, 1, "ble", compositor);

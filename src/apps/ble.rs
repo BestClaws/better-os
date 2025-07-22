@@ -1,10 +1,10 @@
 use embassy_time::{Duration, Timer};
-use embedded_graphics::prelude::Primitive;
-use embedded_graphics::primitives::PrimitiveStyleBuilder;
+use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics_core::prelude::*;
-use embedded_graphics_core::primitives::Rectangle;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Rgb332;
+use defmt::info;
+use embedded_graphics::prelude::Primitive;
 
 #[embassy_executor::task]
 pub async fn ble_app(context: AppContext) {
@@ -18,22 +18,16 @@ pub async fn ble_app(context: AppContext) {
             let width = canvas.width() as i32;
             let height = canvas.height() as i32;
 
-            // Define size of the rectangle
-            let rect_size = 40;
-            let x = (width - rect_size) / 2;
-            let y = (height - rect_size) / 2;
+            let start = Point::new(0, 0);
+            let end = Point::new(width - 1, height - 1);
 
-            let rect = Rectangle::new(
-                Point::new(x, y),
-                Size::new(rect_size as u32, rect_size as u32),
-            );
+            // Debug print of the start and end coordinates
+            info!("Drawing line from ({}, {}) to ({}, {})", start.x, start.y, end.x, end.y);
 
-            // White fill style using RGB332
-            let fill_style = PrimitiveStyleBuilder::new()
-                .fill_color(Rgb332::new(7, 7, 3)) // max white in RGB332
-                .build();
+            let line = Line::new(start, end);
+            let style = PrimitiveStyle::with_stroke(Rgb332::new(7, 0, 0), 1); // Red stroke
 
-            rect.into_styled(fill_style)
+            line.into_styled(style)
                 .draw(canvas)
                 .unwrap();
         }).await;
