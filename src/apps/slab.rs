@@ -75,7 +75,7 @@ pub async fn cube_app(context: AppContext) {
 
             let mut text_buf = String::<32>::new();
             write!(text_buf, "FPS: {:.1}", fps).ok();
-            let style = MonoTextStyle::new(&FONT_6X10, Rgb332::new(255, 255, 255));
+            let style = MonoTextStyle::new(&FONT_6X10, Rgb332::new(7, 0, 0));
             Text::new(&text_buf, Point::new(0, 10), style)
                 .draw(canvas)
                 .unwrap();
