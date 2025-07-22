@@ -157,7 +157,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let reset = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     let cs_display = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
 
-    let mut display_config = Config::default().with_frequency(Rate::from_mhz(40));
+    let mut display_config = Config::default().with_frequency(Rate::from_mhz(60));
 
     let spi_display = SpiDeviceWithConfig::new(spi, cs_display, display_config);
 
