@@ -35,7 +35,7 @@ use esp_hal::spi::Mode;
 use static_cell::StaticCell;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
-use crate::system::vendor::boby::drivers::ili9341::ili9341_driver::Ili9341Driver;
+use crate::system::vendor::boby::drivers::ili9341::driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 
@@ -159,7 +159,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
 
     // INIT DISPLAY
-    let display = Ili9341Driver::init(spi_display, dc, reset);
+    let display = Ili9341Driver::new(spi_display, dc, reset);
 
     let touch_irq = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
     let cs_touch = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());

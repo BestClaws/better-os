@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use crate::system::hal::display::AsyncDisplay;
+use crate::system::hal::display::{AsyncDisplay, Orientation};
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::i2c::master::I2c;
@@ -43,6 +43,18 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn clear(&mut self, color: u16) {
+        todo!()
+    }
+
+    async fn set_orientation(&mut self, orientation: Orientation) {
+        todo!()
+    }
+
+    fn get_width(&self) -> usize {
+        todo!()
+    }
+
+    fn get_height(&self) -> usize {
         todo!()
     }
 }
