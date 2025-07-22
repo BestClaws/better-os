@@ -206,36 +206,29 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.set_orientation(Orientation::Portrait).await.expect("Failed to set orientation");
     }
     async fn draw(&mut self, buffer: &[u8]) {
-        let in_width = 120;
-        let in_height = 160;
+        const IN_W: usize = 120;
+        const IN_H: usize = 160;
+        const OUT_W: usize = 240;
+        const OUT_H: usize = 320;
 
-        let out_width = 240;
-        let out_height = 320;
-
-        let pixels = (0..(out_width * out_height)).map(|i| {
-            let x = i % out_width;
-            let y = i / out_width;
-
-            // Nearest neighbor scaling
-            let src_x = x / 2;
+        let pixels = (0..OUT_H).flat_map(move |y| {
             let src_y = y / 2;
-
-            let src_index = src_y * in_width + src_x;
-            let rgb332 = buffer.get(src_index).copied().unwrap_or(0);
-
-            rgb332_to_rgb565(rgb332)
+            (0..OUT_W).map(move |x| {
+                let src_x = x / 2;
+                let idx = src_y * IN_W + src_x;
+                let rgb332 = buffer.get(idx).copied().unwrap_or(0);
+                rgb332_to_rgb565(rgb332)
+            })
         });
 
-        self.draw_raw_iter(
-            0,
-            0,
-            out_width as u16 - 1,
-            out_height as u16 - 1,
-            pixels,
-        )
+        self.draw_raw_iter(0, 0, (OUT_W - 1) as u16, (OUT_H - 1) as u16, pixels)
             .await
             .expect("Failed to draw buffer");
     }
+    
+
+
+
 
 
 
@@ -266,4 +259,12 @@ fn rgb332_to_rgb565(c: u8) -> u16 {
     let b5 = (b << 3) | (b << 1) | (b >> 1); // expand 2-bit to 5-bit
 
     ((r5 as u16) << 11) | ((g6 as u16) << 5) | (b5 as u16)
+}
+
+fn rgb888_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
+    let r5 = (r >> 3) as u16;
+    let g6 = (g >> 2) as u16;
+    let b5 = (b >> 3) as u16;
+
+    (r5 << 11) | (g6 << 5) | b5
 }
