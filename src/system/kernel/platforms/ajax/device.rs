@@ -65,9 +65,9 @@ pub(crate) static TOUCH: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn Async
 // > = StaticCell::new();
 // pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>>> =
 //     StaticCell::new();
-//
-// pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>> =
-//     StaticCell::new();
+
+pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>> =
+    StaticCell::new();
 
 pub(crate) fn init_device() -> PlatformDevice<'static> {
     // initialize mcu device hal
@@ -192,16 +192,17 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     //
     // // ambient sensor
     // let ambient_sensor = AmbientSensorDriver::new(adc, ambient_sensor_adc_pin);
-    //
-    // let rng = esp_hal::rng::Rng::new(peripherals.RNG);
-    //
-    // let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
-    // let timer_group_0_timer_0 = timer_group_0.timer0;
-    //
-    // let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
-    //
-    //
-    //
+
+
+
+
+    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
+
+    let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+    let timer_group_0_timer_0 = timer_group_0.timer0;
+
+    let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
+
 
 
 
@@ -214,7 +215,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         // battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
         // ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
         // gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
-        // radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
 
     }
 }

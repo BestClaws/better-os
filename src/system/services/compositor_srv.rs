@@ -20,15 +20,20 @@ pub async fn compositor_service(
         
     }
 
+    let mut x = 10;
+
+
 
     loop {
+        x+= 10;
+        let y = x % 2000;
         info!("Display clear");
         {
-            display.lock().await.clear(2016).await;
+            display.lock().await.clear(y).await;
 
         }
         info!("Display clear done");
-        Timer::after(Duration::from_millis(3000)).await;
+        Timer::after(Duration::from_millis(100)).await;
     }
 
 
