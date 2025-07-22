@@ -2,16 +2,21 @@
 //!
 //! Adapted from a synchronous version to support `embedded-hal-async`
 //! and async `display-interface` traits. Stripped embedded-graphics support.
+//! Provides a unified driver for the ILI9341 display with orientation and dimension support.
 
 #![no_std]
 
+use alloc::boxed::Box;
+use async_trait::async_trait;
 use core::iter::once;
-use embedded_hal_async::delay::DelayNs;
+use display_interface::{AsyncWriteOnlyDataCommand, DataFormat::{U16BEIter, U8Iter}, DisplayError};
+use display_interface_spi::SPIInterface;
 use embedded_hal::digital::OutputPin;
-use display_interface::DataFormat::{U16BEIter, U8Iter};
-use display_interface::AsyncWriteOnlyDataCommand;
-
-pub use display_interface::DisplayError;
+use embedded_hal_async::delay::DelayNs;
+use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use esp_hal::{spi::master::Spi, Async};
+use crate::system::hal::display::AsyncDisplay;
 
 pub type Result<T = (), E = DisplayError> = core::result::Result<T, E>;
 
@@ -47,10 +52,10 @@ pub enum Orientation {
 impl Mode for Orientation {
     fn mode(&self) -> u8 {
         match self {
-            Self::Portrait => 0x40 | 0x08,
-            Self::Landscape => 0x20 | 0x08,
-            Self::PortraitFlipped => 0x80 | 0x08,
-            Self::LandscapeFlipped => 0x40 | 0x80 | 0x20 | 0x08,
+            Self::Portrait => 0x40 | 0x08, // MY=1, MX=0, MV=0
+            Self::PortraitFlipped => 0x80 | 0x08, // MY=0, MX=0, MV=0
+            Self::Landscape => 0x20 | 0x08, // MY=0, MX=1, MV=1
+            Self::LandscapeFlipped => 0x40 | 0x80 | 0x20 | 0x08, // MY=1, MX=0, MV=1
         }
     }
 
@@ -70,6 +75,7 @@ pub struct Ili9341Async<IFACE, RESET> {
     width: usize,
     height: usize,
     landscape: bool,
+    orientation: Orientation,
 }
 
 impl<IFACE, RESET> Ili9341Async<IFACE, RESET>
@@ -80,22 +86,33 @@ where
     pub fn new_instance<DELAY, SIZE, MODE>(
         interface: IFACE,
         reset: RESET,
-        _delay: &mut DELAY,
-        _mode: MODE,
-        _display_size: SIZE,
+        delay: &mut DELAY,
+        mode: MODE,
+        display_size: SIZE,
     ) -> Self
     where
         DELAY: DelayNs,
         SIZE: DisplaySize,
         MODE: Mode,
     {
-        Self {
+        let mut display = Self {
             interface,
             reset,
             width: SIZE::WIDTH,
             height: SIZE::HEIGHT,
-            landscape: _mode.is_landscape(),
+            landscape: mode.is_landscape(),
+            orientation: match mode.mode() {
+                0x48 => Orientation::Portrait,
+                0x88 => Orientation::PortraitFlipped,
+                0x28 => Orientation::Landscape,
+                0xE8 => Orientation::LandscapeFlipped,
+                _ => Orientation::Portrait, // Fallback
+            },
+        };
+        if mode.is_landscape() {
+            core::mem::swap(&mut display.width, &mut display.height);
         }
+        display
     }
 
     pub async fn init_display<DELAY, MODE>(&mut self, delay: &mut DELAY, mode: MODE) -> Result
@@ -104,17 +121,17 @@ where
         MODE: Mode,
     {
         self.reset.set_low().map_err(|_| DisplayError::RSError)?;
-        delay.delay_ms(1).await;
+        delay.delay_ms(10).await;
         self.reset.set_high().map_err(|_| DisplayError::RSError)?;
-        delay.delay_ms(5).await;
+        delay.delay_ms(10).await;
 
         self.command(Command::SoftwareReset, &[]).await?;
-        delay.delay_ms(120).await;
+        delay.delay_ms(150).await;
 
         self.set_orientation(mode).await?;
         self.command(Command::PixelFormatSet, &[0x55]).await?;
         self.sleep_mode(ModeState::Off).await?;
-        delay.delay_ms(5).await;
+        delay.delay_ms(10).await;
         self.display_mode(ModeState::On).await?;
 
         Ok(())
@@ -135,22 +152,33 @@ where
         self.interface.send_data(U16BEIter(&mut iter)).await
     }
 
-
     async fn set_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result {
+        if x1 >= self.width as u16 || y1 >= self.height as u16 {
+            return Err(DisplayError::OutOfBoundsError);
+        }
+
+        let (col_start, col_start_low, col_end, col_end_low, page_start, page_start_low, page_end, page_end_low) =
+            if self.landscape {
+                // Landscape and LandscapeFlipped: swap x and y (MV=1)
+                (
+                    (y0 >> 8) as u8, y0 as u8, (y1 >> 8) as u8, y1 as u8, // Columns = y
+                    (x0 >> 8) as u8, x0 as u8, (x1 >> 8) as u8, x1 as u8, // Pages = x
+                )
+            } else {
+                // Portrait and PortraitFlipped: normal mapping
+                (
+                    (x0 >> 8) as u8, x0 as u8, (x1 >> 8) as u8, x1 as u8, // Columns = x
+                    (y0 >> 8) as u8, y0 as u8, (y1 >> 8) as u8, y1 as u8, // Pages = y
+                )
+            };
+
         self.command(
             Command::ColumnAddressSet,
-            &[
-                (x0 >> 8) as u8, x0 as u8,
-                (x1 >> 8) as u8, x1 as u8,
-            ],
+            &[col_start, col_start_low, col_end, col_end_low],
         ).await?;
-
         self.command(
             Command::PageAddressSet,
-            &[
-                (y0 >> 8) as u8, y0 as u8,
-                (y1 >> 8) as u8, y1 as u8,
-            ],
+            &[page_start, page_start_low, page_end, page_end_low],
         ).await
     }
 
@@ -167,8 +195,11 @@ where
     }
 
     pub async fn clear_screen(&mut self, color: u16) -> Result {
+        if self.width == 0 || self.height == 0 {
+            return Err(DisplayError::RSError);
+        }
         let color = core::iter::repeat_n(color, self.width * self.height);
-        self.draw_raw_iter(0, 0, self.height as u16 - 1, self.width as u16 - 1, color).await
+        self.draw_raw_iter(0, 0, self.width as u16 - 1, self.height as u16 - 1, color).await
     }
 
     pub async fn set_orientation<MODE: Mode>(&mut self, mode: MODE) -> Result {
@@ -177,6 +208,13 @@ where
             core::mem::swap(&mut self.height, &mut self.width);
         }
         self.landscape = mode.is_landscape();
+        self.orientation = match mode.mode() {
+            0x48 => Orientation::Portrait,
+            0x88 => Orientation::PortraitFlipped,
+            0x28 => Orientation::Landscape,
+            0xE8 => Orientation::LandscapeFlipped,
+            _ => Orientation::Portrait, // Fallback
+        };
         Ok(())
     }
 
@@ -229,4 +267,61 @@ enum Command {
     PageAddressSet = 0x2b,
     MemoryWrite = 0x2c,
     SetBrightness = 0x51,
+}
+
+pub struct Ili9341Driver<CS: OutputPin, DC: OutputPin, RESET: OutputPin> {
+    display: Ili9341Async<SPIInterface<SpiDevice<'static, CriticalSectionRawMutex, Spi<'static, Async>, CS>, DC>, RESET>,
+}
+
+impl<CS: OutputPin, DC: OutputPin, RESET: OutputPin> Ili9341Driver<CS, DC, RESET> {
+    pub fn init(
+        spi: SpiDevice<'static, CriticalSectionRawMutex, Spi<'static, Async>, CS>,
+        dc: DC,
+        reset: RESET,
+    ) -> Self {
+        let interface = SPIInterface::new(spi, dc);
+        let mut delay = embassy_time::Delay;
+
+        let display = Ili9341Async::new_instance(
+            interface,
+            reset,
+            &mut delay,
+            Orientation::Landscape,
+            DisplaySize240x320,
+        );
+
+        Self { display }
+    }
+}
+
+#[async_trait(?Send)]
+impl<CS: OutputPin, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<CS, DC, RESET> {
+    async fn init(&mut self) {
+        let mut delay = embassy_time::Delay;
+        self.display
+            .init_display(&mut delay, Orientation::Landscape)
+            .await
+            .expect("Display initialization failed");
+    }
+
+    async fn draw(&mut self, buffer: &[u8]) {
+        // Placeholder: Convert buffer to u16 if needed
+        self.display.clear_screen(0xF800).await.unwrap(); // Use red for testing
+    }
+
+    async fn clear(&mut self, color: u16) {
+        self.display.clear_screen(color).await.unwrap();
+    }
+
+    async fn set_orientation(&mut self, orientation: Orientation) {
+        self.display.set_orientation(orientation).await.unwrap();
+    }
+
+    fn width(&self) -> usize {
+        self.display.width()
+    }
+
+    fn height(&self) -> usize {
+        self.display.height()
+    }
 }

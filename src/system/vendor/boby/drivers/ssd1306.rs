@@ -8,7 +8,7 @@ use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 use display_interface_i2c::I2CInterface;
-
+use crate::system::vendor::boby::drivers::ili9341::driver::Orientation;
 // Assets
 
 type Disp = Ssd1306Async<I2CInterface<I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>;
@@ -43,6 +43,18 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn clear(&mut self, color: u16) {
+        todo!()
+    }
+
+    async fn set_orientation(&mut self, orientation: Orientation) {
+        todo!()
+    }
+
+    fn width(&self) -> usize {
+        todo!()
+    }
+
+    fn height(&self) -> usize {
         todo!()
     }
 }

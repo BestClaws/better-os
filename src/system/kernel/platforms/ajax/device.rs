@@ -16,7 +16,7 @@ use crate::system::vendor::boby::drivers::ssd1306::Ssd1306Driver;
 use crate::system::vendor::espressif::drivers::radio_driver::{RadioDriver};
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
+use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDevice, SpiDeviceWithConfig};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
@@ -35,7 +35,7 @@ use esp_hal::spi::Mode;
 use static_cell::StaticCell;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
-use crate::system::vendor::boby::drivers::ili9341::ili9341_driver::Ili9341Driver;
+use crate::system::vendor::boby::drivers::ili9341::driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 

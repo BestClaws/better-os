@@ -8,6 +8,7 @@ use embassy_time::{Duration, Timer, Instant};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 use crate::system::ui::compositor::{SlideDir, UICompositor};
+use crate::system::vendor::boby::drivers::ili9341::driver::Orientation;
 
 #[embassy_executor::task]
 pub async fn compositor_service(
@@ -25,7 +26,7 @@ pub async fn compositor_service(
         info!("Display clear");
         {
             display.lock().await.clear(2016).await;
-
+            display.lock().await.set_orientation(Orientation::Landscape).await;
         }
         info!("Display clear done");
         Timer::after(Duration::from_millis(3000)).await;
