@@ -203,7 +203,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     PlatformDevice {
         // encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
         // vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
-        display: Some(DISPLAY.init(embassy_sync::mutex::Mutex::new(Box::new(display)))),
+        display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         // button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
         // battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
