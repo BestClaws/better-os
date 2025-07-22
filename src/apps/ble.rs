@@ -1,49 +1,44 @@
-// Allow unused code for prototyping
-#![allow(unused)]
-use core::fmt::Write;
-use alloc::vec::Vec;
-use defmt::info;
 use embassy_time::{Duration, Timer};
-use embedded_graphics::{
-    pixelcolor::BinaryColor,
-    prelude::*,
-    primitives::{Line, PrimitiveStyle, Triangle},
-};
-use embedded_graphics::mono_font::ascii::FONT_6X10;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::primitives::Rectangle;
-use embedded_graphics::text::Text;
-use micromath::F32Ext;
+use embedded_graphics::prelude::Primitive;
+use embedded_graphics::primitives::PrimitiveStyleBuilder;
+use embedded_graphics_core::prelude::*;
+use embedded_graphics_core::primitives::Rectangle;
 use crate::system::app::app_context::AppContext;
-use crate::system::ui::canvas::{Canvas, Rgb332};
-use crate::util::math::primitives::Vec3;
+use crate::system::ui::canvas::Rgb332;
 
 #[embassy_executor::task]
 pub async fn ble_app(context: AppContext) {
-
     loop {
-
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
 
         context.draw(|mut canvas| {
+            let width = canvas.width() as i32;
+            let height = canvas.height() as i32;
 
-            let mut text_buf = heapless::String::<32>::new();
-            write!(text_buf, "BLE").ok();
+            // Define size of the rectangle
+            let rect_size = 40;
+            let x = (width - rect_size) / 2;
+            let y = (height - rect_size) / 2;
 
-            let style = MonoTextStyle::new(&FONT_6X10, Rgb332::new(255, 255, 255));
-            Text::new(&text_buf, Point::new(20, 28), style)
+            let rect = Rectangle::new(
+                Point::new(x, y),
+                Size::new(rect_size as u32, rect_size as u32),
+            );
+
+            // White fill style using RGB332
+            let fill_style = PrimitiveStyleBuilder::new()
+                .fill_color(Rgb332::new(7, 7, 3)) // max white in RGB332
+                .build();
+
+            rect.into_styled(fill_style)
                 .draw(canvas)
                 .unwrap();
-
-
         }).await;
 
         context.request_redraw().await;
         Timer::after(Duration::from_millis(16)).await;
     }
-
 }
-
