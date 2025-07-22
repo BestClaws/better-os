@@ -14,9 +14,7 @@ use libm::sqrtf;
 
 use crate::system::resources::framebuffer::{FRAMEBUFFER_POOL, FrameBufferHandle};
 
-// Screen constants matching your pool
-const SCREEN_WIDTH: usize = 128;
-const SCREEN_HEIGHT: usize = 64;
+
 
 // Animation tuning globals
 const ANIM_STEPS: usize = 8;
@@ -154,19 +152,19 @@ impl UICompositor {
         for step in 0..=ANIM_STEPS {
             let t = step as f32 / ANIM_STEPS as f32;
             let eased = ease_in_out_circular(t);
-            let offset = (eased * SCREEN_WIDTH as f32) as i32;
+            let offset = (eased * FRAME_BUFFER_WIDTH as f32) as i32;
 
             composed_buf.fill(0);
 
             let (from_x, to_x) = match dir {
                 SlideDir::Left => {
                     let from_x = -offset;
-                    let to_x = from_x + SCREEN_WIDTH as i32;
+                    let to_x = from_x + FRAME_BUFFER_WIDTH as i32;
                     (from_x, to_x)
                 }
                 SlideDir::Right => {
                     let from_x = offset;
-                    let to_x = from_x - SCREEN_WIDTH as i32;
+                    let to_x = from_x - FRAME_BUFFER_WIDTH as i32;
                     (from_x, to_x)
                 }
             };
@@ -177,11 +175,11 @@ impl UICompositor {
             let src1_buf = src1_canvas.buffer();
             blit(
                 &mut composed_buf,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
+                FRAME_BUFFER_WIDTH as u32,
+                FRAME_BUFFER_HEIGHT as u32,
                 src1_buf,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
+                FRAME_BUFFER_WIDTH as u32,
+                FRAME_BUFFER_HEIGHT as u32,
                 from_x,
                 0,
             );
@@ -191,11 +189,11 @@ impl UICompositor {
             let src2_buf = src2_canvas.buffer();
             blit(
                 &mut composed_buf,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
+                FRAME_BUFFER_WIDTH as u32,
+                FRAME_BUFFER_HEIGHT as u32,
                 src2_buf,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
+                FRAME_BUFFER_WIDTH as u32,
+                FRAME_BUFFER_HEIGHT as u32,
                 to_x,
                 0,
             );
@@ -227,11 +225,11 @@ impl UICompositor {
                 let src1_canvas = src1_win.canvas().await;
                 blit(
                     working_buff,
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
+                    FRAME_BUFFER_WIDTH as u32,
+                    FRAME_BUFFER_HEIGHT as u32,
                     src1_canvas.buffer(),
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
+                    FRAME_BUFFER_WIDTH as u32,
+                    FRAME_BUFFER_HEIGHT as u32,
                     0,
                     0,
                 );
@@ -240,12 +238,12 @@ impl UICompositor {
                 let src2_canvas = src2_win.canvas().await;
                 blit(
                     working_buff,
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
+                    FRAME_BUFFER_WIDTH as u32,
+                    FRAME_BUFFER_HEIGHT as u32,
                     src2_canvas.buffer(),
-                    SCREEN_WIDTH as u32,
-                    SCREEN_HEIGHT as u32,
-                    (SCREEN_WIDTH / 2) as i32,
+                    FRAME_BUFFER_WIDTH as u32,
+                    FRAME_BUFFER_HEIGHT as u32,
+                    (FRAME_BUFFER_WIDTH / 2) as i32,
                     0,
                 );
             }
@@ -274,8 +272,8 @@ impl UICompositor {
             .and_then(|w| w.input_receiver().try_receive().ok())
     }
 }
-/// Blit (copy) pixels from `src` into `dest` at `x_off`, `y_off` (signed offsets).
-/// 1bpp, vertically packed.
+/// Blit (copy) RGB332 pixels from `src` into `dest` at `x_off`, `y_off`.
+/// Assumes 1 byte per pixel (8bpp, RGB332).
 pub fn blit(
     dest: &mut [u8],
     dest_width: u32,
@@ -286,11 +284,6 @@ pub fn blit(
     x_off: i32,
     y_off: i32,
 ) {
-    let dest_stride = dest_width as usize;
-    let src_stride = src_width as usize;
-    let dest_total_bytes = (dest_width * (dest_height / 8)) as usize;
-    let src_total_bytes = (src_width * (src_height / 8)) as usize;
-
     for y in 0..src_height as i32 {
         let dest_y = y + y_off;
         if dest_y < 0 || dest_y >= dest_height as i32 {
@@ -303,24 +296,11 @@ pub fn blit(
                 continue;
             }
 
-            let src_idx = x as usize + ((y as usize) / 8) * src_stride;
-            if src_idx >= src_total_bytes {
-                continue;
-            }
+            let src_idx = (y as usize) * src_width as usize + x as usize;
+            let dst_idx = (dest_y as usize) * dest_width as usize + dest_x as usize;
 
-            let dst_idx = dest_x as usize + ((dest_y as usize) / 8) * dest_stride;
-            if dst_idx >= dest_total_bytes {
-                continue;
-            }
-
-            let bit = 1 << (y as usize % 8);
-            let src_byte = src[src_idx];
-            let pixel_on = src_byte & bit != 0;
-
-            if pixel_on {
-                dest[dst_idx] |= 1 << (dest_y as usize % 8);
-            } else {
-                dest[dst_idx] &= !(1 << (dest_y as usize % 8));
+            if src_idx < src.len() && dst_idx < dest.len() {
+                dest[dst_idx] = src[src_idx];
             }
         }
     }
@@ -338,4 +318,4 @@ fn ease_in_out_circular(t: f32) -> f32 {
 }
 
 use micromath::F32Ext;
-use crate::system::kernel::config::resources::FRAME_BUFFER_SIZE;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH};

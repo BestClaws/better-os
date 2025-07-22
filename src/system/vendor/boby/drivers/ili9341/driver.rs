@@ -205,17 +205,39 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.display_mode(ModeState::On).await.expect("Failed to enable display");
         self.set_orientation(Orientation::Portrait).await.expect("Failed to set orientation");
     }
-
     async fn draw(&mut self, buffer: &[u8]) {
-        let width = self.width();
-        let height = self.height();
-        let pixels = buffer
-            .chunks_exact(2)
-            .map(|chunk| ((chunk[0] as u16) << 8) | chunk[1] as u16);
-        self.draw_raw_iter(0, 0, width as u16 - 1, height as u16 - 1, pixels)
+        let in_width = 120;
+        let in_height = 160;
+
+        let out_width = 240;
+        let out_height = 320;
+
+        let pixels = (0..(out_width * out_height)).map(|i| {
+            let x = i % out_width;
+            let y = i / out_width;
+
+            // Nearest neighbor scaling
+            let src_x = x / 2;
+            let src_y = y / 2;
+
+            let src_index = src_y * in_width + src_x;
+            let rgb332 = buffer.get(src_index).copied().unwrap_or(0);
+
+            rgb332_to_rgb565(rgb332)
+        });
+
+        self.draw_raw_iter(
+            0,
+            0,
+            out_width as u16 - 1,
+            out_height as u16 - 1,
+            pixels,
+        )
             .await
             .expect("Failed to draw buffer");
     }
+
+
 
     async fn clear(&mut self, color: u16) {
         self.clear_screen(color).await.expect("Failed to clear screen");
@@ -232,4 +254,16 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
     fn get_height(&self) -> usize {
         self.height()
     }
+}
+
+fn rgb332_to_rgb565(c: u8) -> u16 {
+    let r = (c >> 5) & 0b111;     // 3 bits
+    let g = (c >> 2) & 0b111;     // 3 bits
+    let b = c & 0b11;             // 2 bits
+
+    let r5 = (r << 3) | (r >> 0);      // expand 3-bit to 5-bit
+    let g6 = (g << 3) | (g >> 0);      // expand 3-bit to 6-bit
+    let b5 = (b << 3) | (b << 1) | (b >> 1); // expand 2-bit to 5-bit
+
+    ((r5 as u16) << 11) | ((g6 as u16) << 5) | (b5 as u16)
 }
