@@ -31,7 +31,7 @@ impl<CS: OutputPin, DC: OutputPin, RESET: OutputPin> Ili9341Driver<CS, DC, RESET
             interface,
             r,
             &mut delay,
-            Orientation::Landscape,
+            Orientation::Portrait,
             DisplaySize240x320,
         );
 
@@ -49,6 +49,7 @@ impl<CS: OutputPin, DC: OutputPin, RESET: OutputPin>  AsyncDisplay for Ili9341Dr
     async fn init(&mut self) {
         let mut delay = embassy_time::Delay;
         self.display.init_display(&mut delay, Orientation::Landscape).await.expect("TODO: panic message");
+        self.display.set_orientation(Orientation::Portrait).await;
     }
 
     async fn draw(&mut self, buffer: &[u8]) {
