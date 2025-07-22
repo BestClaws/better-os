@@ -47,7 +47,8 @@ impl<CS: OutputPin, DC: OutputPin, RESET: OutputPin> Ili9341Driver<CS, DC, RESET
 #[async_trait::async_trait(?Send)]
 impl<CS: OutputPin, DC: OutputPin, RESET: OutputPin>  AsyncDisplay for Ili9341Driver<CS, DC, RESET> {
     async fn init(&mut self) {
-        todo!()
+        let mut delay = embassy_time::Delay;
+        self.display.init_display(&mut delay, Orientation::Landscape).await.expect("TODO: panic message");
     }
 
     async fn draw(&mut self, buffer: &[u8]) {

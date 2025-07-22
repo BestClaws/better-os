@@ -18,13 +18,16 @@ pub(crate) async fn touch_sensor_service(
     touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>,
 ) {
 
-    let mut touch = touch.lock().await;
+
 
     loop {
         info!("Touch: reading");
-        let (x, y, z) = touch.read_xy().await;
+        {
+            let (x, y, z) = touch.lock().await.read_xy().await;
+            info!("Touch: x: {}, y: {}, z: {}", x, y, z);
+            
+        }
 
-        info!("Touch: x: {}, y: {}, z: {}", x, y, z);
 
         // Small delay to avoid flooding logs
         Timer::after(Duration::from_millis(10)).await;

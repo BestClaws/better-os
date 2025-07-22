@@ -98,7 +98,7 @@ where
         }
     }
 
-    pub async fn init<DELAY, MODE>(&mut self, delay: &mut DELAY, mode: MODE) -> Result
+    pub async fn init_display<DELAY, MODE>(&mut self, delay: &mut DELAY, mode: MODE) -> Result
     where
         DELAY: DelayNs,
         MODE: Mode,

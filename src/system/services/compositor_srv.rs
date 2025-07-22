@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use defmt::export::display;
 use defmt::info;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -14,17 +15,23 @@ pub async fn compositor_service(
     _compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
 ) {
 
-
-    let mut display = display.lock().await;
-
+    {
+        display.lock().await.init().await;
+        
+    }
 
 
     loop {
         info!("Display clear");
-        display.clear(2016).await;
+        {
+            display.lock().await.clear(2016).await;
+
+        }
         info!("Display clear done");
-        Timer::after(Duration::from_millis(100)).await;
+        Timer::after(Duration::from_millis(3000)).await;
     }
+
+
     // {
     //     display.lock().await.init().await;
     // }
