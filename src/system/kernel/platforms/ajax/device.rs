@@ -16,7 +16,7 @@ use crate::system::vendor::boby::drivers::ssd1306::Ssd1306Driver;
 use crate::system::vendor::espressif::drivers::radio_driver::{RadioDriver};
 use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
+use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDevice, SpiDeviceWithConfig};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
@@ -150,11 +150,16 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let spi = Mutex::new(spi);
     let spi = SPI_BUS.init(spi);
 
+
+
+
     let dc = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
     let reset = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     let cs_display = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
 
-    let spi_display  = SpiDevice::new(spi, cs_display);
+    let mut display_config = Config::default().with_frequency(Rate::from_mhz(40));
+
+    let spi_display = SpiDeviceWithConfig::new(spi, cs_display, display_config);
 
 
 
