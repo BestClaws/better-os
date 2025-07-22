@@ -11,6 +11,7 @@ use embedded_graphics::mono_font::MonoTextStyle;
 use heapless::String;
 use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse_binary_stl};
 use crate::system::app::app_context::AppContext;
+use crate::system::ui::canvas::Rgb332;
 
 // Embed the binary STL file (place cube.stl in assets/ directory)
 const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow2.stl");
@@ -74,7 +75,7 @@ pub async fn cube_app(context: AppContext) {
 
             let mut text_buf = String::<32>::new();
             write!(text_buf, "FPS: {:.1}", fps).ok();
-            let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+            let style = MonoTextStyle::new(&FONT_6X10, Rgb332::new(255, 255, 255));
             Text::new(&text_buf, Point::new(0, 10), style)
                 .draw(canvas)
                 .unwrap();

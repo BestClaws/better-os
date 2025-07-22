@@ -1,8 +1,9 @@
 use core::iter::Iterator;
-use embedded_graphics::{pixelcolor::BinaryColor, prelude::{DrawTarget, Point, Size}, Drawable, Pixel};
+use embedded_graphics::{ prelude::{DrawTarget, Point, Size}, Drawable, Pixel};
 use embedded_graphics::prelude::{Dimensions, OriginDimensions};
 use embedded_graphics::primitives::Triangle;
 use micromath::F32Ext;
+use crate::system::ui::canvas::Rgb332;
 use super::math::{Quaternion, Vec3};
 use super::model::{Model, MAX_TRIANGLES, MAX_VERTICES};
 
@@ -57,10 +58,10 @@ impl OriginDimensions for DitheredTriangle {
 }
 
 impl Drawable for DitheredTriangle {
-    type Color = BinaryColor;
+    type Color = Rgb332;
     type Output = ();
 
-    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<Self::Output, D::Error> {
+    fn draw<D: DrawTarget<Color = Rgb332>>(&self, target: &mut D) -> Result<Self::Output, D::Error> {
         let mut points = [self.p0, self.p1, self.p2];
         points.sort_by_key(|p| p.y);
         let (top, mid, bot) = (points[0], points[1], points[2]);
@@ -91,7 +92,7 @@ impl Drawable for DitheredTriangle {
             let x_max = x_max.max(0).min(canvas_width);
             (x_min..x_max).filter_map(move |x| {
                 if y >= 0 && y < canvas_height && should_draw_pixel(x, y, self.intensity) {
-                    Some(Pixel(Point::new(x, y), BinaryColor::On))
+                    Some(Pixel(Point::new(x, y), Rgb332::new(255, 255, 255)))
                 } else {
                     None
                 }
@@ -106,7 +107,7 @@ impl Drawable for DitheredTriangle {
             let x_max = x_max.max(0).min(canvas_width);
             (x_min..x_max).filter_map(move |x| {
                 if y >= 0 && y < canvas_height && should_draw_pixel(x, y, self.intensity) {
-                    Some(Pixel(Point::new(x, y), BinaryColor::On))
+                    Some(Pixel(Point::new(x, y), Rgb332::new(255, 255, 255)))
                 } else {
                     None
                 }
@@ -118,7 +119,7 @@ impl Drawable for DitheredTriangle {
     }
 }
 
-pub fn draw_model<D: DrawTarget<Color = BinaryColor>>(
+pub fn draw_model<D: DrawTarget<Color = Rgb332>>(
     display: &mut D,
     model: &Model,
     origin: Vec3,

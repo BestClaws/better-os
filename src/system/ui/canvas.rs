@@ -1,14 +1,38 @@
-#![allow(unused)]
-
-
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::{OriginDimensions, Size},
-    pixelcolor::BinaryColor,
+    pixelcolor::PixelColor,
     prelude::*,
 };
+use embedded_graphics_core::pixelcolor::raw::RawU8;
 
-/// A lightweight, resizable draw target over a bit-packed framebuffer.
+/// Custom RGB332 color type (3 bits red, 3 bits green, 2 bits blue).
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct Rgb332(u8);
+
+impl Rgb332 {
+    /// Create a new RGB332 color from raw R, G, B components.
+    /// R and G are 3-bit (0-7), B is 2-bit (0-3).
+    pub fn new(r: u8, g: u8, b: u8) -> Self {
+        // Mask and shift to fit RRRGGGBB format
+        let r = (r & 0b111) << 5;
+        let g = (g & 0b111) << 2;
+        let b = b & 0b11;
+        Rgb332(r | g | b)
+    }
+
+    /// Get raw u8 value.
+    pub fn into_storage(self) -> u8 {
+        self.0
+    }
+}
+
+impl PixelColor for Rgb332 {
+    type Raw = RawU8;
+
+}
+
+/// A lightweight, resizable draw target over an RGB332 framebuffer.
 /// Used by windows and app.
 pub struct Canvas<'a> {
     buffer: &'a mut [u8],
@@ -25,7 +49,7 @@ impl<'a> Canvas<'a> {
     /// Clear canvas to black (off).
     pub fn clear(&mut self) {
         for byte in self.buffer.iter_mut() {
-            *byte = 0;
+            *byte = 0; // RGB332 black is 0x00
         }
     }
 
@@ -52,20 +76,11 @@ impl<'a> Canvas<'a> {
 
         for y in 0..src_height {
             for x in 0..src_width {
-                let src_idx = x + (y / 8) * source.width;
-                let dst_idx = (x + x_off) + ((y + y_off) / 8) * self.width;
+                let src_idx = (x + y * source.width) as usize;
+                let dst_idx = ((x + x_off) + (y + y_off) * self.width) as usize;
 
-                let bit = 1 << (y % 8);
-                let src_byte = source.buffer[(src_idx) as usize];
-
-                let pixel_on = src_byte & bit != 0;
-
-                if dst_idx < (self.width * (self.height / 8)) {
-                    if pixel_on {
-                        self.buffer[dst_idx as usize] |= 1 << ((y + y_off) % 8);
-                    } else {
-                        self.buffer[dst_idx as usize] &= !(1 << ((y + y_off) % 8));
-                    }
+                if dst_idx < self.buffer.len() {
+                    self.buffer[dst_idx] = source.buffer[src_idx];
                 }
             }
         }
@@ -89,7 +104,7 @@ impl OriginDimensions for Canvas<'_> {
 }
 
 impl DrawTarget for Canvas<'_> {
-    type Color = BinaryColor;
+    type Color = Rgb332;
     type Error = core::convert::Infallible;
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
@@ -104,12 +119,9 @@ impl DrawTarget for Canvas<'_> {
             let x = x as usize;
             let y = y as usize;
 
-            let byte_index = x + (y / 8) * self.width as usize;
-            let bit_index = y % 8;
-
-            match color {
-                BinaryColor::On => self.buffer[byte_index] |= 1 << bit_index,
-                BinaryColor::Off => self.buffer[byte_index] &= !(1 << bit_index),
+            let index = x + y * self.width as usize;
+            if index < self.buffer.len() {
+                self.buffer[index] = color.into_storage();
             }
         }
 
