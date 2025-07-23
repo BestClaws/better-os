@@ -226,17 +226,12 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         let out_h = FRAME_BUFFER_HEIGHT * scale;
         let mut line_buf = vec![0u16; out_w as usize]; // Reuse single scanline buffer
 
-        let total_start = Instant::now();
-        let mut conversion_time = 0;
-        let mut transfer_time = 0;
 
         // Set window once for the full screen
         self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await.unwrap();
         self.command(Command::MemoryWrite, &[]).await.unwrap();
 
         for y in 0..out_h {
-            // Convert scanline
-            let conv_start = Instant::now();
             let src_y = y / scale;
             for x in 0..out_w {
                 let src_x = x / scale;
@@ -244,24 +239,14 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
                 let rgb332 = buffer.get(idx).copied().unwrap_or(0);
                 line_buf[x as usize] = rgb332_to_rgb565(rgb332);
             }
-            conversion_time += (Instant::now() - conv_start).as_micros();
 
             // Transfer scanline
-            let tx_start = Instant::now();
             self.interface
                 .send_data(DataFormat::U16(&line_buf))
                 .await
                 .unwrap();
-            transfer_time += (Instant::now() - tx_start).as_micros();
         }
 
-        let total_duration = (Instant::now() - total_start).as_micros();
-        info!(
-        "Draw finished: total={} ms, convert={} ms, transfer={} ms",
-        (total_duration as f64) / 1000.0,
-        (conversion_time as f64) / 1000.0,
-        (transfer_time as f64) / 1000.0,
-    );
     }
 
 
