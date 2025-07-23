@@ -242,7 +242,7 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
 
             // Transfer scanline
             self.interface
-                .send_data(DataFormat::U16(&line_buf))
+                .send_data(DataFormat::U16BE(&mut line_buf))
                 .await
                 .unwrap();
         }
