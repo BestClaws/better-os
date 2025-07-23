@@ -65,9 +65,9 @@ pub(crate) fn start(spawner: Spawner) {
     // spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
     //
 
-    // // Spawn app spawner service
-    // info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
+    // Spawn app spawner service
+    info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
 
 
 }
