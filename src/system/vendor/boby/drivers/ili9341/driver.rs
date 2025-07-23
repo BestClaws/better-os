@@ -218,7 +218,7 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.sleep_mode(ModeState::Off).await.expect("Failed to disable sleep mode");
         delay.delay_ms(5).await;
         self.display_mode(ModeState::On).await.expect("Failed to enable display");
-        self.set_orientation(Orientation::Portrait).await.expect("Failed to set orientation");
+        self.set_orientation(Orientation::LandscapeFlipped).await.expect("Failed to set orientation");
     }
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {

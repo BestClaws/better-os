@@ -17,14 +17,14 @@ pub(crate) async fn battery_service(sensor: &'static Mutex<CriticalSectionRawMut
     let sender = BATTERY_CHANNEL.sender();
 
     loop {
-        // Read battery percentage
-        let percent = {
-            let mut s = sensor.lock().await;
-            s.percent().await
-        };
+        // // Read battery percentage
+        // let percent = {
+        //     let mut s = sensor.lock().await;
+        //     s.percent().await
+        // };
 
         // Send battery percentage to channel
-        let _ = sender.send(percent).await;
+        let _ = sender.send(10).await;
 
         // Poll every 10 seconds
         Timer::after_millis(100).await;

@@ -12,6 +12,7 @@ use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use heapless::String;
 use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse_binary_stl};
 use crate::system::app::app_context::AppContext;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::canvas::Rgb332;
 
 // Embed the binary STL file (place cube.stl in assets/ directory)
@@ -80,7 +81,7 @@ pub async fn arrow_app(context: AppContext) {
 
             // Draw a red diagonal line from (0,0) to (239,319)
             let line_style = PrimitiveStyle::with_stroke(Rgb332::new(7, 0, 0), 1);
-            Line::new(Point::new(0, 0), Point::new(239, 319))
+            Line::new(Point::new(0, 0), Point::new(FRAME_BUFFER_WIDTH as i32, FRAME_BUFFER_HEIGHT as i32))
                 .into_styled(line_style)
                 .draw(canvas)
                 .unwrap();
