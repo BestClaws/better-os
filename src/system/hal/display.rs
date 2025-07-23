@@ -7,8 +7,8 @@ pub trait AsyncDisplay {
     async fn draw(&mut self, buffer: &[u8], scale: u32);
     async fn clear(&mut self, color: u16);
     async fn set_orientation(&mut self, orientation: Orientation);
-    fn get_width(&self) -> usize;
-    fn get_height(&self) -> usize;
+    fn get_width(&self) -> u32;
+    fn get_height(&self) -> u32;
 }
 
 #[derive(Clone, Copy)]

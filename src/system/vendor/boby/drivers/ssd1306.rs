@@ -50,11 +50,11 @@ impl AsyncDisplay for Ssd1306Driver {
         todo!()
     }
 
-    fn get_width(&self) -> usize {
+    fn get_width(&self) -> u32 {
         todo!()
     }
 
-    fn get_height(&self) -> usize {
+    fn get_height(&self) -> u32 {
         todo!()
     }
 }

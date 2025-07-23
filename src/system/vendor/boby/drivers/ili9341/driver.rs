@@ -15,20 +15,20 @@ use crate::system::hal::display::{AsyncDisplay, Orientation};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
 pub trait DisplaySize {
-    const WIDTH: usize;
-    const HEIGHT: usize;
+    const WIDTH: u32;
+    const HEIGHT: u32;
 }
 
 pub struct DisplaySize240x320;
 impl DisplaySize for DisplaySize240x320 {
-    const WIDTH: usize = 240;
-    const HEIGHT: usize = 320;
+    const WIDTH: u32 = 240;
+    const HEIGHT: u32 = 320;
 }
 
 pub struct DisplaySize320x480;
 impl DisplaySize for DisplaySize320x480 {
-    const WIDTH: usize = 320;
-    const HEIGHT: usize = 480;
+    const WIDTH: u32 = 320;
+    const HEIGHT: u32 = 480;
 }
 
 pub trait Mode {
@@ -76,8 +76,8 @@ enum Command {
 pub struct Ili9341Driver<DC: OutputPin, RESET: OutputPin> {
     interface: SPIInterface<SpiDeviceWithConfig<'static, CriticalSectionRawMutex, Spi<'static, Async>, Output<'static>>, DC>,
     reset: RESET,
-    width: usize,
-    height: usize,
+    width: u32,
+    height: u32,
     landscape: bool,
 }
 
@@ -143,7 +143,7 @@ impl<DC: OutputPin, RESET: OutputPin> Ili9341Driver<DC, RESET> {
     }
 
     pub async fn clear_screen(&mut self, color: u16) -> Result<(), DisplayError> {
-        let color = core::iter::repeat_n(color, self.width * self.height);
+        let color = core::iter::repeat_n(color, (self.width * self.height) as usize);
         self.draw_raw_iter(0, 0, self.width as u16 - 1, self.height as u16 - 1, color).await
     }
 
@@ -181,11 +181,11 @@ impl<DC: OutputPin, RESET: OutputPin> Ili9341Driver<DC, RESET> {
         self.command(Command::SetBrightness, &[brightness]).await
     }
 
-    pub fn width(&self) -> usize {
+    pub fn width(&self) -> u32 {
         self.width
     }
 
-    pub fn height(&self) -> usize {
+    pub fn height(&self) -> u32 {
         self.height
     }
 }
@@ -250,11 +250,11 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.set_orientation(orientation).await.expect("Failed to set orientation");
     }
 
-    fn get_width(&self) -> usize {
+    fn get_width(&self) -> u32 {
         self.width()
     }
 
-    fn get_height(&self) -> usize {
+    fn get_height(&self) -> u32 {
         self.height()
     }
 }
