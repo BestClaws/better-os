@@ -8,7 +8,7 @@ use alloc::boxed::Box;
 use defmt::info;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use heapless::Vec;
 use libm::sqrtf;
 
@@ -75,7 +75,9 @@ impl UICompositor {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
             self.composite(working_buff.as_mut()).await;
             let mut disp = display.lock().await;
+            let then = Instant::now();
             disp.draw(working_buff.as_mut(), FRAME_SCALE_FACTOR).await;
+            info!("frame time: {}", (Instant::now() - then).as_millis());
         }
 
         self.redraw_requests.clear();

@@ -1,16 +1,18 @@
 use alloc::boxed::Box;
 use core::iter::once;
 use async_trait::async_trait;
+use defmt::info;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DisplayError};
 use display_interface_spi::SPIInterface;
 use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDevice, SpiDeviceWithConfig};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_time::Instant;
 use esp_hal::{Async, spi::master::Spi};
 use esp_hal::gpio::Output;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
 pub trait DisplaySize {
     const WIDTH: usize;
@@ -223,9 +225,15 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
             })
         });
 
+        let then = Instant::now();
+
+
         self.draw_raw_iter(0, 0, (out_w - 1) as u16, (out_h - 1) as u16, pixels)
             .await
             .expect("Failed to draw buffer");
+
+        info!("draw time: {}", (Instant::now() - then).as_millis());
+
     }
 
 
