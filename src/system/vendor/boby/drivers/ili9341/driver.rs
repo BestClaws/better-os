@@ -1,10 +1,12 @@
 use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 use core::iter::once;
 use async_trait::async_trait;
 use defmt::info;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
-use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DisplayError};
+use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DisplayError, DataFormat};
 use display_interface_spi::SPIInterface;
 use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDevice, SpiDeviceWithConfig};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -188,6 +190,16 @@ impl<DC: OutputPin, RESET: OutputPin> Ili9341Driver<DC, RESET> {
     pub fn height(&self) -> u32 {
         self.height
     }
+
+    async fn write_slice(&mut self, data: &[u16]){
+        self.command(Command::MemoryWrite, &[]).await.unwrap();
+        self.interface.send_data(DataFormat::U16(data)).await.unwrap();
+    }
+
+    async  fn draw_raw_slice(&mut self, x0: u16, y0: u16, x1: u16, y1: u16, data: &[u16]) {
+        self.set_window(x0, y0, x1, y1).await.unwrap();
+        self.write_slice(data).await;
+    }
 }
 
 #[async_trait(?Send)]
@@ -209,31 +221,47 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.set_orientation(Orientation::Portrait).await.expect("Failed to set orientation");
     }
 
-
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
-
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
+        let mut line_buf = vec![0u16; out_w as usize]; // Reuse single scanline buffer
 
-        let pixels = (0..out_h).flat_map(move |y| {
+        let total_start = Instant::now();
+        let mut conversion_time = 0;
+        let mut transfer_time = 0;
+
+        // Set window once for the full screen
+        self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await.unwrap();
+        self.command(Command::MemoryWrite, &[]).await.unwrap();
+
+        for y in 0..out_h {
+            // Convert scanline
+            let conv_start = Instant::now();
             let src_y = y / scale;
-            (0..out_w).map(move |x| {
+            for x in 0..out_w {
                 let src_x = x / scale;
                 let idx = (src_y * FRAME_BUFFER_WIDTH + src_x) as usize;
                 let rgb332 = buffer.get(idx).copied().unwrap_or(0);
-                rgb332_to_rgb565(rgb332)
-            })
-        });
+                line_buf[x as usize] = rgb332_to_rgb565(rgb332);
+            }
+            conversion_time += (Instant::now() - conv_start).as_micros();
 
-        let then = Instant::now();
+            // Transfer scanline
+            let tx_start = Instant::now();
+            self.interface
+                .send_data(DataFormat::U16(&line_buf))
+                .await
+                .unwrap();
+            transfer_time += (Instant::now() - tx_start).as_micros();
+        }
 
-
-        self.draw_raw_iter(0, 0, (out_w - 1) as u16, (out_h - 1) as u16, pixels)
-            .await
-            .expect("Failed to draw buffer");
-
-        info!("draw time: {}", (Instant::now() - then).as_millis());
-
+        let total_duration = (Instant::now() - total_start).as_micros();
+        info!(
+        "Draw finished: total={} ms, convert={} ms, transfer={} ms",
+        (total_duration as f64) / 1000.0,
+        (conversion_time as f64) / 1000.0,
+        (transfer_time as f64) / 1000.0,
+    );
     }
 
 
