@@ -35,6 +35,7 @@ use esp_hal::spi::Mode;
 use static_cell::StaticCell;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
+use crate::system::ui::window::WindowHandle;
 use crate::system::vendor::boby::drivers::ili9341::driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
@@ -157,9 +158,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let reset = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     let cs_display = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
 
-    let mut display_config = Config::default().with_frequency(Rate::from_mhz(60));
 
-    let spi_display = SpiDeviceWithConfig::new(spi, cs_display, display_config);
+    let spi_display = SpiDeviceWithConfig::new(spi, cs_display, Config::default().with_frequency(Rate::from_mhz(60)));
 
 
 
@@ -169,7 +169,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let touch_irq = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
     let cs_touch = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
-    let spi_touch = SpiDevice::new(spi, cs_touch);
+    let spi_touch = SpiDeviceWithConfig::new(spi, cs_touch, Config::default().with_frequency(Rate::from_mhz(1)));
     let touch = XPT2046::new(spi_touch, touch_irq);
 
 

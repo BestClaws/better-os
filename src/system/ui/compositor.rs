@@ -81,9 +81,13 @@ impl UICompositor {
         self.redraw_requests.clear();
     }
 
+    // TODO: may be empty if apps are not yet started.
     /// Return the handle of the currently focused window
-    pub fn current_handle(&self) -> WindowHandle {
-        self.windows[self.current_window].handle()
+    pub fn current_handle(&self) -> Option<WindowHandle> {
+        if self.windows.len() > 0 {
+            return Some(self.windows[self.current_window].handle());
+        }
+        None
     }
 
     /// Find a mutable reference to a window by its handle (for external callers)

@@ -15,29 +15,7 @@ pub async fn compositor_service(
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
 ) {
 
-    {
         display.lock().await.init().await;
-        
-    }
-
-    // let mut x = 10;
-    //
-    //
-    //
-    // loop {
-    //     x+= 10;
-    //     let y = x % 2000;
-    //     info!("Display clear");
-    //     {
-    //         display.lock().await.clear(y).await;
-    //
-    //     }
-    //     info!("Display clear done");
-    //     Timer::after(Duration::from_millis(100)).await;
-    // }
-
-
-
 
 
     {
@@ -88,10 +66,12 @@ pub async fn compositor_service(
 
         // No user input: step once every ~100ms for idle refresh
         Timer::after(Duration::from_millis(100)).await;
-        let mut comp = compositor.lock().await;
-        let current = comp.current_handle();
-        comp.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
-        comp.step().await;
+        let Some(current) = compositor.lock().await.current_handle() else {
+            Timer::after_nanos(0).await;
+            continue;
+        };
+        compositor.lock().await.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
+        compositor.lock().await.step().await;
 
 
         // }

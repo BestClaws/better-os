@@ -26,128 +26,128 @@ where
     PEN: Wait,
 {
     pub fn new(spi: SPI, pen_irq: PEN) -> Self {
-        // info!("Initializing XPT2046 with SPI and PENIRQ");
+        // // info!("Initializing XPT2046 with SPI and PENIRQ");
         XPT2046 { spi, pen_irq }
     }
 
     pub async fn read_xy(&mut self) -> Result<Option<(u16, u16, u16)>, <SPI as ErrorType>::Error> {
-        info!("Checking for touch interrupt (PENIRQ active low)");
+        // info!("Checking for touch interrupt (PENIRQ active low)");
         if self.pen_irq.wait_for_low().await.is_ok() {
-            info!("Touch detected, reading coordinates");
+            // info!("Touch detected, reading coordinates");
             let x = match self.read_x().await {
                 Ok(x) => {
-                    info!("X coordinate read: {}", x);
+                    // info!("X coordinate read: {}", x);
                     x
                 }
                 Err(e) => {
-                    info!("Failed to read X coordinate due to SPI error");
+                    // info!("Failed to read X coordinate due to SPI error");
                     return Err(e);
                 }
             };
             let y = match self.read_y().await {
                 Ok(y) => {
-                    info!("Y coordinate read: {}", y);
+                    // info!("Y coordinate read: {}", y);
                     y
                 }
                 Err(e) => {
-                    info!("Failed to read Y coordinate due to SPI error");
+                    // info!("Failed to read Y coordinate due to SPI error");
                     return Err(e);
                 }
             };
             let z = match self.read_z().await {
                 Ok(z) => {
-                    info!("Pressure (Z) calculated: {}", z);
+                    // info!("Pressure (Z) calculated: {}", z);
                     z
                 }
                 Err(e) => {
-                    info!("Failed to read Z pressure due to SPI error");
+                    // info!("Failed to read Z pressure due to SPI error");
                     return Err(e);
                 }
             };
-            info!("Touch coordinates: X = {}, Y = {}, Z = {}", x, y, z);
+            // info!("Touch coordinates: X = {}, Y = {}, Z = {}", x, y, z);
             Ok(Some((x, y, z)))
         } else {
-            info!("No touch detected (PENIRQ high)");
+            // info!("No touch detected (PENIRQ high)");
             Ok(None)
         }
     }
 
     async fn read_x(&mut self) -> Result<u16, <SPI as ErrorType>::Error> {
-        info!("Reading X position");
+        // info!("Reading X position");
         let control_byte = START_BIT | X_POSITION | MODE_12BIT | SER_DFR | POWER_DOWN;
-        info!("X control byte: 0x{:02x}", control_byte);
+        // info!("X control byte: 0x{:02x}", control_byte);
         let result = self.read_adc(control_byte).await?;
         Ok(result)
     }
 
     async fn read_y(&mut self) -> Result<u16, <SPI as ErrorType>::Error> {
-        info!("Reading Y position");
+        // info!("Reading Y position");
         let control_byte = START_BIT | Y_POSITION | MODE_12BIT | SER_DFR | POWER_DOWN;
-        info!("Y control byte: 0x{:02x}", control_byte);
+        // info!("Y control byte: 0x{:02x}", control_byte);
         let result = self.read_adc(control_byte).await?;
         Ok(result)
     }
 
     async fn read_z(&mut self) -> Result<u16, <SPI as ErrorType>::Error> {
-        info!("Reading Z pressure");
+        // info!("Reading Z pressure");
         let z1 = match self.read_z1().await {
             Ok(z1) => {
-                info!("Z1 value: {}", z1);
+                // info!("Z1 value: {}", z1);
                 z1
             }
             Err(e) => {
-                info!("Failed to read Z1 due to SPI error");
+                // info!("Failed to read Z1 due to SPI error");
                 return Err(e);
             }
         };
         let z2 = match self.read_z2().await {
             Ok(z2) => {
-                info!("Z2 value: {}", z2);
+                // info!("Z2 value: {}", z2);
                 z2
             }
             Err(e) => {
-                info!("Failed to read Z2 due to SPI error");
+                // info!("Failed to read Z2 due to SPI error");
                 return Err(e);
             }
         };
         let z = z2.saturating_sub(z1);
-        info!("Calculated pressure (Z2 - Z1): {}", z);
+        // info!("Calculated pressure (Z2 - Z1): {}", z);
         Ok(z)
     }
 
     async fn read_z1(&mut self) -> Result<u16, <SPI as ErrorType>::Error> {
-        info!("Reading Z1 position");
+        // info!("Reading Z1 position");
         let control_byte = START_BIT | Z1_POSITION | MODE_12BIT | SER_DFR | POWER_DOWN;
-        info!("Z1 control byte: 0x{:02x}", control_byte);
+        // info!("Z1 control byte: 0x{:02x}", control_byte);
         self.read_adc(control_byte).await
     }
 
     async fn read_z2(&mut self) -> Result<u16, <SPI as ErrorType>::Error> {
-        info!("Reading Z2 position");
+        // info!("Reading Z2 position");
         let control_byte = START_BIT | Z2_POSITION | MODE_12BIT | SER_DFR | POWER_DOWN;
-        info!("Z2 control byte: 0x{:02x}", control_byte);
+        // info!("Z2 control byte: 0x{:02x}", control_byte);
         self.read_adc(control_byte).await
     }
 
     async fn read_adc(&mut self, control_byte: u8) -> Result<u16, <SPI as ErrorType>::Error> {
-        info!("Starting ADC read with control byte: 0x{:02x}", control_byte);
+        // info!("Starting ADC read with control byte: 0x{:02x}", control_byte);
         let mut tx_buf = [control_byte, 0x00, 0x00];
         let mut rx_buf = [0u8; 3];
 
-        info!("SPI transfer: sending control byte 0x{:02x}, 0x00, 0x00", control_byte);
+        // info!("SPI transfer: sending control byte 0x{:02x}, 0x00, 0x00", control_byte);
         match self.spi.transfer(&mut rx_buf, &tx_buf).await {
-            Ok(_) => info!("SPI transfer successful: received {}, {}, {}", rx_buf[0], rx_buf[1], rx_buf[2]),
+            Ok(_) => {}// info!("SPI transfer successful: received {}, {}, {}", rx_buf[0], rx_buf[1], rx_buf[2]),
             Err(e) => {
-                info!("SPI transfer failed due to SPI error");
+                // info!("SPI transfer failed due to SPI error");
                 return Err(e);
             }
         }
 
-        info!("Waiting for ADC acquisition (2 microseconds)");
+        // info!("Waiting for ADC acquisition (2 microseconds)");
         Timer::after(Duration::from_micros(4)).await;
 
         let result = ((rx_buf[1] as u16) << 4) | ((rx_buf[2] as u16) >> 4);
-        info!("Processed ADC result: {}", result);
+        // info!("Processed ADC result: {}", result);
         Ok(result)
     }
 
@@ -167,7 +167,7 @@ where
     PEN: Wait,
 {
     async fn read_xy(&mut self) -> (u16, u16, u16) {
-        info!("AsyncTouch read_xy called");
+        // info!("AsyncTouch read_xy called");
         match self.read_xy().await {
             Ok(Some(coords)) => {
                 let (pixel_x, pixel_y) = self.scale_to_display(coords.0, coords.1);
@@ -175,11 +175,11 @@ where
                 (pixel_x, pixel_y, coords.2)
             }
             Ok(None) => {
-                info!("No touch detected in AsyncTouch read_xy, returning 0, 0, 0");
+                // info!("No touch detected in AsyncTouch read_xy, returning 0, 0, 0");
                 (0, 0, 0)
             }
             Err(_) => {
-                info!("Error in AsyncTouch read_xy due to SPI error, returning 0, 0, 0");
+                // info!("Error in AsyncTouch read_xy due to SPI error, returning 0, 0, 0");
                 (0, 0, 0)
             }
         }
