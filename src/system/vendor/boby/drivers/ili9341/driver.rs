@@ -205,27 +205,28 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.display_mode(ModeState::On).await.expect("Failed to enable display");
         self.set_orientation(Orientation::Portrait).await.expect("Failed to set orientation");
     }
-    async fn draw(&mut self, buffer: &[u8]) {
+    async fn draw(&mut self, buffer: &[u8], scale: usize) {
         const IN_W: usize = 120;
         const IN_H: usize = 160;
-        const OUT_W: usize = 240;
-        const OUT_H: usize = 320;
 
-        let pixels = (0..OUT_H).flat_map(move |y| {
-            let src_y = y / 2;
-            (0..OUT_W).map(move |x| {
-                let src_x = x / 2;
+        let out_w = IN_W * scale;
+        let out_h = IN_H * scale;
+
+        let pixels = (0..out_h).flat_map(move |y| {
+            let src_y = y / scale;
+            (0..out_w).map(move |x| {
+                let src_x = x / scale;
                 let idx = src_y * IN_W + src_x;
                 let rgb332 = buffer.get(idx).copied().unwrap_or(0);
                 rgb332_to_rgb565(rgb332)
             })
         });
 
-        self.draw_raw_iter(0, 0, (OUT_W - 1) as u16, (OUT_H - 1) as u16, pixels)
+        self.draw_raw_iter(0, 0, (out_w - 1) as u16, (out_h - 1) as u16, pixels)
             .await
             .expect("Failed to draw buffer");
     }
-    
+
 
 
 

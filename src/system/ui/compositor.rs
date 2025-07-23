@@ -75,7 +75,7 @@ impl UICompositor {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
             self.composite(working_buff.as_mut()).await;
             let mut disp = display.lock().await;
-            disp.draw(working_buff.as_mut()).await;
+            disp.draw(working_buff.as_mut(), 2).await;
         }
 
         self.redraw_requests.clear();
@@ -204,7 +204,7 @@ impl UICompositor {
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
-                disp.draw(&composed_buf).await;
+                disp.draw(&composed_buf, 2).await;
             }
 
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
