@@ -75,7 +75,7 @@ impl UICompositor {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
             self.composite(working_buff.as_mut()).await;
             let mut disp = display.lock().await;
-            disp.draw(working_buff.as_mut(), 2).await;
+            disp.draw(working_buff.as_mut(), FRAME_SCALE_FACTOR).await;
         }
 
         self.redraw_requests.clear();
@@ -98,8 +98,8 @@ impl UICompositor {
 
     pub async fn alloc_window(
         &mut self,
-        width: usize,
-        height: usize,
+        width: u32,
+        height: u32,
         id: usize,
     ) -> Option<WindowHandle> {
         let window = Window::new(width, height, id).await;
@@ -204,7 +204,7 @@ impl UICompositor {
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
-                disp.draw(&composed_buf, 2).await;
+                disp.draw(&composed_buf, FRAME_SCALE_FACTOR).await;
             }
 
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
@@ -322,4 +322,4 @@ fn ease_in_out_circular(t: f32) -> f32 {
 }
 
 use micromath::F32Ext;
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH};
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};

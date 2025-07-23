@@ -10,6 +10,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::{Async, spi::master::Spi};
 use esp_hal::gpio::Output;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
 pub trait DisplaySize {
     const WIDTH: usize;
@@ -205,18 +206,18 @@ impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> 
         self.display_mode(ModeState::On).await.expect("Failed to enable display");
         self.set_orientation(Orientation::Portrait).await.expect("Failed to set orientation");
     }
-    async fn draw(&mut self, buffer: &[u8], scale: usize) {
-        const IN_W: usize = 120;
-        const IN_H: usize = 160;
 
-        let out_w = IN_W * scale;
-        let out_h = IN_H * scale;
+
+    async fn draw(&mut self, buffer: &[u8], scale: u32) {
+
+        let out_w = FRAME_BUFFER_WIDTH * scale;
+        let out_h = FRAME_BUFFER_HEIGHT * scale;
 
         let pixels = (0..out_h).flat_map(move |y| {
             let src_y = y / scale;
             (0..out_w).map(move |x| {
                 let src_x = x / scale;
-                let idx = src_y * IN_W + src_x;
+                let idx = (src_y * FRAME_BUFFER_WIDTH + src_x) as usize;
                 let rgb332 = buffer.get(idx).copied().unwrap_or(0);
                 rgb332_to_rgb565(rgb332)
             })

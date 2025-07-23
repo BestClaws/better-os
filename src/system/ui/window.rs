@@ -26,8 +26,8 @@ pub struct Window {
 impl Window {
     /// Create a new Window.
     pub async fn new(
-        width: usize,
-        height: usize,
+        width: u32,
+        height: u32,
         id: usize,
     ) -> Self {
 

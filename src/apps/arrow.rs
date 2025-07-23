@@ -8,6 +8,7 @@ use embedded_graphics::{
 };
 use core::fmt::Write;
 use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use heapless::String;
 use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse_binary_stl};
 use crate::system::app::app_context::AppContext;
@@ -61,17 +62,24 @@ pub async fn arrow_app(context: AppContext) {
 
         context.draw(|canvas| {
             canvas.clear();
-            if let Err(e) = draw_model(
-                canvas,
-                &model,
-                Vec3(0.0, 0.0, 3.0),
-                rotation,
-                canvas.width(),
-                canvas.height(),
-                &render_options,
-            ) {
-                info!("Draw error: {:?}", e);
-            }
+            // if let Err(e) = draw_model(
+            //     canvas,
+            //     &model,
+            //     Vec3(0.0, 0.0, 3.0),
+            //     rotation,
+            //     canvas.width(),
+            //     canvas.height(),
+            //     &render_options,
+            // ) {
+            //     info!("Draw error: {:?}", e);
+            // }
+
+            // Draw a red diagonal line from (0,0) to (239,319)
+            let line_style = PrimitiveStyle::with_stroke(Rgb332::new(7, 0, 0), 1);
+            Line::new(Point::new(0, 0), Point::new(239, 319))
+                .into_styled(line_style)
+                .draw(canvas)
+                .unwrap();
 
             let mut text_buf = String::<32>::new();
             write!(text_buf, "FPS: {:.1}", fps).ok();
