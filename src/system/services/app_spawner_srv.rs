@@ -7,7 +7,7 @@ use crate::apps::notifications::notifications_app;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 
-use crate::apps::slab::{ cube_app };
+use crate::apps::arrow::{arrow_app};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
 #[embassy_executor::task]
@@ -24,7 +24,7 @@ pub async fn app_spawner_service(
     .await
     .expect("Failed to allocate battery window");
     let ctx = AppContext::new(whandle, 0, "hello", compositor);
-    spawner.spawn(cube_app(ctx)).unwrap();
+    spawner.spawn(arrow_app(ctx)).unwrap();
 
     // let whandle = comp
     //     .alloc_window(128, 64, 2)

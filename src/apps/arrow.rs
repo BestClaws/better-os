@@ -17,7 +17,7 @@ use crate::system::ui::canvas::Rgb332;
 const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow2.stl");
 
 #[embassy_executor::task]
-pub async fn cube_app(context: AppContext) {
+pub async fn arrow_app(context: AppContext) {
     // Parse STL file
     let model = match parse_binary_stl(STL_DATA) {
         Ok(model) => model,
@@ -64,7 +64,7 @@ pub async fn cube_app(context: AppContext) {
             if let Err(e) = draw_model(
                 canvas,
                 &model,
-                Vec3(0.0, 0.0, 1.4),
+                Vec3(0.0, 0.0, 3.0),
                 rotation,
                 canvas.width(),
                 canvas.height(),
