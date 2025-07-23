@@ -62,17 +62,21 @@ pub async fn arrow_app(context: AppContext) {
 
         context.draw(|canvas| {
             canvas.clear();
-            // if let Err(e) = draw_model(
-            //     canvas,
-            //     &model,
-            //     Vec3(0.0, 0.0, 3.0),
-            //     rotation,
-            //     canvas.width(),
-            //     canvas.height(),
-            //     &render_options,
-            // ) {
-            //     info!("Draw error: {:?}", e);
-            // }
+
+            let then = Instant::now();
+            if let Err(e) = draw_model(
+                canvas,
+                &model,
+                Vec3(0.0, 0.0, 3.0),
+                rotation,
+                canvas.width(),
+                canvas.height(),
+                &render_options,
+            ) {
+                info!("Draw error: {:?}", e);
+            }
+
+            info!("arrow time: {}", (Instant::now() - then).as_millis());
 
             // Draw a red diagonal line from (0,0) to (239,319)
             let line_style = PrimitiveStyle::with_stroke(Rgb332::new(7, 0, 0), 1);
