@@ -140,7 +140,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let mut spi = Spi::new(
         peripherals.SPI2,
         Config::default()
-            .with_frequency(Rate::from_mhz(1))
+            .with_frequency(Rate::from_mhz(40))
             .with_mode(Mode::_0),
     )
         .unwrap()
@@ -152,25 +152,22 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let spi = SPI_BUS.init(spi);
 
 
-
-
     let dc = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
     let reset = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     let cs_display = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
 
-
+    //
     let spi_display = SpiDeviceWithConfig::new(spi, cs_display, Config::default().with_frequency(Rate::from_mhz(60)));
-
-
-
+    //
     // INIT DISPLAY
     let display = Ili9341Driver::new(spi_display, dc, reset);
 
-    let touch_irq = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
-    let cs_touch = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
-    let spi_touch = SpiDeviceWithConfig::new(spi, cs_touch, Config::default().with_frequency(Rate::from_mhz(1)));
-    let touch = XPT2046::new(spi_touch, touch_irq);
+    // let touch_irq = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
+    // let cs_touch = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
+    //
+    // let spi_touch = SpiDeviceWithConfig::new(spi, cs_touch, Config::default().with_frequency(Rate::from_mhz(1)));
+    // let touch = XPT2046::new(spi_touch, touch_irq);
 
 
 
@@ -210,7 +207,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         // encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
         // vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
-        touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
+        // touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         // button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
         // battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
         // ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),

@@ -8,9 +8,10 @@ use embedded_hal_async::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DisplayError, DataFormat};
 use display_interface_spi::SPIInterface;
-use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDevice, SpiDeviceWithConfig};
+use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDeviceWithConfig};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
+use embedded_hal_async::spi::SpiDevice;
 use esp_hal::{Async, spi::master::Spi};
 use esp_hal::gpio::Output;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
@@ -75,17 +76,17 @@ enum Command {
     SetBrightness = 0x51,
 }
 
-pub struct Ili9341Driver<DC: OutputPin, RESET: OutputPin> {
-    interface: SPIInterface<SpiDeviceWithConfig<'static, CriticalSectionRawMutex, Spi<'static, Async>, Output<'static>>, DC>,
+pub struct Ili9341Driver<SPI, DC: OutputPin, RESET: OutputPin> {
+    interface: SPIInterface<SPI, DC>,
     reset: RESET,
     width: u32,
     height: u32,
     landscape: bool,
 }
 
-impl<DC: OutputPin, RESET: OutputPin> Ili9341Driver<DC, RESET> {
+impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RESET> {
     pub fn new(
-        spi: SpiDeviceWithConfig<'static, CriticalSectionRawMutex, Spi<'static, Async>, Output<'static>>,
+        spi: SPI,
         dc: DC,
         reset: RESET,
     ) -> Self {
@@ -203,7 +204,7 @@ impl<DC: OutputPin, RESET: OutputPin> Ili9341Driver<DC, RESET> {
 }
 
 #[async_trait(?Send)]
-impl<DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<DC, RESET> {
+impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<SPI, DC, RESET> {
     async fn init(&mut self) {
         let mut delay = embassy_time::Delay;
         self.reset.set_low().map_err(|_| DisplayError::RSError).expect("Failed to set reset low");

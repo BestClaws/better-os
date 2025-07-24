@@ -41,9 +41,9 @@ pub(crate) fn start(spawner: Spawner) {
     // info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
 
-    // Spawn touch
-    info!("[{}s] spawned touch sensor service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(touch_sensor_service(device.touch.unwrap())).unwrap();
+    // // Spawn touch
+    // info!("[{}s] spawned touch sensor service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(touch_sensor_service(device.touch.unwrap())).unwrap();
 
     // 
     // info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
