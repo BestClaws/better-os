@@ -86,12 +86,7 @@ pub async fn arrow_app(context: AppContext) {
                 .draw(canvas)
                 .unwrap();
 
-            let mut text_buf = String::<32>::new();
-            write!(text_buf, "FPS: {:.1}", fps).ok();
-            let style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(31, 0, 0));
-            Text::new(&text_buf, Point::new(0, 10), style)
-                .draw(canvas)
-                .unwrap();
+
 
         }).await;
 

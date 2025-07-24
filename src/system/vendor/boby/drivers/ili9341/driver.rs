@@ -226,17 +226,41 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
 
-        // Set window once for the full screen
+        // Verify buffer size
+        let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize;
+        if buffer.len() < expected_buffer_size {
+            info!("Buffer too small: got {} bytes, expected {}", buffer.len(), expected_buffer_size);
+            return;
+        }
+
+        let mut line_buf = vec![0u16; out_w as usize];
         self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await.unwrap();
         self.command(Command::MemoryWrite, &[]).await.unwrap();
 
-        // Since buffer is already RGB565 in big-endian u8 array, send directly
-        self.interface
-            .send_data(DataFormat::U8(buffer))
-            .await
-            .unwrap();
+        for y in 0..out_h {
+            let src_y = y / scale;
+            if src_y >= FRAME_BUFFER_HEIGHT {
+                info!("Invalid src_y: {}", src_y);
+                continue;
+            }
+            for x in 0..out_w {
+                let src_x = x / scale;
+                if src_x >= FRAME_BUFFER_WIDTH {
+                    info!("Invalid src_x: {}", src_x);
+                    continue;
+                }
+                let idx = (src_y * FRAME_BUFFER_WIDTH + src_x) as usize * 2;
+                let rgb565 = if idx + 1 < buffer.len() {
+                    ((buffer[idx] as u16) << 8) | (buffer[idx + 1] as u16) // Big-endian RGB565
+                } else {
+                    info!("Buffer index out of bounds: idx {}", idx);
+                    0 // Default to black
+                };
+                line_buf[x as usize] = rgb565;
+            }
+            self.interface.send_data(DataFormat::U16BE(&mut line_buf)).await.unwrap();
+        }
     }
-
     async fn clear(&mut self, color: u16) {
         self.clear_screen(color).await.expect("Failed to clear screen");
     }

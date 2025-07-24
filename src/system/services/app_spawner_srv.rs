@@ -26,12 +26,12 @@ pub async fn app_spawner_service(
     let ctx = AppContext::new(whandle, 0, "hello", compositor);
     spawner.spawn(arrow_app(ctx)).unwrap();
 
-    let whandle = comp
-        .alloc_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, 2)
-        .await
-        .expect("Failed to allocate battery window");
-    let ctx = AppContext::new(whandle, 2, "battery", compositor);
-    spawner.spawn(battery_app(ctx)).unwrap();
+    // let whandle = comp
+    //     .alloc_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, 2)
+    //     .await
+    //     .expect("Failed to allocate battery window");
+    // let ctx = AppContext::new(whandle, 2, "battery", compositor);
+    // spawner.spawn(battery_app(ctx)).unwrap();
 
     // let whandle = comp
     //     .alloc_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, 1)
