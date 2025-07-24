@@ -1,38 +1,12 @@
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::{OriginDimensions, Size},
-    pixelcolor::PixelColor,
+    pixelcolor::{PixelColor, Rgb565},
     prelude::*,
 };
-use embedded_graphics_core::pixelcolor::raw::RawU8;
+use embedded_graphics_core::pixelcolor::raw::RawU16;
 
-/// Custom RGB332 color type (3 bits red, 3 bits green, 2 bits blue).
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub struct Rgb332(u8);
-
-impl Rgb332 {
-    /// Create a new RGB332 color from raw R, G, B components.
-    /// R and G are 3-bit (0-7), B is 2-bit (0-3).
-    pub fn new(r: u8, g: u8, b: u8) -> Self {
-        // Mask and shift to fit RRRGGGBB format
-        let r = (r & 0b111) << 5;
-        let g = (g & 0b111) << 2;
-        let b = b & 0b11;
-        Rgb332(r | g | b)
-    }
-
-    /// Get raw u8 value.
-    pub fn into_storage(self) -> u8 {
-        self.0
-    }
-}
-
-impl PixelColor for Rgb332 {
-    type Raw = RawU8;
-
-}
-
-/// A lightweight, resizable draw target over an RGB332 framebuffer.
+/// A lightweight, resizable draw target over an RGB565 framebuffer stored as u8 array.
 /// Used by windows and app.
 pub struct Canvas<'a> {
     buffer: &'a mut [u8],
@@ -43,13 +17,17 @@ pub struct Canvas<'a> {
 impl<'a> Canvas<'a> {
     /// Create a new canvas over a framebuffer slice.
     pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Self {
+        assert!(buffer.len() >= (width * height * 2) as usize, "Buffer too small for RGB565");
         Self { buffer, width, height }
     }
 
     /// Clear canvas to black (off).
     pub fn clear(&mut self) {
-        for byte in self.buffer.iter_mut() {
-            *byte = 0; // RGB332 black is 0x00
+        for chunk in self.buffer.chunks_mut(2) {
+            if chunk.len() == 2 {
+                chunk[0] = 0;
+                chunk[1] = 0; // RGB565 black is 0x0000
+            }
         }
     }
 
@@ -65,6 +43,7 @@ impl<'a> Canvas<'a> {
 
     /// Resize the canvas (does not reallocate, only updates metadata).
     pub fn resize(&mut self, width: u32, height: u32) {
+        assert!(self.buffer.len() >= (width * height * 2) as usize, "Buffer too small for resized canvas");
         self.width = width;
         self.height = height;
     }
@@ -76,11 +55,12 @@ impl<'a> Canvas<'a> {
 
         for y in 0..src_height {
             for x in 0..src_width {
-                let src_idx = (x + y * source.width) as usize;
-                let dst_idx = ((x + x_off) + (y + y_off) * self.width) as usize;
+                let src_idx = ((x + y * source.width) * 2) as usize;
+                let dst_idx = (((x + x_off) + (y + y_off) * self.width) * 2) as usize;
 
-                if dst_idx < self.buffer.len() {
+                if dst_idx + 1 < self.buffer.len() && src_idx + 1 < source.buffer.len() {
                     self.buffer[dst_idx] = source.buffer[src_idx];
+                    self.buffer[dst_idx + 1] = source.buffer[src_idx + 1];
                 }
             }
         }
@@ -104,7 +84,7 @@ impl OriginDimensions for Canvas<'_> {
 }
 
 impl DrawTarget for Canvas<'_> {
-    type Color = Rgb332;
+    type Color = Rgb565;
     type Error = core::convert::Infallible;
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
@@ -119,9 +99,11 @@ impl DrawTarget for Canvas<'_> {
             let x = x as usize;
             let y = y as usize;
 
-            let index = x + y * self.width as usize;
-            if index < self.buffer.len() {
-                self.buffer[index] = color.into_storage();
+            let index = (x + y * self.width as usize) * 2;
+            if index + 1 < self.buffer.len() {
+                let raw = color.into_storage(); // Get u16 in big-endian
+                self.buffer[index] = (raw >> 8) as u8; // High byte
+                self.buffer[index + 1] = raw as u8; // Low byte
             }
         }
 

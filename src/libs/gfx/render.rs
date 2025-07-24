@@ -5,9 +5,9 @@ use embedded_graphics::{
 };
 use embedded_graphics::prelude::{Dimensions, OriginDimensions};
 use embedded_graphics::primitives::Triangle;
+use embedded_graphics::pixelcolor::Rgb565;
 use micromath::F32Ext;
 
-use crate::system::ui::canvas::Rgb332;
 use super::math::{Quaternion, Vec3};
 use super::model::{Model, MAX_TRIANGLES, MAX_VERTICES};
 
@@ -39,25 +39,20 @@ fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<Point> {
     Some(Point::new(x, y))
 }
 
-fn get_grayscale_color(intensity: f32) -> Rgb332 {
-    let palette = [
-        Rgb332::new(0, 0, 0),     // black
-        Rgb332::new(2, 2, 1),     // dark gray
-        Rgb332::new(4, 4, 2),     // mid gray
-        Rgb332::new(6, 6, 3),     // light gray
-        Rgb332::new(7, 7, 3),     // white
-    ];
-
+fn get_grayscale_color(intensity: f32) -> Rgb565 {
     let clamped = intensity.clamp(0.0, 1.0);
-    let index = (clamped * (palette.len() - 1) as f32).round() as usize;
-    palette[index.min(palette.len() - 1)]
+    // Linearly interpolate between black (0, 0, 0) and white (31, 63, 31) in RGB565
+    let r = (clamped * 31.0).round() as u8; // 5-bit red
+    let g = (clamped * 63.0).round() as u8; // 6-bit green
+    let b = (clamped * 31.0).round() as u8; // 5-bit blue
+    Rgb565::new(r, g, b)
 }
 
 struct ShadedTriangle {
     p0: Point,
     p1: Point,
     p2: Point,
-    color: Rgb332,
+    color: Rgb565,
 }
 
 impl OriginDimensions for ShadedTriangle {
@@ -67,10 +62,10 @@ impl OriginDimensions for ShadedTriangle {
 }
 
 impl Drawable for ShadedTriangle {
-    type Color = Rgb332;
+    type Color = Rgb565;
     type Output = ();
 
-    fn draw<D: DrawTarget<Color = Rgb332>>(&self, target: &mut D) -> Result<Self::Output, D::Error> {
+    fn draw<D: DrawTarget<Color = Rgb565>>(&self, target: &mut D) -> Result<Self::Output, D::Error> {
         let mut points = [self.p0, self.p1, self.p2];
         points.sort_by_key(|p| p.y);
         let (top, mid, bot) = (points[0], points[1], points[2]);
@@ -116,7 +111,7 @@ impl Drawable for ShadedTriangle {
     }
 }
 
-pub fn draw_model<D: DrawTarget<Color = Rgb332>>(
+pub fn draw_model<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     model: &Model,
     origin: Vec3,

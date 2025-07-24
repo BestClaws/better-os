@@ -192,12 +192,12 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
         self.height
     }
 
-    async fn write_slice(&mut self, data: &[u16]){
+    async fn write_slice(&mut self, data: &[u16]) {
         self.command(Command::MemoryWrite, &[]).await.unwrap();
         self.interface.send_data(DataFormat::U16(data)).await.unwrap();
     }
 
-    async  fn draw_raw_slice(&mut self, x0: u16, y0: u16, x1: u16, y1: u16, data: &[u16]) {
+    async fn draw_raw_slice(&mut self, x0: u16, y0: u16, x1: u16, y1: u16, data: &[u16]) {
         self.set_window(x0, y0, x1, y1).await.unwrap();
         self.write_slice(data).await;
     }
@@ -225,36 +225,17 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
-        let mut line_buf = vec![0u16; out_w as usize]; // Reuse single scanline buffer
-
 
         // Set window once for the full screen
         self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await.unwrap();
         self.command(Command::MemoryWrite, &[]).await.unwrap();
 
-        for y in 0..out_h {
-            let src_y = y / scale;
-            for x in 0..out_w {
-                let src_x = x / scale;
-                let idx = (src_y * FRAME_BUFFER_WIDTH + src_x) as usize;
-                let rgb332 = buffer.get(idx).copied().unwrap_or(0);
-                line_buf[x as usize] = rgb332_to_rgb565(rgb332);
-            }
-
-            // Transfer scanline
-            self.interface
-                .send_data(DataFormat::U16BE(&mut line_buf))
-                .await
-                .unwrap();
-        }
-
+        // Since buffer is already RGB565 in big-endian u8 array, send directly
+        self.interface
+            .send_data(DataFormat::U8(buffer))
+            .await
+            .unwrap();
     }
-
-
-
-
-
-
 
     async fn clear(&mut self, color: u16) {
         self.clear_screen(color).await.expect("Failed to clear screen");
@@ -278,7 +259,7 @@ fn rgb332_to_rgb565(c: u8) -> u16 {
     let g = (c >> 2) & 0b111;     // 3 bits
     let b = c & 0b11;             // 2 bits
 
-    let r5 = (r << 3) | (r >> 0);      // expand 3-bit to 5-bit
+    let r5 = (r << 2) | (r >> 1);      // expand 3-bit to 5-bit
     let g6 = (g << 3) | (g >> 0);      // expand 3-bit to 6-bit
     let b5 = (b << 3) | (b << 1) | (b >> 1); // expand 2-bit to 5-bit
 

@@ -1,7 +1,4 @@
-#![allow(unused)]
-
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::ui::canvas::Canvas;
 use crate::system::ui::window::{Window, WindowHandle};
 
 use alloc::boxed::Box;
@@ -13,8 +10,6 @@ use heapless::Vec;
 use libm::sqrtf;
 
 use crate::system::resources::framebuffer::{FRAMEBUFFER_POOL, FrameBufferHandle};
-
-
 
 // Animation tuning globals
 const ANIM_STEPS: usize = 8;
@@ -83,7 +78,6 @@ impl UICompositor {
         self.redraw_requests.clear();
     }
 
-    // TODO: may be empty if apps are not yet started.
     /// Return the handle of the currently focused window
     pub fn current_handle(&self) -> Option<WindowHandle> {
         if self.windows.len() > 0 {
@@ -96,7 +90,6 @@ impl UICompositor {
     pub fn get_window_mut(&mut self, handle: WindowHandle) -> Option<&mut Window> {
         self.windows.iter_mut().find(|w| w.handle() == handle)
     }
-
 
     pub async fn alloc_window(
         &mut self,
@@ -134,7 +127,6 @@ impl UICompositor {
             self.current_window = (self.current_window + self.windows.len() - 1) % self.windows.len();
         }
     }
-
 
     pub async fn animate_slide(&mut self, dir: SlideDir) {
         if self.windows.len() < 2 {
@@ -190,7 +182,7 @@ impl UICompositor {
                 0,
             );
 
-            let mut src2_win = &mut self.windows[to_index];
+            let src2_win = &mut self.windows[to_index];
             let src2_canvas = src2_win.canvas().await;
             let src2_buf = src2_canvas.buffer();
             blit(
@@ -215,13 +207,13 @@ impl UICompositor {
         self.current_window = to_index;
     }
 
-    pub async fn composite(&mut self, working_buff: &mut [u8])  {
+    pub async fn composite(&mut self, working_buff: &mut [u8]) {
+        working_buff.fill(0);
 
         match self.view_mode {
             ViewMode::Single => {
                 let canvas = &mut self.windows[self.current_window].canvas().await;
                 working_buff.copy_from_slice(canvas.buffer());
-
             }
             ViewMode::Split => {
                 let i1 = self.current_window;
@@ -254,11 +246,7 @@ impl UICompositor {
                 );
             }
         }
-
-
     }
-
-
 
     pub fn view_mode(&self) -> ViewMode {
         self.view_mode
@@ -278,8 +266,9 @@ impl UICompositor {
             .and_then(|w| w.input_receiver().try_receive().ok())
     }
 }
-/// Blit (copy) RGB332 pixels from `src` into `dest` at `x_off`, `y_off`.
-/// Assumes 1 byte per pixel (8bpp, RGB332).
+
+/// Blit (copy) RGB565 pixels from `src` into `dest` at `x_off`, `y_off`.
+/// Assumes 2 bytes per pixel (16bpp, RGB565, big-endian).
 pub fn blit(
     dest: &mut [u8],
     dest_width: u32,
@@ -302,17 +291,16 @@ pub fn blit(
                 continue;
             }
 
-            let src_idx = (y as usize) * src_width as usize + x as usize;
-            let dst_idx = (dest_y as usize) * dest_width as usize + dest_x as usize;
+            let src_idx = (y as usize * src_width as usize + x as usize) * 2;
+            let dst_idx = (dest_y as usize * dest_width as usize + dest_x as usize) * 2;
 
-            if src_idx < src.len() && dst_idx < dest.len() {
+            if src_idx + 1 < src.len() && dst_idx + 1 < dest.len() {
                 dest[dst_idx] = src[src_idx];
+                dest[dst_idx + 1] = src[src_idx + 1];
             }
         }
     }
 }
-
-
 
 // === Easing function ===
 fn ease_in_out_circular(t: f32) -> f32 {
