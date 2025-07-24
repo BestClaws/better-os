@@ -223,6 +223,8 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
     }
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
+        let start_time = Instant::now();
+
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
 
@@ -260,7 +262,11 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             }
             self.interface.send_data(DataFormat::U16BE(&mut line_buf)).await.unwrap();
         }
+
+        let elapsed_time = Instant::now() - start_time;
+        info!("Draw transfer time: {} ms", elapsed_time.as_millis());
     }
+
     async fn clear(&mut self, color: u16) {
         self.clear_screen(color).await.expect("Failed to clear screen");
     }

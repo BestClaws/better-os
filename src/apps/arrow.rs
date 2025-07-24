@@ -30,7 +30,7 @@ pub async fn arrow_app(context: AppContext) {
     };
 
     let mut rotation = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
-    let angle_increment = 1.0f32.to_radians();
+    let angle_increment = 3.0f32.to_radians();
     let mut last_time = Instant::now();
     let mut frame_count = 0u32;
     let mut fps = 0.0f32;
@@ -64,20 +64,20 @@ pub async fn arrow_app(context: AppContext) {
         context.draw(|canvas| {
             canvas.clear();
 
-            // let then = Instant::now();
-            // if let Err(e) = draw_model(
-            //     canvas,
-            //     &model,
-            //     Vec3(0.0, 0.0, 3.0),
-            //     rotation,
-            //     canvas.width(),
-            //     canvas.height(),
-            //     &render_options,
-            // ) {
-            //     info!("Draw error: {:?}", e);
-            // }
-            //
-            // info!("arrow time: {}", (Instant::now() - then).as_millis());
+            let then = Instant::now();
+            if let Err(e) = draw_model(
+                canvas,
+                &model,
+                Vec3(0.0, 0.0, 2.0),
+                rotation,
+                canvas.width(),
+                canvas.height(),
+                &render_options,
+            ) {
+                info!("Draw error: {:?}", e);
+            }
+
+            info!("arrow time: {}", (Instant::now() - then).as_millis());
 
             // Draw a red diagonal line from (0,0) to (239,319)
             let line_style = PrimitiveStyle::with_stroke(Rgb565::new(31, 0, 0), 1);
