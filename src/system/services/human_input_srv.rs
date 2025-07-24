@@ -10,7 +10,9 @@ pub(crate) enum HumanInputEvent {
     OkPressed,
     OkReleased,
     OkHeld,
+    Touch(u16, u16), // NEW: Touch event with normalized coordinates
 }
+
 
 pub(crate) static HUMAN_INPUT_CH: Channel<CriticalSectionRawMutex, HumanInputEvent, 8> = Channel::new();
 
@@ -23,6 +25,7 @@ pub(crate) mod sub {
     use embassy_time::Timer;
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
+    use crate::system::hal::touch::AsyncTouch;
     use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 
     #[embassy_executor::task]
@@ -61,6 +64,30 @@ pub(crate) mod sub {
                 ButtonState::Down => HUMAN_INPUT_CH.send(HumanInputEvent::OkPressed).await,
                 ButtonState::Held => HUMAN_INPUT_CH.send(HumanInputEvent::OkHeld).await,
             };
+        }
+    }
+
+
+    #[embassy_executor::task]
+    pub(crate) async fn listen_touch(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>) {
+        loop {
+            let (x, y, z) = {
+                let mut t = touch.lock().await;
+                t.read_xyz().await
+            };
+
+            // Touch pressure threshold (ignore light/noisy touches)
+            if z > 50 {
+                // Normalize/clamp x and y to a max of 2000
+                let x = x.min(2000);
+                let y = y.min(2000);
+
+                info!("Touch detected: x = {}, y = {}, z = {}", x, y, z);
+                HUMAN_INPUT_CH.send(HumanInputEvent::Touch(x, y)).await;
+            }
+
+            // Optional debounce delay (adjust as needed)
+            Timer::after_millis(100).await;
         }
     }
 

@@ -16,7 +16,6 @@ use panic_rtt_target as _;
 use static_cell::StaticCell;
 use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
 use crate::system::services::radio_service::radio_service;
-use crate::system::services::touch_srv::touch_sensor_service;
 use crate::system::services::vibrator_srv::vibrator_service;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
@@ -29,10 +28,11 @@ pub(crate) fn start(spawner: Spawner) {
 
 
 
-    // // Spawn input services
-    // info!("[{}s] spawned human input service", Instant::now().as_millis() as f32 / 1000f32);
+    // Spawn input services
+    info!("[{}s] spawned human input services", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
     // spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::listen_touch(device.touch.unwrap())).unwrap();
     
     // info!("[{}s] spawned vibrator service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(vibrator_service(device.vibrator.unwrap())).unrap();
@@ -41,11 +41,7 @@ pub(crate) fn start(spawner: Spawner) {
     // info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
 
-    // Spawn touch
-    info!("[{}s] spawned touch sensor service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(touch_sensor_service(device.touch.unwrap())).unwrap();
 
-    // 
     // info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
     //
@@ -63,7 +59,7 @@ pub(crate) fn start(spawner: Spawner) {
 
     info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
-    
+
 
     // Spawn app spawner service
     info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
