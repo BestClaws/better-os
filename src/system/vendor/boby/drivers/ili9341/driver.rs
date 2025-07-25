@@ -7,14 +7,9 @@ use embedded_hal_async::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DisplayError, DataFormat};
 use display_interface_spi::SPIInterface;
-use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDeviceWithConfig};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_time::Instant;
 use embedded_hal_async::spi::SpiDevice;
-use esp_hal::{Async, spi::master::Spi};
-use esp_hal::gpio::Output;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
 
 
@@ -22,7 +17,7 @@ use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER
 
 
 impl  Orientation {
-    fn mode(&self) -> u8 {
+    fn display_mode(&self) -> u8 {
         match self {
             Self::Portrait => 0x40 | 0x08,
             Self::Landscape => 0x20 | 0x08,
@@ -34,13 +29,8 @@ impl  Orientation {
     fn is_landscape(&self) -> bool {
         matches!(self, Self::Landscape | Self::LandscapeFlipped)
     }
-}
 
-pub enum DisplayModeState {
-    On,
-    Off,
 }
-
 #[derive(Clone, Copy)]
 enum Command {
     SoftwareReset = 0x01,
@@ -140,7 +130,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn set_orientation(&mut self, orientation: Orientation) -> Result<(), DisplayError> {
-        self.command_with_args(Command::MemoryAccessControl, &[orientation.mode()]).await?;
+        self.command_with_args(Command::MemoryAccessControl, &[orientation.display_mode()]).await?;
         if self.landscape ^ orientation.is_landscape() {
             core::mem::swap(&mut self.height, &mut self.width);
         }
@@ -148,24 +138,27 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
         Ok(())
     }
 
-    pub async fn sleep_mode(&mut self, mode: DisplayModeState) -> Result<(), DisplayError> {
-        match mode {
-            DisplayModeState::On => self.command(Command::SleepModeOn).await,
-            DisplayModeState::Off => self.command(Command::SleepModeOff).await,
+    pub async fn sleep_mode(&mut self, sleep: bool) -> Result<(), DisplayError> {
+        if sleep {
+            self.command(Command::SleepModeOn).await
+        } else {
+            self.command(Command::SleepModeOff).await
         }
     }
 
-    pub async fn display_mode(&mut self, mode: DisplayModeState) -> Result<(), DisplayError> {
-        match mode {
-            DisplayModeState::On => self.command(Command::DisplayOn).await,
-            DisplayModeState::Off => self.command(Command::DisplayOff).await,
+    pub async fn display_power_mode(&mut self, on: bool) -> Result<(), DisplayError> {
+        if on {
+            self.command(Command::DisplayOn).await
+        } else {
+            self.command(Command::DisplayOff).await
         }
     }
 
-    pub async fn invert_mode(&mut self, mode: DisplayModeState) -> Result<(), DisplayError> {
-        match mode {
-            DisplayModeState::On => self.command(Command::InvertOn).await,
-            DisplayModeState::Off => self.command(Command::InvertOff).await,
+    pub async fn invert_mode(&mut self, invert: bool) -> Result<(), DisplayError> {
+        if invert {
+            self.command(Command::InvertOn).await
+        } else {
+            self.command(Command::InvertOff).await
         }
     }
 
@@ -205,9 +198,9 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         delay.delay_ms(120).await;
 
         self.command_with_args(Command::PixelFormatSet, &[0x55]).await.expect("Failed to set pixel format");
-        self.sleep_mode(DisplayModeState::Off).await.expect("Failed to disable sleep mode");
+        self.sleep_mode(false).await.expect("Failed to disable sleep mode");
         delay.delay_ms(5).await;
-        self.display_mode(DisplayModeState::On).await.expect("Failed to enable display");
+        self.display_power_mode(true).await.expect("Failed to enable display");
         self.set_orientation(Orientation::LandscapeFlipped).await.expect("Failed to set orientation");
     }
 
@@ -267,22 +260,3 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
     }
 }
 
-fn rgb332_to_rgb565(c: u8) -> u16 {
-    let r = (c >> 5) & 0b111;     // 3 bits
-    let g = (c >> 2) & 0b111;     // 3 bits
-    let b = c & 0b11;             // 2 bits
-
-    let r5 = (r << 2) | (r >> 1);      // expand 3-bit to 5-bit
-    let g6 = (g << 3) | (g >> 0);      // expand 3-bit to 6-bit
-    let b5 = (b << 3) | (b << 1) | (b >> 1); // expand 2-bit to 5-bit
-
-    ((r5 as u16) << 11) | ((g6 as u16) << 5) | (b5 as u16)
-}
-
-fn rgb888_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
-    let r5 = (r >> 3) as u16;
-    let g6 = (g >> 2) as u16;
-    let b5 = (b >> 3) as u16;
-
-    (r5 << 11) | (g6 << 5) | b5
-}
