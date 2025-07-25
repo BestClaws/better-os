@@ -37,6 +37,10 @@ impl AsyncDisplay for Ssd1306Driver {
         self.display.init().await.unwrap();
     }
 
+    async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
+        todo!()
+    }
+
     async fn draw(&mut self, buffer: &[u8], _scale: u32) {
         let _ = self.display.draw(buffer).await;
         self.display.flush().await.unwrap();

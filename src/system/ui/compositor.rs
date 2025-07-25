@@ -154,7 +154,7 @@ impl UICompositor {
             self.composite(&mut dest_canvas).await;
             let mut disp = display.lock().await;
             let then = Instant::now();
-            disp.draw(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
+            disp.draw_gray4(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
             info!("frame time: {}", (Instant::now() - then).as_millis());
         }
 
@@ -259,7 +259,7 @@ impl UICompositor {
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
-                disp.draw(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
+                disp.draw_gray4(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
             }
 
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;

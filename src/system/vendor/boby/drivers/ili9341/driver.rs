@@ -206,6 +206,39 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.set_orientation(Orientation::LandscapeFlipped).await.expect("Failed to set orientation");
     }
 
+     async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
+        let out_w = FRAME_BUFFER_WIDTH * scale;
+        let out_h = FRAME_BUFFER_HEIGHT * scale;
+
+        // Each byte = 2 pixels
+        let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT + 1) / 2;
+        if buffer.len() < expected_buffer_size as usize {
+            info!("Gray4 buffer too small: got {}, expected {}", buffer.len(), expected_buffer_size);
+            return;
+        }
+
+        let mut line_buf = vec![0u16; out_w as usize];
+        self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await.unwrap();
+        self.command(Command::MemoryWrite).await.unwrap();
+
+        for y in 0..out_h {
+            let src_y = y / scale;
+            for x in 0..out_w {
+                let src_x = x / scale;
+                let idx = (src_y * FRAME_BUFFER_WIDTH + src_x) as usize;
+                let byte = buffer[idx / 2];
+                let nibble = if idx % 2 == 0 {
+                    byte >> 4
+                } else {
+                    byte & 0x0F
+                };
+                line_buf[x as usize] = gray4_to_rgb565(nibble);
+            }
+            self.interface.send_data(DataFormat::U16BE(&mut line_buf)).await.unwrap();
+        }
+    }
+
+
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
@@ -262,3 +295,13 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
     }
 }
 
+fn gray4_to_rgb565(gray: u8) -> u16 {
+    // Expand 4-bit grayscale to 5/6/5 RGB format
+    let intensity = (gray as u16) * 0x1111 >> 8; // Map 0–15 to 0–255
+
+    let r = (intensity >> 3) & 0x1F;
+    let g = (intensity >> 2) & 0x3F;
+    let b = (intensity >> 3) & 0x1F;
+
+    (r << 11) | (g << 5) | b
+}
