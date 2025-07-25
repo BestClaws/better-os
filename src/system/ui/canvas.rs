@@ -253,17 +253,30 @@ impl DrawTarget for Canvas<'_, Gray4> {
         let byte_value = (value << 4) | value; // Same color in both nibbles
 
         let bottom_right = area.bottom_right().unwrap(); // Safe due to is_zero_sized check
-        for y in area.top_left.y..bottom_right.y {
-            for x in area.top_left.x..bottom_right.x {
-                let pixel_idx = (x as u32 + y as u32 * self.width) as usize;
-                let byte_idx = pixel_idx / 2;
-                let is_high_nibble = (pixel_idx % 2) == 0;
+        // Optimize by filling whole bytes when possible
+        if area.top_left.x % 2 == 0 && area.size.width % 2 == 0 {
+            for y in area.top_left.y..bottom_right.y {
+                let start_idx = ((area.top_left.x as u32 + y as u32 * self.width) / 2) as usize;
+                let end_idx = ((bottom_right.x as u32 + y as u32 * self.width) / 2) as usize;
+                for byte_idx in start_idx..end_idx {
+                    if byte_idx < self.buffer.len() {
+                        self.buffer[byte_idx] = byte_value;
+                    }
+                }
+            }
+        } else {
+            for y in area.top_left.y..bottom_right.y {
+                for x in area.top_left.x..bottom_right.x {
+                    let pixel_idx = (x as u32 + y as u32 * self.width) as usize;
+                    let byte_idx = pixel_idx / 2;
+                    let is_high_nibble = (pixel_idx % 2) == 0;
 
-                if byte_idx < self.buffer.len() {
-                    if is_high_nibble {
-                        self.buffer[byte_idx] = (self.buffer[byte_idx] & 0x0F) | (value << 4);
-                    } else {
-                        self.buffer[byte_idx] = (self.buffer[byte_idx] & 0xF0) | value;
+                    if byte_idx < self.buffer.len() {
+                        if is_high_nibble {
+                            self.buffer[byte_idx] = (self.buffer[byte_idx] & 0x0F) | (value << 4);
+                        } else {
+                            self.buffer[byte_idx] = (self.buffer[byte_idx] & 0xF0) | value;
+                        }
                     }
                 }
             }

@@ -43,7 +43,7 @@ impl Window {
     }
 
     /// Returns a fresh Canvas that draws on this window's framebuffer.
-    pub async fn canvas<C: PixelColor>(&mut self) -> Canvas<C> {
+    pub async fn canvas<C: PixelColor>(&mut self) -> Canvas<'static, C> {
        let buf = FRAMEBUFFER_POOL.get_mut(&self.fb);
         Canvas::new(buf, self.width, self.height)
     }

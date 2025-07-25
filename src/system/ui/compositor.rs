@@ -154,7 +154,7 @@ impl UICompositor {
             self.composite(&mut dest_canvas).await;
             let mut disp = display.lock().await;
             let then = Instant::now();
-            disp.draw(&mut working_buff, FRAME_SCALE_FACTOR).await;
+            disp.draw(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
             info!("frame time: {}", (Instant::now() - then).as_millis());
         }
 
@@ -245,16 +245,17 @@ impl UICompositor {
                 }
             };
 
-            // Borrow windows only once per iteration
-            {
-                let (src1_canvas, src2_canvas) = {
-                    let src1_win = &mut self.windows[from_index];
-                    let src2_win = &mut self.windows[to_index];
-                    (src1_win.canvas().await, src2_win.canvas().await)
-                };
-                blit(&mut dest_canvas, &src1_canvas, from_x, 0);
-                blit(&mut dest_canvas, &src2_canvas, to_x, 0);
-            }
+            // Borrow windows sequentially
+            let src1_canvas = {
+                let src1_win = &mut self.windows[from_index];
+                src1_win.canvas().await
+            };
+            let src2_canvas = {
+                let src2_win = &mut self.windows[to_index];
+                src2_win.canvas().await
+            };
+            blit(&mut dest_canvas, &src1_canvas, from_x, 0);
+            blit(&mut dest_canvas, &src2_canvas, to_x, 0);
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
@@ -280,11 +281,14 @@ impl UICompositor {
                 let i1 = self.current_window;
                 let i2 = (self.current_window + 1) % self.windows.len();
 
-                // Borrow windows only once
-                let (src1_canvas, src2_canvas) = {
+                // Borrow windows sequentially
+                let src1_canvas = {
                     let src1_win = &mut self.windows[i1];
+                    src1_win.canvas().await
+                };
+                let src2_canvas = {
                     let src2_win = &mut self.windows[i2];
-                    (src1_win.canvas().await, src2_win.canvas().await)
+                    src2_win.canvas().await
                 };
                 blit(working_buff, &src1_canvas, 0, 0);
                 blit(working_buff, &src2_canvas, (FRAME_BUFFER_WIDTH / 2) as i32, 0);
