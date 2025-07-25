@@ -1,5 +1,5 @@
 use crate::system::services::human_input_srv::HumanInputEvent;
-use crate::system::ui::canvas::Canvas;
+use crate::system::ui::canvas::{Canvas, PixelColorExt};
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -43,7 +43,7 @@ impl AppContext {
         comp.request_redraw(self.handle);
     }
 
-    pub async fn draw<C: PixelColor>(&self, f: impl FnOnce(&mut Canvas<C>) + Send) {
+    pub async fn draw<C: PixelColor + PixelColorExt>(&self, f: impl FnOnce(&mut Canvas<C>) + Send) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.get_window_mut(self.handle) {
             let mut canvas = window.canvas().await;

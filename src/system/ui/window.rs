@@ -2,10 +2,11 @@
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embedded_graphics::framebuffer::Framebuffer;
+use embedded_graphics_core::pixelcolor::Gray4;
 use embedded_graphics_core::prelude::PixelColor;
 use esp_hal::interrupt::map;
 use crate::system::services::human_input_srv::HumanInputEvent;
-use crate::system::ui::canvas::Canvas;
+use crate::system::ui::canvas::{Canvas, PixelColorExt};
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
@@ -43,11 +44,10 @@ impl Window {
     }
 
     /// Returns a fresh Canvas that draws on this window's framebuffer.
-    pub async fn canvas<C: PixelColor>(&mut self) -> Canvas<'static, C> {
-       let buf = FRAMEBUFFER_POOL.get_mut(&self.fb);
-        Canvas::new(buf, self.width, self.height)
+    pub async fn canvas<C: PixelColorExt>(&mut self) -> Canvas<'static, C> {
+        let buf = FRAMEBUFFER_POOL.get_mut(&self.fb);
+        C::new_canvas(buf, self.width, self.height)
     }
-
     /// Return this window’s handle.
     pub fn handle(&self) -> WindowHandle {
         WindowHandle { id: self.id }

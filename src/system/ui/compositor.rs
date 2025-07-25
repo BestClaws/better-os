@@ -150,7 +150,7 @@ impl UICompositor {
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
-            let mut dest_canvas = Canvas::new(&mut working_buff, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let mut dest_canvas = Canvas::<Gray4>::new(&mut working_buff, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
             self.composite(&mut dest_canvas).await;
             let mut disp = display.lock().await;
             let then = Instant::now();
@@ -223,7 +223,7 @@ impl UICompositor {
         };
 
         let mut composed_buf = [0u8; FRAME_BUFFER_SIZE];
-        let mut dest_canvas: Canvas<Gray4> = Canvas::new(&mut composed_buf, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+        let mut dest_canvas: Canvas<Gray4> = Canvas::<Gray4>::new(&mut composed_buf, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
 
         for step in 0..=ANIM_STEPS {
             let t = step as f32 / ANIM_STEPS as f32;
