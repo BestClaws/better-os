@@ -11,12 +11,7 @@ use embedded_hal_async::spi::SpiDevice;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
-
-
-
-
-
-impl  Orientation {
+impl Orientation {
     fn display_mode(&self) -> u8 {
         match self {
             Self::Portrait => 0x40 | 0x08,
@@ -29,8 +24,8 @@ impl  Orientation {
     fn is_landscape(&self) -> bool {
         matches!(self, Self::Landscape | Self::LandscapeFlipped)
     }
-
 }
+
 #[derive(Clone, Copy)]
 enum Command {
     SoftwareReset = 0x01,
@@ -46,6 +41,8 @@ enum Command {
     PageAddressSet = 0x2b,
     MemoryWrite = 0x2c,
     SetBrightness = 0x51,
+    PositiveGammaCorrection = 0xE0,
+    NegativeGammaCorrection = 0xE1,
 }
 
 pub struct Ili9341Driver<SPI, DC: OutputPin, RESET: OutputPin> {
@@ -78,7 +75,6 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
             .await
     }
 
-
     async fn command_with_args(&mut self, cmd: Command, args: &[u8]) -> Result<(), DisplayError> {
         self.interface
             .send_commands(U8Iter(&mut once(cmd as u8)))
@@ -87,8 +83,6 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
             .send_data(DataFormat::U8(args))
             .await
     }
-
-
 
     async fn set_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result<(), DisplayError> {
         self.command_with_args(
@@ -199,14 +193,34 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.command(Command::SoftwareReset).await.expect("Failed to send software reset");
         delay.delay_ms(120).await;
 
+        // Set pixel format to RGB565 (0x55)
         self.command_with_args(Command::PixelFormatSet, &[0x55]).await.expect("Failed to set pixel format");
+
+        // Configure positive gamma correction (0xE0)
+        self.command_with_args(
+            Command::PositiveGammaCorrection,
+            &[
+                0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08, 0x4E, 0xF1,
+                0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00,
+            ],
+        ).await.expect("Failed to set positive gamma correction");
+
+        // Configure negative gamma correction (0xE1)
+        self.command_with_args(
+            Command::NegativeGammaCorrection,
+            &[
+                0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31, 0xC1,
+                0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F,
+            ],
+        ).await.expect("Failed to set negative gamma correction");
+
         self.sleep_mode(false).await.expect("Failed to disable sleep mode");
         delay.delay_ms(5).await;
         self.display_power_mode(true).await.expect("Failed to enable display");
         self.set_orientation(Orientation::LandscapeFlipped).await.expect("Failed to set orientation");
     }
 
-     async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
+    async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
 
@@ -237,7 +251,6 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             self.interface.send_data(DataFormat::U16BE(&mut line_buf)).await.unwrap();
         }
     }
-
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
         let out_w = FRAME_BUFFER_WIDTH * scale;
@@ -278,6 +291,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             self.interface.send_data(DataFormat::U16BE(&mut line_buf)).await.unwrap();
         }
     }
+
     async fn clear(&mut self, color: u16) {
         self.clear_screen(color).await.expect("Failed to clear screen");
     }
@@ -295,13 +309,25 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
     }
 }
 
-fn gray4_to_rgb565(gray: u8) -> u16 {
-    // Expand 4-bit grayscale to 5/6/5 RGB format
-    let intensity = (gray as u16) * 0x1111 >> 8; // Map 0–15 to 0–255
 
-    let r = (intensity >> 3) & 0x1F;
-    let g = (intensity >> 2) & 0x3F;
-    let b = (intensity >> 3) & 0x1F;
+fn gray4_to_rgb565(gray: u8) -> u16 {
+    // Map 4-bit grayscale (0-15) to 30%-100% intensity (77-255 in 8-bit)
+    let min_intensity = 77u16; // 30% of 255
+    let max_intensity = 255u16; // 100% of 255
+    let gamma = 220; // Gamma value of 2.2, scaled to 100 for integer math
+    let intensity = if gray == 0 {
+        min_intensity
+    } else {
+        // Normalize gray to [0, 1], apply gamma, then scale to 77-255
+        let norm = (gray as u32) * 1000 / 15; // Scale to 0-1000 for precision
+        let corrected = ((norm * norm) / 1000 * (norm * norm) / 1000) / 1000; // Approximate x^2.2
+        min_intensity + (((max_intensity - min_intensity) as u32 * corrected) / 1000) as u16
+    };
+
+    // Convert intensity to RGB565 (5-bit red, 6-bit green, 5-bit blue)
+    let r = (intensity >> 3) & 0x1F; // 5-bit red
+    let g = (intensity >> 2) & 0x3F; // 6-bit green
+    let b = (intensity >> 3) & 0x1F; // 5-bit blue
 
     (r << 11) | (g << 5) | b
 }

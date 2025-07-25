@@ -52,9 +52,8 @@ trouble-host = { version = "0.2.4", features = [
     "default-packet-pool-mtu-255", "derive", "scan"
 ] }
 
-kolibri-embedded-gui = "0.1.0"
-embedded-graphics = { version = "0.8.1", features = ["defmt"] }
-embedded-graphics-transform = "0.1.0"
+kolibri-embedded-gui = { path = "../kolibri"}
+embedded-graphics = { version = "0.8.0", features = ["defmt"] }
 ssd1306 = { version = "0.10.0", features = ["async", "graphics"] }
 
 display-interface-i2c = { version = "0.5.0" }
@@ -75,7 +74,6 @@ async-trait = "0.1.88"
 
 tinybmp = { version = "0.6.0", features = [] }
 portable-atomic = "1.11.1"
-embedded-graphics-framebuf = "0.5.0"
 libm = "0.2.15"
 
 [profile.dev]

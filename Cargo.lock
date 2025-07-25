@@ -62,9 +62,7 @@ dependencies = [
  "embassy-sync 0.7.0",
  "embassy-time",
  "embedded-graphics",
- "embedded-graphics-core 0.4.0",
- "embedded-graphics-framebuf",
- "embedded-graphics-transform",
+ "embedded-graphics-core",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "esp-alloc",
@@ -468,15 +466,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-dma"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "994f7e5b5cb23521c22304927195f236813053eb9c065dd2226a32ba64695446"
-dependencies = [
- "stable_deref_trait",
-]
-
-[[package]]
 name = "embedded-graphics"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -485,19 +474,9 @@ dependencies = [
  "az",
  "byteorder",
  "defmt 0.3.100",
- "embedded-graphics-core 0.4.0",
+ "embedded-graphics-core",
  "float-cmp",
  "micromath",
-]
-
-[[package]]
-name = "embedded-graphics-core"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8b1239db5f3eeb7e33e35bd10bd014e7b2537b17e071f726a09351431337cfa"
-dependencies = [
- "az",
- "byteorder",
 ]
 
 [[package]]
@@ -509,25 +488,6 @@ dependencies = [
  "az",
  "byteorder",
  "defmt 0.3.100",
-]
-
-[[package]]
-name = "embedded-graphics-framebuf"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22354420f68727fa24d1e2741dae1e9a041065e80fb63b35a8d19c647a85be76"
-dependencies = [
- "embedded-dma",
- "embedded-graphics",
-]
-
-[[package]]
-name = "embedded-graphics-transform"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bd45f20ef58186a640e1777177c37e4ef33dbb6ce3c4d9f909d81b498a643c2"
-dependencies = [
- "embedded-graphics-core 0.3.3",
 ]
 
 [[package]]
@@ -1079,7 +1039,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc105605dba076630f5a1a22ba80bcff216af2619859f1595e9ddd72b89db30a"
 dependencies = [
  "display-interface",
- "embedded-graphics-core 0.4.0",
+ "embedded-graphics-core",
  "embedded-hal 1.0.0",
 ]
 
@@ -1132,8 +1092,6 @@ dependencies = [
 [[package]]
 name = "kolibri-embedded-gui"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "011f8f415e8c2f03e4ad752afcf1bb156a18926250401b1fe29d8feda644c140"
 dependencies = [
  "embedded-graphics",
  "embedded-iconoir",
@@ -1548,7 +1506,7 @@ dependencies = [
  "display-interface",
  "display-interface-i2c",
  "display-interface-spi",
- "embedded-graphics-core 0.4.0",
+ "embedded-graphics-core",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "maybe-async-cfg",

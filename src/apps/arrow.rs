@@ -5,12 +5,13 @@ use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, text::{Text}, mono_
 use core::fmt::Write;
 use embedded_graphics::mono_font::{ascii, MonoTextStyle};
 use embedded_graphics::mono_font::ascii::FONT_4X6;
-use embedded_graphics::primitives::{Line, PrimitiveStyle};
+use embedded_graphics::primitives::{Line, PrimitiveStyle, PrimitiveStyleBuilder, RoundedRectangle};
 use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
 use embedded_graphics_core::primitives::Rectangle;
 use heapless::String;
 use kolibri_embedded_gui::button::Button;
 use kolibri_embedded_gui::label::Label;
+use kolibri_embedded_gui::slider::Slider;
 use kolibri_embedded_gui::style::{medsize_rgb565_style, Spacing, Style};
 use kolibri_embedded_gui::ui::{Interaction, Ui};
 use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse_binary_stl};
@@ -46,6 +47,9 @@ pub async fn arrow_app(context: AppContext) {
     };
 
     let mut i: i32 = 0;
+    let mut num: u32 = 0;
+    let mut value = 0i16;
+
 
     loop {
         if !context.is_focused().await {
@@ -80,6 +84,7 @@ pub async fn arrow_app(context: AppContext) {
                     default_padding: Size::new(4, 2),
                     window_border_padding: Size::new(10, 10),
                 },
+                corner_radius: 4,
             });
 
             if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
@@ -91,7 +96,9 @@ pub async fn arrow_app(context: AppContext) {
 
 
             ui.clear_background().unwrap();
-            ui.add(Label::new("Basic"));
+            ui.add(Label::new(format!("count: {num}").as_ref()));
+            ui.add(Slider::new(&mut value, -100..=100));
+
 
             if ui.add_horizontal(Button::new("-")).clicked() {
                 i -= 1;
@@ -102,7 +109,7 @@ pub async fn arrow_app(context: AppContext) {
                 i += 1;
             }
 
-            ui.finalize().unwrap();
+
 
 
 
@@ -111,5 +118,6 @@ pub async fn arrow_app(context: AppContext) {
 
         context.request_redraw().await;
         Timer::after(Duration::from_millis(16)).await;
+        num += 1;
     }
 }

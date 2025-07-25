@@ -7,6 +7,7 @@ use embedded_graphics::{
 };
 use embedded_graphics_core::pixelcolor::raw::RawU4;
 use core::marker::PhantomData;
+use defmt::info;
 
 /// A statically safe framebuffer-backed canvas.
 pub struct Canvas<'a, C: PixelColor> {
@@ -43,7 +44,7 @@ impl<C: PixelColor> OriginDimensions for Canvas<'_, C> {
 
 // ---------- Rgb565 ----------
 impl<'a> Canvas<'a, Rgb565> {
-    pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Canvas<'a, Rgb565> {
+    pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Self {
         let required = (width * height * 2) as usize;
         assert!(buffer.len() >= required, "Buffer too small for Rgb565");
 
@@ -70,6 +71,7 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Pixel<Self::Color>>,
     {
+        info!("Rgb565::draw_iter");
         for Pixel(Point { x, y }, color) in pixels {
             if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
                 continue;
@@ -86,6 +88,7 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
+        info!("Rgb565::fill_contiguous: {:?}", area);
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
             return Ok(());
@@ -108,6 +111,8 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        info!("Rgb565::fill_solid: {:?}", area);
+
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
             return Ok(());
@@ -130,6 +135,8 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        info!("Rgb565::clear");
+
         let raw = color.into_storage();
         let high = (raw >> 8) as u8;
         let low = raw as u8;
@@ -145,30 +152,9 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 }
 
-
-pub trait PixelColorExt: PixelColor {
-    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self>;
-}
-
-
-impl PixelColorExt for Rgb565 {
-    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self> {
-        Canvas::<Rgb565>::new(buffer, width, height)
-    }
-}
-
-impl PixelColorExt for Gray4 {
-    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self> {
-        Canvas::<Gray4>::new(buffer, width, height)
-    }
-}
-
-
-
-
 // ---------- Gray4 ----------
 impl<'a> Canvas<'a, Gray4> {
-    pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Canvas<'a, Gray4> {
+    pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Self {
         let required = ((width * height + 1) / 2) as usize;
         assert!(buffer.len() >= required, "Buffer too small for Gray4");
 
@@ -195,6 +181,8 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Pixel<Self::Color>>,
     {
+        info!("Gray4::draw_iter");
+
         for Pixel(Point { x, y }, color) in pixels {
             if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
                 continue;
@@ -211,6 +199,8 @@ impl DrawTarget for Canvas<'_, Gray4> {
             } else {
                 *byte = (*byte & 0xF0) | value;
             }
+
+            info!("  -> pixel ({}, {}) = {:X}", x, y, value);
         }
 
         Ok(())
@@ -219,8 +209,11 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
+        info!("Gray4::fill_contiguous: {:?}", area);
+
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
+            info!("Gray4::fill_contiguous: area is zero after intersection");
             return Ok(());
         }
 
@@ -248,13 +241,15 @@ impl DrawTarget for Canvas<'_, Gray4> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        info!("Gray4::fill_solid: {:?}", area);
+
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
+            info!("Gray4::fill_solid: area is zero after intersection");
             return Ok(());
         }
 
         let value = RawU4::from(color).into_inner();
-        let packed = (value << 4) | value;
 
         let bottom_right = area.bottom_right().unwrap();
 
@@ -276,6 +271,8 @@ impl DrawTarget for Canvas<'_, Gray4> {
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        info!("Gray4::clear");
+
         let value = RawU4::from(color).into_inner();
         let packed = (value << 4) | value;
 
@@ -284,5 +281,22 @@ impl DrawTarget for Canvas<'_, Gray4> {
         }
 
         Ok(())
+    }
+}
+
+// ---------- Trait for generic creation ----------
+pub trait PixelColorExt: PixelColor {
+    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self>;
+}
+
+impl PixelColorExt for Rgb565 {
+    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self> {
+        Canvas::<Rgb565>::new(buffer, width, height)
+    }
+}
+
+impl PixelColorExt for Gray4 {
+    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self> {
+        Canvas::<Gray4>::new(buffer, width, height)
     }
 }
