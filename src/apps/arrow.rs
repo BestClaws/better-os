@@ -69,21 +69,21 @@ pub async fn arrow_app(context: AppContext) {
                 secondary_color: Rgb565::YELLOW,
                 icon_color: Rgb565::WHITE,
                 text_color: Rgb565::WHITE,
-                default_widget_height: 16,
+                default_widget_height: 4,
                 border_width: 0,
                 highlight_border_width: 1,
-                default_font: mono_font::iso_8859_10::FONT_9X15,
+                default_font: mono_font::iso_8859_10::FONT_4X6,
                 spacing: Spacing {
-                    item_spacing: Size::new(8, 4),
-                    button_padding: Size::new(5, 5),
+                    item_spacing: Size::new(1, 1),
+                    button_padding: Size::new(1, 1),
                     default_padding: Size::new(1, 1),
-                    window_border_padding: Size::new(3, 3),
+                    window_border_padding: Size::new(1, 1),
                 },
             });
 
             if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
+                info!("Touch: ({}, {})", x, y);
 
-                ui.interact(Interaction::Click(Point::new(x, y)));
                 ui.interact(Interaction::Release(Point::new(x, y)));
 
             }
@@ -119,6 +119,6 @@ pub async fn arrow_app(context: AppContext) {
         }).await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(160)).await;
+        Timer::after(Duration::from_millis(16)).await;
     }
 }
