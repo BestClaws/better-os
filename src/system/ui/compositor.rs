@@ -1,6 +1,6 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::{Window, WindowHandle};
-
+use crate::system::ui::canvas::Canvas;
 use alloc::boxed::Box;
 use defmt::info;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -8,8 +8,10 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 use heapless::Vec;
 use libm::sqrtf;
-
-use crate::system::resources::framebuffer::{FRAMEBUFFER_POOL, FrameBufferHandle};
+use micromath::F32Ext;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
+use embedded_graphics::pixelcolor::{Gray4, GrayColor, PixelColor, Rgb565};
+use embedded_graphics_core::prelude::DrawTarget;
 
 // Animation tuning globals
 const ANIM_STEPS: usize = 8;
@@ -25,6 +27,86 @@ pub enum ViewMode {
 pub enum SlideDir {
     Left,
     Right,
+}
+
+/// Trait to handle pixel copying for different pixel color types.
+trait BlitPixel: PixelColor {
+    fn blit_pixel(src: &[u8], src_pixel_idx: usize, dest: &mut [u8], dest_pixel_idx: usize) -> bool;
+}
+
+// Implementation for Rgb565 (2 bytes per pixel)
+impl BlitPixel for Rgb565 {
+    fn blit_pixel(src: &[u8], src_pixel_idx: usize, dest: &mut [u8], dest_pixel_idx: usize) -> bool {
+        let src_idx = src_pixel_idx * 2;
+        let dest_idx = dest_pixel_idx * 2;
+        if src_idx + 1 < src.len() && dest_idx + 1 < dest.len() {
+            dest[dest_idx] = src[src_idx];
+            dest[dest_idx + 1] = src[src_idx + 1];
+            true
+        } else {
+            false
+        }
+    }
+}
+
+// Implementation for Gray4 (4 bits per pixel, two pixels per byte)
+impl BlitPixel for Gray4 {
+    fn blit_pixel(src: &[u8], src_pixel_idx: usize, dest: &mut [u8], dest_pixel_idx: usize) -> bool {
+        let src_byte_idx = src_pixel_idx / 2;
+        let dest_byte_idx = dest_pixel_idx / 2;
+        let src_is_high_nibble = (src_pixel_idx % 2) == 0;
+        let dest_is_high_nibble = (dest_pixel_idx % 2) == 0;
+
+        if src_byte_idx < src.len() && dest_byte_idx < dest.len() {
+            let src_value = if src_is_high_nibble {
+                (src[src_byte_idx] >> 4) & 0x0F // High nibble
+            } else {
+                src[src_byte_idx] & 0x0F // Low nibble
+            };
+
+            if dest_is_high_nibble {
+                dest[dest_byte_idx] = (dest[dest_byte_idx] & 0x0F) | (src_value << 4);
+            } else {
+                dest[dest_byte_idx] = (dest[dest_byte_idx] & 0xF0) | src_value;
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Blits a source Canvas to a destination Canvas with offsets.
+/// Generic over pixel color type C, which must implement BlitPixel.
+pub fn blit<'a, C: BlitPixel>(
+    dest: &mut Canvas<'a, C>,
+    src: &Canvas<'a, C>,
+    x_off: i32,
+    y_off: i32,
+) {
+    let dest_width = dest.width();
+    let dest_height = dest.height();
+    let src_width = src.width();
+    let src_height = src.height();
+
+    for y in 0..src_height as i32 {
+        let dest_y = y + y_off;
+        if dest_y < 0 || dest_y >= dest_height as i32 {
+            continue;
+        }
+
+        for x in 0..src_width as i32 {
+            let dest_x = x + x_off;
+            if dest_x < 0 || dest_x >= dest_width as i32 {
+                continue;
+            }
+
+            let src_pixel_idx = y as usize * src_width as usize + x as usize;
+            let dest_pixel_idx = dest_y as usize * dest_width as usize + dest_x as usize;
+
+            C::blit_pixel(src.buffer(), src_pixel_idx, dest.buffer_mut(), dest_pixel_idx);
+        }
+    }
 }
 
 pub struct UICompositor {
@@ -68,10 +150,11 @@ impl UICompositor {
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
-            self.composite(working_buff.as_mut()).await;
+            let mut dest_canvas = Canvas::new(&mut working_buff, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            self.composite(&mut dest_canvas).await;
             let mut disp = display.lock().await;
             let then = Instant::now();
-            disp.draw(working_buff.as_mut(), FRAME_SCALE_FACTOR).await;
+            disp.draw(&mut working_buff, FRAME_SCALE_FACTOR).await;
             info!("frame time: {}", (Instant::now() - then).as_millis());
         }
 
@@ -99,13 +182,7 @@ impl UICompositor {
     ) -> Option<WindowHandle> {
         let window = Window::new(width, height, id).await;
         let handle = window.handle();
-
         self.windows.push(window).ok()?;
-
-        // Now get a mutable ref to the just pushed window (last element)
-        let window = self.windows.last_mut()?;
-        let canvas = window.canvas().await;
-
         Some(handle)
     }
 
@@ -146,13 +223,14 @@ impl UICompositor {
         };
 
         let mut composed_buf = [0u8; FRAME_BUFFER_SIZE];
+        let mut dest_canvas: Canvas<Gray4> = Canvas::new(&mut composed_buf, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
 
         for step in 0..=ANIM_STEPS {
             let t = step as f32 / ANIM_STEPS as f32;
             let eased = ease_in_out_circular(t);
             let offset = (eased * FRAME_BUFFER_WIDTH as f32) as i32;
 
-            composed_buf.fill(0);
+            dest_canvas.clear(Gray4::BLACK).unwrap();
 
             let (from_x, to_x) = match dir {
                 SlideDir::Left => {
@@ -167,38 +245,20 @@ impl UICompositor {
                 }
             };
 
-            // Use direct window references — no need to go via handle lookup
-            let src1_win = &mut self.windows[from_index];
-            let src1_canvas = src1_win.canvas().await;
-            let src1_buf = src1_canvas.buffer();
-            blit(
-                &mut composed_buf,
-                FRAME_BUFFER_WIDTH as u32,
-                FRAME_BUFFER_HEIGHT as u32,
-                src1_buf,
-                FRAME_BUFFER_WIDTH as u32,
-                FRAME_BUFFER_HEIGHT as u32,
-                from_x,
-                0,
-            );
-
-            let src2_win = &mut self.windows[to_index];
-            let src2_canvas = src2_win.canvas().await;
-            let src2_buf = src2_canvas.buffer();
-            blit(
-                &mut composed_buf,
-                FRAME_BUFFER_WIDTH as u32,
-                FRAME_BUFFER_HEIGHT as u32,
-                src2_buf,
-                FRAME_BUFFER_WIDTH as u32,
-                FRAME_BUFFER_HEIGHT as u32,
-                to_x,
-                0,
-            );
+            // Borrow windows only once per iteration
+            {
+                let (src1_canvas, src2_canvas) = {
+                    let src1_win = &mut self.windows[from_index];
+                    let src2_win = &mut self.windows[to_index];
+                    (src1_win.canvas().await, src2_win.canvas().await)
+                };
+                blit(&mut dest_canvas, &src1_canvas, from_x, 0);
+                blit(&mut dest_canvas, &src2_canvas, to_x, 0);
+            }
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
-                disp.draw(&composed_buf, FRAME_SCALE_FACTOR).await;
+                disp.draw(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
             }
 
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
@@ -207,43 +267,27 @@ impl UICompositor {
         self.current_window = to_index;
     }
 
-    pub async fn composite(&mut self, working_buff: &mut [u8]) {
-        working_buff.fill(0);
+    pub async fn composite<'a>(&'a mut self, working_buff: &mut Canvas<'a, Gray4>) {
+        working_buff.clear(Gray4::BLACK).unwrap();
 
         match self.view_mode {
             ViewMode::Single => {
-                let canvas = &mut self.windows[self.current_window].canvas().await;
-                working_buff.copy_from_slice(canvas.buffer());
+                let src_canvas = self.windows[self.current_window].canvas().await;
+                blit(working_buff, &src_canvas, 0, 0);
             }
+
             ViewMode::Split => {
                 let i1 = self.current_window;
                 let i2 = (self.current_window + 1) % self.windows.len();
 
-                let src1_win = &mut self.windows[i1];
-                let src1_canvas = src1_win.canvas().await;
-                blit(
-                    working_buff,
-                    FRAME_BUFFER_WIDTH as u32,
-                    FRAME_BUFFER_HEIGHT as u32,
-                    src1_canvas.buffer(),
-                    FRAME_BUFFER_WIDTH as u32,
-                    FRAME_BUFFER_HEIGHT as u32,
-                    0,
-                    0,
-                );
-
-                let src2_win = &mut self.windows[i2];
-                let src2_canvas = src2_win.canvas().await;
-                blit(
-                    working_buff,
-                    FRAME_BUFFER_WIDTH as u32,
-                    FRAME_BUFFER_HEIGHT as u32,
-                    src2_canvas.buffer(),
-                    FRAME_BUFFER_WIDTH as u32,
-                    FRAME_BUFFER_HEIGHT as u32,
-                    (FRAME_BUFFER_WIDTH / 2) as i32,
-                    0,
-                );
+                // Borrow windows only once
+                let (src1_canvas, src2_canvas) = {
+                    let src1_win = &mut self.windows[i1];
+                    let src2_win = &mut self.windows[i2];
+                    (src1_win.canvas().await, src2_win.canvas().await)
+                };
+                blit(working_buff, &src1_canvas, 0, 0);
+                blit(working_buff, &src2_canvas, (FRAME_BUFFER_WIDTH / 2) as i32, 0);
             }
         }
     }
@@ -267,41 +311,6 @@ impl UICompositor {
     }
 }
 
-/// Blit (copy) RGB565 pixels from `src` into `dest` at `x_off`, `y_off`.
-/// Assumes 2 bytes per pixel (16bpp, RGB565, big-endian).
-pub fn blit(
-    dest: &mut [u8],
-    dest_width: u32,
-    dest_height: u32,
-    src: &[u8],
-    src_width: u32,
-    src_height: u32,
-    x_off: i32,
-    y_off: i32,
-) {
-    for y in 0..src_height as i32 {
-        let dest_y = y + y_off;
-        if dest_y < 0 || dest_y >= dest_height as i32 {
-            continue;
-        }
-
-        for x in 0..src_width as i32 {
-            let dest_x = x + x_off;
-            if dest_x < 0 || dest_x >= dest_width as i32 {
-                continue;
-            }
-
-            let src_idx = (y as usize * src_width as usize + x as usize) * 2;
-            let dst_idx = (dest_y as usize * dest_width as usize + dest_x as usize) * 2;
-
-            if src_idx + 1 < src.len() && dst_idx + 1 < dest.len() {
-                dest[dst_idx] = src[src_idx];
-                dest[dst_idx + 1] = src[src_idx + 1];
-            }
-        }
-    }
-}
-
 // === Easing function ===
 fn ease_in_out_circular(t: f32) -> f32 {
     if t < 0.5 {
@@ -310,6 +319,3 @@ fn ease_in_out_circular(t: f32) -> f32 {
         0.5 * (sqrtf(1.0 - (2.0 * t - 2.0).powf(2.0)) + 1.0)
     }
 }
-
-use micromath::F32Ext;
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};

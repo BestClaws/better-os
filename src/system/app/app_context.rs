@@ -4,6 +4,7 @@ use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embedded_graphics_core::pixelcolor::PixelColor;
 
 pub struct AppContext {
     pub handle: WindowHandle,
@@ -42,7 +43,7 @@ impl AppContext {
         comp.request_redraw(self.handle);
     }
 
-    pub async fn draw(&self, f: impl FnOnce(&mut Canvas) + Send) {
+    pub async fn draw<C: PixelColor>(&self, f: impl FnOnce(&mut Canvas<C>) + Send) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.get_window_mut(self.handle) {
             let mut canvas = window.canvas().await;

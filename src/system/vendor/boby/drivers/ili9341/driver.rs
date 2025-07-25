@@ -88,11 +88,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
             .await
     }
 
-    async fn write_iter<I: IntoIterator<Item = u16>>(&mut self, data: I) -> Result<(), DisplayError> {
-        self.command(Command::MemoryWrite).await?;
-        let mut iter = data.into_iter();
-        self.interface.send_data(U16BEIter(&mut iter)).await
-    }
+
 
     async fn set_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result<(), DisplayError> {
         self.command_with_args(
@@ -110,6 +106,12 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
                 (y1 >> 8) as u8, y1 as u8,
             ],
         ).await
+    }
+
+    async fn write_iter<I: IntoIterator<Item = u16>>(&mut self, data: I) -> Result<(), DisplayError> {
+        self.command(Command::MemoryWrite).await?;
+        let mut iter = data.into_iter();
+        self.interface.send_data(U16BEIter(&mut iter)).await
     }
 
     pub async fn draw_raw_iter<I: IntoIterator<Item = u16>>(

@@ -2,6 +2,7 @@
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embedded_graphics::framebuffer::Framebuffer;
+use embedded_graphics_core::prelude::PixelColor;
 use esp_hal::interrupt::map;
 use crate::system::services::human_input_srv::HumanInputEvent;
 use crate::system::ui::canvas::Canvas;
@@ -42,7 +43,7 @@ impl Window {
     }
 
     /// Returns a fresh Canvas that draws on this window's framebuffer.
-    pub async fn canvas(&mut self) -> Canvas {
+    pub async fn canvas<C: PixelColor>(&mut self) -> Canvas<C> {
        let buf = FRAMEBUFFER_POOL.get_mut(&self.fb);
         Canvas::new(buf, self.width, self.height)
     }

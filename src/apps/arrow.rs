@@ -6,7 +6,7 @@ use core::fmt::Write;
 use embedded_graphics::mono_font::{ascii, MonoTextStyle};
 use embedded_graphics::mono_font::ascii::FONT_4X6;
 use embedded_graphics::primitives::{Line, PrimitiveStyle};
-use embedded_graphics_core::pixelcolor::Rgb565;
+use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
 use embedded_graphics_core::primitives::Rectangle;
 use heapless::String;
 use kolibri_embedded_gui::button::Button;
@@ -17,6 +17,7 @@ use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse
 use crate::system::app::app_context::AppContext;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
+use crate::system::ui::canvas::Canvas;
 
 // Embed the binary STL file (place cube.stl in assets/ directory)
 const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow2.stl");
@@ -55,20 +56,20 @@ pub async fn arrow_app(context: AppContext) {
 
 
 
-        context.draw(|canvas| {
+        context.draw(|canvas: &mut Canvas<Gray4>| {
             // canvas.clear();
 
 
             let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
-                background_color: Rgb565::new(0x14, 0x8, 0x4), // pretty dark gray
-                item_background_color: Rgb565::new(0xf, 0x4, 0x2), // darker gray
-                highlight_item_background_color: Rgb565::new(0x1, 0x2, 0x1),
-                border_color: Rgb565::WHITE,
-                highlight_border_color: Rgb565::WHITE,
-                primary_color: Rgb565::CSS_DARK_CYAN,
-                secondary_color: Rgb565::YELLOW,
-                icon_color: Rgb565::WHITE,
-                text_color: Rgb565::WHITE,
+                background_color: Gray4::new(0x2), // pretty dark gray
+                item_background_color: Gray4::new(0x4), // darker gray
+                highlight_item_background_color: Gray4::new(0x6),
+                border_color: Gray4::new(0xd),
+                highlight_border_color: Gray4::new(0xf),
+                primary_color: Gray4::new(0x8),
+                secondary_color: Gray4::new(0xa),
+                icon_color: Gray4::new(0xb),
+                text_color: Gray4::new(0xf),
                 default_widget_height: 4,
                 border_width: 0,
                 highlight_border_width: 1,
@@ -101,18 +102,8 @@ pub async fn arrow_app(context: AppContext) {
                 i += 1;
             }
 
-
             ui.finalize().unwrap();
 
-
-
-
-            // Draw a red diagonal line from (0,0) to (239,319)
-            let line_style = PrimitiveStyle::with_stroke(Rgb565::new(31, 0, 0), 1);
-            Line::new(Point::new(0, 0), Point::new(FRAME_BUFFER_WIDTH as i32, FRAME_BUFFER_HEIGHT as i32))
-                .into_styled(line_style)
-                .draw(canvas)
-                .unwrap();
 
 
 
