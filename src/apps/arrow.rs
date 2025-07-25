@@ -70,15 +70,15 @@ pub async fn arrow_app(context: AppContext) {
                 secondary_color: Gray4::new(0xa),
                 icon_color: Gray4::new(0xb),
                 text_color: Gray4::new(0xf),
-                default_widget_height: 4,
-                border_width: 0,
+                default_widget_height: 6,
+                border_width: 1,
                 highlight_border_width: 1,
-                default_font: mono_font::iso_8859_10::FONT_4X6,
+                default_font: mono_font::iso_8859_10::FONT_7X13,
                 spacing: Spacing {
-                    item_spacing: Size::new(1, 1),
-                    button_padding: Size::new(1, 1),
-                    default_padding: Size::new(1, 1),
-                    window_border_padding: Size::new(1, 1),
+                    item_spacing: Size::new(2, 2),
+                    button_padding: Size::new(4, 2),
+                    default_padding: Size::new(4, 2),
+                    window_border_padding: Size::new(10, 10),
                 },
             });
 
@@ -91,7 +91,7 @@ pub async fn arrow_app(context: AppContext) {
 
 
             ui.clear_background().unwrap();
-            ui.add(Label::new("Basic").with_font(FONT_4X6));
+            ui.add(Label::new("Basic"));
 
             if ui.add_horizontal(Button::new("-")).clicked() {
                 i -= 1;
