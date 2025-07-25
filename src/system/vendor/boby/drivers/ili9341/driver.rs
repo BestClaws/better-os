@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
 use alloc::vec;
-use alloc::vec::Vec;
 use core::iter::once;
 use async_trait::async_trait;
 use defmt::info;
@@ -17,29 +16,12 @@ use esp_hal::gpio::Output;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
-pub trait DisplaySize {
-    const WIDTH: u32;
-    const HEIGHT: u32;
-}
 
-pub struct DisplaySize240x320;
-impl DisplaySize for DisplaySize240x320 {
-    const WIDTH: u32 = 240;
-    const HEIGHT: u32 = 320;
-}
 
-pub struct DisplaySize320x480;
-impl DisplaySize for DisplaySize320x480 {
-    const WIDTH: u32 = 320;
-    const HEIGHT: u32 = 480;
-}
 
-pub trait Mode {
-    fn mode(&self) -> u8;
-    fn is_landscape(&self) -> bool;
-}
 
-impl Mode for Orientation {
+
+impl  Orientation {
     fn mode(&self) -> u8 {
         match self {
             Self::Portrait => 0x40 | 0x08,
@@ -54,7 +36,7 @@ impl Mode for Orientation {
     }
 }
 
-pub enum ModeState {
+pub enum DisplayModeState {
     On,
     Off,
 }
@@ -94,29 +76,36 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
         Self {
             interface,
             reset,
-            width: DisplaySize240x320::WIDTH, // Default size
-            height: DisplaySize240x320::HEIGHT,
-            landscape: false, // Default to Portrait
+            width: 240,
+            height: 320,
+            landscape: false,
         }
     }
 
-    async fn command(&mut self, cmd: Command, args: &[u8]) -> Result<(), DisplayError> {
+    async fn command(&mut self, cmd: Command) -> Result<(), DisplayError> {
+        self.interface
+            .send_commands(U8Iter(&mut once(cmd as u8)))
+            .await
+    }
+
+
+    async fn command_with_args(&mut self, cmd: Command, args: &[u8]) -> Result<(), DisplayError> {
         self.interface
             .send_commands(U8Iter(&mut once(cmd as u8)))
             .await?;
         self.interface
-            .send_data(U8Iter(&mut args.iter().cloned()))
+            .send_data(DataFormat::U8(args))
             .await
     }
 
     async fn write_iter<I: IntoIterator<Item = u16>>(&mut self, data: I) -> Result<(), DisplayError> {
-        self.command(Command::MemoryWrite, &[]).await?;
+        self.command(Command::MemoryWrite).await?;
         let mut iter = data.into_iter();
         self.interface.send_data(U16BEIter(&mut iter)).await
     }
 
     async fn set_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result<(), DisplayError> {
-        self.command(
+        self.command_with_args(
             Command::ColumnAddressSet,
             &[
                 (x0 >> 8) as u8, x0 as u8,
@@ -124,7 +113,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
             ],
         ).await?;
 
-        self.command(
+        self.command_with_args(
             Command::PageAddressSet,
             &[
                 (y0 >> 8) as u8, y0 as u8,
@@ -150,38 +139,38 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
         self.draw_raw_iter(0, 0, self.width as u16 - 1, self.height as u16 - 1, color).await
     }
 
-    pub async fn set_orientation<MODE: Mode>(&mut self, mode: MODE) -> Result<(), DisplayError> {
-        self.command(Command::MemoryAccessControl, &[mode.mode()]).await?;
-        if self.landscape ^ mode.is_landscape() {
+    pub async fn set_orientation(&mut self, orientation: Orientation) -> Result<(), DisplayError> {
+        self.command_with_args(Command::MemoryAccessControl, &[orientation.mode()]).await?;
+        if self.landscape ^ orientation.is_landscape() {
             core::mem::swap(&mut self.height, &mut self.width);
         }
-        self.landscape = mode.is_landscape();
+        self.landscape = orientation.is_landscape();
         Ok(())
     }
 
-    pub async fn sleep_mode(&mut self, mode: ModeState) -> Result<(), DisplayError> {
+    pub async fn sleep_mode(&mut self, mode: DisplayModeState) -> Result<(), DisplayError> {
         match mode {
-            ModeState::On => self.command(Command::SleepModeOn, &[]).await,
-            ModeState::Off => self.command(Command::SleepModeOff, &[]).await,
+            DisplayModeState::On => self.command(Command::SleepModeOn).await,
+            DisplayModeState::Off => self.command(Command::SleepModeOff).await,
         }
     }
 
-    pub async fn display_mode(&mut self, mode: ModeState) -> Result<(), DisplayError> {
+    pub async fn display_mode(&mut self, mode: DisplayModeState) -> Result<(), DisplayError> {
         match mode {
-            ModeState::On => self.command(Command::DisplayOn, &[]).await,
-            ModeState::Off => self.command(Command::DisplayOff, &[]).await,
+            DisplayModeState::On => self.command(Command::DisplayOn).await,
+            DisplayModeState::Off => self.command(Command::DisplayOff).await,
         }
     }
 
-    pub async fn invert_mode(&mut self, mode: ModeState) -> Result<(), DisplayError> {
+    pub async fn invert_mode(&mut self, mode: DisplayModeState) -> Result<(), DisplayError> {
         match mode {
-            ModeState::On => self.command(Command::InvertOn, &[]).await,
-            ModeState::Off => self.command(Command::InvertOff, &[]).await,
+            DisplayModeState::On => self.command(Command::InvertOn).await,
+            DisplayModeState::Off => self.command(Command::InvertOff).await,
         }
     }
 
     pub async fn brightness(&mut self, brightness: u8) -> Result<(), DisplayError> {
-        self.command(Command::SetBrightness, &[brightness]).await
+        self.command_with_args(Command::SetBrightness, &[brightness]).await
     }
 
     pub fn width(&self) -> u32 {
@@ -193,7 +182,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     async fn write_slice(&mut self, data: &[u16]) {
-        self.command(Command::MemoryWrite, &[]).await.unwrap();
+        self.command(Command::MemoryWrite).await.unwrap();
         self.interface.send_data(DataFormat::U16(data)).await.unwrap();
     }
 
@@ -212,13 +201,13 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.reset.set_high().map_err(|_| DisplayError::RSError).expect("Failed to set reset high");
         delay.delay_ms(5).await;
 
-        self.command(Command::SoftwareReset, &[]).await.expect("Failed to send software reset");
+        self.command(Command::SoftwareReset).await.expect("Failed to send software reset");
         delay.delay_ms(120).await;
 
-        self.command(Command::PixelFormatSet, &[0x55]).await.expect("Failed to set pixel format");
-        self.sleep_mode(ModeState::Off).await.expect("Failed to disable sleep mode");
+        self.command_with_args(Command::PixelFormatSet, &[0x55]).await.expect("Failed to set pixel format");
+        self.sleep_mode(DisplayModeState::Off).await.expect("Failed to disable sleep mode");
         delay.delay_ms(5).await;
-        self.display_mode(ModeState::On).await.expect("Failed to enable display");
+        self.display_mode(DisplayModeState::On).await.expect("Failed to enable display");
         self.set_orientation(Orientation::LandscapeFlipped).await.expect("Failed to set orientation");
     }
 
@@ -235,7 +224,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
 
         let mut line_buf = vec![0u16; out_w as usize];
         self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await.unwrap();
-        self.command(Command::MemoryWrite, &[]).await.unwrap();
+        self.command(Command::MemoryWrite).await.unwrap();
 
         for y in 0..out_h {
             let src_y = y / scale;
