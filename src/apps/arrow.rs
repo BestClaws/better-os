@@ -79,25 +79,30 @@ pub async fn arrow_app(context: AppContext) {
                 secondary_color: Gray4::new(0x3),
                 icon_color: Gray4::new(0x0),
                 text_color: Gray4::new(0x0),
-                default_widget_height: 10,
+                default_widget_height: 8,
                 border_width: 2,
                 highlight_border_width: 2,
                 default_font: mono_font::iso_8859_10::FONT_9X18_BOLD,
                 spacing: Spacing {
                     item_spacing: Size::new(2, 2),
                     button_padding: Size::new(6, 2),
-                    default_padding: Size::new(6, 2),
+                    default_padding: Size::new(10, 6),
                     window_border_padding: Size::new(10, 10),
                 },
                 corner_radius: 4,
             });
 
-            if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
+            let mut latest_touch = None;
+
+            while let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive() {
                 info!("Touch: ({}, {})", x, y);
-
-                ui.interact(Interaction::Release(Point::new(x, y)));
-
+                latest_touch = Some(Point::new(x, y));
             }
+
+            if let Some(point) = latest_touch {
+                ui.interact(Interaction::Release(point));
+            }
+
 
 
             ui.clear_background().unwrap();
@@ -105,12 +110,12 @@ pub async fn arrow_app(context: AppContext) {
             ui.add(Slider::new(&mut value, -100..=100));
 
 
-            if ui.add_horizontal(Button::new("-")).clicked() {
+            if ui.add_horizontal(Button::new("DOWN")).clicked() {
                 i -= 1;
             }
 
             ui.add_horizontal(Label::new(format!("{i}").as_ref()));
-            if ui.add_horizontal(Button::new("+")).clicked() {
+            if ui.add_horizontal(Button::new("UP")).clicked() {
                 i += 1;
             }
 

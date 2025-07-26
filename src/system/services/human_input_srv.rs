@@ -14,7 +14,7 @@ pub(crate) enum HumanInputEvent {
 }
 
 
-pub(crate) static HUMAN_INPUT_CH: Channel<CriticalSectionRawMutex, HumanInputEvent, 8> = Channel::new();
+pub(crate) static HUMAN_INPUT_CH: Channel<CriticalSectionRawMutex, HumanInputEvent, 30> = Channel::new();
 
 
 pub(crate) mod sub {
@@ -88,7 +88,7 @@ pub(crate) mod sub {
             }
 
             // Optional debounce delay (adjust as needed)
-            Timer::after_millis(10).await;
+            Timer::after_millis(30).await;
         }
     }
 
