@@ -1,3 +1,4 @@
+use core::marker::PhantomData;
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::{OriginDimensions, Point, Size},
@@ -6,9 +7,6 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 use embedded_graphics_core::pixelcolor::raw::RawU4;
-use core::marker::PhantomData;
-use defmt::info;
-
 /// A statically safe framebuffer-backed canvas.
 pub struct Canvas<'a, C: PixelColor> {
     buffer: &'a mut [u8],
@@ -87,20 +85,26 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
-        let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
-        if area.is_zero_sized() {
+        // Clip the rectangle to canvas bounds
+        let x_start = area.top_left.x.max(0) as u32;
+        let y_start = area.top_left.y.max(0) as u32;
+        let x_end = (area.top_left.x as u32 + area.size.width).min(self.width);
+        let y_end = (area.top_left.y as u32 + area.size.height).min(self.height);
+
+        if x_start >= x_end || y_start >= y_end {
             return Ok(());
         }
 
-        let mut colors = colors.into_iter();
-        let bottom_right = area.bottom_right().unwrap();
-        for y in area.top_left.y..bottom_right.y {
-            for x in area.top_left.x..bottom_right.x {
-                if let Some(color) = colors.next() {
-                    let idx = ((x as u32 + y as u32 * self.width) * 2) as usize;
+        let mut color_iter = colors.into_iter();
+        for y in y_start..y_end {
+            for x in x_start..x_end {
+                if let Some(color) = color_iter.next() {
+                    let idx = (x + y * self.width) * 2;
                     let raw = color.into_storage();
-                    self.buffer[idx] = (raw >> 8) as u8;
-                    self.buffer[idx + 1] = raw as u8;
+                    self.buffer[idx as usize] = (raw >> 8) as u8;
+                    self.buffer[idx as usize + 1] = raw as u8;
+                } else {
+                    return Ok(()); // Iterator exhausted
                 }
             }
         }
@@ -109,9 +113,13 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        // Clip the rectangle to canvas bounds
+        let x_start = area.top_left.x.max(0) as u32;
+        let y_start = area.top_left.y.max(0) as u32;
+        let x_end = (area.top_left.x as u32 + area.size.width).min(self.width);
+        let y_end = (area.top_left.y as u32 + area.size.height).min(self.height);
 
-        let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
-        if area.is_zero_sized() {
+        if x_start >= x_end || y_start >= y_end {
             return Ok(());
         }
 
@@ -119,10 +127,11 @@ impl DrawTarget for Canvas<'_, Rgb565> {
         let high = (raw >> 8) as u8;
         let low = raw as u8;
 
-        let bottom_right = area.bottom_right().unwrap();
-        for y in area.top_left.y..bottom_right.y {
-            for x in area.top_left.x..bottom_right.x {
-                let idx = ((x as u32 + y as u32 * self.width) * 2) as usize;
+        // Optimize for full rows
+        for y in y_start..y_end {
+            let start_idx = (x_start + y * self.width) * 2;
+            let end_idx = (x_end + y * self.width) * 2;
+            for idx in (start_idx as usize..end_idx as usize).step_by(2) {
                 self.buffer[idx] = high;
                 self.buffer[idx + 1] = low;
             }
@@ -132,7 +141,6 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-
         let raw = color.into_storage();
         let high = (raw >> 8) as u8;
         let low = raw as u8;
@@ -163,7 +171,7 @@ impl<'a> Canvas<'a, Gray4> {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        let required = ((width * height + 1) / 2) as usize;
+        let required = (width * height).div_ceil(2) as usize;
         assert!(self.buffer.len() >= required, "Buffer too small for Gray4");
         self.width = width;
         self.height = height;
@@ -177,7 +185,6 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        info!("draw_iter");
         for Pixel(Point { x, y }, color) in pixels {
             if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
                 continue;
@@ -194,7 +201,6 @@ impl DrawTarget for Canvas<'_, Gray4> {
             } else {
                 *byte = (*byte & 0xF0) | value;
             }
-
         }
 
         Ok(())
@@ -203,18 +209,20 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
-        info!("fill_contiguous");
-        let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
-        if area.is_zero_sized() {
+        // Clip the rectangle to canvas bounds
+        let x_start = area.top_left.x.max(0) as u32;
+        let y_start = area.top_left.y.max(0) as u32;
+        let x_end = (area.top_left.x as u32 + area.size.width).min(self.width);
+        let y_end = (area.top_left.y as u32 + area.size.height).min(self.height);
+
+        if x_start >= x_end || y_start >= y_end {
             return Ok(());
         }
 
-        let mut colors = colors.into_iter();
-        let bottom_right = area.bottom_right().unwrap();
-
-        for y in area.top_left.y..bottom_right.y {
-            for x in area.top_left.x..bottom_right.x {
-                if let Some(color) = colors.next() {
+        let mut color_iter = colors.into_iter();
+        for y in y_start..y_end {
+            for x in x_start..x_end {
+                if let Some(color) = color_iter.next() {
                     let pixel_idx = x as usize + y as usize * self.width as usize;
                     let byte_idx = pixel_idx / 2;
                     let is_high = pixel_idx % 2 == 0;
@@ -225,6 +233,8 @@ impl DrawTarget for Canvas<'_, Gray4> {
                     } else {
                         *byte = (*byte & 0xF0) | value;
                     }
+                } else {
+                    return Ok(()); // Iterator exhausted
                 }
             }
         }
@@ -233,75 +243,51 @@ impl DrawTarget for Canvas<'_, Gray4> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        // Compute intersection and check for empty area
-        let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
-        if area.is_zero_sized() {
-            defmt::info!("Empty area, skipping fill");
+        // Clip the rectangle to canvas bounds
+        let x_start = area.top_left.x.max(0) as u32;
+        let y_start = area.top_left.y.max(0) as u32;
+        let x_end = (area.top_left.x as u32 + area.size.width).min(self.width);
+        let y_end = (area.top_left.y as u32 + area.size.height).min(self.height);
+
+        if x_start >= x_end || y_start >= y_end {
             return Ok(());
         }
 
-        // Log area coordinates as integers
-        let top_left_x = area.top_left.x;
-        let top_left_y = area.top_left.y;
-        let bottom_right = area.bottom_right().unwrap();
-        let bottom_right_x = bottom_right.x;
-        let bottom_right_y = bottom_right.y;
-        defmt::info!("Fill area: top_left=({}, {}), bottom_right=({}, {})", top_left_x, top_left_y, bottom_right_x, bottom_right_y);
+        let value = RawU4::from(color).into_inner();
+        let packed = (value << 4) | value;
 
-        // Check buffer size (log but don't fail, as error is infallible)
-        let required_bytes = (self.width as usize * self.height as usize + 1) / 2;
-        if self.buffer.len() < required_bytes {
-            defmt::info!("Buffer too small: {} < {}", self.buffer.len(), required_bytes);
-            return Ok(());
-        }
+        // Optimize for full bytes (two pixels)
+        for y in y_start..y_end {
+            let start_pixel_idx = x_start as usize + y as usize * self.width as usize;
+            let end_pixel_idx = x_end as usize + y as usize * self.width as usize;
 
-        // Get 4-bit color value
-        let value = RawU4::from(color).into_inner() & 0x0F;
-        defmt::info!("Color value: {}", value);
-
-        // Optimize for full-byte fills
-        let full_byte = (value << 4) | value; // Same value in both nibbles
-
-        // Use inclusive range to handle single-pixel height
-        for y in area.top_left.y..=bottom_right.y {
-            let row_start = y as usize * self.width as usize;
-            let mut x = area.top_left.x;
-
-            // Handle unaligned start
-            while x < bottom_right.x && (row_start + x as usize) % 2 != 0 {
-                let pixel_idx = row_start + x as usize;
-                let byte_idx = pixel_idx / 2;
-                self.buffer[byte_idx] = (self.buffer[byte_idx] & 0xF0) | value; // Low nibble
-                x += 1;
-            }
+            // Handle byte-aligned start and end
+            let start_byte_idx = start_pixel_idx / 2;
+            let end_byte_idx = (end_pixel_idx + 1) / 2;
 
             // Fill full bytes
-            while x + 1 < bottom_right.x {
-                let pixel_idx = row_start + x as usize;
-                let byte_idx = pixel_idx / 2;
-                self.buffer[byte_idx] = full_byte;
-                x += 2;
-            }
-
-            // Handle unaligned end
-            if x < bottom_right.x {
-                let pixel_idx = row_start + x as usize;
-                let byte_idx = pixel_idx / 2;
-                self.buffer[byte_idx] = (self.buffer[byte_idx] & 0x0F) | (value << 4); // High nibble
+            for byte_idx in start_byte_idx..end_byte_idx {
+                let pixel_idx = byte_idx * 2;
+                if pixel_idx >= start_pixel_idx && pixel_idx + 1 < end_pixel_idx {
+                    // Full byte write (both pixels)
+                    self.buffer[byte_idx] = packed;
+                } else {
+                    // Partial byte write
+                    let byte = &mut self.buffer[byte_idx];
+                    if pixel_idx >= start_pixel_idx {
+                        *byte = (*byte & 0x0F) | (value << 4);
+                    }
+                    if pixel_idx + 1 < end_pixel_idx {
+                        *byte = (*byte & 0xF0) | value;
+                    }
+                }
             }
         }
-
-        // Log buffer sample around the filled area
-        let start_pixel = top_left_y as usize * self.width as usize + top_left_x as usize;
-        let start_byte = start_pixel / 2;
-        let sample_len = if self.buffer.len() > start_byte + 10 { 10 } else { self.buffer.len() - start_byte };
-        defmt::info!("Buffer sample at byte {}: {:x}", start_byte, &self.buffer[start_byte..start_byte + sample_len]);
 
         Ok(())
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        info!("clear");
         let value = RawU4::from(color).into_inner();
         let packed = (value << 4) | value;
 
