@@ -14,8 +14,8 @@ use embedded_graphics::pixelcolor::{Gray4, GrayColor, PixelColor, Rgb565};
 use embedded_graphics_core::prelude::DrawTarget;
 
 // Animation tuning globals
-const ANIM_STEPS: usize = 8;
-const ANIM_FRAME_DELAY_MS: u64 = 2;
+const ANIM_STEPS: usize = 6;
+const ANIM_FRAME_DELAY_MS: u64 = 30;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ViewMode {
