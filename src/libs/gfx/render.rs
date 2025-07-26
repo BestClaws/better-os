@@ -5,7 +5,7 @@ use embedded_graphics::{
 };
 use embedded_graphics::prelude::{Dimensions, OriginDimensions};
 use embedded_graphics::primitives::Triangle;
-use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::pixelcolor::Gray4;
 use micromath::F32Ext;
 
 use super::math::{Quaternion, Vec3};
@@ -39,20 +39,18 @@ fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<Point> {
     Some(Point::new(x, y))
 }
 
-fn get_grayscale_color(intensity: f32) -> Rgb565 {
+fn get_grayscale_color(intensity: f32) -> Gray4 {
     let clamped = intensity.clamp(0.0, 1.0);
-    // Linearly interpolate between black (0, 0, 0) and white (31, 63, 31) in RGB565
-    let r = (clamped * 31.0).round() as u8; // 5-bit red
-    let g = (clamped * 63.0).round() as u8; // 6-bit green
-    let b = (clamped * 31.0).round() as u8; // 5-bit blue
-    Rgb565::new(r, g, b)
+    // Map to 4-bit grayscale (0-15)
+    let value = (clamped * 15.0).round() as u8;
+    Gray4::new(value)
 }
 
 struct ShadedTriangle {
     p0: Point,
     p1: Point,
     p2: Point,
-    color: Rgb565,
+    color: Gray4,
 }
 
 impl OriginDimensions for ShadedTriangle {
@@ -62,10 +60,10 @@ impl OriginDimensions for ShadedTriangle {
 }
 
 impl Drawable for ShadedTriangle {
-    type Color = Rgb565;
+    type Color = Gray4;
     type Output = ();
 
-    fn draw<D: DrawTarget<Color = Rgb565>>(&self, target: &mut D) -> Result<Self::Output, D::Error> {
+    fn draw<D: DrawTarget<Color = Gray4>>(&self, target: &mut D) -> Result<Self::Output, D::Error> {
         let mut points = [self.p0, self.p1, self.p2];
         points.sort_by_key(|p| p.y);
         let (top, mid, bot) = (points[0], points[1], points[2]);
@@ -111,7 +109,7 @@ impl Drawable for ShadedTriangle {
     }
 }
 
-pub fn draw_model<D: DrawTarget<Color = Rgb565>>(
+pub fn draw_model<D: DrawTarget<Color = Gray4>>(
     display: &mut D,
     model: &Model,
     origin: Vec3,
