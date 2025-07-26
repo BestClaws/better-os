@@ -243,7 +243,6 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             return;
         }
 
-        // Resize line_buf if necessary (for batched lines)
         let batch_size = scale as usize; // Send 'scale' lines at once
         let total_buf_size = out_w as usize * batch_size;
         if self.line_buf.len() < total_buf_size {
@@ -253,10 +252,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await;
         self.command(Command::MemoryWrite).await;
 
-        // Process source rows, batching 'scale' output lines
         for src_y in 0..FRAME_BUFFER_HEIGHT {
-            // Fill buffer for 'scale' output lines
-            let batch_start = src_y * scale;
             for dy in 0..scale {
                 let line_idx = dy * out_w;
                 let mut pixel_idx = line_idx;
@@ -269,7 +265,6 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
                     let rgb565_1 = GRAY4_LUT[nibble1 as usize];
                     let rgb565_2 = GRAY4_LUT[nibble2 as usize];
 
-                    // Replicate each pixel 'scale' times
                     for _ in 0..scale {
                         self.line_buf[pixel_idx as usize] = rgb565_1;
                         pixel_idx += 1;
@@ -281,7 +276,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
                 }
             }
             // Send batched lines
-            self.interface.send_data(DataFormat::U16BE(&mut self.line_buf[..out_w as usize * batch_size])).await.unwrap();
+            self.interface.send_data(U16BE(&mut self.line_buf[..out_w as usize * batch_size])).await.unwrap();
         }
     }
 
