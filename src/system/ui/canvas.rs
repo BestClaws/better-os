@@ -71,7 +71,6 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        info!("Rgb565::draw_iter");
         for Pixel(Point { x, y }, color) in pixels {
             if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
                 continue;
@@ -88,7 +87,6 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
-        info!("Rgb565::fill_contiguous: {:?}", area);
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
             return Ok(());
@@ -111,7 +109,6 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        info!("Rgb565::fill_solid: {:?}", area);
 
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
@@ -135,7 +132,6 @@ impl DrawTarget for Canvas<'_, Rgb565> {
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        info!("Rgb565::clear");
 
         let raw = color.into_storage();
         let high = (raw >> 8) as u8;
@@ -181,7 +177,6 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        info!("Gray4::draw_iter");
 
         for Pixel(Point { x, y }, color) in pixels {
             if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
@@ -200,7 +195,6 @@ impl DrawTarget for Canvas<'_, Gray4> {
                 *byte = (*byte & 0xF0) | value;
             }
 
-            info!("  -> pixel ({}, {}) = {:X}", x, y, value);
         }
 
         Ok(())
@@ -209,11 +203,9 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
-        info!("Gray4::fill_contiguous: {:?}", area);
 
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
-            info!("Gray4::fill_contiguous: area is zero after intersection");
             return Ok(());
         }
 
@@ -241,11 +233,9 @@ impl DrawTarget for Canvas<'_, Gray4> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        info!("Gray4::fill_solid: {:?}", area);
 
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
-            info!("Gray4::fill_solid: area is zero after intersection");
             return Ok(());
         }
 
@@ -271,7 +261,6 @@ impl DrawTarget for Canvas<'_, Gray4> {
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        info!("Gray4::clear");
 
         let value = RawU4::from(color).into_inner();
         let packed = (value << 4) | value;

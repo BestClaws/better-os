@@ -5,7 +5,7 @@ use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, text::{Text}, mono_
 use core::fmt::Write;
 use embedded_graphics::mono_font::{ascii, MonoTextStyle};
 use embedded_graphics::mono_font::ascii::FONT_4X6;
-use embedded_graphics::primitives::{Line, PrimitiveStyle, PrimitiveStyleBuilder, RoundedRectangle};
+use embedded_graphics::primitives::{Line, PrimitiveStyle, PrimitiveStyleBuilder, RoundedRectangle, StyledDrawable};
 use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
 use embedded_graphics_core::primitives::Rectangle;
 use heapless::String;
@@ -46,10 +46,13 @@ pub async fn arrow_app(context: AppContext) {
         intensity_range: (0.2, 0.8),
     };
 
-    let mut i: i32 = 0;
     let mut num: u32 = 0;
     let mut value = 0i16;
 
+
+
+    let style = PrimitiveStyleBuilder::default().fill_color(Gray4::WHITE).stroke_color(Gray4::WHITE).stroke_width(10).build();
+    let line = Line::new(Point::new(0, 0), Point::new(FRAME_BUFFER_WIDTH as i32, FRAME_BUFFER_HEIGHT as i32));
 
     loop {
         if !context.is_focused().await {
@@ -60,54 +63,60 @@ pub async fn arrow_app(context: AppContext) {
 
 
 
+
         context.draw(|canvas: &mut Canvas<Gray4>| {
-            // canvas.clear();
+            canvas.clear(Gray4::new(0x8)).unwrap();
+            line.into_styled(style).draw(canvas).unwrap();
 
 
-            let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
-                background_color: Gray4::new(0x2), // pretty dark gray
-                item_background_color: Gray4::new(0x4), // darker gray
-                highlight_item_background_color: Gray4::new(0x6),
-                border_color: Gray4::new(0xd),
-                highlight_border_color: Gray4::new(0xf),
-                primary_color: Gray4::new(0x8),
-                secondary_color: Gray4::new(0xa),
-                icon_color: Gray4::new(0xb),
-                text_color: Gray4::new(0xf),
-                default_widget_height: 6,
-                border_width: 1,
-                highlight_border_width: 1,
-                default_font: mono_font::iso_8859_10::FONT_7X13,
-                spacing: Spacing {
-                    item_spacing: Size::new(2, 2),
-                    button_padding: Size::new(4, 2),
-                    default_padding: Size::new(4, 2),
-                    window_border_padding: Size::new(10, 10),
-                },
-                corner_radius: 4,
-            });
-
-            if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
-                info!("Touch: ({}, {})", x, y);
-
-                ui.interact(Interaction::Release(Point::new(x, y)));
-
-            }
 
 
-            ui.clear_background().unwrap();
-            ui.add(Label::new(format!("count: {num}").as_ref()));
-            ui.add(Slider::new(&mut value, -100..=100));
-
-
-            if ui.add_horizontal(Button::new("-")).clicked() {
-                i -= 1;
-            }
-
-            ui.add_horizontal(Label::new(format!("{i}").as_ref()));
-            if ui.add_horizontal(Button::new("+")).clicked() {
-                i += 1;
-            }
+            //
+            //
+            // let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
+            //     background_color: Gray4::new(0x2), // pretty dark gray
+            //     item_background_color: Gray4::new(0x4), // darker gray
+            //     highlight_item_background_color: Gray4::new(0x6),
+            //     border_color: Gray4::new(0xd),
+            //     highlight_border_color: Gray4::new(0xf),
+            //     primary_color: Gray4::new(0x8),
+            //     secondary_color: Gray4::new(0xa),
+            //     icon_color: Gray4::new(0xb),
+            //     text_color: Gray4::new(0xf),
+            //     default_widget_height: 6,
+            //     border_width: 1,
+            //     highlight_border_width: 1,
+            //     default_font: mono_font::iso_8859_10::FONT_7X13,
+            //     spacing: Spacing {
+            //         item_spacing: Size::new(2, 2),
+            //         button_padding: Size::new(4, 2),
+            //         default_padding: Size::new(4, 2),
+            //         window_border_padding: Size::new(10, 10),
+            //     },
+            //     corner_radius: 4,
+            // });
+            //
+            // if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
+            //     info!("Touch: ({}, {})", x, y);
+            //
+            //     ui.interact(Interaction::Release(Point::new(x, y)));
+            //
+            // }
+            //
+            //
+            // ui.clear_background().unwrap();
+            // ui.add(Label::new(format!("count: {num}").as_ref()));
+            // ui.add(Slider::new(&mut value, -100..=100));
+            //
+            //
+            // if ui.add_horizontal(Button::new("-")).clicked() {
+            //     i -= 1;
+            // }
+            //
+            // ui.add_horizontal(Label::new(format!("{i}").as_ref()));
+            // if ui.add_horizontal(Button::new("+")).clicked() {
+            //     i += 1;
+            // }
 
 
 
@@ -117,7 +126,7 @@ pub async fn arrow_app(context: AppContext) {
         }).await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(16)).await;
+        Timer::after(Duration::from_millis(120)).await;
         num += 1;
     }
 }
