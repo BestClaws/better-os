@@ -177,7 +177,7 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-
+        info!("draw_iter");
         for Pixel(Point { x, y }, color) in pixels {
             if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
                 continue;
@@ -203,7 +203,7 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
     where I: IntoIterator<Item = Self::Color>,
     {
-
+        info!("fill_contiguous");
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
             return Ok(());
@@ -233,35 +233,75 @@ impl DrawTarget for Canvas<'_, Gray4> {
     }
 
     fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-
+        // Compute intersection and check for empty area
         let area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
         if area.is_zero_sized() {
+            defmt::info!("Empty area, skipping fill");
             return Ok(());
         }
 
-        let value = RawU4::from(color).into_inner();
-
+        // Log area coordinates as integers
+        let top_left_x = area.top_left.x;
+        let top_left_y = area.top_left.y;
         let bottom_right = area.bottom_right().unwrap();
+        let bottom_right_x = bottom_right.x;
+        let bottom_right_y = bottom_right.y;
+        defmt::info!("Fill area: top_left=({}, {}), bottom_right=({}, {})", top_left_x, top_left_y, bottom_right_x, bottom_right_y);
 
-        for y in area.top_left.y..bottom_right.y {
-            for x in area.top_left.x..bottom_right.x {
-                let pixel_idx = x as usize + y as usize * self.width as usize;
+        // Check buffer size (log but don't fail, as error is infallible)
+        let required_bytes = (self.width as usize * self.height as usize + 1) / 2;
+        if self.buffer.len() < required_bytes {
+            defmt::info!("Buffer too small: {} < {}", self.buffer.len(), required_bytes);
+            return Ok(());
+        }
+
+        // Get 4-bit color value
+        let value = RawU4::from(color).into_inner() & 0x0F;
+        defmt::info!("Color value: {}", value);
+
+        // Optimize for full-byte fills
+        let full_byte = (value << 4) | value; // Same value in both nibbles
+
+        // Use inclusive range to handle single-pixel height
+        for y in area.top_left.y..=bottom_right.y {
+            let row_start = y as usize * self.width as usize;
+            let mut x = area.top_left.x;
+
+            // Handle unaligned start
+            while x < bottom_right.x && (row_start + x as usize) % 2 != 0 {
+                let pixel_idx = row_start + x as usize;
                 let byte_idx = pixel_idx / 2;
-                let is_high = pixel_idx % 2 == 0;
-                let byte = &mut self.buffer[byte_idx];
-                if is_high {
-                    *byte = (*byte & 0x0F) | (value << 4);
-                } else {
-                    *byte = (*byte & 0xF0) | value;
-                }
+                self.buffer[byte_idx] = (self.buffer[byte_idx] & 0xF0) | value; // Low nibble
+                x += 1;
+            }
+
+            // Fill full bytes
+            while x + 1 < bottom_right.x {
+                let pixel_idx = row_start + x as usize;
+                let byte_idx = pixel_idx / 2;
+                self.buffer[byte_idx] = full_byte;
+                x += 2;
+            }
+
+            // Handle unaligned end
+            if x < bottom_right.x {
+                let pixel_idx = row_start + x as usize;
+                let byte_idx = pixel_idx / 2;
+                self.buffer[byte_idx] = (self.buffer[byte_idx] & 0x0F) | (value << 4); // High nibble
             }
         }
+
+        // Log buffer sample around the filled area
+        let start_pixel = top_left_y as usize * self.width as usize + top_left_x as usize;
+        let start_byte = start_pixel / 2;
+        let sample_len = if self.buffer.len() > start_byte + 10 { 10 } else { self.buffer.len() - start_byte };
+        defmt::info!("Buffer sample at byte {}: {:x}", start_byte, &self.buffer[start_byte..start_byte + sample_len]);
 
         Ok(())
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-
+        info!("clear");
         let value = RawU4::from(color).into_inner();
         let packed = (value << 4) | value;
 

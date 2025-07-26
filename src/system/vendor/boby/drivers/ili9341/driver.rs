@@ -312,7 +312,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
 
 fn gray4_to_rgb565(gray: u8) -> u16 {
     // Map 4-bit grayscale (0-15) to 30%-100% intensity (77-255 in 8-bit)
-    let min_intensity = 77u16; // 30% of 255
+    let min_intensity = 30u16; // 30% of 255
     let max_intensity = 255u16; // 100% of 255
     let gamma = 220; // Gamma value of 2.2, scaled to 100 for integer math
     let intensity = if gray == 0 {

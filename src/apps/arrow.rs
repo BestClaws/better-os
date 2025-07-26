@@ -49,10 +49,7 @@ pub async fn arrow_app(context: AppContext) {
     let mut num: u32 = 0;
     let mut value = 0i16;
 
-
-
-    let style = PrimitiveStyleBuilder::default().fill_color(Gray4::WHITE).stroke_color(Gray4::WHITE).stroke_width(10).build();
-    let line = Line::new(Point::new(0, 0), Point::new(FRAME_BUFFER_WIDTH as i32, FRAME_BUFFER_HEIGHT as i32));
+    let mut i = 0;
 
     loop {
         if !context.is_focused().await {
@@ -66,57 +63,56 @@ pub async fn arrow_app(context: AppContext) {
 
         context.draw(|canvas: &mut Canvas<Gray4>| {
             canvas.clear(Gray4::new(0x8)).unwrap();
-            line.into_styled(style).draw(canvas).unwrap();
 
 
 
 
-            //
-            //
-            // let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
-            //     background_color: Gray4::new(0x2), // pretty dark gray
-            //     item_background_color: Gray4::new(0x4), // darker gray
-            //     highlight_item_background_color: Gray4::new(0x6),
-            //     border_color: Gray4::new(0xd),
-            //     highlight_border_color: Gray4::new(0xf),
-            //     primary_color: Gray4::new(0x8),
-            //     secondary_color: Gray4::new(0xa),
-            //     icon_color: Gray4::new(0xb),
-            //     text_color: Gray4::new(0xf),
-            //     default_widget_height: 6,
-            //     border_width: 1,
-            //     highlight_border_width: 1,
-            //     default_font: mono_font::iso_8859_10::FONT_7X13,
-            //     spacing: Spacing {
-            //         item_spacing: Size::new(2, 2),
-            //         button_padding: Size::new(4, 2),
-            //         default_padding: Size::new(4, 2),
-            //         window_border_padding: Size::new(10, 10),
-            //     },
-            //     corner_radius: 4,
-            // });
-            //
-            // if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
-            //     info!("Touch: ({}, {})", x, y);
-            //
-            //     ui.interact(Interaction::Release(Point::new(x, y)));
-            //
-            // }
-            //
-            //
-            // ui.clear_background().unwrap();
-            // ui.add(Label::new(format!("count: {num}").as_ref()));
-            // ui.add(Slider::new(&mut value, -100..=100));
-            //
-            //
-            // if ui.add_horizontal(Button::new("-")).clicked() {
-            //     i -= 1;
-            // }
-            //
-            // ui.add_horizontal(Label::new(format!("{i}").as_ref()));
-            // if ui.add_horizontal(Button::new("+")).clicked() {
-            //     i += 1;
-            // }
+
+
+            let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
+                background_color: Gray4::new(0x2), // pretty dark gray
+                item_background_color: Gray4::new(0x4), // darker gray
+                highlight_item_background_color: Gray4::new(0x6),
+                border_color: Gray4::new(0xd),
+                highlight_border_color: Gray4::new(0xf),
+                primary_color: Gray4::new(0x8),
+                secondary_color: Gray4::new(0xa),
+                icon_color: Gray4::new(0xb),
+                text_color: Gray4::new(0xf),
+                default_widget_height: 6,
+                border_width: 3,
+                highlight_border_width: 3,
+                default_font: mono_font::iso_8859_10::FONT_7X13,
+                spacing: Spacing {
+                    item_spacing: Size::new(2, 2),
+                    button_padding: Size::new(6, 2),
+                    default_padding: Size::new(6, 2),
+                    window_border_padding: Size::new(0, 0),
+                },
+                corner_radius: 4,
+            });
+
+            if let Ok(HumanInputEvent::Touch(x, y)) = HUMAN_INPUT_CH.try_receive()  {
+                info!("Touch: ({}, {})", x, y);
+
+                ui.interact(Interaction::Release(Point::new(x, y)));
+
+            }
+
+
+            ui.clear_background().unwrap();
+            ui.add(Label::new(format!("count: {num}").as_ref()));
+            ui.add(Slider::new(&mut value, -100..=100));
+
+
+            if ui.add_horizontal(Button::new("-")).clicked() {
+                i -= 1;
+            }
+
+            ui.add_horizontal(Label::new(format!("{i}").as_ref()));
+            if ui.add_horizontal(Button::new("+")).clicked() {
+                i += 1;
+            }
 
 
 
