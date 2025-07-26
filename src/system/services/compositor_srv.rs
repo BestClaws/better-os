@@ -28,59 +28,59 @@ pub async fn compositor_service(
         let mut last_slide: Option<SlideDir> = None;
         let mut toggle_view = false;
 
-        // // Drain all available input events
-        // while let Ok(event) = HUMAN_INPUT_CH.try_receive() {
-        //     match event {
-        //         HumanInputEvent::NavUp => {
-        //             last_slide = Some(SlideDir::Right);
-        //         }
-        //         HumanInputEvent::NavDown => {
-        //             last_slide = Some(SlideDir::Left);
-        //         }
-        //         HumanInputEvent::OkPressed => {
-        //             toggle_view = true;
-        //         }
-        //         other => {
-        //             // Forward input to current app
-        //             let mut comp = compositor.lock().await;
-        //             let current = comp.current_handle();
-        //             if let Some(window) = comp.get_window_mut(current) {
-        //                 let _ = window.input_sender().try_send(other);
-        //             }
-        //         }
-        //     }
-        // }
+        // Drain all available input events
+        while let Ok(event) = HUMAN_INPUT_CH.try_receive() {
+            match event {
+                HumanInputEvent::Touch(_, _) => {
+                    last_slide = Some(SlideDir::Right);
+                }
+                HumanInputEvent::NavDown => {
+                    last_slide = Some(SlideDir::Left);
+                }
+                HumanInputEvent::OkPressed => {
+                    toggle_view = true;
+                }
+                other => {
+                    // Forward input to current app
+                    let mut comp = compositor.lock().await;
+                    let current = comp.current_handle().unwrap();
+                    if let Some(window) = comp.get_window_mut(current) {
+                        let _ = window.input_sender().try_send(other);
+                    }
+                }
+            }
+        }
 
-        // // Apply slide or view toggle logic
-        // if let Some(dir) = last_slide {
-        //     let mut comp = compositor.lock().await;
-        //     comp.animate_slide(dir).await;
-        //     comp.step().await;
-        // } else if toggle_view {
-        //     let mut comp = compositor.lock().await;
-        //     comp.toggle_view();
-        //     let current = comp.current_handle();
-        //     comp.request_redraw(current);
-        //     comp.step().await;
-        // } else {
+        // Apply slide or view toggle logic
+        if let Some(dir) = last_slide {
+            let mut comp = compositor.lock().await;
+            comp.animate_slide(dir).await;
+            comp.step().await;
+        } else if toggle_view {
+            let mut comp = compositor.lock().await;
+            comp.toggle_view();
+            let current = comp.current_handle().unwrap();
+            comp.request_redraw(current);
+            comp.step().await;
+        } else {
 
-        // No user input: step once every ~100ms for idle refresh
-        Timer::after(Duration::from_millis(100)).await;
-        let Some(current) = compositor.lock().await.current_handle() else {
-            Timer::after_nanos(0).await;
-            continue;
-        };
-        compositor.lock().await.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
-        compositor.lock().await.step().await;
-
-
-        // }
+            // No user input: step once every ~100ms for idle refresh
+            Timer::after(Duration::from_millis(100)).await;
+            let Some(current) = compositor.lock().await.current_handle() else {
+                Timer::after_nanos(0).await;
+                continue;
+            };
+            compositor.lock().await.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
+            compositor.lock().await.step().await;
 
 
-        // // Sleep remaining time if loop was too fast (ensure ~10Hz)
-        // let elapsed = Instant::now() - idle_start;
-        // if elapsed < Duration::from_millis(30) {
-        //     Timer::after(Duration::from_millis(100) - elapsed).await;
-        // }
+        }
+
+
+        // Sleep remaining time if loop was too fast (ensure ~10Hz)
+        let elapsed = Instant::now() - idle_start;
+        if elapsed < Duration::from_millis(30) {
+            Timer::after(Duration::from_millis(100) - elapsed).await;
+        }
     }
 }

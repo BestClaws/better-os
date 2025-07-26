@@ -316,7 +316,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             }
         }
 
-        info!("transfer time: {} ms", transfer_time / 1000);
+        // info!("transfer time: {} ms", transfer_time / 1000);
     }
 
 
