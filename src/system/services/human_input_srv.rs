@@ -26,7 +26,7 @@ pub(crate) mod sub {
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
     use crate::system::hal::touch::AsyncTouch;
-    use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
+    use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
     use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 
     #[embassy_executor::task]
@@ -80,8 +80,8 @@ pub(crate) mod sub {
             // Touch pressure threshold (ignore light/noisy touches)
             if z > 0 {
                 // Normalize/clamp x and y to a max of 2000
-                let x = ((x as f32 / 2000.0) * (320 / 2) as f32) as i32;
-                let y = ((y as f32 / 2000.0) * (240 / 2) as f32) as i32;
+                let x = ((x as f32 / 2000.0) * (320 / FRAME_SCALE_FACTOR) as f32) as i32;
+                let y = ((y as f32 / 2000.0) * (240 / FRAME_SCALE_FACTOR) as f32) as i32;
 
                 info!("Touch detected: x = {}, y = {}, z = {}", x, y, z);
                 HUMAN_INPUT_CH.send(HumanInputEvent::Touch(x, y)).await;

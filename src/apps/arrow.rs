@@ -70,24 +70,24 @@ pub async fn arrow_app(context: AppContext) {
 
 
             let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
-                background_color: Gray4::new(0x2), // pretty dark gray
-                item_background_color: Gray4::new(0x4), // darker gray
-                highlight_item_background_color: Gray4::new(0x6),
-                border_color: Gray4::new(0xd),
-                highlight_border_color: Gray4::new(0xf),
-                primary_color: Gray4::new(0x8),
-                secondary_color: Gray4::new(0xa),
-                icon_color: Gray4::new(0xb),
-                text_color: Gray4::new(0xf),
-                default_widget_height: 6,
-                border_width: 3,
-                highlight_border_width: 3,
-                default_font: mono_font::iso_8859_10::FONT_7X13,
+                background_color: Gray4::new(0xf), // pretty dark gray
+                item_background_color: Gray4::new(0xd), // darker gray
+                highlight_item_background_color: Gray4::new(0xb),
+                border_color: Gray4::new(0x0),
+                highlight_border_color: Gray4::new(0x2),
+                primary_color: Gray4::new(0xc),
+                secondary_color: Gray4::new(0x3),
+                icon_color: Gray4::new(0x0),
+                text_color: Gray4::new(0x0),
+                default_widget_height: 10,
+                border_width: 2,
+                highlight_border_width: 2,
+                default_font: mono_font::iso_8859_10::FONT_9X18_BOLD,
                 spacing: Spacing {
                     item_spacing: Size::new(2, 2),
                     button_padding: Size::new(6, 2),
                     default_padding: Size::new(6, 2),
-                    window_border_padding: Size::new(0, 0),
+                    window_border_padding: Size::new(10, 10),
                 },
                 corner_radius: 4,
             });
