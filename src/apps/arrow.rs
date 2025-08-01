@@ -40,6 +40,13 @@ pub async fn arrow_app(context: AppContext) {
         fov_deg: 45.0,
         light_dir: Vec3(0.4, -0.4, -0.8),
         intensity_range: (0.2, 0.8),
+        enable_backface_culling: true,
+        enable_zbuffer: true,
+        enable_lighting: true,
+        enable_depth_sorting: true,
+        enable_near_clipping: true,
+        enable_frustum_clipping: false,
+        enable_wireframe: false,
     };
 
     loop {

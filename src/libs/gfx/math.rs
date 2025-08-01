@@ -1,24 +1,51 @@
+// math.rs
+
 use micromath::F32Ext;
 
-#[derive(Clone, Copy)]
+/// A 3D vector with common vector math operations
+#[derive(Clone, Copy, Debug)]
 pub struct Vec3(pub f32, pub f32, pub f32);
 
 impl Vec3 {
+    /// Normalize the vector to have a length of 1. Returns a zero vector if magnitude is too small.
+    #[inline(always)]
     pub fn normalize(self) -> Self {
-        let mag = (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt();
-        if mag < 0.0001 {
+        let mag_sq = self.0 * self.0 + self.1 * self.1 + self.2 * self.2;
+        if mag_sq < 1e-8 {
             Vec3(0.0, 0.0, 0.0)
         } else {
-            Vec3(self.0 / mag, self.1 / mag, self.2 / mag)
+            let inv_mag = 1.0 / mag_sq.sqrt();
+            Vec3(self.0 * inv_mag, self.1 * inv_mag, self.2 * inv_mag)
         }
     }
 
+    /// Compute the dot product with another vector
+    #[inline(always)]
     pub fn dot(self, other: Self) -> f32 {
         self.0 * other.0 + self.1 * other.1 + self.2 * other.2
     }
+
+    /// Add two vectors
+    #[inline(always)]
+    pub fn add(self, other: Self) -> Self {
+        Vec3(self.0 + other.0, self.1 + other.1, self.2 + other.2)
+    }
+
+    /// Subtract another vector from this one
+    #[inline(always)]
+    pub fn sub(self, other: Self) -> Self {
+        Vec3(self.0 - other.0, self.1 - other.1, self.2 - other.2)
+    }
+
+    /// Multiply vector by a scalar
+    #[inline(always)]
+    pub fn scale(self, factor: f32) -> Self {
+        Vec3(self.0 * factor, self.1 * factor, self.2 * factor)
+    }
 }
 
-#[derive(Clone, Copy)]
+/// A quaternion representing rotation in 3D space
+#[derive(Clone, Copy, Debug)]
 pub struct Quaternion {
     pub w: f32,
     pub x: f32,
@@ -27,17 +54,21 @@ pub struct Quaternion {
 }
 
 impl Quaternion {
+    /// Create a unit quaternion from an axis-angle representation
+    #[inline(always)]
     pub fn from_axis_angle(axis: Vec3, angle_rad: f32) -> Self {
-        let (sin_a, cos_a) = (angle_rad / 2.0).sin_cos();
-        let mag = (axis.0 * axis.0 + axis.1 * axis.1 + axis.2 * axis.2).sqrt();
-        let (x, y, z) = if mag < 0.0001 {
-            (0.0, 0.0, 0.0)
-        } else {
-            (axis.0 / mag * sin_a, axis.1 / mag * sin_a, axis.2 / mag * sin_a)
-        };
-        Quaternion { w: cos_a, x, y, z }
+        let (sin_half_angle, cos_half_angle) = (angle_rad * 0.5).sin_cos();
+        let norm_axis = axis.normalize();
+        Quaternion {
+            w: cos_half_angle,
+            x: norm_axis.0 * sin_half_angle,
+            y: norm_axis.1 * sin_half_angle,
+            z: norm_axis.2 * sin_half_angle,
+        }
     }
 
+    /// Multiply two quaternions (combining their rotations)
+    #[inline(always)]
     pub fn mul(self, other: Quaternion) -> Quaternion {
         Quaternion {
             w: self.w * other.w - self.x * other.x - self.y * other.y - self.z * other.z,
@@ -47,6 +78,8 @@ impl Quaternion {
         }
     }
 
+    /// Rotate a 3D vector using this quaternion
+    #[inline(always)]
     pub fn rotate_vector(self, v: Vec3) -> Vec3 {
         let q_vec = Quaternion { w: 0.0, x: v.0, y: v.1, z: v.2 };
         let q_conj = Quaternion { w: self.w, x: -self.x, y: -self.y, z: -self.z };

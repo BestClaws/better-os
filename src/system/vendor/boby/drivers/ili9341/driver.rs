@@ -231,7 +231,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.sleep_mode(false).await;
         delay.delay_ms(5).await;
         self.display_power_mode(true).await;
-        self.invert_mode(true).await;
+        self.invert_mode(false).await;
         self.set_orientation(Orientation::LandscapeFlipped).await;
     }
 

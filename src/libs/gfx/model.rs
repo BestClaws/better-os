@@ -1,17 +1,21 @@
+// model.rs
+
 use super::math::Vec3;
 use defmt::Format;
 
-// Maximum triangles supported (adjust based on MCU memory)
+/// Configuration: Maximum allowed geometry size for models
 pub(crate) const MAX_TRIANGLES: usize = 50;
 pub(crate) const MAX_VERTICES: usize = 50;
 
-#[derive(Clone, Copy)]
+/// A triangle in a 3D model, represented by indices into the vertex buffer
+#[derive(Clone, Copy, Debug)]
 pub struct Triangle {
-    pub vertices: [usize; 3], // Indices into vertex array
-    pub normal: Vec3,
+    pub vertices: [usize; 3], // Vertex indices into the model's vertex array
+    pub normal: Vec3,         // Face normal vector for lighting calculations
 }
 
-#[derive(Clone, Copy)]
+/// A 3D model with pre-allocated vertex and triangle buffers
+#[derive(Clone, Copy, Debug)]
 pub struct Model {
     pub vertices: [Vec3; MAX_VERTICES],
     pub vertex_count: usize,
@@ -20,6 +24,7 @@ pub struct Model {
 }
 
 impl Model {
+    /// Create a new, empty model
     pub fn new() -> Self {
         Model {
             vertices: [Vec3(0.0, 0.0, 0.0); MAX_VERTICES],
@@ -29,6 +34,7 @@ impl Model {
         }
     }
 
+    /// Adds a vertex to the model
     pub fn add_vertex(&mut self, vertex: Vec3) -> Result<usize, StlError> {
         if self.vertex_count >= MAX_VERTICES {
             return Err(StlError::VertexCapacityExceeded);
@@ -38,6 +44,7 @@ impl Model {
         Ok(self.vertex_count - 1)
     }
 
+    /// Adds a triangle to the model using indices of existing vertices
     pub fn add_triangle(&mut self, v0: usize, v1: usize, v2: usize, normal: Vec3) -> Result<(), StlError> {
         if self.triangle_count >= MAX_TRIANGLES {
             return Err(StlError::TriangleCapacityExceeded);
@@ -51,6 +58,7 @@ impl Model {
     }
 }
 
+/// Errors that may occur while parsing an STL file or manipulating a model
 #[derive(Debug, Format)]
 pub enum StlError {
     InvalidHeader,
@@ -62,13 +70,14 @@ pub enum StlError {
     InvalidVertexIndex,
 }
 
+/// Parses a binary STL buffer into a Model structure
 pub fn parse_binary_stl(buffer: &[u8]) -> Result<Model, StlError> {
     if buffer.len() < 84 {
         return Err(StlError::BufferTooSmall);
     }
 
-    // Skip 80-byte header
     let triangle_count = u32::from_le_bytes([buffer[80], buffer[81], buffer[82], buffer[83]]) as usize;
+
     if triangle_count > MAX_TRIANGLES {
         return Err(StlError::TooManyTriangles);
     }
@@ -82,57 +91,54 @@ pub fn parse_binary_stl(buffer: &[u8]) -> Result<Model, StlError> {
 
     for i in 0..triangle_count {
         let offset = 84 + i * 50;
-        // Read normal
+
+        // Parse normal vector
         let normal = Vec3(
-            f32::from_le_bytes([buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]]),
-            f32::from_le_bytes([buffer[offset + 4], buffer[offset + 5], buffer[offset + 6], buffer[offset + 7]]),
-            f32::from_le_bytes([buffer[offset + 8], buffer[offset + 9], buffer[offset + 10], buffer[offset + 11]]),
+            f32::from_le_bytes(buffer[offset..offset + 4].try_into().unwrap()),
+            f32::from_le_bytes(buffer[offset + 4..offset + 8].try_into().unwrap()),
+            f32::from_le_bytes(buffer[offset + 8..offset + 12].try_into().unwrap()),
         );
 
-        // Read vertices
-        let vertices: [Vec3; 3] = [
-            Vec3(
-                f32::from_le_bytes([buffer[offset + 12], buffer[offset + 13], buffer[offset + 14], buffer[offset + 15]]),
-                f32::from_le_bytes([buffer[offset + 16], buffer[offset + 17], buffer[offset + 18], buffer[offset + 19]]),
-                f32::from_le_bytes([buffer[offset + 20], buffer[offset + 21], buffer[offset + 22], buffer[offset + 23]]),
-            ),
-            Vec3(
-                f32::from_le_bytes([buffer[offset + 24], buffer[offset + 25], buffer[offset + 26], buffer[offset + 27]]),
-                f32::from_le_bytes([buffer[offset + 28], buffer[offset + 29], buffer[offset + 30], buffer[offset + 31]]),
-                f32::from_le_bytes([buffer[offset + 32], buffer[offset + 33], buffer[offset + 34], buffer[offset + 35]]),
-            ),
-            Vec3(
-                f32::from_le_bytes([buffer[offset + 36], buffer[offset + 37], buffer[offset + 38], buffer[offset + 39]]),
-                f32::from_le_bytes([buffer[offset + 40], buffer[offset + 41], buffer[offset + 42], buffer[offset + 43]]),
-                f32::from_le_bytes([buffer[offset + 44], buffer[offset + 45], buffer[offset + 46], buffer[offset + 47]]),
-            ),
-        ];
+        // Parse the 3 vertices of the triangle
+        let mut vertices: [Vec3; 3] = [Vec3(0.0, 0.0, 0.0); 3];
+        for j in 0..3 {
+            let base = offset + 12 + j * 12;
+            vertices[j] = Vec3(
+                f32::from_le_bytes(buffer[base..base + 4].try_into().unwrap()),
+                f32::from_le_bytes(buffer[base + 4..base + 8].try_into().unwrap()),
+                f32::from_le_bytes(buffer[base + 8..base + 12].try_into().unwrap()),
+            );
+        }
 
-        // Add vertices, reusing duplicates
-        let mut vertex_indices = [0; 3];
+        // Deduplicate vertices based on position (naive O(n^2) match)
+        let mut vertex_indices = [0usize; 3];
         for (j, v) in vertices.iter().enumerate() {
             let mut found = false;
             for k in 0..unique_vertices {
-                if let Some(idx) = vertex_map[k] {
-                    if (model.vertices[idx].0 - v.0).abs() < 0.0001 &&
-                        (model.vertices[idx].1 - v.1).abs() < 0.0001 &&
-                        (model.vertices[idx].2 - v.2).abs() < 0.0001 {
-                        vertex_indices[j] = idx;
+                if let Some(existing_idx) = vertex_map[k] {
+                    let existing = model.vertices[existing_idx];
+                    if (existing.0 - v.0).abs() < 0.0001 &&
+                        (existing.1 - v.1).abs() < 0.0001 &&
+                        (existing.2 - v.2).abs() < 0.0001 {
+                        vertex_indices[j] = existing_idx;
                         found = true;
                         break;
                     }
                 }
             }
+
             if !found {
                 if unique_vertices >= MAX_VERTICES {
                     return Err(StlError::TooManyVertices);
                 }
-                vertex_indices[j] = model.add_vertex(*v)?;
-                vertex_map[unique_vertices] = Some(vertex_indices[j]);
+                let new_idx = model.add_vertex(*v)?;
+                vertex_map[unique_vertices] = Some(new_idx);
+                vertex_indices[j] = new_idx;
                 unique_vertices += 1;
             }
         }
 
+        // Add triangle to model
         model.add_triangle(vertex_indices[0], vertex_indices[1], vertex_indices[2], normal)?;
     }
 

@@ -1,3 +1,4 @@
+// render.rs
 #![no_std]
 
 use core::iter::Iterator;
@@ -12,26 +13,43 @@ use micromath::F32Ext;
 use super::math::{Quaternion, Vec3};
 use super::model::{Model, MAX_TRIANGLES, MAX_VERTICES};
 
-/// Rendering options for the 3D software renderer
+/// Configuration structure for rendering the 3D model.
+/// All features can be toggled individually for performance vs quality trade-offs.
+#[derive(Clone, Copy)]
 pub struct RenderOptions {
-    /// Field of view in degrees
+    /// Field of view (in degrees)
     pub fov_deg: f32,
-    /// Direction of the light vector
+    /// Directional light vector (normalized is preferred)
     pub light_dir: Vec3,
-    /// Range of lighting intensity (e.g., from 0.2 to 1.0)
+    /// Tuple of (min, max) intensity range to map lighting to grayscale
     pub intensity_range: (f32, f32),
+
+    /// Enable back-face culling
+    pub enable_backface_culling: bool,
+    /// Enable Z-buffer (not implemented yet)
+    pub enable_zbuffer: bool,
+    /// Enable lighting
+    pub enable_lighting: bool,
+    /// Enable triangle sorting (Painter's Algorithm)
+    pub enable_depth_sorting: bool,
+    /// Enable clipping near plane
+    pub enable_near_clipping: bool,
+    /// Enable projection bounds clipping
+    pub enable_frustum_clipping: bool,
+    /// Enable wireframe overlay
+    pub enable_wireframe: bool,
 }
 
-/// Converts normalized light intensity to a Gray4 color (4-bit grayscale)
+#[inline(always)]
 fn get_grayscale_color(intensity: f32) -> Gray4 {
     let clamped = intensity.clamp(0.0, 1.0);
     let value = (clamped * 15.0).round() as u8;
     Gray4::new(value)
 }
 
-/// Projects a 3D vector to a 2D screen point using perspective projection
-fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<Point> {
-    if v.2 <= 0.5 {
+#[inline(always)]
+fn project(v: Vec3, fov_deg: f32, width: u32, height: u32, clip_near: bool, clip_bounds: bool) -> Option<Point> {
+    if clip_near && v.2 <= 0.5 {
         return None;
     }
 
@@ -45,14 +63,13 @@ fn project(v: Vec3, fov_deg: f32, width: u32, height: u32) -> Option<Point> {
     let x = ((x_proj / aspect + 1.0) * width as f32 * 0.5) as i32;
     let y = ((1.0 - y_proj) * height as f32 * 0.5) as i32;
 
-    if x < 0 || x >= width as i32 || y < 0 || y >= height as i32 {
+    if clip_bounds && (x < 0 || x >= width as i32 || y < 0 || y >= height as i32) {
         return None;
     }
 
     Some(Point::new(x, y))
 }
 
-/// A triangle filled with a single shade of Gray4 color
 struct ShadedTriangle {
     p0: Point,
     p1: Point,
@@ -71,19 +88,18 @@ impl Drawable for ShadedTriangle {
     type Output = ();
 
     fn draw<D: DrawTarget<Color = Gray4>>(&self, target: &mut D) -> Result<(), D::Error> {
-        let mut points = [self.p0, self.p1, self.p2];
-        points.sort_by_key(|p| p.y); // Sort top to bottom
-
-        let (top, mid, bot) = (points[0], points[1], points[2]);
-        let canvas = target.bounding_box();
-        let w = canvas.size.width as i32;
-        let h = canvas.size.height as i32;
+        let mut pts = [self.p0, self.p1, self.p2];
+        pts.sort_by_key(|p| p.y);
+        let (top, mid, bot) = (pts[0], pts[1], pts[2]);
 
         if top.y == bot.y {
-            return Ok(()); // Degenerate triangle
+            return Ok(());
         }
 
-        let interp = |y: i32, y0: i32, y1: i32, x0: i32, x1: i32| {
+        let w = target.bounding_box().size.width as i32;
+        let h = target.bounding_box().size.height as i32;
+
+        let interp = |y, y0, y1, x0, x1| {
             if y1 == y0 {
                 x0
             } else {
@@ -117,22 +133,10 @@ impl Drawable for ShadedTriangle {
                 }
             }
         }
-
         Ok(())
     }
 }
 
-/// Renders a 3D model using flat-shaded triangles onto a 2D embedded-graphics `DrawTarget`.
-///
-/// This function performs:
-/// - Vertex transformation (rotation + translation)
-/// - Perspective projection
-/// - Z-sorted triangle rasterization with lighting
-/// - Flat shading using grayscale
-///
-/// Requirements:
-/// - `MAX_VERTICES` and `MAX_TRIANGLES` must fit the model
-/// - No allocation or dynamic memory used
 pub fn draw_model<D: DrawTarget<Color = Gray4>>(
     display: &mut D,
     model: &Model,
@@ -143,62 +147,61 @@ pub fn draw_model<D: DrawTarget<Color = Gray4>>(
     options: &RenderOptions,
 ) -> Result<(), D::Error> {
     let light_dir = options.light_dir.normalize();
-
-    // Step 1: Transform and project vertices
     let mut world_vertices = [Vec3(0.0, 0.0, 0.0); MAX_VERTICES];
     let mut projected = [None; MAX_VERTICES];
 
     for i in 0..model.vertex_count {
         let rotated = rotation.rotate_vector(model.vertices[i]);
-        let world = Vec3(
-            origin.0 + rotated.0,
-            origin.1 + rotated.1,
-            origin.2 + rotated.2,
-        );
+        let world = Vec3(origin.0 + rotated.0, origin.1 + rotated.1, origin.2 + rotated.2);
         world_vertices[i] = world;
-        projected[i] = project(world, options.fov_deg, width, height);
+        projected[i] = project(world, options.fov_deg, width, height, options.enable_near_clipping, options.enable_frustum_clipping);
     }
 
-    // Step 2: Compute triangle depths for sorting
     let mut triangle_meta = [(0usize, 0.0f32); MAX_TRIANGLES];
     for i in 0..model.triangle_count {
         let tri = &model.triangles[i];
-        let z_avg = (world_vertices[tri.vertices[0]].2
-            + world_vertices[tri.vertices[1]].2
-            + world_vertices[tri.vertices[2]].2)
-            / 3.0;
-        triangle_meta[i] = (i, z_avg);
+        let z0 = world_vertices[tri.vertices[0]].2;
+        let z1 = world_vertices[tri.vertices[1]].2;
+        let z2 = world_vertices[tri.vertices[2]].2;
+        triangle_meta[i] = (i, (z0 + z1 + z2) / 3.0);
     }
 
-    // Step 3: Painter's algorithm - back-to-front rendering
-    triangle_meta[0..model.triangle_count].sort_by(|a, b| {
-        b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal)
-    });
+    if options.enable_depth_sorting {
+        triangle_meta[..model.triangle_count].sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
+    }
 
-    for (tri_idx, _) in triangle_meta.iter().take(model.triangle_count) {
-        let tri = &model.triangles[*tri_idx];
+    for &(tri_idx, _) in triangle_meta.iter().take(model.triangle_count) {
+        let tri = &model.triangles[tri_idx];
 
-        // Back-face culling optional (not enabled here)
-        let Some(p0) = projected[tri.vertices[0]] else { continue };
-        let Some(p1) = projected[tri.vertices[1]] else { continue };
-        let Some(p2) = projected[tri.vertices[2]] else { continue };
+        if let (Some(p0), Some(p1), Some(p2)) = (
+            projected[tri.vertices[0]],
+            projected[tri.vertices[1]],
+            projected[tri.vertices[2]],
+        ) {
+            if options.enable_backface_culling {
+                let edge1 = world_vertices[tri.vertices[1]].sub(world_vertices[tri.vertices[0]]);
+                let edge2 = world_vertices[tri.vertices[2]].sub(world_vertices[tri.vertices[0]]);
+                let normal = Vec3(
+                    edge1.1 * edge2.2 - edge1.2 * edge2.1,
+                    edge1.2 * edge2.0 - edge1.0 * edge2.2,
+                    edge1.0 * edge2.1 - edge1.1 * edge2.0,
+                ).normalize();
+                if normal.dot(Vec3(0.0, 0.0, -1.0)) <= 0.0 {
+                    continue;
+                }
+            }
 
-        // Step 4: Lighting
-        let rotated_normal = rotation.rotate_vector(tri.normal);
-        let raw = rotated_normal.dot(light_dir).max(0.0);
-        let intensity = options.intensity_range.0
-            + (options.intensity_range.1 - options.intensity_range.0) * raw;
+            let diffuse = if options.enable_lighting {
+                let rotated_normal = rotation.rotate_vector(tri.normal);
+                rotated_normal.dot(light_dir).max(0.0)
+            } else {
+                1.0
+            };
 
-        let color = get_grayscale_color(intensity);
-
-        // Step 5: Rasterize
-        ShadedTriangle {
-            p0,
-            p1,
-            p2,
-            color,
+            let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * diffuse;
+            let color = get_grayscale_color(intensity);
+            ShadedTriangle { p0, p1, p2, color }.draw(display)?;
         }
-            .draw(display)?;
     }
 
     Ok(())
