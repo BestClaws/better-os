@@ -7,7 +7,9 @@ use embedded_graphics::{
     prelude::{DrawTarget, Dimensions, OriginDimensions, Point, Size},
     Drawable, Pixel,
 };
-use embedded_graphics::primitives::Triangle;
+use embedded_graphics::prelude::Primitive;
+use embedded_graphics::primitives::{Triangle, Line, PrimitiveStyle};
+use embedded_graphics_core::prelude::GrayColor;
 use micromath::F32Ext;
 
 use super::math::{Quaternion, Vec3};
@@ -38,6 +40,14 @@ pub struct RenderOptions {
     pub enable_frustum_clipping: bool,
     /// Enable wireframe overlay
     pub enable_wireframe: bool,
+    /// Enable filled triangle shading
+    pub enable_shading: bool,
+    /// Enable anti-aliasing using pixel coverage estimation (experimental)
+    pub enable_antialiasing: bool,
+    /// Supersampling factor (1 = no AA, 2 = 2x2, etc.)
+    pub antialiasing_factor: u8,
+    /// Use edge-only antialiasing instead of full supersampling
+    pub edge_only_antialiasing: bool,
 }
 
 #[inline(always)]
@@ -128,13 +138,34 @@ impl Drawable for ShadedTriangle {
 
             for x in x_start..=x_end {
                 if x >= 0 && x < w {
-                    let p = Point::new(x, y);
-                    target.draw_iter(core::iter::once(Pixel(p, self.color)))?;
+                    let mut final_color = self.color;
+
+                    if let Some(antialiased_color) = apply_antialiasing(x, y, self) {
+                        final_color = antialiased_color;
+                    }
+
+                    target.draw_iter(core::iter::once(Pixel(Point::new(x, y), final_color)))?;
                 }
             }
         }
         Ok(())
     }
+}
+
+fn apply_antialiasing(x: i32, y: i32, tri: &ShadedTriangle) -> Option<Gray4> {
+    let dist0 = (tri.p0.x - x).abs() + (tri.p0.y - y).abs();
+    let dist1 = (tri.p1.x - x).abs() + (tri.p1.y - y).abs();
+    let dist2 = (tri.p2.x - x).abs() + (tri.p2.y - y).abs();
+
+    let min_dist = dist0.min(dist1).min(dist2);
+    if min_dist < 2 {
+        let mut val = tri.color.luma();
+        if val > 0 {
+            val -= 1;
+        }
+        return Some(Gray4::new(val));
+    }
+    None
 }
 
 pub fn draw_model<D: DrawTarget<Color = Gray4>>(
@@ -154,7 +185,14 @@ pub fn draw_model<D: DrawTarget<Color = Gray4>>(
         let rotated = rotation.rotate_vector(model.vertices[i]);
         let world = Vec3(origin.0 + rotated.0, origin.1 + rotated.1, origin.2 + rotated.2);
         world_vertices[i] = world;
-        projected[i] = project(world, options.fov_deg, width, height, options.enable_near_clipping, options.enable_frustum_clipping);
+        projected[i] = project(
+            world,
+            options.fov_deg,
+            width,
+            height,
+            options.enable_near_clipping,
+            options.enable_frustum_clipping,
+        );
     }
 
     let mut triangle_meta = [(0usize, 0.0f32); MAX_TRIANGLES];
@@ -167,7 +205,9 @@ pub fn draw_model<D: DrawTarget<Color = Gray4>>(
     }
 
     if options.enable_depth_sorting {
-        triangle_meta[..model.triangle_count].sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
+        triangle_meta[..model.triangle_count].sort_unstable_by(|a, b| {
+            b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal)
+        });
     }
 
     for &(tri_idx, _) in triangle_meta.iter().take(model.triangle_count) {
@@ -185,7 +225,8 @@ pub fn draw_model<D: DrawTarget<Color = Gray4>>(
                     edge1.1 * edge2.2 - edge1.2 * edge2.1,
                     edge1.2 * edge2.0 - edge1.0 * edge2.2,
                     edge1.0 * edge2.1 - edge1.1 * edge2.0,
-                ).normalize();
+                )
+                    .normalize();
                 if normal.dot(Vec3(0.0, 0.0, -1.0)) <= 0.0 {
                     continue;
                 }
@@ -198,9 +239,20 @@ pub fn draw_model<D: DrawTarget<Color = Gray4>>(
                 1.0
             };
 
-            let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * diffuse;
+            let intensity = options.intensity_range.0
+                + (options.intensity_range.1 - options.intensity_range.0) * diffuse;
             let color = get_grayscale_color(intensity);
-            ShadedTriangle { p0, p1, p2, color }.draw(display)?;
+
+            if options.enable_shading {
+                ShadedTriangle { p0, p1, p2, color }.draw(display)?;
+            }
+
+            if options.enable_wireframe {
+                let style = PrimitiveStyle::with_stroke(Gray4::new(15), 1);
+                Line::new(p0, p1).into_styled(style).draw(display)?;
+                Line::new(p1, p2).into_styled(style).draw(display)?;
+                Line::new(p2, p0).into_styled(style).draw(display)?;
+            }
         }
     }
 

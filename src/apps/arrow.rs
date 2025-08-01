@@ -47,6 +47,10 @@ pub async fn arrow_app(context: AppContext) {
         enable_near_clipping: true,
         enable_frustum_clipping: false,
         enable_wireframe: false,
+        enable_shading: true,
+        enable_antialiasing: false,
+        antialiasing_factor: 1,
+        edge_only_antialiasing: true,
     };
 
     loop {
@@ -70,7 +74,7 @@ pub async fn arrow_app(context: AppContext) {
         }
 
         context.draw(|canvas: &mut Canvas<Gray4>| {
-            canvas.clear(Gray4::WHITE);
+            canvas.clear(Gray4::BLACK);
 
             let then = Instant::now();
             if let Err(e) = draw_model(
