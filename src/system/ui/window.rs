@@ -37,8 +37,8 @@ impl Window {
         Self {
             fb: FRAMEBUFFER_POOL.allocate().await.unwrap(),
             input_channel: INPUT_CHANNEL_POOL.allocate().await.unwrap(),
-            width: width as u32,
-            height: height as u32,
+            width: width,
+            height: height,
             id,
         }
     }

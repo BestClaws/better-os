@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use defmt::println;
+use defmt::{info, println};
 use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use portable_atomic::{AtomicU8, Ordering};
@@ -92,6 +92,7 @@ impl FrameBufferPool {
             if let Some(handle) = self.try_allocate() {
                 return Some(handle);
             }
+            info!("Waiting for framebuffer to be available...");
             Timer::after_micros(100).await;
         }
     }
