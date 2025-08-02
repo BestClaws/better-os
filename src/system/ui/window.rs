@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::{Receiver, Sender};
 use embedded_graphics::framebuffer::Framebuffer;
 use embedded_graphics_core::pixelcolor::Gray4;
 use embedded_graphics_core::prelude::PixelColor;
@@ -18,8 +19,8 @@ pub struct WindowHandle {
 
 /// Represents a UI window backed by a framebuffer and owning an input channel.
 pub struct Window {
-    fb: FrameBufferHandle,
-    input_channel: InputChannelHandle,
+    fb: Option<FrameBufferHandle>,
+    input_channel: Option<InputChannelHandle>,
     width: u32,
     height: u32,
     id: usize,
@@ -35,17 +36,23 @@ impl Window {
 
 
         Self {
-            fb: FRAMEBUFFER_POOL.allocate().await.unwrap(),
-            input_channel: INPUT_CHANNEL_POOL.allocate().await.unwrap(),
-            width: width,
-            height: height,
+            fb: None,
+            input_channel: None,
+            width,
+            height,
             id,
         }
     }
 
+    pub async fn allocate(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
+        self.fb = Some(fb);
+        self.input_channel = Some(ic);
+    }
+
     /// Returns a fresh Canvas that draws on this window's framebuffer.
     pub async fn canvas<C: PixelColorExt>(&mut self) -> Canvas<'static, C> {
-        let buf = FRAMEBUFFER_POOL.get_mut(&self.fb);
+        let handle = FRAMEBUFFER_POOL.allocate().await.unwrap();
+        let buf = FRAMEBUFFER_POOL.get_mut(&handle);
         C::new_canvas(buf, self.width, self.height)
     }
     /// Return this window’s handle.
@@ -54,8 +61,8 @@ impl Window {
     }
 
     /// Get ID of the framebuffer (for compositing).
-    pub fn framebuffer_id(&self) -> &FrameBufferHandle {
-        &self.fb
+    pub fn framebuffer_id(&self) -> Option<&FrameBufferHandle> {
+        self.fb.as_ref()
     }
 
     /// Return this window’s raw width.
@@ -69,13 +76,30 @@ impl Window {
     }
 
     /// Return reference to the input channel sender.
-    pub fn input_sender(&self) -> embassy_sync::channel::Sender<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY> {
-        INPUT_CHANNEL_POOL.sender(&self.input_channel)
+    pub async fn input_sender(&mut self) -> Option<Sender<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>> {
+        match self.input_channel.as_ref() {
+            Some(channel) => Some(INPUT_CHANNEL_POOL.sender(channel)),
+            None => None
+        }
     }
 
     /// Return reference to the input channel receiver.
-    pub fn input_receiver(&self) -> embassy_sync::channel::Receiver<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY> {
-        INPUT_CHANNEL_POOL.receiver(&self.input_channel)   
+    pub fn input_receiver(&self) -> Option<Receiver<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>> {
+        match self.input_channel.as_ref() {
+            Some(channel) => Some(INPUT_CHANNEL_POOL.receiver(channel)),
+            None => None
+        }
+    }
+
+    /// give away held framebuffer and input channel
+    pub fn relax(&mut self) {
+        assert!(self.fb.is_some());
+        assert!(self.input_channel.is_some());
+
+        FRAMEBUFFER_POOL.release(self.fb.as_mut().unwrap());
+        INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());
+
+
     }
 }
 
