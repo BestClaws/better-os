@@ -6,6 +6,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, Instant};
 
 use crate::system::hal::display::AsyncDisplay;
+use crate::system::kernel::config::resources::FRAME_BUFFER_WIDTH;
 use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 use crate::system::ui::compositor::{SlideDir, UICompositor};
 
@@ -28,14 +29,24 @@ pub async fn compositor_service(
         let mut last_slide: Option<SlideDir> = None;
         let mut toggle_view = false;
 
+        let mut event = None;
+
         // Drain all available input events
-        while let Ok(event) = HUMAN_INPUT_CH.try_receive() {
+        while let Ok(e) = HUMAN_INPUT_CH.try_receive() {
+            event = Some(e);
+        }
+
+        if let Some(event) = event {
             match event {
-                HumanInputEvent::Touch(_, _) => {
-                    last_slide = Some(SlideDir::Right);
-                }
-                HumanInputEvent::NavDown => {
-                    last_slide = Some(SlideDir::Left);
+                HumanInputEvent::Touch(x, y) => {
+
+                    if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
+                        last_slide = Some(SlideDir::Right);
+                    } else {
+                        last_slide = Some(SlideDir::Left);
+
+                    }
+
                 }
                 HumanInputEvent::OkPressed => {
                     toggle_view = true;
@@ -49,7 +60,12 @@ pub async fn compositor_service(
                     }
                 }
             }
+
         }
+
+
+    
+
 
         // Apply slide or view toggle logic
         if let Some(dir) = last_slide {

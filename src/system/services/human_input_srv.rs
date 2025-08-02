@@ -83,6 +83,10 @@ pub(crate) mod sub {
                 let x = ((x as f32 / 2000.0) * (320 / FRAME_SCALE_FACTOR) as f32) as i32;
                 let y = ((y as f32 / 2000.0) * (240 / FRAME_SCALE_FACTOR) as f32) as i32;
 
+                if x > FRAME_BUFFER_WIDTH as i32 || y > FRAME_BUFFER_HEIGHT as i32 || x == 0  || y == 0 {
+                    continue;
+                }
+
                 info!("Touch detected: x = {}, y = {}, z = {}", x, y, z);
                 HUMAN_INPUT_CH.send(HumanInputEvent::Touch(x, y)).await;
             }
