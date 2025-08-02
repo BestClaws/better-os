@@ -70,7 +70,7 @@ impl FrameBufferPool {
 
     /// Attempt to allocate a buffer slot non-blocking-ly.
     /// Returns `Some(FrameBufferHandle)` if successful, or `None` if all are taken.
-    pub fn try_allocate(&self) -> Option<FrameBufferHandle> {
+    pub fn _try_allocate(&self) -> Option<FrameBufferHandle> {
         for id in 0..FRAME_BUFFER_COUNT {
             let mask = 1 << id;
             let prev = self.status.fetch_or(mask, Ordering::AcqRel);
@@ -83,18 +83,12 @@ impl FrameBufferPool {
         None
     }
 
-    /// Allocate a buffer asynchronously, waiting until one becomes available.
+    /// try to allocate a buffer
     pub async fn allocate(&self) -> Option<FrameBufferHandle> {
         // Wait until a permit is available (non-blocking under async executor)
         self.permits.acquire(1).await.ok()?;
-        loop {
-            // Try to acquire an unused buffer
-            if let Some(handle) = self.try_allocate() {
-                return Some(handle);
-            }
-            info!("Waiting for framebuffer to be available...");
-            Timer::after_micros(100).await;
-        }
+        // Try to acquire an unused buffer
+        self._try_allocate()
     }
 
     /// Release a previously allocated buffer slot.

@@ -58,13 +58,7 @@ impl InputChannelPool {
 
     pub async fn allocate(&self) -> Option<InputChannelHandle> {
         self.permits.acquire(1).await.ok()?;
-        loop {
-            if let Some(h) = self.try_allocate() {
-                return Some(h);
-            }
-            info!("Waiting for channel to be available...");
-            Timer::after_micros(100).await;
-        }
+        self.try_allocate()
     }
 
     pub fn release(&self, handle: &InputChannelHandle) {

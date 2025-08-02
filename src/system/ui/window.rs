@@ -44,16 +44,17 @@ impl Window {
         }
     }
 
-    pub async fn allocate(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
+    pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
         self.fb = Some(fb);
         self.input_channel = Some(ic);
     }
 
     /// Returns a fresh Canvas that draws on this window's framebuffer.
-    pub async fn canvas<C: PixelColorExt>(&mut self) -> Canvas<'static, C> {
-        let handle = FRAMEBUFFER_POOL.allocate().await.unwrap();
-        let buf = FRAMEBUFFER_POOL.get_mut(&handle);
-        C::new_canvas(buf, self.width, self.height)
+    pub fn canvas<C: PixelColorExt>(&mut self) -> Option<Canvas<'static, C>> {
+        self.fb.as_ref().map(|fb| {
+            C::new_canvas(FRAMEBUFFER_POOL.get_mut(fb), self.width, self.height)
+        })
+        
     }
     /// Return this window’s handle.
     pub fn handle(&self) -> WindowHandle {
@@ -77,18 +78,12 @@ impl Window {
 
     /// Return reference to the input channel sender.
     pub async fn input_sender(&mut self) -> Option<Sender<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>> {
-        match self.input_channel.as_ref() {
-            Some(channel) => Some(INPUT_CHANNEL_POOL.sender(channel)),
-            None => None
-        }
+        self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.sender(channel))
     }
 
     /// Return reference to the input channel receiver.
     pub fn input_receiver(&self) -> Option<Receiver<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>> {
-        match self.input_channel.as_ref() {
-            Some(channel) => Some(INPUT_CHANNEL_POOL.receiver(channel)),
-            None => None
-        }
+        self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.receiver(channel))
     }
 
     /// give away held framebuffer and input channel

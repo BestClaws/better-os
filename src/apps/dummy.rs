@@ -22,7 +22,7 @@ use crate::system::ui::canvas::{Canvas};
 use crate::util::math::primitives::Vec3;
 
 #[embassy_executor::task]
-pub async fn notifications_app(context: AppContext) {
+pub async fn dummy_app(context: AppContext) {
 
     loop {
         if !context.is_focused().await {
@@ -56,7 +56,7 @@ pub async fn notifications_app(context: AppContext) {
             });
 
             ui.clear_background().unwrap();
-            ui.add(Label::new("NOTIFICATION".to_string().as_ref()));
+            ui.add(Label::new("DUMMY".to_string().as_ref()));
 
 
 

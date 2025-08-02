@@ -27,8 +27,6 @@ pub async fn ble_app(context: AppContext) {
 
         context.draw(|mut canvas: &mut Canvas<Gray4>| {
 
-
-
             let mut ui = Ui::new(canvas, Rectangle::new(Point::new(0, 0), Size::new(canvas.width(), canvas.height())), Style {
                 background_color: Gray4::new(0xf), // pretty dark gray
                 item_background_color: Gray4::new(0xd), // darker gray

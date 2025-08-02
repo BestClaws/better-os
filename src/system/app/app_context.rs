@@ -46,7 +46,7 @@ impl AppContext {
     pub async fn draw<C: PixelColor + PixelColorExt>(&self, f: impl FnOnce(&mut Canvas<C>) + Send) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.get_window_mut(self.handle) {
-            let mut canvas = window.canvas().await;
+            let mut canvas = window.canvas().unwrap();
             f(&mut canvas);
         }
     }

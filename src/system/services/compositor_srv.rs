@@ -45,7 +45,7 @@ pub async fn compositor_service(
                     let mut comp = compositor.lock().await;
                     let current = comp.current_handle().unwrap();
                     if let Some(window) = comp.get_window_mut(current) {
-                        let _ = window.input_sender().try_send(other);
+                        let _ = window.input_sender().await.unwrap().try_send(other);
                     }
                 }
             }
