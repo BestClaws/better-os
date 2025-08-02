@@ -32,7 +32,7 @@ pub struct FrameBufferHandle {
 
 impl FrameBufferHandle {
     /// Create a new handle for internal use.
-    /// External code should only get handles via allocation.
+    /// External code should only get handled via allocation.
     pub fn new(id: usize) -> Self {
         Self { id, _private: () }
     }
@@ -61,17 +61,14 @@ pub struct FrameBufferPool {
 impl FrameBufferPool {
     /// Construct a new buffer pool with all buffers zero-initialized and free.
     pub const fn new() -> Self {
-        // Const-initialized zeroed UnsafeCell
-        const ZERO_BUF: UnsafeCell<[u8; FRAME_BUFFER_SIZE]> = UnsafeCell::new([0; FRAME_BUFFER_SIZE]);
-
         Self {
-            buffers: [ZERO_BUF; FRAME_BUFFER_COUNT], // Safe because it's Copy + const init
+            buffers: [ const { UnsafeCell::new([0; FRAME_BUFFER_SIZE]) }; FRAME_BUFFER_COUNT], // Safe because it's Copy + const init
             status: AtomicU8::new(0),                // All buffers initially free
             permits: GreedySemaphore::new(FRAME_BUFFER_COUNT), // All permits available
         }
     }
 
-    /// Attempt to allocate a buffer slot non-blockingly.
+    /// Attempt to allocate a buffer slot non-blocking-ly.
     /// Returns `Some(FrameBufferHandle)` if successful, or `None` if all are taken.
     pub fn try_allocate(&self) -> Option<FrameBufferHandle> {
         for id in 0..FRAME_BUFFER_COUNT {
