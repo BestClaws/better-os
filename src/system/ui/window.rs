@@ -7,7 +7,7 @@ use embedded_graphics_core::pixelcolor::Gray4;
 use embedded_graphics_core::prelude::PixelColor;
 use esp_hal::interrupt::map;
 use crate::system::services::human_input_srv::HumanInputEvent;
-use crate::system::ui::canvas::{Canvas, PixelColorExt};
+use crate::system::ui::canvas::{Canvas};
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
@@ -24,6 +24,7 @@ pub struct Window {
     width: u32,
     height: u32,
     id: usize,
+    canvas: Canvas<'static, Gray4>
 }
 
 impl Window {
@@ -41,21 +42,25 @@ impl Window {
             width,
             height,
             id,
+            canvas: Canvas::new(width, height)
         }
     }
 
     pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
+        self.canvas.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
         self.fb = Some(fb);
         self.input_channel = Some(ic);
+
     }
 
-    /// Returns a fresh Canvas that draws on this window's framebuffer.
-    pub fn canvas<C: PixelColorExt>(&mut self) -> Option<Canvas<'static, C>> {
-        self.fb.as_ref().map(|fb| {
-            C::new_canvas(FRAMEBUFFER_POOL.get_mut(fb), self.width, self.height)
-        })
-        
+    pub fn canvas(&mut self) -> Option<&mut Canvas<'static, Gray4>> {
+        if self.fb.is_none() {
+            return None;
+        }
+        Some(&mut self.canvas)
     }
+    
+    
     /// Return this window’s handle.
     pub fn handle(&self) -> WindowHandle {
         WindowHandle { id: self.id }
@@ -91,6 +96,7 @@ impl Window {
         assert!(self.fb.is_some());
         assert!(self.input_channel.is_some());
 
+        self.canvas.relinquish();
         FRAMEBUFFER_POOL.release(self.fb.as_mut().unwrap());
         INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());
 

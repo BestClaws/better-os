@@ -1,10 +1,10 @@
 use crate::system::services::human_input_srv::HumanInputEvent;
-use crate::system::ui::canvas::{Canvas, PixelColorExt};
+use crate::system::ui::canvas::{Canvas};
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embedded_graphics_core::pixelcolor::PixelColor;
+use embedded_graphics_core::pixelcolor::{Gray4, PixelColor};
 
 pub struct AppContext {
     pub handle: WindowHandle,
@@ -43,11 +43,11 @@ impl AppContext {
         comp.request_redraw(self.handle);
     }
 
-    pub async fn draw<C: PixelColor + PixelColorExt>(&self, f: impl FnOnce(&mut Canvas<C>) + Send) {
+    pub async fn draw(&self, f: impl FnOnce(&mut Canvas<Gray4>) + Send) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.get_window_mut(self.handle) {
-            let mut canvas = window.canvas().unwrap();
-            f(&mut canvas);
+            let canvas = window.canvas().unwrap();
+            f(canvas);
         }
     }
 }

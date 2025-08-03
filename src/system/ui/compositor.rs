@@ -157,7 +157,8 @@ impl UICompositor {
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
-            let mut dest_canvas = Canvas::<Gray4>::new(&mut working_buff, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let mut dest_canvas = Canvas::<Gray4>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            dest_canvas.set_resources(&mut working_buff);
             self.composite(&mut dest_canvas).await;
             let mut disp = display.lock().await;
             let then = Instant::now();
@@ -361,7 +362,8 @@ impl UICompositor {
         }
 
         let mut composed_buf = [0u8; FRAME_BUFFER_SIZE];
-        let mut dest_canvas: Canvas<Gray4> = Canvas::<Gray4>::new(&mut composed_buf, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+        let mut dest_canvas: Canvas<Gray4> = Canvas::<Gray4>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+        dest_canvas.set_resources(&mut composed_buf);
 
         for step in 0..=ANIM_STEPS {
             let t = step as f32 / ANIM_STEPS as f32;
@@ -383,22 +385,11 @@ impl UICompositor {
                 }
             };
 
-            // Borrow windows and render only if resources are available
-            let src1_canvas = {
-                let src1_win = &mut self.windows[from_index];
-                src1_win.canvas()
-            };
-            let src2_canvas = {
-                let src2_win = &mut self.windows[to_index];
-                src2_win.canvas()
-            };
+            let src1_canvas = self.windows[from_index].canvas().take().unwrap();
+            let src2_canvas =  self.windows[to_index].canvas().take().unwrap();
 
-            if let Some(src1) = src1_canvas {
-                blit(&mut dest_canvas, &src1, from_x, 0);
-            }
-            if let Some(src2) = src2_canvas {
-                blit(&mut dest_canvas, &src2, to_x, 0);
-            }
+            blit(&mut dest_canvas, &src1_canvas, from_x, 0);
+            blit(&mut dest_canvas, &src2_canvas, to_x, 0);
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
@@ -416,34 +407,11 @@ impl UICompositor {
     pub async fn composite<'a>(&'a mut self, working_buff: &mut Canvas<'a, Gray4>) {
         working_buff.clear(Gray4::BLACK).unwrap();
 
-        match self.view_mode {
-            ViewMode::Single => {
-                let src_win = &mut self.windows[self.current_window];
-                if let Some(src_canvas) = src_win.canvas() {
-                    blit(working_buff, &src_canvas, 0, 0);
-                }
-            }
-            ViewMode::Split => {
-                let i1 = self.current_window;
-                let i2 = (self.current_window + 1) % self.windows.len();
-
-                let src1_canvas = {
-                    let src1_win = &mut self.windows[i1];
-                    src1_win.canvas()
-                };
-                let src2_canvas = {
-                    let src2_win = &mut self.windows[i2];
-                    src2_win.canvas()
-                };
-
-                if let Some(src1) = src1_canvas {
-                    blit(working_buff, &src1, 0, 0);
-                }
-                if let Some(src2) = src2_canvas {
-                    blit(working_buff, &src2, (FRAME_BUFFER_WIDTH / 2) as i32, 0);
-                }
-            }
+        let src_win = &mut self.windows[self.current_window];
+        if let Some(src_canvas) = src_win.canvas() {
+            blit(working_buff, &src_canvas, 0, 0);
         }
+
     }
 
     /// Returns the current view mode (single or split).

@@ -15,7 +15,8 @@ use embedded_graphics_core::pixelcolor::raw::RawU4;
 ///
 /// Supported color formats: `Rgb565`, `Gray4`.
 pub struct Canvas<'a, C: PixelColor> {
-    buffer: &'a mut [u8],
+    buf: Option<&'a mut [u8]>,
+    // buffer: &'a mut [u8],
     width: u32,
     height: u32,
     _color: PhantomData<C>,
@@ -24,14 +25,46 @@ pub struct Canvas<'a, C: PixelColor> {
 
 // ===== Common (Generic) Canvas Implementation =====
 impl<'a, C: PixelColor> Canvas<'a, C> {
+
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            buf: None,
+            width,
+            height,
+            _color: PhantomData,
+            dirty_region: Some(Rectangle::new(Point::zero(), Size::new(width, height))),
+        }
+    }
+    
+    pub(crate) fn relinquish(&mut self) {
+        self.buf = None;
+    }
+
+    fn _buf(&self) -> &[u8] {
+        if let Some(buf) = &self.buf {
+            // return
+            buf
+        } else {
+            panic!("Buffer not initialized");
+        }
+    }
+
+    fn _buf_mut(&mut self) -> &mut [u8] {
+        if let Some(buf) = &mut self.buf {
+            // return
+            buf
+        } else {
+            panic!("Buffer not initialized");
+        }
+    }
     /// Immutable access to the raw pixel buffer.
     pub fn buffer(&self) -> &[u8] {
-        self.buffer
+        self._buf()
     }
 
     /// Mutable access to the raw pixel buffer.
     pub fn buffer_mut(&mut self) -> &mut [u8] {
-        self.buffer
+        self._buf_mut()
     }
 
     /// Returns the canvas width in pixels.
@@ -61,6 +94,9 @@ impl<'a, C: PixelColor> Canvas<'a, C> {
             None => new,
         });
     }
+    
+    
+    
 }
 
 impl<C: PixelColor> OriginDimensions for Canvas<'_, C> {
@@ -71,27 +107,21 @@ impl<C: PixelColor> OriginDimensions for Canvas<'_, C> {
 
 // ===== Rgb565 Implementation =====
 impl<'a> Canvas<'a, Rgb565> {
-    /// Constructs a new Rgb565 canvas with a given buffer and size.
-    pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Self {
-        let required = (width * height * 2) as usize;
-        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
 
-        Self {
-            buffer,
-            width,
-            height,
-            _color: PhantomData,
-            dirty_region: Some(Rectangle::new(Point::zero(), Size::new(width, height))),
-        }
-    }
 
     /// Resizes the canvas in-place, validating the buffer size.
     pub fn resize(&mut self, width: u32, height: u32) {
         let required = (width * height * 2) as usize;
-        assert!(self.buffer.len() >= required, "Buffer too small for Rgb565");
+        assert!(self._buf_mut().len() >= required, "Buffer too small for Rgb565");
 
         self.width = width;
         self.height = height;
+    }
+
+    pub fn materialize(&mut self, buffer: &'a mut [u8]) {
+        let required = (self.width * self.height * 2) as usize;
+        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
+        self.buf = Some(buffer);
     }
 }
 
@@ -111,8 +141,8 @@ impl DrawTarget for Canvas<'_, Rgb565> {
 
             let offset = ((x as u32 + y as u32 * self.width) * 2) as usize;
             let raw = color.into_storage();
-            self.buffer[offset] = (raw >> 8) as u8;
-            self.buffer[offset + 1] = raw as u8;
+            self._buf_mut()[offset] = (raw >> 8) as u8;
+            self._buf_mut()[offset + 1] = raw as u8;
 
             let point = Point::new(x, y);
             region = Some(region.map_or(Rectangle::new(point, Size::new(1, 1)), |r| union_rect(r, Rectangle::new(point, Size::new(1, 1)))));
@@ -139,8 +169,8 @@ impl DrawTarget for Canvas<'_, Rgb565> {
                 if let Some(color) = iter.next() {
                     let idx = (x + y * self.width) * 2;
                     let raw = color.into_storage();
-                    self.buffer[idx as usize] = (raw >> 8) as u8;
-                    self.buffer[idx as usize + 1] = raw as u8;
+                    self._buf_mut()[idx as usize] = (raw >> 8) as u8;
+                    self._buf_mut()[idx as usize + 1] = raw as u8;
                 } else {
                     return Ok(());
                 }
@@ -165,8 +195,8 @@ impl DrawTarget for Canvas<'_, Rgb565> {
             let row_start = (x0 + y * self.width) * 2;
             let row_end = (x1 + y * self.width) * 2;
             for idx in (row_start as usize..row_end as usize).step_by(2) {
-                self.buffer[idx] = hi;
-                self.buffer[idx + 1] = lo;
+                self._buf_mut()[idx] = hi;
+                self._buf_mut()[idx + 1] = lo;
             }
         }
 
@@ -179,7 +209,7 @@ impl DrawTarget for Canvas<'_, Rgb565> {
         let hi = (raw >> 8) as u8;
         let lo = raw as u8;
 
-        for chunk in self.buffer.chunks_mut(2) {
+        for chunk in self._buf_mut().chunks_mut(2) {
             if chunk.len() == 2 {
                 chunk[0] = hi;
                 chunk[1] = lo;
@@ -193,25 +223,18 @@ impl DrawTarget for Canvas<'_, Rgb565> {
 
 // ===== Gray4 Implementation =====
 impl<'a> Canvas<'a, Gray4> {
-    pub fn new(buffer: &'a mut [u8], width: u32, height: u32) -> Self {
-        let required = ((width * height + 1) / 2) as usize;
-        assert!(buffer.len() >= required, "Buffer too small for Gray4");
-
-        Self {
-            buffer,
-            width,
-            height,
-            _color: PhantomData,
-            dirty_region: Some(Rectangle::new(Point::zero(), Size::new(width, height))),
-        }
-    }
-
     pub fn resize(&mut self, width: u32, height: u32) {
         let required = ((width * height + 1) / 2) as usize;
-        assert!(self.buffer.len() >= required, "Buffer too small for Gray4");
+        assert!(self._buf_mut().len() >= required, "Buffer too small for Gray4");
 
         self.width = width;
         self.height = height;
+    }
+
+    pub(crate) fn set_resources(&mut self, buffer: &'a mut [u8]) {
+        let required = (self.width * self.height * 2) as usize;
+        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
+        self.buf = Some(buffer);
     }
 }
 
@@ -234,7 +257,7 @@ impl DrawTarget for Canvas<'_, Gray4> {
             let high = index % 2 == 0;
 
             let val = RawU4::from(color).into_inner();
-            let byte = &mut self.buffer[byte_index];
+            let byte = &mut self._buf_mut()[byte_index];
 
             *byte = if high {
                 (*byte & 0x0F) | (val << 4)
@@ -269,7 +292,7 @@ impl DrawTarget for Canvas<'_, Gray4> {
                     let byte_idx = idx / 2;
                     let high = idx % 2 == 0;
                     let val = RawU4::from(color).into_inner();
-                    let byte = &mut self.buffer[byte_idx];
+                    let byte = &mut self._buf_mut()[byte_idx];
 
                     *byte = if high {
                         (*byte & 0x0F) | (val << 4)
@@ -302,7 +325,7 @@ impl DrawTarget for Canvas<'_, Gray4> {
             for pixel in start_idx..end_idx {
                 let byte_idx = pixel / 2;
                 let high = pixel % 2 == 0;
-                let byte = &mut self.buffer[byte_idx];
+                let byte = &mut self._buf_mut()[byte_idx];
 
                 *byte = if high {
                     (*byte & 0x0F) | (val << 4)
@@ -319,11 +342,15 @@ impl DrawTarget for Canvas<'_, Gray4> {
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
         let val = RawU4::from(color).into_inner();
         let packed = (val << 4) | val;
-        self.buffer.fill(packed);
+        self._buf_mut().fill(packed);
 
         self.update_dirty(Rectangle::new(Point::zero(), Size::new(self.width, self.height)));
         Ok(())
     }
+
+
+
+
 }
 
 // ===== Helpers =====
@@ -348,20 +375,7 @@ fn union_rect(r1: Rectangle, r2: Rectangle) -> Rectangle {
     Rectangle::with_corners(Point::new(left, top), Point::new(right - 1, bottom - 1))
 }
 
-// ===== Generic Color Trait Constructor =====
 
-pub trait PixelColorExt: PixelColor {
-    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self>;
-}
 
-impl PixelColorExt for Rgb565 {
-    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self> {
-        Canvas::<Rgb565>::new(buffer, width, height)
-    }
-}
 
-impl PixelColorExt for Gray4 {
-    fn new_canvas(buffer: &mut [u8], width: u32, height: u32) -> Canvas<Self> {
-        Canvas::<Gray4>::new(buffer, width, height)
-    }
-}
+
