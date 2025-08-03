@@ -45,7 +45,7 @@ pub async fn notifications_app(context: AppContext) {
                 default_widget_height: 8,
                 border_width: 2,
                 highlight_border_width: 2,
-                default_font: mono_font::iso_8859_10::FONT_9X18_BOLD,
+                default_font: mono_font::iso_8859_10::FONT_6X13_BOLD,
                 spacing: Spacing {
                     item_spacing: Size::new(2, 2),
                     button_padding: Size::new(6, 2),
@@ -56,7 +56,7 @@ pub async fn notifications_app(context: AppContext) {
             });
 
             ui.clear_background().unwrap();
-            ui.add(Label::new("NOTIFICATION".to_string().as_ref()));
+            ui.add(Label::new("Notification".to_string().as_ref()));
 
 
 

@@ -232,7 +232,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         delay.delay_ms(5).await;
         self.display_power_mode(true).await;
         self.invert_mode(false).await;
-        self.set_orientation(Orientation::LandscapeFlipped).await;
+        self.set_orientation(Orientation::Portrait).await;
     }
 
 
@@ -240,74 +240,71 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
 
     async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
         let mut transfer_time = 0;
-        // Set display window to scaled size
+
+        const DISPLAY_WIDTH: usize = 240;
+        const DISPLAY_HEIGHT: usize = 320;
+
+        let fb_width = FRAME_BUFFER_WIDTH as usize;
+        let fb_height = FRAME_BUFFER_HEIGHT as usize;
+
+        let output_width = fb_width;
+        let output_height = fb_height;
+
+        let offset_x = ((DISPLAY_WIDTH - output_width) / 2) as u16;
+        let offset_y = 0 & ((DISPLAY_HEIGHT - output_height) / 2) as u16;
+
         self.set_window(
-            0,
-            0,
-            (FRAME_BUFFER_WIDTH * scale - 1) as u16,
-            (FRAME_BUFFER_HEIGHT * scale - 1) as u16,
+            offset_x,
+            offset_y,
+            offset_x + output_width as u16 - 1,
+            offset_y + output_height as u16 - 1,
         )
             .await;
         self.command(Command::MemoryWrite).await;
 
-        // Calculate batch parameters
-        let pixels_per_row = FRAME_BUFFER_WIDTH as usize;
-        let bytes_per_row = pixels_per_row / 2; // 2 pixels per byte
-        let scaled_row_bytes = pixels_per_row * scale as usize * 2; // RGB565: 2 bytes per pixel
+        let pixels_per_row = fb_width;
+        let bytes_per_row = pixels_per_row / 2;
+        let row_bytes = pixels_per_row * 2; // RGB565: 2 bytes per pixel
         let rows_per_batch = MAX_BATCH_LINES;
-        let batch_buffer_size = scaled_row_bytes; // Buffer for one scaled row
-        let num_batches = (FRAME_BUFFER_HEIGHT as usize + rows_per_batch - 1) / rows_per_batch; // Ceiling division
+        let batch_buffer_size = row_bytes;
+        let num_batches = (fb_height + rows_per_batch - 1) / rows_per_batch;
 
-        // Stack-allocated buffer for one scaled row
         let mut batch_buffer = vec![0u8; batch_buffer_size];
 
         for batch_idx in 0..num_batches {
             let start_row = batch_idx * rows_per_batch;
-            let end_row = (start_row + rows_per_batch).min(FRAME_BUFFER_HEIGHT as usize);
+            let end_row = (start_row + rows_per_batch).min(fb_height);
             let row_count = end_row - start_row;
 
             for row in 0..row_count {
                 let fb_row_offset = (start_row + row) * bytes_per_row;
 
-                // Generate scaled row data
                 for col in 0..bytes_per_row {
                     let byte = buffer[fb_row_offset + col];
-                    let high_nibble = (byte >> 4) as usize; // First pixel
-                    let low_nibble = (byte & 0xF) as usize; // Second pixel
+                    let high_nibble = (byte >> 4) as usize;
+                    let low_nibble = (byte & 0xF) as usize;
 
-                    // Get RGB565 values from LUT (assumed big-endian)
                     let rgb565_high = GRAY4_LUT[high_nibble];
                     let rgb565_low = GRAY4_LUT[low_nibble];
 
-                    // Horizontal scaling: repeat each pixel 'scale' times contiguously
-                    let pixel_base = col * scale as usize * 4; // Base index for two pixels
-                    for s in 0..scale as usize {
-                        // Write high_nibble pixel
-                        let offset = pixel_base + s * 2;
-                        batch_buffer[offset] = (rgb565_high >> 8) as u8;
-                        batch_buffer[offset + 1] = rgb565_high as u8;
-                        // Write low_nibble pixel
-                        let offset = pixel_base + (s + scale as usize) * 2;
-                        batch_buffer[offset] = (rgb565_low >> 8) as u8;
-                        batch_buffer[offset + 1] = rgb565_low as u8;
-                    }
+                    let base = col * 4;
+                    batch_buffer[base] = (rgb565_high >> 8) as u8;
+                    batch_buffer[base + 1] = rgb565_high as u8;
+                    batch_buffer[base + 2] = (rgb565_low >> 8) as u8;
+                    batch_buffer[base + 3] = rgb565_low as u8;
                 }
 
-                // Vertical scaling: send the same row 'scale' times
                 let x = Instant::now();
-                for _ in 0..scale {
-                    self.interface
-                        .send_data(DataFormat::U8(&batch_buffer))
-                        .await
-                        .unwrap();
-                }
+                self.interface
+                    .send_data(DataFormat::U8(&batch_buffer))
+                    .await
+                    .unwrap();
                 transfer_time += x.elapsed().as_micros();
             }
 
-            // Handle partial last batch by repeating the last row
             if row_count < rows_per_batch {
                 let x = Instant::now();
-                for _ in 0..(rows_per_batch - row_count) * scale as usize {
+                for _ in 0..(rows_per_batch - row_count) {
                     self.interface
                         .send_data(DataFormat::U8(&batch_buffer))
                         .await
