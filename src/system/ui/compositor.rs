@@ -1,4 +1,3 @@
-
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::ui::canvas::Canvas;
@@ -12,6 +11,8 @@ use libm::sqrtf;
 use micromath::F32Ext;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 use embedded_graphics::pixelcolor::{Gray4, GrayColor, PixelColor, Rgb565};
+use embedded_graphics::geometry::{Point, Size};
+use embedded_graphics::primitives::Rectangle;
 use embedded_graphics_core::prelude::DrawTarget;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::{INPUT_CHANNEL_POOL, CHANNEL_CAPACITY};
@@ -113,6 +114,50 @@ pub fn blit<'a, C: BlitPixel>(
     }
 }
 
+/// Blits a specific region of a source Canvas to a destination Canvas with offsets.
+pub fn blit_region<'a, C: BlitPixel>(
+    dest: &mut Canvas<'a, C>,
+    src: &Canvas<'a, C>,
+    region: Rectangle,
+    x_off: i32,
+    y_off: i32,
+) {
+    let dest_width = dest.width();
+    let dest_height = dest.height();
+    let src_width = src.width();
+    let src_height = src.height();
+
+    let (x0, y0, x1, y1) = (
+        region.top_left.x.max(0) as u32,
+        region.top_left.y.max(0) as u32,
+        (region.top_left.x as u32 + region.size.width).min(src_width),
+        (region.top_left.y as u32 + region.size.height).min(src_height),
+    );
+
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+
+    for y in y0..y1 {
+        let dest_y = y as i32 + y_off;
+        if dest_y < 0 || dest_y >= dest_height as i32 {
+            continue;
+        }
+
+        for x in x0..x1 {
+            let dest_x = x as i32 + x_off;
+            if dest_x < 0 || dest_x >= dest_width as i32 {
+                continue;
+            }
+
+            let src_pixel_idx = y as usize * src_width as usize + x as usize;
+            let dest_pixel_idx = dest_y as usize * dest_width as usize + dest_x as usize;
+
+            C::blit_pixel(src.buffer(), src_pixel_idx, dest.buffer_mut(), dest_pixel_idx);
+        }
+    }
+}
+
 pub struct UICompositor {
     windows: Vec<Window, 8>,
     current_window: usize,
@@ -160,10 +205,35 @@ impl UICompositor {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
             let mut dest_canvas = Canvas::<Gray4>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
             dest_canvas.set_resources(&mut working_buff);
+
+            // Fetch view_mode and dirty region before borrowing self mutably
+            let view_mode = self.view_mode;
+            let dirty_region = self.windows[self.current_window]
+                .canvas()
+                .as_mut()
+                .and_then(|canvas| canvas.dirty_region());
+
             self.composite(&mut dest_canvas).await;
+
             let mut disp = display.lock().await;
             let then = Instant::now();
-            disp.draw_gray4(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
+
+            if view_mode == ViewMode::Single && dirty_region.is_some() {
+                let region = dirty_region.unwrap();
+                info!("drawing region: {}", region);
+                disp.draw_gray4_region(
+                    dest_canvas.buffer(),
+                    region,
+                    FRAME_SCALE_FACTOR,
+                ).await;
+                // Flush the dirty region after drawing
+                if let Some(canvas) = self.windows[self.current_window].canvas().as_mut() {
+                    canvas.flush();
+                }
+            } else {
+                disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
+            }
+
             info!("frame time: {}", (Instant::now() - then).as_millis());
         }
 
@@ -395,7 +465,7 @@ impl UICompositor {
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
-                disp.draw_gray4(dest_canvas.buffer_mut(), FRAME_SCALE_FACTOR).await;
+                disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
@@ -407,15 +477,28 @@ impl UICompositor {
     }
 
     /// Composites the active windows into the provided buffer.
-    /// In single mode, renders the current window.
-    /// In split mode, renders the current and next windows side by side.
+    /// In single mode, renders only the dirty region of the current window if available.
+    /// In split mode, renders the current and next windows side by side (full canvas).
     /// Skips rendering for windows without allocated resources.
     pub async fn composite<'a>(&'a mut self, working_buff: &mut Canvas<'a, Gray4>) {
         working_buff.clear(Gray4::BLACK).unwrap();
 
         let src_win = &mut self.windows[self.current_window];
         if let Some(src_canvas) = src_win.canvas().as_mut() {
-            blit(working_buff, src_canvas, 0, 0);
+            if self.view_mode == ViewMode::Single {
+                if let Some(dirty_region) = src_canvas.dirty_region() {
+                    blit_region(working_buff, src_canvas, dirty_region, 0, 0);
+                } else {
+                    blit(working_buff, src_canvas, 0, 0);
+                }
+            } else {
+                // Split mode: render full canvas of current and next windows
+                blit(working_buff, src_canvas, 0, 0);
+                let next_idx = (self.current_window + 1) % self.windows.len();
+                if let Some(next_canvas) = self.windows[next_idx].canvas().as_mut() {
+                    blit(working_buff, next_canvas, FRAME_BUFFER_WIDTH as i32 / 2, 0);
+                }
+            }
         }
     }
 

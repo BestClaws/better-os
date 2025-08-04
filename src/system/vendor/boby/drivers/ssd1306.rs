@@ -8,7 +8,7 @@ use ssd1306::mode::BufferedGraphicsModeAsync;
 use ssd1306::prelude::*;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async};
 use display_interface_i2c::I2CInterface;
-
+use embedded_graphics_core::primitives::Rectangle;
 // Assets
 
 type Disp = Ssd1306Async<I2CInterface<I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>>>, DisplaySize128x64, BufferedGraphicsModeAsync<DisplaySize128x64>>;
@@ -38,6 +38,10 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
     async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
+        todo!()
+    }
+
+    async fn draw_gray4_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
         todo!()
     }
 
