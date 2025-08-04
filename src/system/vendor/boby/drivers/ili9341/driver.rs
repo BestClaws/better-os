@@ -3,7 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::once;
 use async_trait::async_trait;
-use defmt::info;
+use defmt::{info, debug};
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DataFormat};
@@ -77,6 +77,7 @@ pub struct Ili9341Driver<SPI, DC: OutputPin, RESET: OutputPin> {
 impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RESET> {
     pub fn new(spi: SPI, dc: DC, reset: RESET) -> Self {
         let interface = SPIInterface::new(spi, dc);
+        info!("Creating new Ili9341Driver: width={}, height={}", 240, 320);
         Self {
             interface,
             reset,
@@ -88,6 +89,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     async fn command(&mut self, cmd: Command) {
+        debug!("Sending command: {:?}", cmd);
         self.interface
             .send_commands(U8Iter(&mut once(cmd as u8)))
             .await
@@ -95,6 +97,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     async fn command_with_args(&mut self, cmd: Command, args: &[u8]) {
+        debug!("Sending command with args: {:?}", cmd);
         self.interface
             .send_commands(U8Iter(&mut once(cmd as u8)))
             .await
@@ -106,6 +109,8 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     async fn set_window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) {
+        let start = Instant::now();
+        debug!("Setting window: x0={}, y0={}, x1={}, y1={}", x0, y0, x1, y1);
         self.command_with_args(
             Command::ColumnAddressSet,
             &[
@@ -121,12 +126,15 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
                 (y1 >> 8) as u8, y1 as u8,
             ],
         ).await;
+        debug!("Set window time: {} us", start.elapsed().as_micros());
     }
 
     async fn write_iter<I: IntoIterator<Item = u16>>(&mut self, data: I) {
+        let start = Instant::now();
         self.command(Command::MemoryWrite).await;
         let mut iter = data.into_iter();
         self.interface.send_data(U16BEIter(&mut iter)).await.unwrap();
+        debug!("write_iter time: {} us", start.elapsed().as_micros());
     }
 
     pub async fn draw_raw_iter<I: IntoIterator<Item = u16>>(
@@ -137,24 +145,32 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
         y1: u16,
         data: I,
     ) {
+        let start = Instant::now();
         self.set_window(x0, y0, x1, y1).await;
         self.write_iter(data).await;
+        debug!("draw_raw_iter time: {} us", start.elapsed().as_micros());
     }
 
     pub async fn clear_screen(&mut self, color: u16) {
+        let start = Instant::now();
+        info!("Clearing screen with color: {}", color);
         let color = core::iter::repeat_n(color, (self.width * self.height) as usize);
         self.draw_raw_iter(0, 0, self.width as u16 - 1, self.height as u16 - 1, color).await;
+        debug!("Clear screen time: {} us", start.elapsed().as_micros());
     }
 
     pub async fn set_orientation(&mut self, orientation: Orientation) {
+        info!("Setting orientation: {:?}", orientation);
         self.command_with_args(Command::MemoryAccessControl, &[orientation.display_mode()]).await;
         if self.landscape ^ orientation.is_landscape() {
+            debug!("Swapping width and height: {}x{}", self.width, self.height);
             core::mem::swap(&mut self.height, &mut self.width);
         }
         self.landscape = orientation.is_landscape();
     }
 
     pub async fn sleep_mode(&mut self, sleep: bool) {
+        info!("Setting sleep mode: {}", sleep);
         if sleep {
             self.command(Command::SleepModeOn).await;
         } else {
@@ -163,6 +179,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn display_power_mode(&mut self, on: bool) {
+        info!("Setting display power mode: {}", on);
         if on {
             self.command(Command::DisplayOn).await;
         } else {
@@ -171,6 +188,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn invert_mode(&mut self, invert: bool) {
+        info!("Setting invert mode: {}", invert);
         if invert {
             self.command(Command::InvertOn).await;
         } else {
@@ -179,6 +197,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn brightness(&mut self, brightness: u8) {
+        info!("Setting brightness: {}", brightness);
         self.command_with_args(Command::SetBrightness, &[brightness]).await;
     }
 
@@ -191,21 +210,25 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     async fn write_slice(&mut self, data: &[u16]) {
+        let start = Instant::now();
         self.command(Command::MemoryWrite).await;
         self.interface.send_data(DataFormat::U16(data)).await.unwrap();
+        debug!("write_slice time: {} us", start.elapsed().as_micros());
     }
 
     async fn draw_raw_slice(&mut self, x0: u16, y0: u16, x1: u16, y1: u16, data: &[u16]) {
+        let start = Instant::now();
         self.set_window(x0, y0, x1, y1).await;
         self.write_slice(data).await;
+        debug!("draw_raw_slice time: {} us", start.elapsed().as_micros());
     }
-
-
 }
 
 #[async_trait(?Send)]
 impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<SPI, DC, RESET> {
     async fn init(&mut self) {
+        let start = Instant::now();
+        info!("Initializing Ili9341Driver");
         let mut delay = embassy_time::Delay;
         self.reset.set_low().unwrap();
         delay.delay_ms(1).await;
@@ -236,13 +259,17 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.display_power_mode(true).await;
         self.invert_mode(false).await;
         self.set_orientation(Orientation::LandscapeFlipped).await;
+        info!("Initialization completed: {} us", start.elapsed().as_micros());
     }
 
-    /// Draws a region of a Gray4 buffer to the display with scaling.
-     async fn draw_gray4_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
-        let mut transfer_time = 0;
+    async fn draw_gray4_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
+        let start = Instant::now();
+        let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT / 2) as usize;
+        if buffer.len() < expected_buffer_size || ![1, 2, 4].contains(&scale) {
+            info!("draw_gray4_region invalid input: buffer_len={}, scale={}", buffer.len(), scale);
+            return;
+        }
 
-        // Clip the region to the framebuffer bounds
         let (x0, y0, x1, y1) = (
             region.top_left.x.max(0) as u32,
             region.top_left.y.max(0) as u32,
@@ -251,10 +278,16 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         );
 
         if x0 >= x1 || y0 >= y1 {
+            info!("draw_gray4_region skipped: empty region x0={}, y0={}, x1={}, y1={}", x0, y0, x1, y1);
             return;
         }
 
-        // Set display window to scaled region
+        info!(
+            "draw_gray4_region: x0={}, y0={}, width={}, height={}, scale={}",
+            x0, y0, x1 - x0, y1 - y0, scale
+        );
+
+        let set_window_start = Instant::now();
         self.set_window(
             (x0 * scale) as u16,
             (y0 * scale) as u16,
@@ -262,8 +295,8 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             ((y1 * scale) - 1) as u16,
         ).await;
         self.command(Command::MemoryWrite).await;
+        debug!("Set window time: {} us", set_window_start.elapsed().as_micros());
 
-        // Calculate batch parameters for the region
         let pixels_per_row = FRAME_BUFFER_WIDTH as usize;
         let region_width = (x1 - x0) as usize;
         let bytes_per_row = pixels_per_row / 2; // 2 pixels per byte
@@ -273,84 +306,93 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         let batch_buffer_size = scaled_row_bytes; // Buffer for one scaled row
         let num_batches = ((y1 - y0) as usize + rows_per_batch - 1) / rows_per_batch; // Ceiling division
 
-        // Stack-allocated buffer for one scaled row
         let mut batch_buffer = vec![0u8; batch_buffer_size];
+        let mut transfer_time = 0;
 
         for batch_idx in 0..num_batches {
             let start_row = batch_idx * rows_per_batch;
             let end_row = (start_row + rows_per_batch).min((y1 - y0) as usize);
             let row_count = end_row - start_row;
 
+            debug!("Processing batch {}: rows {}-{}", batch_idx, start_row, end_row);
+
             for row in 0..row_count {
                 let fb_row = (y0 as usize + start_row + row) * bytes_per_row;
                 let region_start_byte = fb_row + (x0 as usize / 2);
 
-                // Generate scaled row data for the region
                 for col in 0..region_bytes {
                     let byte_idx = region_start_byte + col;
                     if byte_idx >= buffer.len() {
+                        debug!("Skipping out-of-bounds byte_idx={}", byte_idx);
                         continue;
                     }
                     let byte = buffer[byte_idx];
                     let high_nibble = (byte >> 4) as usize; // First pixel
                     let low_nibble = (byte & 0xF) as usize; // Second pixel
 
-                    // Get RGB565 values from LUT (assumed big-endian)
                     let rgb565_high = GRAY4_LUT[high_nibble];
                     let rgb565_low = GRAY4_LUT[low_nibble];
 
-                    // Horizontal scaling: repeat each pixel 'scale' times contiguously
                     let pixel_base = col * scale as usize * 4; // Base index for two pixels
                     for s in 0..scale as usize {
-                        // Write high_nibble pixel
                         let offset = pixel_base + s * 2;
                         batch_buffer[offset] = (rgb565_high >> 8) as u8;
                         batch_buffer[offset + 1] = rgb565_high as u8;
-                        // Write low_nibble pixel
                         let offset = pixel_base + (s + scale as usize) * 2;
                         batch_buffer[offset] = (rgb565_low >> 8) as u8;
                         batch_buffer[offset + 1] = rgb565_low as u8;
                     }
                 }
 
-                // Vertical scaling: send the same row 'scale' times
-                let x = Instant::now();
+                let row_start = Instant::now();
                 for _ in 0..scale {
                     self.interface
                         .send_data(DataFormat::U8(&batch_buffer))
                         .await
                         .unwrap();
                 }
-                transfer_time += x.elapsed().as_micros();
+                transfer_time += row_start.elapsed().as_micros();
             }
 
-            // Handle partial last batch by repeating the last row
             if row_count < rows_per_batch {
-                let x = Instant::now();
+                let partial_start = Instant::now();
                 for _ in 0..(rows_per_batch - row_count) * scale as usize {
                     self.interface
                         .send_data(DataFormat::U8(&batch_buffer))
                         .await
                         .unwrap();
                 }
-                transfer_time += x.elapsed().as_micros();
+                debug!("Partial batch time: {} us", partial_start.elapsed().as_micros());
+                transfer_time += partial_start.elapsed().as_micros();
             }
         }
+
+        info!(
+            "draw_gray4_region completed: total={} us, transfer={} us",
+            start.elapsed().as_micros(), transfer_time
+        );
     }
 
     async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
-        let mut transfer_time = 0;
-        // Set display window to scaled size
+        let start = Instant::now();
+        let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT / 2) as usize;
+        if buffer.len() < expected_buffer_size || ![1, 2, 4].contains(&scale) {
+            info!("draw_gray4 invalid input: buffer_len={}, scale={}", buffer.len(), scale);
+            return;
+        }
+
+        info!("draw_gray4: full frame, scale={}", scale);
+
+        let set_window_start = Instant::now();
         self.set_window(
             0,
             0,
             (FRAME_BUFFER_WIDTH * scale - 1) as u16,
             (FRAME_BUFFER_HEIGHT * scale - 1) as u16,
-        )
-            .await;
+        ).await;
         self.command(Command::MemoryWrite).await;
+        debug!("Set window time: {} us", set_window_start.elapsed().as_micros());
 
-        // Calculate batch parameters
         let pixels_per_row = FRAME_BUFFER_WIDTH as usize;
         let bytes_per_row = pixels_per_row / 2; // 2 pixels per byte
         let scaled_row_bytes = pixels_per_row * scale as usize * 2; // RGB565: 2 bytes per pixel
@@ -358,84 +400,91 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         let batch_buffer_size = scaled_row_bytes; // Buffer for one scaled row
         let num_batches = (FRAME_BUFFER_HEIGHT as usize + rows_per_batch - 1) / rows_per_batch; // Ceiling division
 
-        // Stack-allocated buffer for one scaled row
         let mut batch_buffer = vec![0u8; batch_buffer_size];
+        let mut transfer_time = 0;
 
         for batch_idx in 0..num_batches {
             let start_row = batch_idx * rows_per_batch;
             let end_row = (start_row + rows_per_batch).min(FRAME_BUFFER_HEIGHT as usize);
             let row_count = end_row - start_row;
 
+            debug!("Processing batch {}: rows {}-{}", batch_idx, start_row, end_row);
+
             for row in 0..row_count {
                 let fb_row_offset = (start_row + row) * bytes_per_row;
 
-                // Generate scaled row data
                 for col in 0..bytes_per_row {
                     let byte = buffer[fb_row_offset + col];
                     let high_nibble = (byte >> 4) as usize; // First pixel
                     let low_nibble = (byte & 0xF) as usize; // Second pixel
 
-                    // Get RGB565 values from LUT (assumed big-endian)
                     let rgb565_high = GRAY4_LUT[high_nibble];
                     let rgb565_low = GRAY4_LUT[low_nibble];
 
-                    // Horizontal scaling: repeat each pixel 'scale' times contiguously
                     let pixel_base = col * scale as usize * 4; // Base index for two pixels
                     for s in 0..scale as usize {
-                        // Write high_nibble pixel
                         let offset = pixel_base + s * 2;
                         batch_buffer[offset] = (rgb565_high >> 8) as u8;
                         batch_buffer[offset + 1] = rgb565_high as u8;
-                        // Write low_nibble pixel
                         let offset = pixel_base + (s + scale as usize) * 2;
                         batch_buffer[offset] = (rgb565_low >> 8) as u8;
                         batch_buffer[offset + 1] = rgb565_low as u8;
                     }
                 }
 
-                // Vertical scaling: send the same row 'scale' times
-                let x = Instant::now();
+                let row_start = Instant::now();
                 for _ in 0..scale {
                     self.interface
                         .send_data(DataFormat::U8(&batch_buffer))
                         .await
                         .unwrap();
                 }
-                transfer_time += x.elapsed().as_micros();
+                transfer_time += row_start.elapsed().as_micros();
             }
 
-            // Handle partial last batch by repeating the last row
             if row_count < rows_per_batch {
-                let x = Instant::now();
+                let partial_start = Instant::now();
                 for _ in 0..(rows_per_batch - row_count) * scale as usize {
                     self.interface
                         .send_data(DataFormat::U8(&batch_buffer))
                         .await
                         .unwrap();
                 }
-                transfer_time += x.elapsed().as_micros();
+                debug!("Partial batch time: {} us", partial_start.elapsed().as_micros());
+                transfer_time += partial_start.elapsed().as_micros();
             }
         }
+
+        info!(
+            "draw_gray4 completed: total={} us, transfer={} us",
+            start.elapsed().as_micros(), transfer_time
+        );
     }
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
+        let start = Instant::now();
         let out_w = FRAME_BUFFER_WIDTH * scale;
         let out_h = FRAME_BUFFER_HEIGHT * scale;
 
         let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize;
         if buffer.len() < expected_buffer_size || ![1, 2, 4].contains(&scale) {
-            info!("Invalid input: buffer len {}, scale {}", buffer.len(), scale);
+            info!("draw invalid input: buffer_len={}, scale={}", buffer.len(), scale);
             return;
         }
 
+        info!("draw: full frame, scale={}", scale);
+
         if self.line_buf.len() < out_w as usize {
+            debug!("Resizing line_buf to {}", out_w);
             self.line_buf.resize(out_w as usize, 0u16);
         }
 
         self.set_window(0, 0, (out_w - 1) as u16, (out_h - 1) as u16).await;
         self.command(Command::MemoryWrite).await;
 
+        let mut transfer_time = 0;
         for src_y in 0..FRAME_BUFFER_HEIGHT {
+            let row_start = Instant::now();
             for _ in 0..scale {
                 let mut pixel_idx = 0;
                 for src_x in 0..FRAME_BUFFER_WIDTH {
@@ -448,7 +497,13 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
                 }
                 self.interface.send_data(DataFormat::U16BE(&mut self.line_buf[..out_w as usize])).await.unwrap();
             }
+            transfer_time += row_start.elapsed().as_micros();
         }
+
+        info!(
+            "draw completed: total={} us, transfer={} us",
+            start.elapsed().as_micros(), transfer_time
+        );
     }
 
     async fn clear(&mut self, color: u16) {

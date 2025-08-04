@@ -1,4 +1,4 @@
-
+use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use embedded_graphics::framebuffer::Framebuffer;
@@ -10,7 +10,7 @@ use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL}
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Format)]
 pub struct WindowHandle {
     id: usize,
 }

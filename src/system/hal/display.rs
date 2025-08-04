@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec;
 use async_trait::async_trait;
-use defmt::info;
+use defmt::{info, Format};
 use display_interface::DataFormat;
 use embedded_graphics_core::primitives::Rectangle;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
@@ -18,7 +18,7 @@ pub trait AsyncDisplay {
     fn get_height(&self) -> u32;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Format)]
 pub enum Orientation {
     Portrait,
     PortraitFlipped,

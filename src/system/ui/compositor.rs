@@ -2,7 +2,7 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::ui::canvas::Canvas;
 use alloc::boxed::Box;
-use defmt::info;
+use defmt::{info, debug, Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
@@ -21,13 +21,13 @@ use crate::system::resources::input_channels::{INPUT_CHANNEL_POOL, CHANNEL_CAPAC
 const ANIM_STEPS: usize = 6;
 const ANIM_FRAME_DELAY_MS: u64 = 30;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Format)]
 pub enum ViewMode {
     Single,
     Split,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Format)]
 pub enum SlideDir {
     Left,
     Right,
@@ -89,6 +89,7 @@ pub fn blit<'a, C: BlitPixel>(
     x_off: i32,
     y_off: i32,
 ) {
+    let start = Instant::now();
     let dest_width = dest.width();
     let dest_height = dest.height();
     let src_width = src.width();
@@ -112,6 +113,7 @@ pub fn blit<'a, C: BlitPixel>(
             C::blit_pixel(src.buffer(), src_pixel_idx, dest.buffer_mut(), dest_pixel_idx);
         }
     }
+    debug!("blit full canvas: {} us", start.elapsed().as_micros());
 }
 
 /// Blits a specific region of a source Canvas to a destination Canvas with offsets.
@@ -122,6 +124,7 @@ pub fn blit_region<'a, C: BlitPixel>(
     x_off: i32,
     y_off: i32,
 ) {
+    let start = Instant::now();
     let dest_width = dest.width();
     let dest_height = dest.height();
     let src_width = src.width();
@@ -135,8 +138,11 @@ pub fn blit_region<'a, C: BlitPixel>(
     );
 
     if x0 >= x1 || y0 >= y1 {
+        debug!("blit_region skipped: empty region x0={}, y0={}, x1={}, y1={}", x0, y0, x1, y1);
         return;
     }
+
+    debug!("blit_region: x0={}, y0={}, width={}, height={}", x0, y0, x1 - x0, y1 - y0);
 
     for y in y0..y1 {
         let dest_y = y as i32 + y_off;
@@ -156,6 +162,7 @@ pub fn blit_region<'a, C: BlitPixel>(
             C::blit_pixel(src.buffer(), src_pixel_idx, dest.buffer_mut(), dest_pixel_idx);
         }
     }
+    debug!("blit_region completed: {} us", start.elapsed().as_micros());
 }
 
 pub struct UICompositor {
@@ -191,15 +198,20 @@ impl UICompositor {
     pub fn request_redraw(&mut self, handle: WindowHandle) {
         if !self.redraw_requests.contains(&handle) {
             self.redraw_requests.push(handle).ok();
+            info!("Redraw requested for window {:?}", handle);
         }
     }
 
     /// Processes a single frame if redraw requests are pending.
     /// Composites the active windows and draws to the display.
     pub async fn step(&mut self) {
+        let start = Instant::now();
         if self.redraw_requests.is_empty() {
+            debug!("step skipped: no redraw requests");
             return;
         }
+
+        info!("step started with {} redraw requests", self.redraw_requests.len());
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
@@ -213,14 +225,25 @@ impl UICompositor {
                 .as_mut()
                 .and_then(|canvas| canvas.dirty_region());
 
+            if let Some(region) = dirty_region {
+                info!(
+                    "Dirty region detected: x={}, y={}, width={}, height={}",
+                    region.top_left.x, region.top_left.y, region.size.width, region.size.height
+                );
+            } else {
+                info!("No dirty region, full canvas will be used");
+            }
+
+            let composite_start = Instant::now();
             self.composite(&mut dest_canvas).await;
+            debug!("Composite time: {} us", composite_start.elapsed().as_micros());
 
             let mut disp = display.lock().await;
-            let then = Instant::now();
+            let draw_start = Instant::now();
 
             if view_mode == ViewMode::Single && dirty_region.is_some() {
+                info!("Drawing dirty region in single view mode");
                 let region = dirty_region.unwrap();
-                info!("drawing region: {}", region);
                 disp.draw_gray4_region(
                     dest_canvas.buffer(),
                     region,
@@ -228,16 +251,20 @@ impl UICompositor {
                 ).await;
                 // Flush the dirty region after drawing
                 if let Some(canvas) = self.windows[self.current_window].canvas().as_mut() {
+                    debug!("Flushing dirty region for window {}", self.current_window);
                     canvas.flush();
                 }
             } else {
+                info!("Drawing full canvas (view_mode={:?})", view_mode);
                 disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
-            info!("frame time: {}", (Instant::now() - then).as_millis());
+            debug!("Draw time: {} us", draw_start.elapsed().as_micros());
+            info!("Frame time: {} us", start.elapsed().as_micros());
         }
 
         self.redraw_requests.clear();
+        debug!("Redraw requests cleared");
     }
 
     /// Returns the handle of the currently focused window, if any.
@@ -265,6 +292,7 @@ impl UICompositor {
         let window = Window::new(width, height, id).await;
         let handle = window.handle();
         self.windows.push(window).ok()?;
+        info!("New window created: id={}, width={}, height={}", id, width, height);
         // Allocate resources for initial set of windows if this is the first window
         if self.windows.len() == 1 {
             self.ensure_window_resources().await;
@@ -279,6 +307,7 @@ impl UICompositor {
             ViewMode::Single => ViewMode::Split,
             ViewMode::Split => ViewMode::Single,
         };
+        info!("View mode toggled to {:?}", self.view_mode);
         self.ensure_window_resources().await;
     }
 
@@ -287,6 +316,7 @@ impl UICompositor {
     /// Releases resources from all other windows to maintain pool limits.
     async fn ensure_window_resources(&mut self) {
         if self.windows.is_empty() {
+            debug!("No windows to allocate resources for");
             return;
         }
 
@@ -300,6 +330,7 @@ impl UICompositor {
         for (i, window) in self.windows.iter_mut().enumerate() {
             if i != prev_idx && i != curr_idx && i != next_idx {
                 if window.framebuffer_id().is_some() {
+                    debug!("Releasing resources for window {}", i);
                     window.relax();
                 }
             }
@@ -309,14 +340,16 @@ impl UICompositor {
         for &idx in &[prev_idx, curr_idx, next_idx] {
             let window = &mut self.windows[idx];
             if window.framebuffer_id().is_none() {
-                // Allocate both resources as a pair
+                debug!("Allocating resources for window {}", idx);
                 if let Some(fb) = FRAMEBUFFER_POOL.allocate().await {
                     if let Some(ic) = INPUT_CHANNEL_POOL.allocate().await {
                         window.set_resources(fb, ic).await;
                     } else {
-                        // Release framebuffer if input channel allocation fails
+                        debug!("Failed to allocate input channel, releasing framebuffer");
                         FRAMEBUFFER_POOL.release(&fb);
                     }
+                } else {
+                    debug!("Failed to allocate framebuffer for window {}", idx);
                 }
             }
         }
@@ -326,10 +359,12 @@ impl UICompositor {
             let split_next_idx = (self.current_window + 1) % len;
             let window = &mut self.windows[split_next_idx];
             if window.framebuffer_id().is_none() {
+                debug!("Allocating resources for split mode window {}", split_next_idx);
                 if let Some(fb) = FRAMEBUFFER_POOL.allocate().await {
                     if let Some(ic) = INPUT_CHANNEL_POOL.allocate().await {
                         window.set_resources(fb, ic).await;
                     } else {
+                        debug!("Failed to allocate input channel, releasing framebuffer");
                         FRAMEBUFFER_POOL.release(&fb);
                     }
                 }
@@ -342,16 +377,19 @@ impl UICompositor {
     /// Manages resource allocation for the new active set.
     pub async fn next_window(&mut self) {
         if self.windows.is_empty() || self.view_mode == ViewMode::Split {
+            debug!("next_window skipped: empty or split mode");
             return;
         }
 
         let old_prev_idx = (self.current_window + self.windows.len() - 2) % self.windows.len();
         self.current_window = (self.current_window + 1) % self.windows.len();
+        info!("Switched to next window: {}", self.current_window);
 
         // Release resources for the old previous window first
         if self.windows.len() > 3 {
             let window = &mut self.windows[old_prev_idx];
             if window.framebuffer_id().is_some() {
+                debug!("Releasing resources for old previous window {}", old_prev_idx);
                 window.relax();
             }
         }
@@ -365,16 +403,19 @@ impl UICompositor {
     /// Manages resource allocation for the new active set.
     pub async fn prev_window(&mut self) {
         if self.windows.is_empty() || self.view_mode == ViewMode::Split {
+            debug!("prev_window skipped: empty or split mode");
             return;
         }
 
         let old_next_idx = (self.current_window + 2) % self.windows.len();
         self.current_window = (self.current_window + self.windows.len() - 1) % self.windows.len();
+        info!("Switched to previous window: {}", self.current_window);
 
         // Release resources for the old next window first
         if self.windows.len() > 3 {
             let window = &mut self.windows[old_next_idx];
             if window.framebuffer_id().is_some() {
+                debug!("Releasing resources for old next window {}", old_next_idx);
                 window.relax();
             }
         }
@@ -388,6 +429,7 @@ impl UICompositor {
     /// Ensures resources are allocated for both source and target windows before animating.
     pub async fn animate_slide(&mut self, dir: SlideDir) {
         if self.windows.len() < 2 || self.view_mode == ViewMode::Split {
+            debug!("animate_slide skipped: too few windows ({}) or split mode", self.windows.len());
             return;
         }
 
@@ -397,6 +439,8 @@ impl UICompositor {
             SlideDir::Left => (self.current_window + len - 1) % len,
             SlideDir::Right => (self.current_window + 1) % len,
         };
+
+        info!("Animating slide from window {} to {}", from_index, to_index);
 
         // Ensure resources for the target window before switching
         let old_prev_idx = (self.current_window + len - 2) % len;
@@ -410,6 +454,7 @@ impl UICompositor {
         if self.windows.len() > 3 {
             let window = &mut self.windows[window_to_relax_idx];
             if window.framebuffer_id().is_some() {
+                debug!("Releasing resources for window {}", window_to_relax_idx);
                 window.relax();
             }
         }
@@ -417,10 +462,12 @@ impl UICompositor {
         // Allocate resources for the target window
         let to_window = &mut self.windows[to_index];
         if to_window.framebuffer_id().is_none() {
+            debug!("Allocating resources for target window {}", to_index);
             if let Some(fb) = FRAMEBUFFER_POOL.allocate().await {
                 if let Some(ic) = INPUT_CHANNEL_POOL.allocate().await {
                     to_window.set_resources(fb, ic).await;
                 } else {
+                    debug!("Failed to allocate input channel, releasing framebuffer");
                     FRAMEBUFFER_POOL.release(&fb);
                 }
             }
@@ -445,6 +492,7 @@ impl UICompositor {
             let eased = ease_in_out_circular(t);
             let offset = (eased * FRAME_BUFFER_WIDTH as f32) as i32;
 
+            let step_start = Instant::now();
             dest_canvas.clear(Gray4::BLACK).unwrap();
 
             let (from_x, to_x) = match dir {
@@ -460,6 +508,7 @@ impl UICompositor {
                 }
             };
 
+            debug!("Animation step {}: from_x={}, to_x={}", step, from_x, to_x);
             blit(&mut dest_canvas, &src1_canvas, from_x, 0);
             blit(&mut dest_canvas, &src2_canvas, to_x, 0);
 
@@ -468,6 +517,7 @@ impl UICompositor {
                 disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
+            debug!("Animation step {} time: {} us", step, step_start.elapsed().as_micros());
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
         }
 
@@ -481,25 +531,33 @@ impl UICompositor {
     /// In split mode, renders the current and next windows side by side (full canvas).
     /// Skips rendering for windows without allocated resources.
     pub async fn composite<'a>(&'a mut self, working_buff: &mut Canvas<'a, Gray4>) {
+        let start = Instant::now();
         working_buff.clear(Gray4::BLACK).unwrap();
+        debug!("Cleared destination canvas");
 
         let src_win = &mut self.windows[self.current_window];
         if let Some(src_canvas) = src_win.canvas().as_mut() {
             if self.view_mode == ViewMode::Single {
                 if let Some(dirty_region) = src_canvas.dirty_region() {
+                    info!("Compositing dirty region for window {}", self.current_window);
                     blit_region(working_buff, src_canvas, dirty_region, 0, 0);
                 } else {
+                    info!("Compositing full canvas for window {}", self.current_window);
                     blit(working_buff, src_canvas, 0, 0);
                 }
             } else {
-                // Split mode: render full canvas of current and next windows
+                info!("Compositing split mode: window {} and next", self.current_window);
                 blit(working_buff, src_canvas, 0, 0);
                 let next_idx = (self.current_window + 1) % self.windows.len();
                 if let Some(next_canvas) = self.windows[next_idx].canvas().as_mut() {
+                    debug!("Blitting next window {} at x_offset={}", next_idx, FRAME_BUFFER_WIDTH / 2);
                     blit(working_buff, next_canvas, FRAME_BUFFER_WIDTH as i32 / 2, 0);
                 }
             }
+        } else {
+            debug!("No canvas available for window {}", self.current_window);
         }
+        debug!("Composite total time: {} us", start.elapsed().as_micros());
     }
 
     /// Returns the current view mode (single or split).

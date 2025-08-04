@@ -55,7 +55,7 @@ pub async fn dummy_app(context: AppContext) {
                 corner_radius: 4,
             });
 
-            ui.clear_background().unwrap();
+            // ui.clear_background().unwrap();
             ui.add(Label::new("DUMMY".to_string().as_ref()));
 
 

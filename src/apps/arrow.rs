@@ -74,7 +74,7 @@ pub async fn arrow_app(context: AppContext) {
         }
 
         context.draw(|canvas: &mut Canvas<Gray4>| {
-            canvas.clear(Gray4::BLACK);
+            // canvas.clear(Gray4::BLACK);
 
             let then = Instant::now();
             if let Err(e) = draw_model(
