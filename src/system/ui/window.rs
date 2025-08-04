@@ -1,13 +1,11 @@
-#![allow(unused)]
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use embedded_graphics::framebuffer::Framebuffer;
 use embedded_graphics_core::pixelcolor::Gray4;
 use embedded_graphics_core::prelude::PixelColor;
-use esp_hal::interrupt::map;
 use crate::system::services::human_input_srv::HumanInputEvent;
-use crate::system::ui::canvas::{Canvas};
+use crate::system::ui::canvas::Canvas;
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
@@ -24,43 +22,36 @@ pub struct Window {
     width: u32,
     height: u32,
     id: usize,
-    canvas: Canvas<'static, Gray4>
+    canvas: Option<Canvas<'static, Gray4>>,
 }
 
 impl Window {
     /// Create a new Window.
-    pub async fn new(
-        width: u32,
-        height: u32,
-        id: usize,
-    ) -> Self {
-
-
+    pub async fn new(width: u32, height: u32, id: usize) -> Self {
         Self {
             fb: None,
             input_channel: None,
             width,
             height,
             id,
-            canvas: Canvas::new(width, height)
+            canvas: Some(Canvas::new(width, height)),
         }
     }
 
+    /// Set resources for the window.
     pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
-        self.canvas.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
+        if let Some(canvas) = self.canvas.as_mut() {
+            canvas.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
+        }
         self.fb = Some(fb);
         self.input_channel = Some(ic);
-
     }
 
-    pub fn canvas(&mut self) -> Option<&mut Canvas<'static, Gray4>> {
-        if self.fb.is_none() {
-            return None;
-        }
-        Some(&mut self.canvas)
+    /// Return a mutable reference to the canvas option.
+    pub fn canvas(&mut self) -> &mut Option<Canvas<'static, Gray4>> {
+        &mut self.canvas
     }
-    
-    
+
     /// Return this window’s handle.
     pub fn handle(&self) -> WindowHandle {
         WindowHandle { id: self.id }
@@ -91,17 +82,17 @@ impl Window {
         self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.receiver(channel))
     }
 
-    /// give away held framebuffer and input channel
+    /// Release held framebuffer and input channel.
     pub fn relax(&mut self) {
         assert!(self.fb.is_some());
         assert!(self.input_channel.is_some());
 
-        self.canvas.relinquish();
+        if let Some(canvas) = self.canvas.as_mut() {
+            canvas.relinquish();
+        }
         FRAMEBUFFER_POOL.release(self.fb.as_mut().unwrap());
         INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());
-
-
+        self.fb = None;
+        self.input_channel = None;
     }
 }
-
-// Possibly implement Drop if you want to release input channel on window drop

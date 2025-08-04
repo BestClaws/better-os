@@ -1,5 +1,6 @@
+
 use crate::system::services::human_input_srv::HumanInputEvent;
-use crate::system::ui::canvas::{Canvas};
+use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -46,8 +47,9 @@ impl AppContext {
     pub async fn draw(&self, f: impl FnOnce(&mut Canvas<Gray4>) + Send) {
         let mut comp = self.compositor.lock().await;
         if let Some(window) = comp.get_window_mut(self.handle) {
-            let canvas = window.canvas().unwrap();
-            f(canvas);
+            if let Some(canvas) = window.canvas().as_mut() {
+                f(canvas);
+            }
         }
     }
 }

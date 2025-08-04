@@ -1,3 +1,4 @@
+
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::ui::canvas::Canvas;
@@ -365,6 +366,10 @@ impl UICompositor {
         let mut dest_canvas: Canvas<Gray4> = Canvas::<Gray4>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
         dest_canvas.set_resources(&mut composed_buf);
 
+        // Take the canvases upfront
+        let src1_canvas = self.windows[from_index].canvas().take().expect("Source canvas not available");
+        let src2_canvas = self.windows[to_index].canvas().take().expect("Target canvas not available");
+
         for step in 0..=ANIM_STEPS {
             let t = step as f32 / ANIM_STEPS as f32;
             let eased = ease_in_out_circular(t);
@@ -385,9 +390,6 @@ impl UICompositor {
                 }
             };
 
-            let src1_canvas = self.windows[from_index].canvas().take().unwrap();
-            let src2_canvas =  self.windows[to_index].canvas().take().unwrap();
-
             blit(&mut dest_canvas, &src1_canvas, from_x, 0);
             blit(&mut dest_canvas, &src2_canvas, to_x, 0);
 
@@ -398,6 +400,10 @@ impl UICompositor {
 
             Timer::after(Duration::from_millis(ANIM_FRAME_DELAY_MS)).await;
         }
+
+        // Restore the canvases
+        self.windows[from_index].canvas().replace(src1_canvas);
+        self.windows[to_index].canvas().replace(src2_canvas);
     }
 
     /// Composites the active windows into the provided buffer.
@@ -408,10 +414,9 @@ impl UICompositor {
         working_buff.clear(Gray4::BLACK).unwrap();
 
         let src_win = &mut self.windows[self.current_window];
-        if let Some(src_canvas) = src_win.canvas() {
-            blit(working_buff, &src_canvas, 0, 0);
+        if let Some(src_canvas) = src_win.canvas().as_mut() {
+            blit(working_buff, src_canvas, 0, 0);
         }
-
     }
 
     /// Returns the current view mode (single or split).

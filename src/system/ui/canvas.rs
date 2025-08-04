@@ -232,8 +232,8 @@ impl<'a> Canvas<'a, Gray4> {
     }
 
     pub(crate) fn set_resources(&mut self, buffer: &'a mut [u8]) {
-        let required = (self.width * self.height * 2) as usize;
-        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
+        let required = (self.width * self.height / 2) as usize;
+        assert!(buffer.len() >= required, "Buffer too small for Gray4");
         self.buf = Some(buffer);
     }
 }
