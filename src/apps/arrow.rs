@@ -10,6 +10,7 @@ use core::fmt::Write;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
+use embedded_graphics_core::primitives::Rectangle;
 use heapless::String;
 use crate::libs::gfx::{draw_model, Model, Quaternion, RenderOptions, Vec3, parse_binary_stl};
 use crate::system::app::app_context::AppContext;
@@ -17,7 +18,7 @@ use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER
 use crate::system::ui::canvas::{Canvas};
 
 // Embed the binary STL file (place cube.stl in assets/ directory)
-const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow2.stl");
+const STL_DATA: &[u8] = include_bytes!("../../src/assets/geofix.stl");
 
 #[embassy_executor::task]
 pub async fn arrow_app(context: AppContext) {
@@ -25,7 +26,8 @@ pub async fn arrow_app(context: AppContext) {
     let model = match parse_binary_stl(STL_DATA) {
         Ok(model) => model,
         Err(e) => {
-            info!("STL parse error: {:?}", e);
+            panic!("STL parse error: {:?}", e);
+
             return; // Exit if parsing fails
         }
     };
@@ -50,7 +52,7 @@ pub async fn arrow_app(context: AppContext) {
         enable_shading: true,
         enable_antialiasing: false,
         antialiasing_factor: 1,
-        edge_only_antialiasing: true,
+        edge_only_antialiasing: false,
     };
 
     loop {
@@ -76,6 +78,9 @@ pub async fn arrow_app(context: AppContext) {
         context.draw(|canvas: &mut Canvas<Gray4>| {
             // canvas.clear(Gray4::BLACK);
 
+
+            Rectangle::with_center(Point::new(80, 60), Size::new(60, 60)).into_styled(PrimitiveStyle::with_fill(Gray4::BLACK)).draw(canvas).unwrap();
+
             let then = Instant::now();
             if let Err(e) = draw_model(
                 canvas,
@@ -94,7 +99,7 @@ pub async fn arrow_app(context: AppContext) {
             if let Err(e) = draw_model(
                 canvas,
                 &model,
-                Vec3(0.0, 0.0, 3.0),
+                Vec3(0.0, 0.0, 1.0),
                 rotation,
                 canvas.width(),
                 canvas.height(),

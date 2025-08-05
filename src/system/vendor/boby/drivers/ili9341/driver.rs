@@ -3,7 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::once;
 use async_trait::async_trait;
-use defmt::{info, debug};
+use defmt::{info, debug, Format};
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use display_interface::{DataFormat::{U16BEIter, U8Iter}, AsyncWriteOnlyDataCommand, DataFormat};
@@ -46,7 +46,7 @@ impl Orientation {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Format)]
 enum Command {
     SoftwareReset = 0x01,
     MemoryAccessControl = 0x36,

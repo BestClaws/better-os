@@ -1,11 +1,8 @@
 // model.rs
 
 use super::math::Vec3;
-use defmt::Format;
-
-/// Configuration: Maximum allowed geometry size for models
-pub(crate) const MAX_TRIANGLES: usize = 50;
-pub(crate) const MAX_VERTICES: usize = 50;
+use defmt::{debug, error, info, Format};
+pub(crate) use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 
 /// A triangle in a 3D model, represented by indices into the vertex buffer
 #[derive(Clone, Copy, Debug)]
@@ -79,6 +76,7 @@ pub fn parse_binary_stl(buffer: &[u8]) -> Result<Model, StlError> {
     let triangle_count = u32::from_le_bytes([buffer[80], buffer[81], buffer[82], buffer[83]]) as usize;
 
     if triangle_count > MAX_TRIANGLES {
+        debug!("triangle count exceeds maximum. count: {}", triangle_count);
         return Err(StlError::TooManyTriangles);
     }
     if buffer.len() < 84 + triangle_count * 50 {

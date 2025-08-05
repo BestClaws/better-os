@@ -1,9 +1,10 @@
 // math.rs
 
+use defmt::Format;
 use micromath::F32Ext;
 
 /// A 3D vector with common vector math operations
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Format)]
 pub struct Vec3(pub f32, pub f32, pub f32);
 
 impl Vec3 {
