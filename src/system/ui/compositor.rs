@@ -198,7 +198,7 @@ impl UICompositor {
     pub fn request_redraw(&mut self, handle: WindowHandle) {
         if !self.redraw_requests.contains(&handle) {
             self.redraw_requests.push(handle).ok();
-            info!("Redraw requested for window {:?}", handle);
+            debug!("Redraw requested for window {:?}", handle);
         }
     }
 
@@ -211,7 +211,7 @@ impl UICompositor {
             return;
         }
 
-        info!("step started with {} redraw requests", self.redraw_requests.len());
+        debug!("step started with {} redraw requests", self.redraw_requests.len());
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
@@ -226,12 +226,12 @@ impl UICompositor {
                 .and_then(|canvas| canvas.dirty_region());
 
             if let Some(region) = dirty_region {
-                info!(
+                debug!(
                     "Dirty region detected: x={}, y={}, width={}, height={}",
                     region.top_left.x, region.top_left.y, region.size.width, region.size.height
                 );
             } else {
-                info!("No dirty region, full canvas will be used");
+                debug!("No dirty region, full canvas will be used");
             }
 
             let composite_start = Instant::now();
@@ -242,7 +242,7 @@ impl UICompositor {
             let draw_start = Instant::now();
 
             if view_mode == ViewMode::Single && dirty_region.is_some() {
-                info!("Drawing dirty region in single view mode");
+                debug!("Drawing dirty region in single view mode");
                 let region = dirty_region.unwrap();
                 disp.draw_gray4_region(
                     dest_canvas.buffer(),
@@ -255,12 +255,12 @@ impl UICompositor {
                     canvas.flush();
                 }
             } else {
-                info!("Drawing full canvas (view_mode={:?})", view_mode);
+                debug!("Drawing full canvas (view_mode={:?})", view_mode);
                 disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
             debug!("Draw time: {} us", draw_start.elapsed().as_micros());
-            info!("Frame time: {} us", start.elapsed().as_micros());
+            debug!("Frame time: {} us", start.elapsed().as_micros());
         }
 
         self.redraw_requests.clear();
@@ -292,7 +292,7 @@ impl UICompositor {
         let window = Window::new(width, height, id).await;
         let handle = window.handle();
         self.windows.push(window).ok()?;
-        info!("New window created: id={}, width={}, height={}", id, width, height);
+        debug!("New window created: id={}, width={}, height={}", id, width, height);
         // Allocate resources for initial set of windows if this is the first window
         if self.windows.len() == 1 {
             self.ensure_window_resources().await;
@@ -307,7 +307,7 @@ impl UICompositor {
             ViewMode::Single => ViewMode::Split,
             ViewMode::Split => ViewMode::Single,
         };
-        info!("View mode toggled to {:?}", self.view_mode);
+        debug!("View mode toggled to {:?}", self.view_mode);
         self.ensure_window_resources().await;
     }
 
@@ -383,7 +383,7 @@ impl UICompositor {
 
         let old_prev_idx = (self.current_window + self.windows.len() - 2) % self.windows.len();
         self.current_window = (self.current_window + 1) % self.windows.len();
-        info!("Switched to next window: {}", self.current_window);
+        debug!("Switched to next window: {}", self.current_window);
 
         // Release resources for the old previous window first
         if self.windows.len() > 3 {
@@ -409,7 +409,7 @@ impl UICompositor {
 
         let old_next_idx = (self.current_window + 2) % self.windows.len();
         self.current_window = (self.current_window + self.windows.len() - 1) % self.windows.len();
-        info!("Switched to previous window: {}", self.current_window);
+        debug!("Switched to previous window: {}", self.current_window);
 
         // Release resources for the old next window first
         if self.windows.len() > 3 {
@@ -440,7 +440,7 @@ impl UICompositor {
             SlideDir::Right => (self.current_window + 1) % len,
         };
 
-        info!("Animating slide from window {} to {}", from_index, to_index);
+        debug!("Animating slide from window {} to {}", from_index, to_index);
 
         // Ensure resources for the target window before switching
         let old_prev_idx = (self.current_window + len - 2) % len;
@@ -539,14 +539,14 @@ impl UICompositor {
         if let Some(src_canvas) = src_win.canvas().as_mut() {
             if self.view_mode == ViewMode::Single {
                 if let Some(dirty_region) = src_canvas.dirty_region() {
-                    info!("Compositing dirty region for window {}", self.current_window);
+                    debug!("Compositing dirty region for window {}", self.current_window);
                     blit_region(working_buff, src_canvas, dirty_region, 0, 0);
                 } else {
-                    info!("Compositing full canvas for window {}", self.current_window);
+                    debug!("Compositing full canvas for window {}", self.current_window);
                     blit(working_buff, src_canvas, 0, 0);
                 }
             } else {
-                info!("Compositing split mode: window {} and next", self.current_window);
+                debug!("Compositing split mode: window {} and next", self.current_window);
                 blit(working_buff, src_canvas, 0, 0);
                 let next_idx = (self.current_window + 1) % self.windows.len();
                 if let Some(next_canvas) = self.windows[next_idx].canvas().as_mut() {

@@ -13,3 +13,6 @@ pub const FRAME_BUFFER_COUNT: usize = 3;
 pub const MAX_BATCH_LINES: usize = 1;
 
 
+/// Configuration: Maximum allowed geometry size for models
+pub(crate) const MAX_TRIANGLES: usize = 740;
+pub(crate) const MAX_VERTICES: usize = 200;

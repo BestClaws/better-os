@@ -77,7 +77,7 @@ pub struct Ili9341Driver<SPI, DC: OutputPin, RESET: OutputPin> {
 impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RESET> {
     pub fn new(spi: SPI, dc: DC, reset: RESET) -> Self {
         let interface = SPIInterface::new(spi, dc);
-        info!("Creating new Ili9341Driver: width={}, height={}", 240, 320);
+        debug!("Creating new Ili9341Driver: width={}, height={}", 240, 320);
         Self {
             interface,
             reset,
@@ -153,14 +153,14 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
 
     pub async fn clear_screen(&mut self, color: u16) {
         let start = Instant::now();
-        info!("Clearing screen with color: {}", color);
+        debug!("Clearing screen with color: {}", color);
         let color = core::iter::repeat_n(color, (self.width * self.height) as usize);
         self.draw_raw_iter(0, 0, self.width as u16 - 1, self.height as u16 - 1, color).await;
         debug!("Clear screen time: {} us", start.elapsed().as_micros());
     }
 
     pub async fn set_orientation(&mut self, orientation: Orientation) {
-        info!("Setting orientation: {:?}", orientation);
+        debug!("Setting orientation: {:?}", orientation);
         self.command_with_args(Command::MemoryAccessControl, &[orientation.display_mode()]).await;
         if self.landscape ^ orientation.is_landscape() {
             debug!("Swapping width and height: {}x{}", self.width, self.height);
@@ -170,7 +170,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn sleep_mode(&mut self, sleep: bool) {
-        info!("Setting sleep mode: {}", sleep);
+        debug!("Setting sleep mode: {}", sleep);
         if sleep {
             self.command(Command::SleepModeOn).await;
         } else {
@@ -179,7 +179,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn display_power_mode(&mut self, on: bool) {
-        info!("Setting display power mode: {}", on);
+        debug!("Setting display power mode: {}", on);
         if on {
             self.command(Command::DisplayOn).await;
         } else {
@@ -188,7 +188,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn invert_mode(&mut self, invert: bool) {
-        info!("Setting invert mode: {}", invert);
+        debug!("Setting invert mode: {}", invert);
         if invert {
             self.command(Command::InvertOn).await;
         } else {
@@ -197,7 +197,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
     }
 
     pub async fn brightness(&mut self, brightness: u8) {
-        info!("Setting brightness: {}", brightness);
+        debug!("Setting brightness: {}", brightness);
         self.command_with_args(Command::SetBrightness, &[brightness]).await;
     }
 
@@ -228,7 +228,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> Ili9341Driver<SPI, DC, RES
 impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Driver<SPI, DC, RESET> {
     async fn init(&mut self) {
         let start = Instant::now();
-        info!("Initializing Ili9341Driver");
+        debug!("Initializing Ili9341Driver");
         let mut delay = embassy_time::Delay;
         self.reset.set_low().unwrap();
         delay.delay_ms(1).await;
@@ -259,14 +259,14 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         self.display_power_mode(true).await;
         self.invert_mode(false).await;
         self.set_orientation(Orientation::LandscapeFlipped).await;
-        info!("Initialization completed: {} us", start.elapsed().as_micros());
+        debug!("Initialization completed: {} us", start.elapsed().as_micros());
     }
 
     async fn draw_gray4_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
         let start = Instant::now();
         let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT / 2) as usize;
         if buffer.len() < expected_buffer_size || ![1, 2, 4].contains(&scale) {
-            info!("draw_gray4_region invalid input: buffer_len={}, scale={}", buffer.len(), scale);
+            debug!("draw_gray4_region invalid input: buffer_len={}, scale={}", buffer.len(), scale);
             return;
         }
 
@@ -278,11 +278,11 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         );
 
         if x0 >= x1 || y0 >= y1 {
-            info!("draw_gray4_region skipped: empty region x0={}, y0={}, x1={}, y1={}", x0, y0, x1, y1);
+            debug!("draw_gray4_region skipped: empty region x0={}, y0={}, x1={}, y1={}", x0, y0, x1, y1);
             return;
         }
 
-        info!(
+        debug!(
             "draw_gray4_region: x0={}, y0={}, width={}, height={}, scale={}",
             x0, y0, x1 - x0, y1 - y0, scale
         );
@@ -367,7 +367,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             }
         }
 
-        info!(
+        debug!(
             "draw_gray4_region completed: total={} us, transfer={} us",
             start.elapsed().as_micros(), transfer_time
         );
@@ -377,11 +377,11 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
         let start = Instant::now();
         let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT / 2) as usize;
         if buffer.len() < expected_buffer_size || ![1, 2, 4].contains(&scale) {
-            info!("draw_gray4 invalid input: buffer_len={}, scale={}", buffer.len(), scale);
+            debug!("draw_gray4 invalid input: buffer_len={}, scale={}", buffer.len(), scale);
             return;
         }
 
-        info!("draw_gray4: full frame, scale={}", scale);
+        debug!("draw_gray4: full frame, scale={}", scale);
 
         let set_window_start = Instant::now();
         self.set_window(
@@ -455,7 +455,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             }
         }
 
-        info!(
+        debug!(
             "draw_gray4 completed: total={} us, transfer={} us",
             start.elapsed().as_micros(), transfer_time
         );
@@ -468,11 +468,11 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
 
         let expected_buffer_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize;
         if buffer.len() < expected_buffer_size || ![1, 2, 4].contains(&scale) {
-            info!("draw invalid input: buffer_len={}, scale={}", buffer.len(), scale);
+            debug!("draw invalid input: buffer_len={}, scale={}", buffer.len(), scale);
             return;
         }
 
-        info!("draw: full frame, scale={}", scale);
+        debug!("draw: full frame, scale={}", scale);
 
         if self.line_buf.len() < out_w as usize {
             debug!("Resizing line_buf to {}", out_w);
@@ -500,7 +500,7 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
             transfer_time += row_start.elapsed().as_micros();
         }
 
-        info!(
+        debug!(
             "draw completed: total={} us, transfer={} us",
             start.elapsed().as_micros(), transfer_time
         );
