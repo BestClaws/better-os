@@ -84,20 +84,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let st_alarm = system_timer.alarm0;
     crate::system::kernel::platforms::ajax::async_runtime::init(st_alarm);
 
-    // INIT OTHER DEVICES
 
-    // // INIT ENCODER
-    // let encoder_a_pin = Input::new(
-    //     peripherals.GPIO7,
-    //     InputConfig::default().with_pull(Pull::Up),
-    // );
-    // let encoder_b_pin = Input::new(
-    //     peripherals.GPIO8,
-    //     InputConfig::default().with_pull(Pull::Up),
-    // );
-    //
-    // let encoder = EncoderDriver::new(encoder_a_pin, encoder_b_pin);
-    //
 
 
     let vibrator_pin = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
@@ -105,27 +92,21 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let vibrator = VibratorDriver::new(vibrator_pin);
 
 
-    // let button_pin = Input::new(
-    //     peripherals.GPIO9,
-    //     InputConfig::default().with_pull(Pull::Up),
-    // );
-    //
-    // let button = ButtonDriver::new(button_pin);
 
-    // // INIT I2C BUS
-    // let i2c = I2c::new(
-    //     peripherals.I2C0,
-    //     esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
-    // )
-    // .unwrap()
-    // .with_sda(peripherals.GPIO8)
-    // .with_scl(peripherals.GPIO9)
-    // .into_async();
+    // INIT I2C BUS
+    let i2c = I2c::new(
+        peripherals.I2C0,
+        esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
+    )
+    .unwrap()
+    .with_sda(peripherals.GPIO21)
+    .with_scl(peripherals.GPIO20)
+    .into_async();
 
-    // let i2c = Mutex::new(i2c);
-    // let i2c = I2C_BUS.init(i2c);
-    // let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
-    //     I2cDevice::new(i2c);
+    let i2c = Mutex::new(i2c);
+    let i2c = I2C_BUS.init(i2c);
+    let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
+        I2cDevice::new(i2c);
 
     // let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
     //     I2cDevice::new(i2c);
@@ -133,8 +114,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // INIT DISPLAY
     // let display = Ssd1306Driver::init(i2c_1);
 
-    // // INIT GYRO ACCELEROMETER
-    // let gyro_accelerometer = MPU6050::new(i2c);
+    // INIT GYRO ACCELEROMETER
+    let gyro_accelerometer = MPU6050::new(i2c_1);
 
     let sclk = peripherals.GPIO0;
     let miso = peripherals.GPIO2;
@@ -194,7 +175,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // battery
     let battery = BatteryDriver::new(adc, battery_adc_pin);
 
-    // // ambient sensor
+    // ambient sensor
     // let ambient_sensor = AmbientSensorDriver::new(adc, ambient_sensor_adc_pin);
 
 
@@ -218,7 +199,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         // button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
         battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
         // ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
-        // gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
+        gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
         radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
 
     }

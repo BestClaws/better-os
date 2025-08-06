@@ -19,7 +19,7 @@ pub(crate) struct PlatformDevice<'s> {
     // pub(crate) button: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncButton>>>,
     pub(crate) battery: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncBattery>>>,
     // pub(crate) ambient_sensor: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncAmbientSensor>>>,
-    // pub(crate) gyro_accelerometer: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncGyroAccelerometer>>>,
+    pub(crate) gyro_accelerometer: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncGyroAccelerometer>>>,
     pub(crate) radio: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncRadio>>>,
     
 }
