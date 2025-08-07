@@ -154,7 +154,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let touch_irq = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
     let cs_touch = Output::new(peripherals.GPIO9, Level::High, OutputConfig::default());
     
-    let spi_touch = SpiDeviceWithConfig::new(spi, cs_touch, Config::default().with_frequency(Rate::from_mhz(1)));
+    let spi_touch = SpiDeviceWithConfig::new(spi, cs_touch, Config::default().with_frequency(Rate::from_mhz(2)));
     let touch = XPT2046::new(spi_touch, touch_irq);
 
 

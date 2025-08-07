@@ -34,6 +34,8 @@ pub async fn dummy_app(context: AppContext) {
         context
             .draw(|mut canvas: &mut Canvas<Gray4>| {
 
+                canvas.clear(Gray4::BLACK);
+
                 let style = PrimitiveStyle::with_fill(Gray4::WHITE);
                 Circle::with_center(Point::new(tx, ty), 10)
                 .into_styled(style)

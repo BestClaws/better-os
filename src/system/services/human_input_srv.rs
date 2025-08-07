@@ -77,18 +77,23 @@ pub(crate) mod sub {
                 t.read_xyz().await
             };
 
+
+            // info!("------------------------------------------------Touch detected: x = {}, y = {}, z = {}", x, y, z);
+
             // Touch pressure threshold (ignore light/noisy touches)
             if z > 0 {
                 // Normalize/clamp x and y to a max of 2000
-                let x = ((x as f32 / 2000.0) * (320 / FRAME_SCALE_FACTOR) as f32) as i32;
-                let y = ((y as f32 / 2000.0) * (240 / FRAME_SCALE_FACTOR) as f32) as i32;
+                let y1 = ((x as f32 / 4096.0) * (240 / FRAME_SCALE_FACTOR) as f32) as i32;
+                let x1 = ((y as f32 / 4096.0) * (320 / FRAME_SCALE_FACTOR) as f32) as i32;
 
-                if x > FRAME_BUFFER_WIDTH as i32 || y > FRAME_BUFFER_HEIGHT as i32 || x == 0  || y == 0 {
+                info!("touch: x = {} / 4096 * (240 / {}), y = {} / 4096 * (240 / {})", x, FRAME_SCALE_FACTOR, y, FRAME_SCALE_FACTOR);
+
+                if x1 > FRAME_BUFFER_WIDTH as i32 || y1 > FRAME_BUFFER_HEIGHT as i32 || x1 == 0  || y1 == 0 {
                     continue;
                 }
 
-                info!("Touch detected: x = {}, y = {}, z = {}", x, y, z);
-                HUMAN_INPUT_CH.send(HumanInputEvent::Touch(x, y)).await;
+                // info!("Touch detected: x = {}, y = {}, z = {}", x, y, z);
+                HUMAN_INPUT_CH.send(HumanInputEvent::Touch(x1, y1)).await;
             }
 
             Timer::after_millis(16).await;
