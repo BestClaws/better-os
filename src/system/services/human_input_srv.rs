@@ -91,8 +91,7 @@ pub(crate) mod sub {
                 HUMAN_INPUT_CH.send(HumanInputEvent::Touch(x, y)).await;
             }
 
-            // Optional debounce delay (adjust as needed)
-            Timer::after_millis(30).await;
+            Timer::after_millis(16).await;
         }
     }
 
