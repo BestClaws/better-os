@@ -77,7 +77,7 @@ where
         (self.xraw, self.yraw, (self.zraw & 0xFF) as u8)
     }
 
-    /// Main update function - ports the core C++ update() logic
+    /// Main update function - CRITICAL FIX for ghost touches
     async fn update(&mut self) {
         // Wait for interrupt (touch) - blocks until touch occurs
         let _ = self.pen_irq.wait_for_low().await;
@@ -87,12 +87,49 @@ where
             return;
         }
 
-        // Read Z1 and Z2 for pressure calculation - following C++ sequence exactly
-        let _ = self.spi_transfer(0xB1).await; // Z1 command
-        let z1 = self.spi_transfer16(0xC1).await.unwrap_or(0) >> 3; // Read Z1, send Z2 command
-        let mut z = (z1 as i32) + 4095;
-        let z2 = self.spi_transfer16(0x91).await.unwrap_or(0) >> 3; // Read Z2, send X command
-        z -= z2 as i32;
+        // CRITICAL: Add debounce delay after interrupt to let hardware settle
+        Timer::after(Duration::from_millis(10)).await;
+
+        // CRITICAL: Verify touch is still active after debounce
+        // If finger was lifted quickly, IRQ line goes high again
+        // This prevents ghost touches from brief electrical noise
+        if self.check_irq_still_low().await {
+            return; // False alarm, finger already lifted
+        }
+
+        // Do complete read sequence with power management exactly like C++
+        let _ = self.spi_transfer_single(0xB1).await; // Send Z1 command
+        let z1 = (self.spi_transfer16(0xC1).await.unwrap_or(0) >> 3) as i32;
+        let mut z = z1 + 4095;
+        let z2 = (self.spi_transfer16(0x91).await.unwrap_or(0) >> 3) as i32;
+        z -= z2;
+
+        if z < 0 {
+            z = 0;
+        }
+
+        let mut data = [0u16; 6];
+
+        // Only read coordinates if pressure is sufficient
+        if (z as u16) >= Z_THRESHOLD {
+            let _ = self.spi_transfer16(0x91).await; // dummy X measure, 1st is always noisy
+            data[0] = (self.spi_transfer16(0xD1).await.unwrap_or(0) >> 3); // Y cmd, read X
+            data[1] = (self.spi_transfer16(0x91).await.unwrap_or(0) >> 3); // X cmd, read Y
+            data[2] = (self.spi_transfer16(0xD1).await.unwrap_or(0) >> 3); // Y cmd, read X
+            data[3] = (self.spi_transfer16(0x91).await.unwrap_or(0) >> 3); // X cmd, read Y
+        }
+
+        // Always complete the sequence with power down
+        data[4] = (self.spi_transfer16(0xD0).await.unwrap_or(0) >> 3); // Last Y touch power down
+        data[5] = (self.spi_transfer16(0x00).await.unwrap_or(0) >> 3); // Final read
+
+        // CRITICAL: Power down the touch controller to reset interrupt state
+        // This prevents spurious interrupts during finger lift
+        let _ = self.spi_transfer_single(0x80).await; // Power down command
+        Timer::after(Duration::from_millis(1)).await; // Let it settle
+
+        // Re-enable touch detection
+        let _ = self.spi_transfer_single(0xD0).await; // Enable interrupts again
 
         if z < 0 {
             z = 0;
@@ -100,43 +137,22 @@ where
 
         if (z as u16) < Z_THRESHOLD {
             self.zraw = 0;
-            return;
+            return; // Don't update coordinates on insufficient pressure
         }
 
         self.zraw = z as u16;
 
-        // Read coordinate data exactly like C++ - 3 measurements each for X and Y
-        let mut data = [0u16; 6];
-
-        if z >= Z_THRESHOLD as i32 {
-            // Dummy X measurement (first is always noisy)
-            let _ = self.spi_transfer16(0x91).await; // Dummy X, prepare for Y
-
-            // Make 3 x-y measurements exactly like C++ code:
-            data[0] = self.spi_transfer16(0xD1).await.unwrap_or(0) >> 3; // Read Y, prepare X
-            data[1] = self.spi_transfer16(0x91).await.unwrap_or(0) >> 3; // Read X, prepare Y
-            data[2] = self.spi_transfer16(0xD1).await.unwrap_or(0) >> 3; // Read Y, prepare X
-            data[3] = self.spi_transfer16(0x91).await.unwrap_or(0) >> 3; // Read X, prepare Y
-            // Last Y touch power down
-            data[4] = self.spi_transfer16(0xD0).await.unwrap_or(0) >> 3; // Read Y (power down)
-            data[5] = self.spi_transfer16(0x00).await.unwrap_or(0) >> 3; // Final read
-        } else {
-            // Set all data to 0 if pressure too low (like C++ compiler warning fix)
-            data = [0; 6];
-        }
-
         if (z as u16) >= Z_THRESHOLD {
             self.msraw = now;
 
-            // Average pair with least distance - NOTE: C++ uses Y coords for X calc and vice versa
-            let x = Self::best_two_avg(data[0], data[2], data[4]); // Y measurements become X
-            let y = Self::best_two_avg(data[1], data[3], data[5]); // X measurements become Y
+            let x = Self::best_two_avg(data[0], data[2], data[4]);
+            let y = Self::best_two_avg(data[1], data[3], data[5]);
 
-            // Apply rotation transformation exactly like C++
+            // Apply rotation
             match self.rotation {
                 0 => {
-                    self.xraw = 4095 - y; // Note: uses y for xraw
-                    self.yraw = x;        // Note: uses x for yraw
+                    self.xraw = 4095 - y;
+                    self.yraw = x;
                 }
                 1 => {
                     self.xraw = x;
@@ -154,29 +170,40 @@ where
         }
     }
 
-    /// SPI transfer16 function that mimics the C++ _pspi->transfer16() behavior
+    /// Check if IRQ pin is still low (touch still active)
+    /// Returns true if IRQ went high (false alarm)
+    async fn check_irq_still_low(&mut self) -> bool {
+        // Try to wait for high with very short timeout
+        // If this succeeds quickly, it means IRQ already went high (no real touch)
+        match embassy_time::with_timeout(Duration::from_millis(2), self.pen_irq.wait_for_high()).await {
+            Ok(_) => true,  // IRQ went high quickly - false alarm
+            Err(_) => false, // IRQ still low - real touch
+        }
+    }
+
+    /// 16-bit SPI transfer - FIXED to match C++ behavior exactly
     async fn spi_transfer16(&mut self, cmd: u8) -> Result<u16, <SPI as ErrorType>::Error> {
-        // Send command byte and read back 16-bit result
+        // C++ does: send 8-bit command, read back 16-bit data
         let tx_buf = [cmd, 0x00, 0x00];
         let mut rx_buf = [0u8; 3];
 
         self.spi.transfer(&mut rx_buf, &tx_buf).await?;
 
-        // The result comes in bytes 1 and 2 (byte 0 is while sending command)
+        // XPT2046 returns data MSB first in the next 16 bits after command
         let result = ((rx_buf[1] as u16) << 8) | (rx_buf[2] as u16);
         Ok(result)
     }
 
-    /// Single byte transfer for initial commands
-    async fn spi_transfer(&mut self, cmd: u8) -> Result<u8, <SPI as ErrorType>::Error> {
-        let tx_buf = [cmd];
-        let mut rx_buf = [0u8; 1];
+    /// Single byte transfer for commands that don't need data back
+    async fn spi_transfer_single(&mut self, cmd: u8) -> Result<u8, <SPI as ErrorType>::Error> {
+        let tx_buf = [cmd, 0x00]; // Send some dummy data to get response
+        let mut rx_buf = [0u8; 2];
 
         self.spi.transfer(&mut rx_buf, &tx_buf).await?;
-        Ok(rx_buf[0])
+        Ok(rx_buf[1]) // Return the response byte
     }
 
-    /// Port of the besttwoavg function from C++ - unchanged
+    /// Best two average algorithm - exactly from C++
     fn best_two_avg(x: u16, y: u16, z: u16) -> u16 {
         let x = x as i16;
         let y = y as i16;
@@ -202,7 +229,7 @@ where
     SPI: SpiDevice,
     PEN: Wait,
 {
-    /// Reads X, Y, Z values asynchronously, returns (0, 0, 0) on error or no touch
+    /// Reads X, Y, Z values asynchronously - BLOCKS until touch occurs
     async fn read_xyz(&mut self) -> (u16, u16, u16) {
         self.update().await;
         (self.xraw, self.yraw, self.zraw)
