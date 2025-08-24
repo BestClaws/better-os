@@ -1,5 +1,5 @@
+use core::sync::atomic::{AtomicU8, Ordering};
 use defmt::info;
-use portable_atomic::{AtomicU8, Ordering};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     channel::{Channel, Sender, Receiver},

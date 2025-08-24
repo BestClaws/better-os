@@ -34,24 +34,24 @@ pub(crate) fn start(spawner: Spawner) {
     // spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
     spawner.spawn(human_input_srv::sub::listen_touch(device.touch.unwrap())).unwrap();
     
-    info!("[{}s] spawned vibrator service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(vibrator_service(device.vibrator.unwrap())).unwrap();
-    
+    // info!("[{}s] spawned vibrator service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(vibrator_service(device.vibrator.unwrap())).unwrap();
+    //
     // Spawn sensors
     // info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
 
 
-    info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
-    
+    // info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
+    //
 
-    // Initialize the global compositor
-    let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
-    // Spawn compositor service
-    info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
-
+    // // Initialize the global compositor
+    // let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
+    // // Spawn compositor service
+    // info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
+    // 
     
     // // Spawn accel service
     // info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
@@ -60,10 +60,10 @@ pub(crate) fn start(spawner: Spawner) {
     // info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
 
-
-    // Spawn app spawner service
-    info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
+    
+    // // Spawn app spawner service
+    // info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
 
 
 }

@@ -42,6 +42,7 @@ use crate::system::vendor::boby::drivers::ili9341::driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
+use crate::system::vendor::boby::drivers::ft5336::FT5336;
 
 static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 
@@ -86,121 +87,90 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
 
 
-
-    let vibrator_pin = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
-
-    let vibrator = VibratorDriver::new(vibrator_pin);
-
-
-
     // INIT I2C BUS
     let i2c = I2c::new(
         peripherals.I2C0,
         esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
     )
     .unwrap()
-    .with_sda(peripherals.GPIO21)
-    .with_scl(peripherals.GPIO20)
+    .with_sda(peripherals.GPIO18)
+    .with_scl(peripherals.GPIO8)
     .into_async();
+
 
     let i2c = Mutex::new(i2c);
     let i2c = I2C_BUS.init(i2c);
     let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
         I2cDevice::new(i2c);
 
-    // let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
-    //     I2cDevice::new(i2c);
-
-    // INIT DISPLAY
-    // let display = Ssd1306Driver::init(i2c_1);
-
-    // INIT GYRO ACCELEROMETER
-    let gyro_accelerometer = MPU6050::new(i2c_1);
-
-    let sclk = peripherals.GPIO0;
-    let miso = peripherals.GPIO2;
-    let mosi = peripherals.GPIO4;
 
 
-    let mut spi = Spi::new(
-        peripherals.SPI2,
-        Config::default()
-            .with_frequency(Rate::from_mhz(40))
-            .with_mode(Mode::_0),
-    )
-        .unwrap()
-        .with_sck(sclk)
-        .with_mosi(mosi)
-        .with_miso(miso)
-        .into_async();
-
-    let spi = Mutex::new(spi);
-    let spi = SPI_BUS.init(spi);
+    // INIT TOUCH
+    let touch = FT5336::new(i2c_1);
 
 
-    let dc = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
-    let reset = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
-    // tied to low.
-    let cs_display = Output::new(peripherals.GPIO8, Level::High, OutputConfig::default());
-    let led_display = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
+
+
+    // let sclk = peripherals.GPIO6; // SCLK
+    // let miso = peripherals.GPIO2; // MISO
+    // let mosi = peripherals.GPIO7; // MOSI
     //
-    let spi_display = SpiDeviceWithConfig::new(spi, cs_display, Config::default().with_frequency(Rate::from_mhz(60)));
+    // let mut spi = Spi::new(
+    //     peripherals.SPI2,
+    //     Config::default()
+    //         .with_frequency(Rate::from_mhz(40))
+    //         .with_mode(Mode::_0),
+    // )
+    //     .unwrap()
+    //     .with_sck(sclk)
+    //     .with_mosi(mosi)
+    //     .with_miso(miso)
+    //     .into_async();
     //
-    // INIT DISPLAY
-    let display = Ili9341Driver::new(spi_display, dc, reset);
+    // let spi = Mutex::new(spi);
+    // let spi = SPI_BUS.init(spi);
+    //
+    // // Display control pins from DTS
+    // let dc    = Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default());
+    // let reset = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
+    // let cs_display = Output::new(peripherals.GPIO3, Level::High, OutputConfig::default());
+    //
+    // // Touch control pins from DTS
+    // let touch_irq = Input::new(peripherals.GPIO9, InputConfig::default().with_pull(Pull::Up));
+    // let cs_touch  = Output::new(peripherals.GPIO1, Level::High, OutputConfig::default());
+    //
+    // // SPI devices
+    // let spi_display = SpiDeviceWithConfig::new(
+    //     spi,
+    //     cs_display,
+    //     Config::default().with_frequency(Rate::from_mhz(60)),
+    // );
+    // let display = Ili9341Driver::new(spi_display, dc, reset);
+    //
+    // let spi_touch = SpiDeviceWithConfig::new(
+    //     spi,
+    //     cs_touch,
+    //     Config::default().with_frequency(Rate::from_mhz(2)),
+    // );
+    // let touch = XPT2046::new(spi_touch, touch_irq);
+    //
+    //
 
-
-    let touch_irq = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
-    let cs_touch = Output::new(peripherals.GPIO9, Level::High, OutputConfig::default());
-    
-    let spi_touch = SpiDeviceWithConfig::new(spi, cs_touch, Config::default().with_frequency(Rate::from_mhz(2)));
-    let touch = XPT2046::new(spi_touch, touch_irq);
-
-
-
-
-
-
-
-
-
-    let mut adc_config = AdcConfig::new();
-    let battery_adc_pin = adc_config.enable_pin(peripherals.GPIO1, Attenuation::_11dB);
-    // let ambient_sensor_adc_pin = adc_config.enable_pin(peripherals.GPIO3, Attenuation::_11dB);
-    let adc1 = Adc::new(peripherals.ADC1, adc_config).into_async();
-    let adc: &'static mut Mutex<CriticalSectionRawMutex, Adc<ADC1, Async>> =
-        ADC_SHARED.init(Mutex::new(adc1));
-
-    // battery
-    let battery = BatteryDriver::new(adc, battery_adc_pin);
-
-    // ambient sensor
-    // let ambient_sensor = AmbientSensorDriver::new(adc, ambient_sensor_adc_pin);
-
-
-
-
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
-
-    let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
-    let timer_group_0_timer_0 = timer_group_0.timer0;
-
-    let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
 
 
 
 
     PlatformDevice {
         // encoder: Some(ENCODER.init(Mutex::new(Box::new(encoder)))),
-        vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
-        display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
+        // vibrator: Some(VIBRATOR.init(Mutex::new(Box::new(vibrator)))),
+        // display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         // button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
-        battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
+        // battery: Some(BATTERY.init(Mutex::new(Box::new(battery)))),
         // ambient_sensor: Some(AMBIENT_SENSOR.init(Mutex::new(Box::new(ambient_sensor)))),
-        gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
-        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+        // gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(gyro_accelerometer)))),
+        // radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
 
     }
 }

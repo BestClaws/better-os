@@ -9,7 +9,7 @@ enabled = true
 halt_afterwards = false
 
 [default.general]
-chip = "esp32c3"
+chip = "esp32c6"
 
 [default.rtt]
 enabled = true

@@ -3,8 +3,8 @@
 use defmt::{info, println};
 use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use portable_atomic::{AtomicU8, Ordering};
 use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_time::Timer;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_COUNT, FRAME_BUFFER_SIZE};
 
