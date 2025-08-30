@@ -46,7 +46,6 @@ use static_cell::StaticCell;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
 use crate::system::ui::window::WindowHandle;
-use crate::system::vendor::boby::drivers::ili9341::driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;

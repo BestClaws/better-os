@@ -20,87 +20,87 @@ pub async fn compositor_service(
 
     display.lock().await.set_brightness(0xff).await;
 
-    display.lock().await.paint_screen(0x801f).await;
+    display.lock().await.paint_screen(0x81f).await;
 
-    //
-    // {
-    //     let mut comp = compositor.lock().await;
-    //     comp.attach_display(display);
-    // }
-    //
-    // loop {
-    //     let idle_start = Instant::now();
-    //     let mut last_slide: Option<SlideDir> = None;
-    //     let mut toggle_view = false;
-    //
-    //     let mut event = None;
-    //
-    //     // Drain all available input events
-    //     while let Ok(e) = HUMAN_INPUT_CH.try_receive() {
-    //         event = Some(e);
-    //     }
-    //
-    //     if let Some(event) = event {
-    //         match event {
-    //             // HumanInputEvent::Touch(x, y) => {
-    //             //
-    //             //     if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
-    //             //         last_slide = Some(SlideDir::Right);
-    //             //     } else {
-    //             //         last_slide = Some(SlideDir::Left);
-    //             //
-    //             //     }
-    //             //
-    //             // }
-    //             HumanInputEvent::OkPressed => {
-    //                 toggle_view = true;
-    //             }
-    //             other => {
-    //                 // Forward input to current app
-    //                 let mut comp = compositor.lock().await;
-    //                 let current = comp.current_handle().unwrap();
-    //                 if let Some(window) = comp.get_window_mut(current) {
-    //                     let _ = window.input_sender().await.unwrap().try_send(other);
-    //                 }
-    //             }
-    //         }
-    //
-    //     }
-    //
-    //
-    //
-    //
-    //
-    //     // Apply slide or view toggle logic
-    //     if let Some(dir) = last_slide {
-    //         let mut comp = compositor.lock().await;
-    //         comp.animate_slide(dir).await;
-    //         comp.step().await;
-    //     } else if toggle_view {
-    //         let mut comp = compositor.lock().await;
-    //         comp.toggle_view();
-    //         let current = comp.current_handle().unwrap();
-    //         comp.request_redraw(current);
-    //         comp.step().await;
-    //     } else {
-    //
-    //         // No user input: step once every ~100ms for idle refresh
-    //         Timer::after(Duration::from_millis(100)).await;
-    //         let Some(current) = compositor.lock().await.current_handle() else {
-    //             Timer::after_nanos(0).await;
-    //             continue;
-    //         };
-    //         compositor.lock().await.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
-    //         compositor.lock().await.step().await;
-    //
-    //
-    //     }
-    //
-    //
-    //     // Sleep remaining time if loop was too fast (ensure ~10Hz)
-    //     let elapsed = Instant::now() - idle_start;
-    //     if elapsed < Duration::from_millis(30) {
-    //         Timer::after(Duration::from_millis(100) - elapsed).await;
-    //     }
-    // }
+
+    {
+        let mut comp = compositor.lock().await;
+        comp.attach_display(display);
+    }
+
+    loop {
+        let idle_start = Instant::now();
+        let mut last_slide: Option<SlideDir> = None;
+        let mut toggle_view = false;
+
+        let mut event = None;
+
+        // Drain all available input events
+        while let Ok(e) = HUMAN_INPUT_CH.try_receive() {
+            event = Some(e);
+        }
+
+        if let Some(event) = event {
+            match event {
+                // HumanInputEvent::Touch(x, y) => {
+                //
+                //     if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
+                //         last_slide = Some(SlideDir::Right);
+                //     } else {
+                //         last_slide = Some(SlideDir::Left);
+                //
+                //     }
+                //
+                // }
+                HumanInputEvent::OkPressed => {
+                    toggle_view = true;
+                }
+                other => {
+                    // Forward input to current app
+                    let mut comp = compositor.lock().await;
+                    let current = comp.current_handle().unwrap();
+                    if let Some(window) = comp.get_window_mut(current) {
+                        let _ = window.input_sender().await.unwrap().try_send(other);
+                    }
+                }
+            }
+
+        }
+
+
+
+
+
+        // Apply slide or view toggle logic
+        if let Some(dir) = last_slide {
+            let mut comp = compositor.lock().await;
+            comp.animate_slide(dir).await;
+            comp.step().await;
+        } else if toggle_view {
+            let mut comp = compositor.lock().await;
+            comp.toggle_view();
+            let current = comp.current_handle().unwrap();
+            comp.request_redraw(current);
+            comp.step().await;
+        } else {
+
+            // No user input: step once every ~100ms for idle refresh
+            Timer::after(Duration::from_millis(100)).await;
+            let Some(current) = compositor.lock().await.current_handle() else {
+                Timer::after_nanos(0).await;
+                continue;
+            };
+            compositor.lock().await.request_redraw(current); // passive draw (for e.g. clock, sensor UI)
+            compositor.lock().await.step().await;
+
+
+        }
+
+
+        // Sleep remaining time if loop was too fast (ensure ~10Hz)
+        let elapsed = Instant::now() - idle_start;
+        if elapsed < Duration::from_millis(30) {
+            Timer::after(Duration::from_millis(100) - elapsed).await;
+        }
+    }
 }
