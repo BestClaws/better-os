@@ -7,6 +7,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
 use crate::apps::arrow::arrow_app;
+use crate::apps::battery::battery_app;
 use crate::apps::dummy::dummy_app;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
@@ -18,12 +19,14 @@ pub async fn app_spawner_service(
 
     // let ctx = create_context(spawner, compositor, 0, "arrow", 0).await;
     // spawner.spawn(arrow_app(ctx)).unwrap();
-    let ctx = create_context(spawner, compositor, 1, "ble", 1).await;
-    spawner.spawn(ble_app(ctx)).unwrap();
+    // let ctx = create_context(spawner, compositor, 1, "ble", 1).await;
+    // spawner.spawn(ble_app(ctx)).unwrap();
     // let ctx = create_context(spawner, compositor, 2, "notification", 2).await;
     // spawner.spawn(notifications_app(ctx)).unwrap();
     // let ctx = create_context(spawner, compositor, 3, "dummy", 3).await;
     // spawner.spawn(dummy_app(ctx)).unwrap();
+    let ctx = create_context(spawner, compositor, 3, "battery", 3).await;
+    spawner.spawn(battery_app(ctx)).unwrap();
 
 
 }

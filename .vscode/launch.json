@@ -27,7 +27,7 @@
                             "showTimestamps": true
                         }
                     ],
-                    "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}",
+                    "programBinary": "target/riscv32imac-unknown-none-elf/debug/${workspaceFolderBasename}",
                     "svdFile": "${workspaceFolder}/esp32c3.svd"
                 }
             ]
@@ -51,7 +51,7 @@
                             "showTimestamps": true
                         }
                     ],
-                    "programBinary": "target/riscv32imc-unknown-none-elf/debug/${workspaceFolderBasename}",
+                    "programBinary": "target/riscv32imac-unknown-none-elf/debug/${workspaceFolderBasename}",
                     "svdFile": "${workspaceFolder}/esp32c3.svd"
                 }
             ]

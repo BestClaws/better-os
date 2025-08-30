@@ -37,7 +37,7 @@ pub async fn battery_app(context: AppContext) {
 
         context.draw(|mut canvas: &mut Canvas<Gray4>| {
 
-            // canvas.clear();
+            canvas.clear(Gray4::WHITE);
             //
             // let mut text_buf = heapless::String::<32>::new();
             // write!(text_buf, "Battery: {}%", percent).ok();
