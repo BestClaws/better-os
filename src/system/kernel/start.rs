@@ -22,7 +22,7 @@ pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> 
 
 pub(crate) fn start(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
-    esp_alloc::heap_allocator!(size: 72 * 1024);
+    esp_alloc::heap_allocator!(size: 272 * 1024);
 
     let device = platforms::ajax::device::init_device();
 

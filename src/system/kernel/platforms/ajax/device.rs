@@ -2,7 +2,7 @@ use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 use alloc::boxed::Box;
 use core::cell::RefCell;
-use defmt::Format;
+use defmt::{info, Format};
 use crate::system::hal::ambience::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::{AsyncButton, ButtonDriver};
@@ -20,18 +20,27 @@ use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_embedded_hal::shared_bus::asynch::spi::{SpiDevice, SpiDeviceWithConfig};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_time::Timer;
+use embedded_graphics::mono_font::ascii::FONT_10X20;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::text::{Alignment, LineHeight, TextStyleBuilder};
+use embedded_graphics_core::pixelcolor::Rgb888;
+use embedded_graphics_core::prelude::{DrawTarget, RgbColor};
+use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 // use esp_hal::peripherals::ADC1;
 use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{Async, Blocking};
+use esp_hal::{dma_buffers, Async, Blocking};
 use esp_hal::{
     gpio::{Input, InputConfig, Pull},
     i2c::master::I2c,
 };
-use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::delay::Delay;
+use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
+use esp_hal::gpio::{AnyPin, Level, Output, OutputConfig};
 use esp_hal::spi::master::{Config, Spi};
 use esp_hal::spi::Mode;
 use static_cell::StaticCell;
@@ -42,6 +51,8 @@ use crate::system::vendor::boby::drivers::ili9341::driver::Ili9341Driver;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
+use crate::system::kernel::platforms::ajax::display_driver::{ResetDriver, Ws43AmoledDriver};
+use crate::system::kernel::platforms::ajax::driver_lib::{framebuffer_size, ColorMode, DisplaySize, Sh8601Driver};
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
 
 static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
@@ -108,8 +119,74 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // INIT TOUCH
     let touch = FT5336::new(i2c_1);
 
+    // --- DMA Buffers for SPI ---
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(16384);
+    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
 
+    let lcd_spi = Spi::new(
+        peripherals.SPI2,
+        Config::default()
+            .with_frequency(Rate::from_mhz(40_u32))
+            .with_mode(Mode::_0),
+    )
+        .unwrap()
+        .with_sio0(peripherals.GPIO4)
+        .with_sio1(peripherals.GPIO5)
+        .with_sio2(peripherals.GPIO6)
+        .with_sio3(peripherals.GPIO7)
+        .with_cs(peripherals.GPIO10)
+        .with_sck(peripherals.GPIO11)
+        .with_dma(peripherals.DMA_CH0)
+        .with_buffers(dma_rx_buf, dma_tx_buf);
+
+    let delay = &mut embassy_time::Delay;
+
+
+    let reset_pin    = Output::new(peripherals.GPIO3, Level::High, OutputConfig::default());
+    let reset = ResetDriver::new(reset_pin, delay);
+
+    // Initialize display driver for the Waveshare 1.8" AMOLED display
+    let ws_driver = Ws43AmoledDriver::new(lcd_spi);
+
+    // Set up the display size
+    const DISPLAY_SIZE: DisplaySize = DisplaySize::new(466, 100);
+
+    // Calculate framebuffer size based on the display size and color mode
+    const FB_SIZE: usize = framebuffer_size(DISPLAY_SIZE, ColorMode::Rgb888);
+
+    let delay = &mut embassy_time::Delay;
+
+    let display_res = Sh8601Driver::new_heap::<_, FB_SIZE>(
+        ws_driver,
+        reset,
+        ColorMode::Rgb888,
+        DISPLAY_SIZE,
+        delay,
+    );
+    let mut display = match display_res {
+        Ok(d) => {
+            info!("display read");
+
+            d
+        }
+        Err(e) => {
+            loop {}
+        }
+    };
+
+
+    let delay = &mut embassy_time::Delay;
+
+    info!("near clear");
+    display.clear(Rgb888::WHITE).unwrap();
+
+    info!("after clear");
+
+    loop {
+        delay.delay_ms(1000_u32);
+    }
 
 
     // let sclk = peripherals.GPIO6; // SCLK
@@ -193,3 +270,5 @@ impl OutputPin for NothingPin {
         Ok(())
     }
 }
+
+
