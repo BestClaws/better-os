@@ -150,9 +150,17 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         info!("Failed to set brightness:");
     }
 
-    // Paint the screen green (0x07E0 in RGB565) as per C code
-    if let Err(e) = display.paint_screen(0x07E0) {
-        info!("Failed to paint screen:");
+
+
+    loop {
+
+        // Paint the screen green (0x07E0 in RGB565) as per C code
+        if let Err(e) = display.paint_screen(0x01E0) {
+            info!("Failed to paint screen:");
+        }
+
+
+
     }
 
     PlatformDevice {

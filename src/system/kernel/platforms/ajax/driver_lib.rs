@@ -215,7 +215,6 @@ where
         const BYTES_PER_PIXEL: usize = 2; // Rgb565
         const CHUNK_SIZE: usize = 466 * CHUNK_HEIGHT as usize * BYTES_PER_PIXEL;
 
-        info!("Painting screen with RGB565 color: 0x{:04x}, chunk size: {} bytes", color, CHUNK_SIZE);
         let mut buffer = alloc::vec::Vec::with_capacity(CHUNK_SIZE);
         buffer.resize(CHUNK_SIZE / 2, color);
         let buffer_bytes = unsafe {
@@ -256,7 +255,6 @@ where
 
             let len = ((x_end - x_start) * (y_end - y_start)) as usize * BYTES_PER_PIXEL;
             let chunk = &buffer_bytes[0..len];
-            info!("Writing {} bytes for y={} to y={}", len, y_start, y_end);
             self.interface.send_pixels(chunk).map_err(DriverError::InterfaceError)?;
         }
 
