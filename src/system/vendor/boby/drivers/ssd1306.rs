@@ -37,6 +37,14 @@ impl AsyncDisplay for Ssd1306Driver {
         self.display.init().await.unwrap();
     }
 
+    async fn paint_screen(&mut self, color: u16) {
+        todo!()
+    }
+
+    async fn set_brightness(&mut self, value: u8) {
+        todo!()
+    }
+
     async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
         todo!()
     }

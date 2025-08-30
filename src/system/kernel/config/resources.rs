@@ -1,8 +1,8 @@
 use crate::system::resources::framebuffer::FrameBufferPool;
 
 // frame buffer resource configuration
-pub const FRAME_BUFFER_WIDTH: u32 = 160;
-pub const FRAME_BUFFER_HEIGHT: u32 = 120;
+pub const FRAME_BUFFER_WIDTH: u32 = 233;
+pub const FRAME_BUFFER_HEIGHT: u32 = 233;
 
 pub const FRAME_SCALE_FACTOR: u32 =2;
 

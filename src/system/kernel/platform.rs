@@ -14,7 +14,7 @@ use crate::system::hal::vibrator::AsyncVibrator;
 pub(crate) struct PlatformDevice<'s> {
     // pub(crate) encoder: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncEncoder>>>,
     // pub(crate) vibrator: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncVibrator>>>,
-    // pub(crate) display: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncDisplay>>>,
+    pub(crate) display: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncDisplay>>>,
     pub(crate) touch: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncTouch>>>,
     // pub(crate) button: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncButton>>>,
     // pub(crate) battery: Option<&'s mut Mutex<CriticalSectionRawMutex,Box<dyn AsyncBattery>>>,

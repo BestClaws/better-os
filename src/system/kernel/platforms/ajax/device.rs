@@ -51,8 +51,8 @@ use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
 use crate::system::kernel::platforms::ajax::display_driver::{ResetDriver, Ws43AmoledDriver};
-use crate::system::kernel::platforms::ajax::driver_lib::{ColorMode, DisplaySize, Sh8601Driver};
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
+use crate::system::vendor::chipone::co5300::{Co5300, ColorMode};
 
 static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
@@ -120,52 +120,26 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         .with_cs(peripherals.GPIO10)
         .with_sck(peripherals.GPIO11)
         .with_dma(peripherals.DMA_CH0)
-        .with_buffers(dma_rx_buf, dma_tx_buf);
+        .with_buffers(dma_rx_buf, dma_tx_buf)
+        .into_async();
 
-    let mut delay = embassy_time::Delay;
-
+    // Reset pin
     let reset_pin = Output::new(peripherals.GPIO3, Level::High, OutputConfig::default());
-    let reset = ResetDriver::new(reset_pin, &mut delay);
 
-    let ws_driver = Ws43AmoledDriver::new(lcd_spi);
-
-    const DISPLAY_SIZE: DisplaySize = DisplaySize::new(466, 466);
-
-    let mut delay = embassy_time::Delay;
-    let display_res = Sh8601Driver::new(ws_driver, reset, ColorMode::Rgb565, DISPLAY_SIZE, &mut delay);
-
-    let mut display = match display_res {
-        Ok(d) => {
-            info!("Display initialized");
-            d
-        }
-        Err(e) => {
-            info!("Display initialization failed:");
-            loop {}
-        }
-    };
-
-    // Set brightness to maximum (0xFF) as per C code
-    if let Err(e) = display.set_brightness(0xFF) {
-        info!("Failed to set brightness:");
-    }
+    // Initialize Co5300 driver
+    let mut display = Co5300::new(
+        lcd_spi,
+        reset_pin,
+        466,
+        466,
+        ColorMode::Rgb565,
+    );
 
 
-
-    loop {
-
-        // Paint the screen green (0x07E0 in RGB565) as per C code
-        if let Err(e) = display.paint_screen(0x01E0) {
-            info!("Failed to paint screen:");
-        }
-
-
-
-    }
 
     PlatformDevice {
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
-        // display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
+        display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
     }
 }
 

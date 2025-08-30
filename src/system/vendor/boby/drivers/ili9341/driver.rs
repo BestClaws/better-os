@@ -521,4 +521,12 @@ impl<SPI: SpiDevice, DC: OutputPin, RESET: OutputPin> AsyncDisplay for Ili9341Dr
     fn get_height(&self) -> u32 {
         self.height()
     }
+
+    async fn paint_screen(&mut self, color: u16) {
+        todo!()
+    }
+
+    async fn set_brightness(&mut self, value: u8) {
+        todo!()
+    }
 }
