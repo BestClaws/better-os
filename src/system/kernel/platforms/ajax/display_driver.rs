@@ -1,5 +1,5 @@
 //! Driver implementation for Waveshare ESP32-S3 1.8" AMOLED
-//! Uses QSPI interface and I2C-based GPIO expander or GPIO for reset.
+//! Uses QSPI interface and GPIO for reset.
 
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
@@ -94,23 +94,27 @@ pub struct ResetDriver<RST, DELAY> {
 }
 
 impl<RST, DELAY> ResetDriver<RST, DELAY>
-where RST: OutputPin, DELAY: DelayNs {
+where
+    RST: OutputPin,
+    DELAY: DelayNs,
+{
     pub fn new(reset_pin: RST, delay: DELAY) -> Self {
         ResetDriver { reset_pin, delay }
     }
 }
 
-
 impl<RST, DELAY> ResetInterface for ResetDriver<RST, DELAY>
-where RST: OutputPin, DELAY: DelayNs
+where
+    RST: OutputPin,
+    DELAY: DelayNs,
 {
     type Error = ();
 
     fn reset(&mut self) -> Result<(), Self::Error> {
         self.reset_pin.set_low().unwrap();
-        self.delay.delay_ms(20);
+        self.delay.delay_ms(10); // C code uses 10ms low pulse
         self.reset_pin.set_high().unwrap();
-        self.delay.delay_ms(150);
+        self.delay.delay_ms(150); // C code uses 150ms after high
         Ok(())
     }
 }
