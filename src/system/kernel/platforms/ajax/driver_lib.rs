@@ -11,6 +11,7 @@ use alloc::boxed::Box;
 use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_hal::delay::DelayNs;
 use embedded_hal_async::delay::DelayNs as AsyncDelayNs;
+use defmt::info;
 
 /// Configuration for the display dimensions.
 #[derive(Debug, Clone, Copy)]
@@ -116,56 +117,6 @@ impl ColorMode {
     }
 }
 
-/// Computes the framebuffer size (in bytes) for a given display and color mode.
-pub const fn framebuffer_size(display: DisplaySize, color: ColorMode) -> usize {
-    (display.width as usize) * (display.height as usize) * color.bytes_per_pixel()
-}
-
-/// Frambuffer enum to hold either a static array or a boxed array
-pub enum Framebuffer {
-    Static(&'static mut [u8]),
-    Heap(Box<[u8]>),
-}
-
-impl Framebuffer {
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        match self {
-            Framebuffer::Static(ref mut arr) => arr,
-            Framebuffer::Heap(ref mut boxed) => boxed,
-        }
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        match self {
-            Framebuffer::Static(ref arr) => arr,
-            Framebuffer::Heap(ref boxed) => boxed,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.as_slice().len()
-    }
-}
-
-impl core::ops::Deref for Framebuffer {
-    type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Framebuffer::Static(arr) => arr,
-            Framebuffer::Heap(boxed) => boxed,
-        }
-    }
-}
-
-impl core::ops::DerefMut for Framebuffer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Framebuffer::Static(arr) => arr,
-            Framebuffer::Heap(boxed) => boxed,
-        }
-    }
-}
-
 /// Main Driver for the SH8601 display controller.
 pub struct Sh8601Driver<IFACE, RST>
 where
@@ -174,7 +125,6 @@ where
 {
     interface: IFACE,
     reset: RST,
-    pub(crate) framebuffer: Framebuffer,
     pub(crate) config: DisplaySize,
     x_gap: u16,
     y_gap: u16,
@@ -185,31 +135,7 @@ where
     IFACE: ControllerInterface,
     RST: ResetInterface,
 {
-    pub fn new_static<DELAY, const N: usize>(
-        interface: IFACE,
-        reset: RST,
-        color: ColorMode,
-        config: DisplaySize,
-        mut delay: DELAY,
-        framebuffer: &'static mut [u8; N],
-    ) -> Result<Self, DriverError<IFACE::Error, RST::Error>>
-    where
-        DELAY: DelayNs,
-    {
-        let mut driver = Self {
-            interface,
-            reset,
-            framebuffer: Framebuffer::Static(&mut framebuffer[..]),
-            config,
-            x_gap: 0,
-            y_gap: 0,
-        };
-        driver.hard_reset()?;
-        driver.initialize_display(&mut delay, color)?;
-        Ok(driver)
-    }
-
-    pub fn new_heap<DELAY, const N: usize>(
+    pub fn new<DELAY>(
         interface: IFACE,
         reset: RST,
         color: ColorMode,
@@ -219,10 +145,10 @@ where
     where
         DELAY: DelayNs,
     {
+        info!("Creating SH8601 driver with color mode");
         let mut driver = Self {
             interface,
             reset,
-            framebuffer: Framebuffer::Heap(Box::new([0u8; N])),
             config,
             x_gap: 0,
             y_gap: 0,
@@ -233,6 +159,7 @@ where
     }
 
     pub fn hard_reset(&mut self) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
+        info!("Performing hard reset");
         self.reset.reset().map_err(DriverError::ResetError)?;
         Ok(())
     }
@@ -245,6 +172,7 @@ where
     where
         DELAY: DelayNs,
     {
+        info!("Initializing display with color mode");
         // Initialization sequence from C code
         self.send_command(commands::SLPOUT)?;
         delay.delay_ms(80);
@@ -275,6 +203,7 @@ where
         self.y_gap = 0;
 
         self.send_command(commands::DISPON)?;
+        info!("Display initialization complete");
         Ok(())
     }
 
@@ -283,15 +212,15 @@ where
         color: u16,
     ) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
         const CHUNK_HEIGHT: u16 = 50;
-        const BYTES_PER_PIXEL: usize = 2; // RGB565
+        const BYTES_PER_PIXEL: usize = 2; // Rgb565
         const CHUNK_SIZE: usize = 466 * CHUNK_HEIGHT as usize * BYTES_PER_PIXEL;
 
+        info!("Painting screen with RGB565 color: 0x{:04x}, chunk size: {} bytes", color, CHUNK_SIZE);
         let mut buffer = alloc::vec::Vec::with_capacity(CHUNK_SIZE);
-        buffer.resize(CHUNK_SIZE, 0);
-        for i in 0..(466 * CHUNK_HEIGHT as usize) {
-            buffer[i * 2] = (color >> 8) as u8;
-            buffer[i * 2 + 1] = (color & 0xFF) as u8;
-        }
+        buffer.resize(CHUNK_SIZE / 2, color);
+        let buffer_bytes = unsafe {
+            core::slice::from_raw_parts(buffer.as_ptr() as *const u8, CHUNK_SIZE)
+        };
 
         for y in (0..self.config.height).step_by(CHUNK_HEIGHT as usize) {
             let height = if y + CHUNK_HEIGHT <= self.config.height {
@@ -326,7 +255,8 @@ where
             )?;
 
             let len = ((x_end - x_start) * (y_end - y_start)) as usize * BYTES_PER_PIXEL;
-            let chunk = &buffer[0..len];
+            let chunk = &buffer_bytes[0..len];
+            info!("Writing {} bytes for y={} to y={}", len, y_start, y_end);
             self.interface.send_pixels(chunk).map_err(DriverError::InterfaceError)?;
         }
 
@@ -350,126 +280,11 @@ where
         Ok(())
     }
 
-    pub fn sleep_in<DELAY>(
+    pub fn set_brightness(
         &mut self,
-        delay: &mut DELAY,
-    ) -> Result<(), DriverError<IFACE::Error, RST::Error>>
-    where
-        DELAY: DelayNs,
-    {
-        self.send_command(commands::SLPIN)?;
-        delay.delay_ms(5);
-        Ok(())
-    }
-
-    pub fn sleep_out<DELAY>(
-        &mut self,
-        delay: &mut DELAY,
-    ) -> Result<(), DriverError<IFACE::Error, RST::Error>>
-    where
-        DELAY: DelayNs,
-    {
-        self.send_command(commands::SLPOUT)?;
-        delay.delay_ms(5);
-        Ok(())
-    }
-
-    pub fn display_off(&mut self) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
-        self.send_command(commands::DISPOFF)
-    }
-
-    pub fn display_on(&mut self) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
-        self.send_command(commands::DISPON)
-    }
-
-    pub fn set_window(
-        &mut self,
-        x_start: u16,
-        y_start: u16,
-        x_end: u16,
-        y_end: u16,
+        value: u8,
     ) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
-        if x_end == 0 || y_end == 0 {
-            return Err(DriverError::InvalidConfiguration(
-                "Window width/height cannot be zero",
-            ));
-        }
-        if x_start >= self.config.width || y_start >= self.config.height {
-            return Err(DriverError::InvalidConfiguration(
-                "Window start coordinates out of bounds",
-            ));
-        }
-
-        if x_end < x_start || y_end < y_start {
-            return Err(DriverError::InvalidConfiguration(
-                "Invalid window dimensions (end < start)",
-            ));
-        }
-
-        self.send_command_with_data(
-            commands::CASET,
-            &[
-                (x_start >> 8) as u8,
-                (x_start & 0xFF) as u8,
-                (x_end >> 8) as u8,
-                (x_end & 0xFF) as u8,
-            ],
-        )?;
-
-        self.send_command_with_data(
-            commands::PASET,
-            &[
-                (y_start >> 8) as u8,
-                (y_start & 0xFF) as u8,
-                (y_end >> 8) as u8,
-                (y_end & 0xFF) as u8,
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn set_madctl(&mut self, value: u8) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
-        self.send_command_with_data(commands::MADCTL, &[value])
-    }
-
-    pub fn flush(&mut self) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
-        self.set_window(0, 0, self.config.width - 1, self.config.height - 1)?;
-        self.interface
-            .send_pixels(&self.framebuffer)
-            .map_err(DriverError::InterfaceError)?;
-        Ok(())
-    }
-
-    pub fn partial_flush(
-        &mut self,
-        x_start: u16,
-        x_end: u16,
-        y_start: u16,
-        y_end: u16,
-        color: ColorMode,
-    ) -> Result<(), DriverError<IFACE::Error, RST::Error>> {
-        self.set_window(x_start, y_start, x_end, y_end)?;
-        let bytes_per_pixel = color.bytes_per_pixel();
-        let fb_width = self.config.width as usize * bytes_per_pixel;
-        let width = (x_end - x_start + 1) as usize;
-        let height = (y_end - y_start + 1) as usize;
-        let mut pixel_data = alloc::vec::Vec::with_capacity(width * height * bytes_per_pixel);
-
-        for y in 0..height {
-            let offset = (y_start as usize + y) * fb_width + (x_start as usize * bytes_per_pixel);
-            let row_end = offset + (width * bytes_per_pixel);
-            if offset < self.framebuffer.len() && row_end <= self.framebuffer.len() {
-                pixel_data.extend_from_slice(&self.framebuffer[offset..row_end]);
-            } else {
-                return Err(DriverError::InvalidConfiguration(
-                    "Framebuffer slice out of bounds",
-                ));
-            }
-        }
-
-        self.interface
-            .send_pixels(&pixel_data)
-            .map_err(DriverError::InterfaceError)?;
-        Ok(())
+        info!("Setting brightness to 0x{:02x}", value);
+        self.send_command_with_data(commands::WRDISBV, &[value])
     }
 }

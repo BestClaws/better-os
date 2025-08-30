@@ -1,6 +1,7 @@
 use crate::system::kernel::platform::PlatformDevice;
 use crate::system::vendor::espressif::mcu;
 use alloc::boxed::Box;
+use core::cell::RefCell;
 use defmt::{info, Format};
 use crate::system::hal::ambience::AsyncAmbientSensor;
 use crate::system::hal::battery::AsyncBattery;
@@ -50,7 +51,7 @@ use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
 use crate::system::kernel::platforms::ajax::display_driver::{ResetDriver, Ws43AmoledDriver};
-use crate::system::kernel::platforms::ajax::driver_lib::{framebuffer_size, ColorMode, DisplaySize, Sh8601Driver};
+use crate::system::kernel::platforms::ajax::driver_lib::{ColorMode, DisplaySize, Sh8601Driver};
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
 
 static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
@@ -129,16 +130,9 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let ws_driver = Ws43AmoledDriver::new(lcd_spi);
 
     const DISPLAY_SIZE: DisplaySize = DisplaySize::new(466, 466);
-    const FB_SIZE: usize = framebuffer_size(DISPLAY_SIZE, ColorMode::Rgb565);
 
     let mut delay = embassy_time::Delay;
-    let display_res = Sh8601Driver::new_heap::<_, FB_SIZE>(
-        ws_driver,
-        reset,
-        ColorMode::Rgb565,
-        DISPLAY_SIZE,
-        &mut delay,
-    );
+    let display_res = Sh8601Driver::new(ws_driver, reset, ColorMode::Rgb565, DISPLAY_SIZE, &mut delay);
 
     let mut display = match display_res {
         Ok(d) => {
@@ -146,19 +140,19 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
             d
         }
         Err(e) => {
-            info!("Display initialization failed");
+            info!("Display initialization failed:");
             loop {}
         }
     };
 
     // Set brightness to maximum (0xFF) as per C code
     if let Err(e) = display.set_brightness(0xFF) {
-        info!("Failed to set brightness");
+        info!("Failed to set brightness:");
     }
 
     // Paint the screen green (0x07E0 in RGB565) as per C code
     if let Err(e) = display.paint_screen(0x07E0) {
-        info!("Failed to paint screen");
+        info!("Failed to paint screen:");
     }
 
     PlatformDevice {
