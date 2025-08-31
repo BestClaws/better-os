@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use async_trait::async_trait;
 use embedded_hal::digital::OutputPin;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error};
 use embedded_graphics_core::prelude::{Point, Size};
@@ -283,39 +283,86 @@ where
             Err(_) => error!("Display initialization failed"),
         }
     }
-
-    async fn paint_screen(&mut self, mut color: u8) {
-
-
+    async fn paint_screen(&mut self, _color: u8) {
+        const SMALL_SIZE: u16 = 116;
+        const SQUARE_SIZE: u16 = 32;
         const CHUNK_HEIGHT: u16 = 50;
-        let chunk_pixels = self.width * CHUNK_HEIGHT;
-        let chunk_size = (chunk_pixels * 2) as usize; // RGB565 = 2 bytes per pixel
 
-
-
-        for y in (0..self.height).step_by(CHUNK_HEIGHT as usize) {
-            let height = if y + CHUNK_HEIGHT <= self.height {
-                CHUNK_HEIGHT
-            } else {
-                self.height - y
-            };
-
-            if let Err(_) = self.set_window(0, y, self.width, y + height).await {
-                error!("Failed to set window for paint_screen");
-                return;
-            }
-
-
-            let pixels_to_send = (self.width * height * 2) as usize;
-            let mut buffer = vec![color; pixels_to_send];
-            if let Err(_) = self.send_pixels(&buffer[0..pixels_to_send]).await {
-                error!("Failed to send pixels for paint_screen");
-                return;
+        // 1. Create the small 116x116 checker pattern
+        let mut small_buffer = vec![0u8; (SMALL_SIZE * SMALL_SIZE * 2) as usize];
+        for row in 0..SMALL_SIZE {
+            for col in 0..SMALL_SIZE {
+                let pixel_index = (row * SMALL_SIZE + col) as usize;
+                let pixel_color: u16 = if ((row / SQUARE_SIZE + col / SQUARE_SIZE) % 2) == 0 {
+                    0xF800 // Red
+                } else {
+                    0x001F // Blue
+                };
+                small_buffer[2 * pixel_index] = (pixel_color >> 8) as u8;
+                small_buffer[2 * pixel_index + 1] = pixel_color as u8;
             }
         }
+
+        let full_width = self.width;
+        let full_height = self.height;
+
+        let mut total_compute = 0u64;
+        let mut total_transfer = 0u64;
+
+        // 2. Scale to full display in chunks using integer nearest neighbor
+        for y_chunk_start in (0..full_height).step_by(CHUNK_HEIGHT as usize) {
+            let chunk_height = if y_chunk_start + CHUNK_HEIGHT <= full_height {
+                CHUNK_HEIGHT
+            } else {
+                full_height - y_chunk_start
+            };
+
+            if let Err(_) = self.set_window(0, y_chunk_start, full_width, y_chunk_start + chunk_height).await {
+                return;
+            }
+
+            let mut chunk_buffer = vec![0u8; (full_width * chunk_height * 2) as usize];
+
+            let compute_start = Instant::now();
+            for row in 0..chunk_height {
+                let src_y = (row + y_chunk_start) as usize * SMALL_SIZE as usize / full_height as usize;
+                for col in 0..full_width {
+                    let src_x = col as usize * SMALL_SIZE as usize / full_width as usize;
+
+                    let src_index = (src_y * SMALL_SIZE as usize + src_x) * 2;
+                    let dst_index = (row as usize * full_width as usize + col as usize) * 2;
+
+                    chunk_buffer[dst_index] = small_buffer[src_index];
+                    chunk_buffer[dst_index + 1] = small_buffer[src_index + 1];
+                }
+            }
+            total_compute += compute_start.elapsed().as_micros();
+
+            let transfer_start = Instant::now();
+            if let Err(_) = self.send_pixels(&chunk_buffer).await {
+                error!("Failed to send pixels for paint_screen chunk");
+                return;
+            }
+            total_transfer += transfer_start.elapsed().as_micros();
+        }
+
+        // Reset window to full screen
+        if let Err(_) = self.set_window(0, 0, full_width, full_height).await {
+            error!("Failed to reset window to full screen");
+        }
+
+        info!(
+        "compute time: {} ms, transfer time: {} ms",
+        total_compute as f64 / 1000.0,
+        total_transfer as f64 / 1000.0
+    );
     }
 
-    async fn set_brightness(&mut self, value: u8) {
+
+
+
+
+        async fn set_brightness(&mut self, value: u8) {
         info!("Setting brightness to {}", value);
 
         if let Err(_) = self.send_command_with_data(commands::WRDISBV, &[value]).await {
@@ -326,6 +373,7 @@ where
 
 
     async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
+        let now = Instant::now();
         info!("Drawing region: {:?} with scale: {}", region, scale);
 
         // Validate region bounds
@@ -390,6 +438,8 @@ where
         let chunk_buffer_size = scaled_width * chunk_height * 2;
         let mut scaled_buffer = vec![0u8; chunk_buffer_size];
 
+        let mut pt = 0;
+
         for chunk_start_y in (0..scaled_height).step_by(chunk_height) {
             let chunk_end_y = (chunk_start_y + chunk_height).min(scaled_height);
             let chunk_actual_height = chunk_end_y - chunk_start_y;
@@ -441,13 +491,17 @@ where
 
             // Send the chunk via DMA
             let bytes_to_send = chunk_actual_height * scaled_width * 2;
+            let now = Instant::now();
             if let Err(_) = self.send_pixels(&scaled_buffer[0..bytes_to_send]).await {
                 error!("Failed to send pixels for draw_region chunk");
                 return;
             }
+            let e = now.elapsed().as_micros();
+            info!("elaped chunk t: {}", e);
+            pt += e;
         }
 
-        info!("Region drawing completed successfully");
+        info!("Region drawing completed successfully. time: {}. pt: {}", now.elapsed().as_millis(), pt as f32 / 1000.0);
     }
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
@@ -478,6 +532,9 @@ where
             Point::new(0, 0),
             Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT)
         );
+
+
+
 
         self.draw_region(buffer, full_region, scale).await;
     }

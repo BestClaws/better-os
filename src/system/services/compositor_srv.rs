@@ -20,7 +20,22 @@ pub async fn compositor_service(
 
     display.lock().await.set_brightness(0xff).await;
 
-    // display.lock().await.paint_screen(255).await;
+
+    let mut color: u32 = 1;
+
+    loop {
+        color += 100;
+        color = color % 255;
+
+        display.lock().await.paint_screen(color as u8).await;
+        Timer::after_millis(1000).await;
+
+        info!("next color");
+
+    }
+
+
+
 
 
     {

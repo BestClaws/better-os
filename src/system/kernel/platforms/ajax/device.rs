@@ -108,7 +108,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let lcd_spi = Spi::new(
         peripherals.SPI2,
         Config::default()
-            .with_frequency(Rate::from_mhz(40_u32))
+            .with_frequency(Rate::from_mhz(70_u32))
             .with_mode(Mode::_0),
     )
         .unwrap()
