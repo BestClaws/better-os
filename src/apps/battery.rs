@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_8X13};
 use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::primitives::Rectangle;
+use embedded_graphics::primitives::{Rectangle, Styled, StyledDrawable};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
 use micromath::F32Ext;
@@ -33,13 +33,13 @@ pub async fn battery_app(context: AppContext) {
 
         context.draw(|mut canvas: &mut Canvas<Rgb565>| {
 
-            info!("whiting");
 
-            canvas.clear(Rgb565::WHITE);
-
+            canvas.clear(Rgb565::BLACK);
 
             let mut text_buf = heapless::String::<32>::new();
             write!(text_buf, "Battery:");
+
+            Rectangle::new(Point::new(50, 50), Size::new(50, 10)).draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas);
 
             let style = MonoTextStyle::new(&FONT_8X13, Rgb565::new(5, 20, 50));
             Text::new(&text_buf, Point::new(50, 50), style)
