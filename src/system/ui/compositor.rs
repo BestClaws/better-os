@@ -59,38 +59,39 @@ impl BlitPixel for Rgb565 {
 
 /// Blits a source Canvas to a destination Canvas with offsets.
 /// Generic over pixel color type C, which must implement BlitPixel.
-pub fn blit<'a, C: BlitPixel>(
-    dest: &mut Canvas<'a, C>,
-    src: &Canvas<'a, C>,
-    x_off: i32,
-    y_off: i32,
-) {
+pub fn blit<'a, C: BlitPixel>(dest: &mut Canvas<'a, C>, src: &Canvas<'a, C>, x_off: i32, y_off: i32) {
     let start = Instant::now();
-    let dest_width = dest.width();
-    let dest_height = dest.height();
-    let src_width = src.width();
-    let src_height = src.height();
+    let dest_width = dest.width() as i32;
+    let dest_height = dest.height() as i32;
+    let src_width = src.width() as i32;
+    let src_height = src.height() as i32;
 
-    for y in 0..src_height as i32 {
-        let dest_y = y + y_off;
-        if dest_y < 0 || dest_y >= dest_height as i32 {
-            continue;
-        }
+    let x_start = x_off.max(0);
+    let y_start = y_off.max(0);
+    let x_end = (x_off + src_width).min(dest_width);
+    let y_end = (y_off + src_height).min(dest_height);
 
-        for x in 0..src_width as i32 {
-            let dest_x = x + x_off;
-            if dest_x < 0 || dest_x >= dest_width as i32 {
-                continue;
-            }
+    let dx = x_start - x_off;
+    let dy = y_start - y_off;
 
-            let src_pixel_idx = y as usize * src_width as usize + x as usize;
-            let dest_pixel_idx = dest_y as usize * dest_width as usize + dest_x as usize;
+    for y in y_start..y_end {
+        let src_row_start = ((y - y_off + dy) as usize) * src.width() as usize * 2;
+        let dst_row_start = (y as usize) * dest.width() as usize * 2;
 
-            C::blit_pixel(src.buffer(), src_pixel_idx, dest.buffer_mut(), dest_pixel_idx);
+        let dst_slice = &mut dest.buffer_mut()[dst_row_start + (x_start as usize) * 2
+            ..dst_row_start + (x_end as usize) * 2];
+
+        let mut dst_idx = 0;
+        for x in (x_start - x_off + dx)..(x_end - x_off + dx) {
+            let src_idx = (y - y_off + dy) as usize * src.width() as usize * 2 + (x as usize) * 2;
+            dst_slice[dst_idx] = src.buffer()[src_idx];
+            dst_slice[dst_idx + 1] = src.buffer()[src_idx + 1];
+            dst_idx += 2;
         }
     }
     info!("blit full canvas: {} us", start.elapsed().as_micros());
 }
+
 
 /// Blits a specific region of a source Canvas to a destination Canvas with offsets.
 pub fn blit_region<'a, C: BlitPixel>(
@@ -101,45 +102,45 @@ pub fn blit_region<'a, C: BlitPixel>(
     y_off: i32,
 ) {
     let start = Instant::now();
-    let dest_width = dest.width();
-    let dest_height = dest.height();
-    let src_width = src.width();
-    let src_height = src.height();
 
-    let (x0, y0, x1, y1) = (
-        region.top_left.x.max(0) as u32,
-        region.top_left.y.max(0) as u32,
-        (region.top_left.x as u32 + region.size.width).min(src_width),
-        (region.top_left.y as u32 + region.size.height).min(src_height),
-    );
+    let dest_width = dest.width() as usize;
+    let dest_height = dest.height() as usize;
 
-    if x0 >= x1 || y0 >= y1 {
-        info!("blit_region skipped: empty region x0={}, y0={}, x1={}, y1={}", x0, y0, x1, y1);
+    let x0 = region.top_left.x as i32;
+    let y0 = region.top_left.y as i32;
+    let x1 = x0 + region.size.width as i32;
+    let y1 = y0 + region.size.height as i32;
+
+    let x_start = (x0 + x_off).max(0) as usize;
+    let y_start = (y0 + y_off).max(0) as usize;
+    let x_end = (x1 + x_off).min(dest_width as i32) as usize;
+    let y_end = (y1 + y_off).min(dest_height as i32) as usize;
+
+    if x_start >= x_end || y_start >= y_end {
+        info!("blit_region skipped: empty or out-of-bounds");
         return;
     }
 
-    info!("blit_region: x0={}, y0={}, width={}, height={}", x0, y0, x1 - x0, y1 - y0);
+    let src_width = src.width() as usize;
+    let src_buffer = src.buffer();
+    let dst_buffer = dest.buffer_mut();
 
-    for y in y0..y1 {
-        let dest_y = y as i32 + y_off;
-        if dest_y < 0 || dest_y >= dest_height as i32 {
-            continue;
-        }
+    for y in y_start..y_end {
+        let src_y = (y as i32 - y_off) as usize;
+        let dst_y = y;
 
-        for x in x0..x1 {
-            let dest_x = x as i32 + x_off;
-            if dest_x < 0 || dest_x >= dest_width as i32 {
-                continue;
-            }
+        let row_len = x_end - x_start;
 
-            let src_pixel_idx = y as usize * src_width as usize + x as usize;
-            let dest_pixel_idx = dest_y as usize * dest_width as usize + dest_x as usize;
+        let src_row_start = src_y * src_width * 2 + (x_start as i32 - x_off) as usize * 2;
+        let dst_row_start = dst_y * dest_width * 2 + x_start * 2;
 
-            C::blit_pixel(src.buffer(), src_pixel_idx, dest.buffer_mut(), dest_pixel_idx);
-        }
+        dst_buffer[dst_row_start..dst_row_start + row_len * 2]
+            .copy_from_slice(&src_buffer[src_row_start..src_row_start + row_len * 2]);
     }
+
     info!("blit_region completed: {} us", start.elapsed().as_micros());
 }
+
 
 pub struct UICompositor {
     windows: Vec<Window, 8>,
