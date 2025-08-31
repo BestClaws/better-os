@@ -284,56 +284,67 @@ where
         }
     }
     async fn paint_screen(&mut self, _color: u8) {
-        const SMALL_SIZE: u16 = 116;
-        const SQUARE_SIZE: u16 = 32;
+        const SCALE: u16 = 4;
+        const REG_X: u16 = 25;
+        const REG_Y: u16 = 25;
+        const REG_W: u16 = 50;
+        const REG_H: u16 = 50;
         const CHUNK_HEIGHT: u16 = 50;
+        const SQUARE_SIZE: u16 = 8; // size of squares in region
 
-        // 1. Create the small 116x116 checker pattern
-        let mut small_buffer = vec![0u8; (SMALL_SIZE * SMALL_SIZE * 2) as usize];
-        for row in 0..SMALL_SIZE {
-            for col in 0..SMALL_SIZE {
-                let pixel_index = (row * SMALL_SIZE + col) as usize;
+        // 1. Create buffer for region
+        let mut region_buffer = vec![0u8; (REG_W * REG_H * 2) as usize];
+        for row in 0..REG_H {
+            for col in 0..REG_W {
+                let pixel_index = (row * REG_W + col) as usize;
                 let pixel_color: u16 = if ((row / SQUARE_SIZE + col / SQUARE_SIZE) % 2) == 0 {
                     0xF800 // Red
                 } else {
                     0x001F // Blue
                 };
-                small_buffer[2 * pixel_index] = (pixel_color >> 8) as u8;
-                small_buffer[2 * pixel_index + 1] = pixel_color as u8;
+                region_buffer[2 * pixel_index] = (pixel_color >> 8) as u8;
+                region_buffer[2 * pixel_index + 1] = pixel_color as u8;
             }
         }
 
-        let full_width = self.width;
-        let full_height = self.height;
+        let scaled_width = REG_W * SCALE;
+        let scaled_height = REG_H * SCALE;
+        let display_start_x = REG_X * SCALE;
+        let display_start_y = REG_Y * SCALE;
 
         let mut total_compute = 0u64;
         let mut total_transfer = 0u64;
 
-        // 2. Scale to full display in chunks using integer nearest neighbor
-        for y_chunk_start in (0..full_height).step_by(CHUNK_HEIGHT as usize) {
-            let chunk_height = if y_chunk_start + CHUNK_HEIGHT <= full_height {
+        // 2. Scale and send in chunks
+        for y_chunk_start in (0..scaled_height).step_by(CHUNK_HEIGHT as usize) {
+            let chunk_height = if y_chunk_start + CHUNK_HEIGHT <= scaled_height {
                 CHUNK_HEIGHT
             } else {
-                full_height - y_chunk_start
+                scaled_height - y_chunk_start
             };
 
-            if let Err(_) = self.set_window(0, y_chunk_start, full_width, y_chunk_start + chunk_height).await {
+            if let Err(_) = self.set_window(
+                display_start_x,
+                display_start_y + y_chunk_start,
+                display_start_x + scaled_width,
+                display_start_y + y_chunk_start + chunk_height
+            ).await {
                 return;
             }
 
-            let mut chunk_buffer = vec![0u8; (full_width * chunk_height * 2) as usize];
+            let mut chunk_buffer = vec![0u8; (scaled_width * chunk_height * 2) as usize];
 
             let compute_start = Instant::now();
             for row in 0..chunk_height {
-                let src_y = (row + y_chunk_start) as usize * SMALL_SIZE as usize / full_height as usize;
-                for col in 0..full_width {
-                    let src_x = col as usize * SMALL_SIZE as usize / full_width as usize;
+                let src_y = (row + y_chunk_start) / SCALE;
+                for col in 0..scaled_width {
+                    let src_x = col / SCALE;
 
-                    let src_index = (src_y * SMALL_SIZE as usize + src_x) * 2;
-                    let dst_index = (row as usize * full_width as usize + col as usize) * 2;
+                    let src_index = (src_y * REG_W + src_x) as usize * 2;
+                    let dst_index = (row as usize * scaled_width as usize + col as usize) * 2;
 
-                    chunk_buffer[dst_index] = small_buffer[src_index];
-                    chunk_buffer[dst_index + 1] = small_buffer[src_index + 1];
+                    chunk_buffer[dst_index] = region_buffer[src_index];
+                    chunk_buffer[dst_index + 1] = region_buffer[src_index + 1];
                 }
             }
             total_compute += compute_start.elapsed().as_micros();
@@ -346,17 +357,13 @@ where
             total_transfer += transfer_start.elapsed().as_micros();
         }
 
-        // Reset window to full screen
-        if let Err(_) = self.set_window(0, 0, full_width, full_height).await {
-            error!("Failed to reset window to full screen");
-        }
-
         info!(
         "compute time: {} ms, transfer time: {} ms",
         total_compute as f64 / 1000.0,
         total_transfer as f64 / 1000.0
     );
     }
+
 
 
 
