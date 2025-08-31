@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use defmt::info;
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::{OriginDimensions, Point, Size},
@@ -6,7 +7,7 @@ use embedded_graphics::{
     prelude::*,
     primitives::Rectangle,
 };
-use embedded_graphics_core::pixelcolor::raw::RawU4;
+use embedded_graphics_core::pixelcolor::raw::{RawU16, RawU4};
 
 /// A statically-safe, framebuffer-backed drawing canvas.
 ///
@@ -105,25 +106,7 @@ impl<C: PixelColor> OriginDimensions for Canvas<'_, C> {
     }
 }
 
-// ===== Rgb565 Implementation =====
-impl<'a> Canvas<'a, Rgb565> {
 
-
-    /// Resizes the canvas in-place, validating the buffer size.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        let required = (width * height * 2) as usize;
-        assert!(self._buf_mut().len() >= required, "Buffer too small for Rgb565");
-
-        self.width = width;
-        self.height = height;
-    }
-
-    pub fn materialize(&mut self, buffer: &'a mut [u8]) {
-        let required = (self.width * self.height * 2) as usize;
-        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
-        self.buf = Some(buffer);
-    }
-}
 
 impl DrawTarget for Canvas<'_, Rgb565> {
     type Color = Rgb565;
@@ -222,138 +205,24 @@ impl DrawTarget for Canvas<'_, Rgb565> {
 }
 
 // ===== Gray4 Implementation =====
-impl<'a> Canvas<'a, Gray4> {
+impl<'a> Canvas<'a, Rgb565> {
     pub fn resize(&mut self, width: u32, height: u32) {
-        let required = ((width * height + 1) / 2) as usize;
-        assert!(self._buf_mut().len() >= required, "Buffer too small for Gray4");
+        let required = (width * height * 2) as usize;
+        assert!(self._buf_mut().len() >= required, "Buffer too small for Rgb565");
 
         self.width = width;
         self.height = height;
     }
 
     pub(crate) fn set_resources(&mut self, buffer: &'a mut [u8]) {
-        let required = (self.width * self.height / 2) as usize;
-        assert!(buffer.len() >= required, "Buffer too small for Gray4");
+        let required = (self.width * self.height * 2) as usize;
+        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
         self.buf = Some(buffer);
     }
 }
 
-impl DrawTarget for Canvas<'_, Gray4> {
-    type Color = Gray4;
-    type Error = core::convert::Infallible;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        let mut region = None;
-
-        for Pixel(Point { x, y }, color) in pixels {
-            if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
-                continue;
-            }
-
-            let index = x as usize + y as usize * self.width as usize;
-            let byte_index = index / 2;
-            let high = index % 2 == 0;
-
-            let val = RawU4::from(color).into_inner();
-            let byte = &mut self._buf_mut()[byte_index];
-
-            *byte = if high {
-                (*byte & 0x0F) | (val << 4)
-            } else {
-                (*byte & 0xF0) | val
-            };
-
-            let point = Point::new(x, y);
-            region = Some(region.map_or(Rectangle::new(point, Size::new(1, 1)), |r| union_rect(r, Rectangle::new(point, Size::new(1, 1)))));
-        }
-
-        if let Some(r) = region {
-            self.update_dirty(r);
-        }
-
-        Ok(())
-    }
-
-    fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
-    where I: IntoIterator<Item = Self::Color>,
-    {
-        let (x0, y0, x1, y1) = clip_rect(area, self.width, self.height);
-        if x0 >= x1 || y0 >= y1 {
-            return Ok(());
-        }
-
-        let mut iter = colors.into_iter();
-        for y in y0..y1 {
-            for x in x0..x1 {
-                if let Some(color) = iter.next() {
-                    let idx = x as usize + y as usize * self.width as usize;
-                    let byte_idx = idx / 2;
-                    let high = idx % 2 == 0;
-                    let val = RawU4::from(color).into_inner();
-                    let byte = &mut self._buf_mut()[byte_idx];
-
-                    *byte = if high {
-                        (*byte & 0x0F) | (val << 4)
-                    } else {
-                        (*byte & 0xF0) | val
-                    };
-                } else {
-                    return Ok(());
-                }
-            }
-        }
-
-        self.update_dirty(Rectangle::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0)));
-        Ok(())
-    }
-
-    fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        let (x0, y0, x1, y1) = clip_rect(area, self.width, self.height);
-        if x0 >= x1 || y0 >= y1 {
-            return Ok(());
-        }
-
-        let val = RawU4::from(color).into_inner();
-        let packed = (val << 4) | val;
-
-        for y in y0..y1 {
-            let start_idx = (y * self.width + x0) as usize;
-            let end_idx = (y * self.width + x1) as usize;
-
-            for pixel in start_idx..end_idx {
-                let byte_idx = pixel / 2;
-                let high = pixel % 2 == 0;
-                let byte = &mut self._buf_mut()[byte_idx];
-
-                *byte = if high {
-                    (*byte & 0x0F) | (val << 4)
-                } else {
-                    (*byte & 0xF0) | val
-                };
-            }
-        }
-
-        self.update_dirty(Rectangle::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0)));
-        Ok(())
-    }
-
-    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        let val = RawU4::from(color).into_inner();
-        let packed = (val << 4) | val;
-        self._buf_mut().fill(packed);
-
-        self.update_dirty(Rectangle::new(Point::zero(), Size::new(self.width, self.height)));
-        Ok(())
-    }
 
 
-
-
-}
-
-// ===== Helpers =====
 
 /// Clips the given rectangle to canvas bounds and returns coordinates.
 fn clip_rect(area: &Rectangle, width: u32, height: u32) -> (u32, u32, u32, u32) {

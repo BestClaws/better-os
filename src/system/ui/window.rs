@@ -2,7 +2,7 @@ use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use embedded_graphics::framebuffer::Framebuffer;
-use embedded_graphics_core::pixelcolor::Gray4;
+use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
 use embedded_graphics_core::prelude::PixelColor;
 use crate::system::services::human_input_srv::HumanInputEvent;
 use crate::system::ui::canvas::Canvas;
@@ -22,7 +22,7 @@ pub struct Window {
     width: u32,
     height: u32,
     id: usize,
-    canvas: Option<Canvas<'static, Gray4>>,
+    canvas: Option<Canvas<'static, Rgb565>>,
 }
 
 impl Window {
@@ -48,7 +48,7 @@ impl Window {
     }
 
     /// Return a mutable reference to the canvas option.
-    pub fn canvas(&mut self) -> &mut Option<Canvas<'static, Gray4>> {
+    pub fn canvas(&mut self) -> &mut Option<Canvas<'static, Rgb565>> {
         &mut self.canvas
     }
 

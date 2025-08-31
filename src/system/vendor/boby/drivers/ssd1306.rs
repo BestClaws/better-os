@@ -45,18 +45,14 @@ impl AsyncDisplay for Ssd1306Driver {
         todo!()
     }
 
-    async fn draw_gray4(&mut self, buffer: &[u8], scale: u32) {
+    async fn draw(&mut self, buffer: &[u8], scale: u32) {
         todo!()
     }
 
-    async fn draw_gray4_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
+    async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
         todo!()
     }
 
-    async fn draw(&mut self, buffer: &[u8], _scale: u32) {
-        let _ = self.display.draw(buffer).await;
-        self.display.flush().await.unwrap();
-    }
 
     async fn clear(&mut self, color: u16) {
         todo!()

@@ -1,14 +1,10 @@
-use crate::apps::ble::ble_app;
-use crate::apps::notifications::notifications_app;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
-use crate::apps::arrow::arrow_app;
 use crate::apps::battery::battery_app;
-use crate::apps::dummy::dummy_app;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
 #[embassy_executor::task]

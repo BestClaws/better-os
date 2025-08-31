@@ -13,7 +13,8 @@ use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER
 use embedded_graphics::pixelcolor::{Gray4, GrayColor, PixelColor, Rgb565};
 use embedded_graphics::geometry::{Point, Size};
 use embedded_graphics::primitives::Rectangle;
-use embedded_graphics_core::prelude::DrawTarget;
+use embedded_graphics_core::prelude::{DrawTarget, RgbColor};
+use tinybmp::CompressionMethod::Rgb;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::{INPUT_CHANNEL_POOL, CHANNEL_CAPACITY};
 
@@ -54,32 +55,7 @@ impl BlitPixel for Rgb565 {
     }
 }
 
-// Implementation for Gray4 (4 bits per pixel, two pixels per byte)
-impl BlitPixel for Gray4 {
-    fn blit_pixel(src: &[u8], src_pixel_idx: usize, dest: &mut [u8], dest_pixel_idx: usize) -> bool {
-        let src_byte_idx = src_pixel_idx / 2;
-        let dest_byte_idx = dest_pixel_idx / 2;
-        let src_is_high_nibble = (src_pixel_idx % 2) == 0;
-        let dest_is_high_nibble = (dest_pixel_idx % 2) == 0;
 
-        if src_byte_idx < src.len() && dest_byte_idx < dest.len() {
-            let src_value = if src_is_high_nibble {
-                (src[src_byte_idx] >> 4) & 0x0F // High nibble
-            } else {
-                src[src_byte_idx] & 0x0F // Low nibble
-            };
-
-            if dest_is_high_nibble {
-                dest[dest_byte_idx] = (dest[dest_byte_idx] & 0x0F) | (src_value << 4);
-            } else {
-                dest[dest_byte_idx] = (dest[dest_byte_idx] & 0xF0) | src_value;
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
 
 /// Blits a source Canvas to a destination Canvas with offsets.
 /// Generic over pixel color type C, which must implement BlitPixel.
@@ -215,7 +191,7 @@ impl UICompositor {
 
         if let Some(display) = self.display {
             let mut working_buff = [0u8; FRAME_BUFFER_SIZE];
-            let mut dest_canvas = Canvas::<Gray4>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let mut dest_canvas = Canvas::<Rgb565>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
             dest_canvas.set_resources(&mut working_buff);
 
             // Fetch view_mode and dirty region before borrowing self mutably
@@ -244,7 +220,7 @@ impl UICompositor {
             if view_mode == ViewMode::Single && dirty_region.is_some() {
                 info!("Drawing dirty region in single view mode");
                 let region = dirty_region.unwrap();
-                disp.draw_gray4_region(
+                disp.draw_region(
                     dest_canvas.buffer(),
                     region,
                     FRAME_SCALE_FACTOR,
@@ -256,7 +232,7 @@ impl UICompositor {
                 }
             } else {
                 info!("Drawing full canvas (view_mode={:?})", view_mode);
-                disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
+                disp.draw(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
             info!("Draw time: {} us", draw_start.elapsed().as_micros());
@@ -480,7 +456,7 @@ impl UICompositor {
         }
 
         let mut composed_buf = [0u8; FRAME_BUFFER_SIZE];
-        let mut dest_canvas: Canvas<Gray4> = Canvas::<Gray4>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+        let mut dest_canvas: Canvas<Rgb565> = Canvas::<Rgb565>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
         dest_canvas.set_resources(&mut composed_buf);
 
         // Take the canvases upfront
@@ -493,7 +469,7 @@ impl UICompositor {
             let offset = (eased * FRAME_BUFFER_WIDTH as f32) as i32;
 
             let step_start = Instant::now();
-            dest_canvas.clear(Gray4::BLACK).unwrap();
+            dest_canvas.clear(Rgb565::BLACK).unwrap();
 
             let (from_x, to_x) = match dir {
                 SlideDir::Left => {
@@ -514,7 +490,7 @@ impl UICompositor {
 
             if let Some(display) = self.display {
                 let mut disp = display.lock().await;
-                disp.draw_gray4(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
+                disp.draw(dest_canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
             info!("Animation step {} time: {} us", step, step_start.elapsed().as_micros());
@@ -530,9 +506,9 @@ impl UICompositor {
     /// In single mode, renders only the dirty region of the current window if available.
     /// In split mode, renders the current and next windows side by side (full canvas).
     /// Skips rendering for windows without allocated resources.
-    pub async fn composite<'a>(&'a mut self, working_buff: &mut Canvas<'a, Gray4>) {
+    pub async fn composite<'a>(&'a mut self, working_buff: &mut Canvas<'a, Rgb565>) {
         let start = Instant::now();
-        working_buff.clear(Gray4::BLACK).unwrap();
+        working_buff.clear(Rgb565::BLACK).unwrap();
         info!("Cleared destination canvas");
 
         let src_win = &mut self.windows[self.current_window];

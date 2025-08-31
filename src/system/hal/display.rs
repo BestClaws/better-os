@@ -15,9 +15,8 @@ pub trait AsyncDisplay {
     async fn set_brightness(&mut self, value: u8);
 
 
-    async fn draw_gray4(&mut self, buffer: &[u8], scale: u32);
-    async fn draw_gray4_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32);
     async fn draw(&mut self, buffer: &[u8], scale: u32);
+    async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32);
     async fn clear(&mut self, color: u16);
     async fn set_orientation(&mut self, orientation: Orientation);
     fn get_width(&self) -> u32;
