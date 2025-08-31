@@ -6,7 +6,7 @@
             "request": "launch",
             "name": "Launch",
             "cwd": "${workspaceFolder}",
-            "chip": "esp32c3",
+            "chip": "esp32c6",
             "flashingConfig": {
                 "flashingEnabled": true,
                 "haltAfterReset": false,
@@ -38,7 +38,7 @@
             "request": "attach",
             "name": "Attach",
             "cwd": "${workspaceFolder}",
-            "chip": "esp32c3",
+            "chip": "esp32c6",
             "coreConfigs": [
                 {
                     

@@ -287,14 +287,13 @@ where
     async fn paint_screen(&mut self, mut color: u8) {
 
 
-        const CHUNK_HEIGHT: u16 = 10;
+        const CHUNK_HEIGHT: u16 = 50;
         let chunk_pixels = self.width * CHUNK_HEIGHT;
         let chunk_size = (chunk_pixels * 2) as usize; // RGB565 = 2 bytes per pixel
 
 
 
         for y in (0..self.height).step_by(CHUNK_HEIGHT as usize) {
-            color += 1;
             let height = if y + CHUNK_HEIGHT <= self.height {
                 CHUNK_HEIGHT
             } else {
@@ -482,10 +481,7 @@ where
 
         self.draw_region(buffer, full_region, scale).await;
     }
-    async fn clear(&mut self, color: u16) {
-        info!("Clearing screen");
-        self.paint_screen(color as u8).await;
-    }
+
 
     async fn set_orientation(&mut self, _orientation: Orientation) {
         // Not implemented as requested

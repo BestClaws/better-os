@@ -83,9 +83,8 @@ pub(crate) mod sub {
 
 
 
-            info!("------------------------------------------------Touch detected: x = {}, y = {}, z = {}", x, y, z);
 
-
+            HUMAN_INPUT_CH.send(HumanInputEvent::Touch((x as u32 / FRAME_SCALE_FACTOR) as i32,  (y as u32  / FRAME_SCALE_FACTOR) as i32)).await;
             Timer::after_millis(16).await;
         }
     }

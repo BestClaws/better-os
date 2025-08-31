@@ -54,9 +54,7 @@ impl AsyncDisplay for Ssd1306Driver {
     }
 
 
-    async fn clear(&mut self, color: u16) {
-        todo!()
-    }
+
 
     async fn set_orientation(&mut self, orientation: Orientation) {
         todo!()
