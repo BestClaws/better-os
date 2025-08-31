@@ -327,8 +327,7 @@ where
 
 
     async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
-
-        info!("Drawing region: {:?} with scale: {}, buffer sample : {}", region, scale, buffer[0..100]);
+        info!("Drawing region: {:?} with scale: {}", region, scale);
 
         // Validate region bounds
         if region.is_zero_sized() {
@@ -385,6 +384,8 @@ where
         let scaled_width = (display_end_x - display_x) as usize;
         let scaled_height = (display_end_y - display_y) as usize;
 
+        info!("Scaled dimensions: {}x{}, Source: {}x{}", scaled_width, scaled_height, src_width, src_height);
+
         // Use larger chunks for DMA efficiency, but respect DMA_CHUNK_SIZE limit
         let chunk_height = (DMA_CHUNK_SIZE / (scaled_width * 2)).min(64).max(1);
         let chunk_buffer_size = scaled_width * chunk_height * 2;
@@ -394,10 +395,29 @@ where
             let chunk_end_y = (chunk_start_y + chunk_height).min(scaled_height);
             let chunk_actual_height = chunk_end_y - chunk_start_y;
 
+            info!("Processing chunk: Y={}-{} (height={})", chunk_start_y, chunk_end_y, chunk_actual_height);
+
+            // Need to set window for each chunk since we're sending data sequentially
+            let chunk_display_y = display_y + chunk_start_y as u16;
+            let chunk_display_end_y = display_y + chunk_end_y as u16;
+
+            if let Err(_) = self.set_window(
+                display_x,
+                chunk_display_y,
+                display_end_x,
+                chunk_display_end_y
+            ).await {
+                error!("Failed to set window for chunk");
+                continue;
+            }
+
             // Fill the chunk buffer with scaled pixels
             for (out_row, scaled_y) in (chunk_start_y..chunk_end_y).enumerate() {
                 let src_y = scaled_y / scale as usize;
-                if src_y >= src_height { break; }
+                if src_y >= src_height {
+                    error!("Source Y out of bounds: {} >= {}", src_y, src_height);
+                    break;
+                }
 
                 let src_row_start = src_y * src_width * 2; // RGB565 row start
                 let out_row_start = out_row * scaled_width * 2;
@@ -405,7 +425,9 @@ where
                 // Scale horizontally with pixel replication
                 for scaled_x in 0..scaled_width {
                     let src_x = scaled_x / scale as usize;
-                    if src_x >= src_width { break; }
+                    if src_x >= src_width {
+                        break;
+                    }
 
                     let src_pixel_idx = src_row_start + src_x * 2;
                     let out_pixel_idx = out_row_start + scaled_x * 2;
@@ -460,7 +482,6 @@ where
 
         self.draw_region(buffer, full_region, scale).await;
     }
-
     async fn clear(&mut self, color: u16) {
         info!("Clearing screen");
         self.paint_screen(color as u8).await;
