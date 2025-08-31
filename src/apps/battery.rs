@@ -9,7 +9,7 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Line, PrimitiveStyle, Triangle},
 };
-use embedded_graphics::mono_font::ascii::FONT_6X10;
+use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_8X13};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::Rectangle;
 use embedded_graphics::text::Text;
@@ -35,16 +35,15 @@ pub async fn battery_app(context: AppContext) {
 
             info!("whiting");
 
-            canvas.clear(Rgb565::WHITE);
-            //
-            // let mut text_buf = heapless::String::<32>::new();
-            // write!(text_buf, "Battery: {}%", percent).ok();
-            //
-            // let style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(255, 255, 255));
-            // Text::new(&text_buf, Point::new(20, 28), style)
-            //     .draw(canvas)
-            //     .unwrap();
-            //
+
+            let mut text_buf = heapless::String::<32>::new();
+            write!(text_buf, "Battery:");
+
+            let style = MonoTextStyle::new(&FONT_8X13, Rgb565::new(5, 20, 50));
+            Text::new(&text_buf, Point::new(50, 50), style)
+                .draw(canvas)
+                .unwrap();
+
 
 
 
