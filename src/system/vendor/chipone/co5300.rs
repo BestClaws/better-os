@@ -380,22 +380,16 @@ where
 
 
     async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
-        let now = Instant::now();
-        info!("Drawing region: {:?} with scale: {}", region, scale);
-
-        // Validate region bounds
         if region.is_zero_sized() {
             info!("Zero-sized region, skipping draw");
             return;
         }
 
-        // Calculate the display region considering scale factor
         let display_x = region.top_left.x as u16 * scale as u16;
         let display_y = region.top_left.y as u16 * scale as u16;
         let display_width = region.size.width * scale;
         let display_height = region.size.height * scale;
 
-        // Ensure we don't exceed display bounds
         let display_end_x = (display_x + display_width as u16).min(self.width);
         let display_end_y = (display_y + display_height as u16).min(self.height);
 
@@ -404,148 +398,56 @@ where
             return;
         }
 
-        // Set the display window for the scaled region
-        if let Err(_) = self.set_window(
-            display_x,
-            display_y,
-            display_end_x,
-            display_end_y
-        ).await {
+        if let Err(_) = self.set_window(display_x, display_y, display_end_x, display_end_y).await {
             error!("Failed to set window for draw_region");
             return;
         }
 
-        // Calculate source dimensions - RGB565 is 2 bytes per pixel
         let src_width = region.size.width as usize;
         let src_height = region.size.height as usize;
-        let expected_buffer_size = src_width * src_height * 2; // RGB565
-
-        if buffer.len() < expected_buffer_size {
-            error!("Buffer too small: expected {}, got {}", expected_buffer_size, buffer.len());
-            return;
-        }
-
-        // For scale=1, we can DMA directly from source buffer
-        if scale == 1 {
-            let pixels_to_send = (display_width * display_height * 2) as usize;
-            if let Err(_) = self.send_pixels(&buffer[0..pixels_to_send]).await {
-                error!("Failed to send pixels for draw_region (scale=1)");
-            }
-            return;
-        }
-
-        // For scaling, process in chunks optimized for DMA
         let scaled_width = (display_end_x - display_x) as usize;
         let scaled_height = (display_end_y - display_y) as usize;
 
-        info!("Scaled dimensions: {}x{}, Source: {}x{}", scaled_width, scaled_height, src_width, src_height);
+        let mut chunk_buffer = vec![0u8; scaled_width * 2 * 64]; // 64 row chunk for memory efficiency
 
-        // Use larger chunks for DMA efficiency, but respect DMA_CHUNK_SIZE limit
-        let chunk_height = (DMA_CHUNK_SIZE / (scaled_width * 2)).min(64).max(1);
-        let chunk_buffer_size = scaled_width * chunk_height * 2;
-        let mut scaled_buffer = vec![0u8; chunk_buffer_size];
-
-        let mut pt = 0;
-
-        for chunk_start_y in (0..scaled_height).step_by(chunk_height) {
-            let chunk_end_y = (chunk_start_y + chunk_height).min(scaled_height);
-            let chunk_actual_height = chunk_end_y - chunk_start_y;
-
-            info!("Processing chunk: Y={}-{} (height={})", chunk_start_y, chunk_end_y, chunk_actual_height);
-
-            // Need to set window for each chunk since we're sending data sequentially
-            let chunk_display_y = display_y + chunk_start_y as u16;
-            let chunk_display_end_y = display_y + chunk_end_y as u16;
+        for y_chunk_start in (0..scaled_height).step_by(64) {
+            let chunk_height = (y_chunk_start + 64).min(scaled_height) - y_chunk_start;
 
             if let Err(_) = self.set_window(
                 display_x,
-                chunk_display_y,
+                display_y + y_chunk_start as u16,
                 display_end_x,
-                chunk_display_end_y
+                display_y + (y_chunk_start + chunk_height) as u16
             ).await {
-                error!("Failed to set window for chunk");
                 continue;
             }
 
-            // Fill the chunk buffer with scaled pixels
-            for (out_row, scaled_y) in (chunk_start_y..chunk_end_y).enumerate() {
-                let src_y = scaled_y / scale as usize;
-                if src_y >= src_height {
-                    error!("Source Y out of bounds: {} >= {}", src_y, src_height);
-                    break;
-                }
+            for row in 0..chunk_height {
+                let src_y = (y_chunk_start + row) / scale as usize;
+                let dst_row_start = row * scaled_width * 2;
 
-                let src_row_start = src_y * src_width * 2; // RGB565 row start
-                let out_row_start = out_row * scaled_width * 2;
+                for col in 0..scaled_width {
+                    let src_x = col / scale as usize;
+                    let src_idx = (src_y * src_width + src_x) * 2;
+                    let dst_idx = dst_row_start + col * 2;
 
-                // Scale horizontally with pixel replication
-                for scaled_x in 0..scaled_width {
-                    let src_x = scaled_x / scale as usize;
-                    if src_x >= src_width {
-                        break;
-                    }
-
-                    let src_pixel_idx = src_row_start + src_x * 2;
-                    let out_pixel_idx = out_row_start + scaled_x * 2;
-
-                    // Direct RGB565 copy - no conversion needed
-                    if out_pixel_idx + 1 < scaled_buffer.len() && src_pixel_idx + 1 < buffer.len() {
-                        scaled_buffer[out_pixel_idx] = buffer[src_pixel_idx];
-                        scaled_buffer[out_pixel_idx + 1] = buffer[src_pixel_idx + 1];
-                    }
+                    chunk_buffer[dst_idx] = buffer[src_idx];
+                    chunk_buffer[dst_idx + 1] = buffer[src_idx + 1];
                 }
             }
 
-            // Send the chunk via DMA
-            let bytes_to_send = chunk_actual_height * scaled_width * 2;
-            let now = Instant::now();
-            if let Err(_) = self.send_pixels(&scaled_buffer[0..bytes_to_send]).await {
-                error!("Failed to send pixels for draw_region chunk");
+            let bytes_to_send = chunk_height * scaled_width * 2;
+            if let Err(_) = self.send_pixels(&chunk_buffer[..bytes_to_send]).await {
+                error!("Failed to send pixels for chunk");
                 return;
             }
-            let e = now.elapsed().as_micros();
-            info!("elaped chunk t: {}", e);
-            pt += e;
         }
-
-        info!("Region drawing completed successfully. time: {}. pt: {}", now.elapsed().as_millis(), pt as f32 / 1000.0);
     }
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
-        info!("Drawing full frame buffer with scale: {}", scale);
-
-        // For full screen draws at scale=1, we can optimize further
-        if scale == 1 {
-            // Set window to full display
-            if let Err(_) = self.set_window(0, 0, self.width, self.height).await {
-                error!("Failed to set full window");
-                return;
-            }
-
-            // Direct DMA transfer of the entire buffer
-            let expected_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize;
-            if buffer.len() >= expected_size {
-                if let Err(_) = self.send_pixels(&buffer[0..expected_size]).await {
-                    error!("Failed to send full frame buffer");
-                }
-            } else {
-                error!("Buffer too small for full frame: expected {}, got {}", expected_size, buffer.len());
-            }
-            return;
-        }
-
-        // For scaled draws, delegate to draw_region
-        let full_region = Rectangle::new(
-            Point::new(0, 0),
-            Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT)
-        );
-
-
-
-
+        let full_region = Rectangle::new(Point::new(0, 0), Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT));
         self.draw_region(buffer, full_region, scale).await;
     }
-
 
     async fn set_orientation(&mut self, _orientation: Orientation) {
         // Not implemented as requested
