@@ -379,6 +379,7 @@ where
 
 
 
+
     async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
         if region.is_zero_sized() {
             info!("Zero-sized region, skipping draw");
@@ -408,7 +409,16 @@ where
         let scaled_width = (display_end_x - display_x) as usize;
         let scaled_height = (display_end_y - display_y) as usize;
 
-        let mut chunk_buffer = vec![0u8; scaled_width * 2 * 64]; // 64 row chunk for memory efficiency
+        let mut chunk_buffer = vec![0u8; scaled_width * 2 * 64]; // 64 row chunk
+
+        let mut total_compute_ms = 0u64;
+        let mut total_transfer_ms = 0u64;
+
+        // Precompute x mapping for source row expansion
+        let mut x_map = vec![0usize; scaled_width];
+        for col in 0..scaled_width {
+            x_map[col] = col / scale as usize;
+        }
 
         for y_chunk_start in (0..scaled_height).step_by(64) {
             let chunk_height = (y_chunk_start + 64).min(scaled_height) - y_chunk_start;
@@ -417,32 +427,45 @@ where
                 display_x,
                 display_y + y_chunk_start as u16,
                 display_end_x,
-                display_y + (y_chunk_start + chunk_height) as u16
+                display_y + (y_chunk_start + chunk_height) as u16,
             ).await {
                 continue;
             }
 
+            let compute_start = embassy_time::Instant::now();
+
             for row in 0..chunk_height {
                 let src_y = (y_chunk_start + row) / scale as usize;
+                let src_row_start = src_y * src_width * 2;
                 let dst_row_start = row * scaled_width * 2;
 
-                for col in 0..scaled_width {
-                    let src_x = col / scale as usize;
-                    let src_idx = (src_y * src_width + src_x) * 2;
-                    let dst_idx = dst_row_start + col * 2;
+                // Expand row using slice copies
+                let src_row = &buffer[src_row_start..src_row_start + src_width * 2];
+                let mut dst_idx = dst_row_start;
 
-                    chunk_buffer[dst_idx] = buffer[src_idx];
-                    chunk_buffer[dst_idx + 1] = buffer[src_idx + 1];
+                for &src_col in &x_map {
+                    let pixel_idx = src_col * 2;
+                    chunk_buffer[dst_idx] = src_row[pixel_idx];
+                    chunk_buffer[dst_idx + 1] = src_row[pixel_idx + 1];
+                    dst_idx += 2;
                 }
             }
 
+            total_compute_ms += (embassy_time::Instant::now() - compute_start).as_millis() as u64;
+
+            let transfer_start = embassy_time::Instant::now();
             let bytes_to_send = chunk_height * scaled_width * 2;
             if let Err(_) = self.send_pixels(&chunk_buffer[..bytes_to_send]).await {
                 error!("Failed to send pixels for chunk");
                 return;
             }
+            total_transfer_ms += (embassy_time::Instant::now() - transfer_start).as_millis() as u64;
         }
+
+        info!("Total compute time: {} ms", total_compute_ms);
+        info!("Total pixel transfer time: {} ms", total_transfer_ms);
     }
+
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
         let full_region = Rectangle::new(Point::new(0, 0), Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT));

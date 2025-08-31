@@ -515,10 +515,10 @@ impl UICompositor {
         if let Some(src_canvas) = src_win.canvas().as_mut() {
             if self.view_mode == ViewMode::Single {
                 if let Some(dirty_region) = src_canvas.dirty_region() {
-                    info!("Compositing dirty region for window {}. sample buffer: {}", self.current_window, src_canvas.buffer()[0..100]);
+                    info!("Compositing dirty region for window {}", self.current_window);
                     blit_region(working_buff, src_canvas, dirty_region, 0, 0);
                 } else {
-                    info!("Compositing full canvas for window {}, sample buffer: {}", self.current_window, src_canvas.buffer()[0..100]);
+                    info!("Compositing full canvas for window {}", self.current_window);
                     blit(working_buff, src_canvas, 0, 0);
                 }
             } else {

@@ -33,7 +33,7 @@ pub async fn arrow_app(context: AppContext) {
     };
 
     let mut rotation = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
-    let angle_increment = 1.0f32.to_radians();
+    let angle_increment = 2.0f32.to_radians();
     let mut last_time = Instant::now();
     let mut frame_count = 0u32;
     let mut fps = 0.0f32;
