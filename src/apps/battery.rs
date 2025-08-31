@@ -23,19 +23,17 @@ use crate::util::math::primitives::Vec3;
 
 #[embassy_executor::task]
 pub async fn battery_app(context: AppContext) {
-    let receiver = BATTERY_CHANNEL.receiver();
 
     loop {
-        let direction = receiver.receive().await;
 
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
 
-        let percent = receiver.receive().await;
-
         context.draw(|mut canvas: &mut Canvas<Rgb565>| {
+
+            info!("whiting");
 
             canvas.clear(Rgb565::WHITE);
             //

@@ -37,7 +37,7 @@ impl AsyncDisplay for Ssd1306Driver {
         self.display.init().await.unwrap();
     }
 
-    async fn paint_screen(&mut self, color: u16) {
+    async fn paint_screen(&mut self, color: u8) {
         todo!()
     }
 

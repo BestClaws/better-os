@@ -9,7 +9,7 @@ pub trait AsyncDisplay {
     async fn init(&mut self);
 
     /// Paint the entire screen with a single color
-    async fn paint_screen(&mut self, color: u16);
+    async fn paint_screen(&mut self, color: u8);
 
     /// Set display brightness
     async fn set_brightness(&mut self, value: u8);

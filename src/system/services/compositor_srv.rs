@@ -20,7 +20,7 @@ pub async fn compositor_service(
 
     display.lock().await.set_brightness(0xff).await;
 
-    display.lock().await.paint_screen(0xffe0).await;
+    display.lock().await.paint_screen(0x0).await;
 
 
     {

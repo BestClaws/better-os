@@ -284,9 +284,8 @@ where
         }
     }
 
-    async fn paint_screen(&mut self, color: u16) {
+    async fn paint_screen(&mut self, mut color: u8) {
 
-        let mut color : u8 = 0;
 
         const CHUNK_HEIGHT: u16 = 10;
         let chunk_pixels = self.width * CHUNK_HEIGHT;
@@ -329,15 +328,142 @@ where
 
     async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
 
+        info!("Drawing region: {:?} with scale: {}, buffer sample : {}", region, scale, buffer[0..100]);
+
+        // Validate region bounds
+        if region.is_zero_sized() {
+            info!("Zero-sized region, skipping draw");
+            return;
+        }
+
+        // Calculate the display region considering scale factor
+        let display_x = region.top_left.x as u16 * scale as u16;
+        let display_y = region.top_left.y as u16 * scale as u16;
+        let display_width = region.size.width * scale;
+        let display_height = region.size.height * scale;
+
+        // Ensure we don't exceed display bounds
+        let display_end_x = (display_x + display_width as u16).min(self.width);
+        let display_end_y = (display_y + display_height as u16).min(self.height);
+
+        if display_x >= self.width || display_y >= self.height {
+            error!("Region out of bounds");
+            return;
+        }
+
+        // Set the display window for the scaled region
+        if let Err(_) = self.set_window(
+            display_x,
+            display_y,
+            display_end_x,
+            display_end_y
+        ).await {
+            error!("Failed to set window for draw_region");
+            return;
+        }
+
+        // Calculate source dimensions - RGB565 is 2 bytes per pixel
+        let src_width = region.size.width as usize;
+        let src_height = region.size.height as usize;
+        let expected_buffer_size = src_width * src_height * 2; // RGB565
+
+        if buffer.len() < expected_buffer_size {
+            error!("Buffer too small: expected {}, got {}", expected_buffer_size, buffer.len());
+            return;
+        }
+
+        // For scale=1, we can DMA directly from source buffer
+        if scale == 1 {
+            let pixels_to_send = (display_width * display_height * 2) as usize;
+            if let Err(_) = self.send_pixels(&buffer[0..pixels_to_send]).await {
+                error!("Failed to send pixels for draw_region (scale=1)");
+            }
+            return;
+        }
+
+        // For scaling, process in chunks optimized for DMA
+        let scaled_width = (display_end_x - display_x) as usize;
+        let scaled_height = (display_end_y - display_y) as usize;
+
+        // Use larger chunks for DMA efficiency, but respect DMA_CHUNK_SIZE limit
+        let chunk_height = (DMA_CHUNK_SIZE / (scaled_width * 2)).min(64).max(1);
+        let chunk_buffer_size = scaled_width * chunk_height * 2;
+        let mut scaled_buffer = vec![0u8; chunk_buffer_size];
+
+        for chunk_start_y in (0..scaled_height).step_by(chunk_height) {
+            let chunk_end_y = (chunk_start_y + chunk_height).min(scaled_height);
+            let chunk_actual_height = chunk_end_y - chunk_start_y;
+
+            // Fill the chunk buffer with scaled pixels
+            for (out_row, scaled_y) in (chunk_start_y..chunk_end_y).enumerate() {
+                let src_y = scaled_y / scale as usize;
+                if src_y >= src_height { break; }
+
+                let src_row_start = src_y * src_width * 2; // RGB565 row start
+                let out_row_start = out_row * scaled_width * 2;
+
+                // Scale horizontally with pixel replication
+                for scaled_x in 0..scaled_width {
+                    let src_x = scaled_x / scale as usize;
+                    if src_x >= src_width { break; }
+
+                    let src_pixel_idx = src_row_start + src_x * 2;
+                    let out_pixel_idx = out_row_start + scaled_x * 2;
+
+                    // Direct RGB565 copy - no conversion needed
+                    if out_pixel_idx + 1 < scaled_buffer.len() && src_pixel_idx + 1 < buffer.len() {
+                        scaled_buffer[out_pixel_idx] = buffer[src_pixel_idx];
+                        scaled_buffer[out_pixel_idx + 1] = buffer[src_pixel_idx + 1];
+                    }
+                }
+            }
+
+            // Send the chunk via DMA
+            let bytes_to_send = chunk_actual_height * scaled_width * 2;
+            if let Err(_) = self.send_pixels(&scaled_buffer[0..bytes_to_send]).await {
+                error!("Failed to send pixels for draw_region chunk");
+                return;
+            }
+        }
+
+        info!("Region drawing completed successfully");
     }
 
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
+        info!("Drawing full frame buffer with scale: {}", scale);
 
+        // For full screen draws at scale=1, we can optimize further
+        if scale == 1 {
+            // Set window to full display
+            if let Err(_) = self.set_window(0, 0, self.width, self.height).await {
+                error!("Failed to set full window");
+                return;
+            }
+
+            // Direct DMA transfer of the entire buffer
+            let expected_size = (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize;
+            if buffer.len() >= expected_size {
+                if let Err(_) = self.send_pixels(&buffer[0..expected_size]).await {
+                    error!("Failed to send full frame buffer");
+                }
+            } else {
+                error!("Buffer too small for full frame: expected {}, got {}", expected_size, buffer.len());
+            }
+            return;
+        }
+
+        // For scaled draws, delegate to draw_region
+        let full_region = Rectangle::new(
+            Point::new(0, 0),
+            Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT)
+        );
+
+        self.draw_region(buffer, full_region, scale).await;
     }
 
     async fn clear(&mut self, color: u16) {
         info!("Clearing screen");
-        self.paint_screen(color).await;
+        self.paint_screen(color as u8).await;
     }
 
     async fn set_orientation(&mut self, _orientation: Orientation) {
