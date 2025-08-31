@@ -21,7 +21,7 @@ pub(crate) mod sub {
     use alloc::boxed::Box;
     use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
     use embassy_sync::mutex::Mutex;
-    use defmt::info;
+    use defmt::{debug, info};
     use embassy_time::Timer;
     use crate::system::hal::button::{AsyncButton, ButtonState};
     use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
@@ -82,7 +82,7 @@ pub(crate) mod sub {
             };
 
 
-
+            debug!("touch. x: {}, y: {}, z: {}", x, y, z);
 
             HUMAN_INPUT_CH.send(HumanInputEvent::Touch((x as u32 / FRAME_SCALE_FACTOR) as i32,  (y as u32  / FRAME_SCALE_FACTOR) as i32)).await;
             Timer::after_millis(16).await;

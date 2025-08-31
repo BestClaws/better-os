@@ -76,6 +76,11 @@ async-trait = "0.1.88"
 tinybmp = { version = "0.6.0", features = [] }
 libm = "0.2.15"
 
+
+[features]
+default = ["single_thread_static_parser"]
+single_thread_static_parser = []
+
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization
