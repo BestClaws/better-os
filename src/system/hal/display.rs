@@ -24,7 +24,7 @@ pub trait AsyncDisplay {
 
 }
 
-#[derive(Clone, Copy, Format)]
+#[derive(Clone, Copy, Format, PartialEq)]
 pub enum Orientation {
     Portrait,
     PortraitFlipped,

@@ -22,16 +22,16 @@ pub async fn compositor_service(
 
 
     // let mut color: u32 = 1;
-    // 
+    //
     // loop {
     //     color += 100;
     //     color = color % 255;
-    // 
+    //
     //     display.lock().await.paint_screen(color as u8).await;
     //     Timer::after_millis(1000).await;
-    // 
+    //
     //     info!("next color");
-    // 
+    //
     // }
 
 
@@ -115,7 +115,7 @@ pub async fn compositor_service(
         // Sleep remaining time if loop was too fast (ensure ~10Hz)
         let elapsed = Instant::now() - idle_start;
         if elapsed < Duration::from_millis(30) {
-            Timer::after(Duration::from_millis(100) - elapsed).await;
+            Timer::after(Duration::from_millis(10) - elapsed).await;
         }
     }
 }
