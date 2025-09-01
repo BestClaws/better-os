@@ -358,10 +358,10 @@ where
         }
 
         info!(
-        "compute time: {} ms, transfer time: {} ms",
-        total_compute as f64 / 1000.0,
-        total_transfer as f64 / 1000.0
-    );
+            "compute time: {} ms, transfer time: {} ms",
+            total_compute as f64 / 1000.0,
+            total_transfer as f64 / 1000.0
+        );
     }
 
 
@@ -378,95 +378,129 @@ where
     }
 
 
-
-
     async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
-        if region.is_zero_sized() {
-            info!("Zero-sized region, skipping draw");
-            return;
+        let n = Instant::now();
+        const SCALE: u16 = 8;
+        const REG_X: u16 = 0;
+        const REG_Y: u16 = 0;
+        const REG_W: u16 = 50;
+        const REG_H: u16 = 50;
+        const CHUNK_HEIGHT: u16 = 50;
+        const SQUARE_SIZE: u16 = 8;
+        const PAN_SPEED: f64 = 0.1;
+        const FRAME_DELAY_MS: u64 = 16;
+
+        let scaled_width = REG_W * SCALE;
+        let scaled_height = REG_H * SCALE;
+        let display_start_x = REG_X * SCALE;
+        let display_start_y = REG_Y * SCALE;
+
+        let loop_start = Instant::now();
+
+        // Pre-allocate all buffers outside the loop
+        let mut region_buffer = vec![0u8; (REG_W * REG_H * 2) as usize];
+        let mut chunk_buffer = vec![0u8; (scaled_width * CHUNK_HEIGHT * 2) as usize];
+
+        // Pre-calculate scale lookup tables
+        let mut src_x_lookup = vec![0usize; scaled_width as usize];
+        let mut src_y_lookup = vec![0usize; scaled_height as usize];
+        for i in 0..scaled_width as usize {
+            src_x_lookup[i] = (i / SCALE as usize) * 2;
+        }
+        for i in 0..scaled_height as usize {
+            src_y_lookup[i] = (i / SCALE as usize) * REG_W as usize * 2;
         }
 
-        let display_x = region.top_left.x as u16 * scale as u16;
-        let display_y = region.top_left.y as u16 * scale as u16;
-        let display_width = region.size.width * scale;
-        let display_height = region.size.height * scale;
+        // Main animation loop
+        loop {
+            let frame_start = Instant::now();
+            let elapsed_ms = loop_start.elapsed().as_millis() as f64;
+            let pan_offset_x = (elapsed_ms * PAN_SPEED) as u16;
+            let pan_offset_y = (elapsed_ms * PAN_SPEED) as u16;
 
-        let display_end_x = (display_x + display_width as u16).min(self.width);
-        let display_end_y = (display_y + display_height as u16).min(self.height);
+            let pattern_start = Instant::now();
 
-        if display_x >= self.width || display_y >= self.height {
-            error!("Region out of bounds");
-            return;
-        }
+            // Generate pattern directly into region buffer - no intermediate calculations
+            let mut idx = 0;
+            for row in 0..REG_H {
+                let pattern_y = (row + pan_offset_y) / SQUARE_SIZE;
+                for col in 0..REG_W {
+                    let pattern_x = (col + pan_offset_x) / SQUARE_SIZE;
 
-        if let Err(_) = self.set_window(display_x, display_y, display_end_x, display_end_y).await {
-            error!("Failed to set window for draw_region");
-            return;
-        }
+                    // Branchless color selection using bit manipulation
+                    let is_red = ((pattern_y + pattern_x) & 1) == 0;
+                    let pixel_color = if is_red { 0xF800u16 } else { 0x001Fu16 };
 
-        let src_width = region.size.width as usize;
-        let src_height = region.size.height as usize;
-        let scaled_width = (display_end_x - display_x) as usize;
-        let scaled_height = (display_end_y - display_y) as usize;
-
-        let mut chunk_buffer = vec![0u8; scaled_width * 2 * 64]; // 64 row chunk
-
-        let mut total_compute_ms = 0u64;
-        let mut total_transfer_ms = 0u64;
-
-        // Precompute x mapping for source row expansion
-        let mut x_map = vec![0usize; scaled_width];
-        for col in 0..scaled_width {
-            x_map[col] = col / scale as usize;
-        }
-
-        for y_chunk_start in (0..scaled_height).step_by(64) {
-            let chunk_height = (y_chunk_start + 64).min(scaled_height) - y_chunk_start;
-
-            if let Err(_) = self.set_window(
-                display_x,
-                display_y + y_chunk_start as u16,
-                display_end_x,
-                display_y + (y_chunk_start + chunk_height) as u16,
-            ).await {
-                continue;
-            }
-
-            let compute_start = embassy_time::Instant::now();
-
-            for row in 0..chunk_height {
-                let src_y = (y_chunk_start + row) / scale as usize;
-                let src_row_start = src_y * src_width * 2;
-                let dst_row_start = row * scaled_width * 2;
-
-                // Expand row using slice copies
-                let src_row = &buffer[src_row_start..src_row_start + src_width * 2];
-                let mut dst_idx = dst_row_start;
-
-                for &src_col in &x_map {
-                    let pixel_idx = src_col * 2;
-                    chunk_buffer[dst_idx] = src_row[pixel_idx];
-                    chunk_buffer[dst_idx + 1] = src_row[pixel_idx + 1];
-                    dst_idx += 2;
+                    unsafe {
+                        *region_buffer.get_unchecked_mut(idx) = (pixel_color >> 8) as u8;
+                        *region_buffer.get_unchecked_mut(idx + 1) = pixel_color as u8;
+                    }
+                    idx += 2;
                 }
             }
 
-            total_compute_ms += (embassy_time::Instant::now() - compute_start).as_millis() as u64;
+            let pattern_time = pattern_start.elapsed().as_micros();
+            let mut total_scaling = 0u64;
+            let mut total_transfer = 0u64;
 
-            let transfer_start = embassy_time::Instant::now();
-            let bytes_to_send = chunk_height * scaled_width * 2;
-            if let Err(_) = self.send_pixels(&chunk_buffer[..bytes_to_send]).await {
-                error!("Failed to send pixels for chunk");
-                return;
+            // Ultra-optimized scaling with SIMD-like operations
+            for y_chunk_start in (0..scaled_height).step_by(CHUNK_HEIGHT as usize) {
+                let chunk_height = core::cmp::min(CHUNK_HEIGHT, scaled_height - y_chunk_start);
+
+                if let Err(_) = self.set_window(
+                    display_start_x,
+                    display_start_y + y_chunk_start,
+                    display_start_x + scaled_width,
+                    display_start_y + y_chunk_start + chunk_height
+                ).await {
+                    return;
+                }
+
+                let scale_start = Instant::now();
+
+                // Extreme optimization: use ptr arithmetic for fastest possible access
+                let src_ptr = region_buffer.as_ptr();
+                let dst_ptr = chunk_buffer.as_mut_ptr();
+
+                unsafe {
+                    let mut dst_offset = 0;
+                    for row in 0..chunk_height as usize {
+                        let src_row_base = src_y_lookup[row + y_chunk_start as usize];
+                        for col in 0..scaled_width as usize {
+                            let src_offset = src_row_base + src_x_lookup[col];
+
+                            // Copy 2 bytes at once using u16
+                            let pixel = *(src_ptr.add(src_offset) as *const u16);
+                            *(dst_ptr.add(dst_offset) as *mut u16) = pixel;
+                            dst_offset += 2;
+                        }
+                    }
+                }
+
+                total_scaling += scale_start.elapsed().as_micros();
+                let transfer_start = Instant::now();
+
+                let chunk_size = (scaled_width * chunk_height * 2) as usize;
+                if let Err(_) = self.send_pixels(&chunk_buffer[..chunk_size]).await {
+                    error!("Failed to send pixels for paint_screen chunk");
+                    return;
+                }
+
+                total_transfer += transfer_start.elapsed().as_micros();
             }
-            total_transfer_ms += (embassy_time::Instant::now() - transfer_start).as_millis() as u64;
+
+            let frame_time = frame_start.elapsed().as_micros();
+            info!(
+            "Frame: pattern {} ms, scaling {} ms, transfer {} ms, total {} ms",
+            pattern_time as f64 / 1000.0,
+            total_scaling as f64 / 1000.0,
+            total_transfer as f64 / 1000.0,
+            frame_time as f64 / 1000.0
+        );
+
+            embassy_time::Timer::after(embassy_time::Duration::from_millis(FRAME_DELAY_MS)).await;
         }
-
-        info!("Total compute time: {} ms", total_compute_ms);
-        info!("Total pixel transfer time: {} ms", total_transfer_ms);
     }
-
-
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
         let full_region = Rectangle::new(Point::new(0, 0), Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT));
         self.draw_region(buffer, full_region, scale).await;

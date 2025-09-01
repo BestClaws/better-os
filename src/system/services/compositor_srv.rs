@@ -59,12 +59,12 @@ pub async fn compositor_service(
             match event {
                 HumanInputEvent::Touch(x, y) => {
 
-                    if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
-                        last_slide = Some(SlideDir::Right);
-                    } else {
-                        last_slide = Some(SlideDir::Left);
-
-                    }
+                    // if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
+                    //     last_slide = Some(SlideDir::Right);
+                    // } else {
+                    //     last_slide = Some(SlideDir::Left);
+                    //
+                    // }
 
                 }
                 HumanInputEvent::OkPressed => {
