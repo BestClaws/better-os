@@ -443,7 +443,7 @@ where
             let mut total_scaling = 0u64;
             let mut total_transfer = 0u64;
 
-            // Ultra-optimized scaling with SIMD-like operations
+            // Ultra-optimized scaling with row-based duplication
             for y_chunk_start in (0..scaled_height).step_by(CHUNK_HEIGHT as usize) {
                 let chunk_height = core::cmp::min(CHUNK_HEIGHT, scaled_height - y_chunk_start);
 
@@ -458,22 +458,38 @@ where
 
                 let scale_start = Instant::now();
 
-                // Extreme optimization: use ptr arithmetic for fastest possible access
-                let src_ptr = region_buffer.as_ptr();
-                let dst_ptr = chunk_buffer.as_mut_ptr();
-
                 unsafe {
+                    let src_ptr = region_buffer.as_ptr();
+                    let dst_ptr = chunk_buffer.as_mut_ptr();
                     let mut dst_offset = 0;
-                    for row in 0..chunk_height as usize {
-                        let src_row_base = src_y_lookup[row + y_chunk_start as usize];
-                        for col in 0..scaled_width as usize {
-                            let src_offset = src_row_base + src_x_lookup[col];
 
-                            // Copy 2 bytes at once using u16
-                            let pixel = *(src_ptr.add(src_offset) as *const u16);
-                            *(dst_ptr.add(dst_offset) as *mut u16) = pixel;
-                            dst_offset += 2;
+                    // Process SCALE rows at a time for better cache efficiency
+                    let mut current_src_row = usize::MAX;
+                    let mut scaled_row_buffer = vec![0u16; scaled_width as usize];
+
+                    for row in 0..chunk_height as usize {
+                        let src_row = (row + y_chunk_start as usize) / SCALE as usize;
+
+                        // Only regenerate scaled row when we hit a new source row
+                        if src_row != current_src_row {
+                            current_src_row = src_row;
+                            let src_row_base = src_row * REG_W as usize * 2;
+
+                            // Scale one source row to full width
+                            for col in 0..scaled_width as usize {
+                                let src_col = col / SCALE as usize;
+                                let src_offset = src_row_base + src_col * 2;
+                                scaled_row_buffer[col] = *(src_ptr.add(src_offset) as *const u16);
+                            }
                         }
+
+                        // Fast memcpy of the pre-scaled row
+                        core::ptr::copy_nonoverlapping(
+                            scaled_row_buffer.as_ptr(),
+                            dst_ptr.add(dst_offset) as *mut u16,
+                            scaled_width as usize
+                        );
+                        dst_offset += scaled_width as usize * 2;
                     }
                 }
 
