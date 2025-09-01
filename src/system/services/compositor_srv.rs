@@ -114,8 +114,8 @@ pub async fn compositor_service(
 
         // Sleep remaining time if loop was too fast (ensure ~10Hz)
         let elapsed = Instant::now() - idle_start;
-        if elapsed < Duration::from_millis(30) {
-            Timer::after(Duration::from_millis(1) - elapsed).await;
+        if elapsed < Duration::from_millis(100) {
+            Timer::after(Duration::from_millis(100) - elapsed).await;
         }
     }
 }

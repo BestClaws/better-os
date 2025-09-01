@@ -78,7 +78,7 @@ pub async fn arrow_app(context: AppContext) {
         context.draw(|canvas: &mut Canvas<Rgb565>| {
 
 
-
+canvas.clear(Rgb565::BLACK);
             let then = Instant::now();
             if let Err(e) = draw_model(
                 canvas,
@@ -99,6 +99,6 @@ pub async fn arrow_app(context: AppContext) {
         }).await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(1000)).await;
+        Timer::after(Duration::from_millis(1)).await;
     }
 }
