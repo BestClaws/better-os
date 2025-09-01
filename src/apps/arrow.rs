@@ -18,7 +18,7 @@ use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER
 use crate::system::ui::canvas::{Canvas};
 
 // Embed the binary STL file (place cube.stl in assets/ directory)
-const STL_DATA: &[u8] = include_bytes!("../../src/assets/arrow2.stl");
+const STL_DATA: &[u8] = include_bytes!("../../src/assets/geofix.stl");
 
 #[embassy_executor::task]
 pub async fn arrow_app(context: AppContext) {
@@ -33,7 +33,7 @@ pub async fn arrow_app(context: AppContext) {
     };
 
     let mut rotation = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
-    let angle_increment = 0.5f32.to_radians();
+    let angle_increment = 2f32.to_radians();
     let mut last_time = Instant::now();
     let mut frame_count = 0u32;
     let mut fps = 0.0f32;
@@ -77,13 +77,13 @@ pub async fn arrow_app(context: AppContext) {
 
         context.draw(|canvas: &mut Canvas<Rgb565>| {
 
-
+        canvas.clear(Rgb565::BLACK);
 
             let then = Instant::now();
             if let Err(e) = draw_model(
                 canvas,
                 &model,
-                Vec3(0.0, 0.0, 2.0),
+                Vec3(0.0, 0.0, 1.0),
                 rotation,
                 canvas.width(),
                 canvas.height(),
@@ -99,6 +99,6 @@ pub async fn arrow_app(context: AppContext) {
         }).await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(1000)).await;
+        Timer::after(Duration::from_millis(1)).await;
     }
 }
