@@ -57,16 +57,16 @@ pub async fn compositor_service(
 
         if let Some(event) = event {
             match event {
-                // HumanInputEvent::Touch(x, y) => {
-                //
-                //     if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
-                //         last_slide = Some(SlideDir::Right);
-                //     } else {
-                //         last_slide = Some(SlideDir::Left);
-                //
-                //     }
-                //
-                // }
+                HumanInputEvent::Touch(x, y) => {
+
+                    if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
+                        last_slide = Some(SlideDir::Right);
+                    } else {
+                        last_slide = Some(SlideDir::Left);
+
+                    }
+
+                }
                 HumanInputEvent::OkPressed => {
                     toggle_view = true;
                 }
