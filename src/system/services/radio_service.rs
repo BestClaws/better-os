@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::string::ToString;
 use trouble_host::prelude::*;
 use bt_hci::uuid::{appearance, BluetoothUuid16};
-use defmt::{info, warn};
+use defmt::{info, warn, Debug2Format};
 use embassy_futures::join::join;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -74,7 +74,6 @@ struct BatteryService {
 async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     loop {
         if let Err(e) = runner.run().await {
-            #[cfg(feature = "defmt")]
             let e = defmt::Debug2Format(&e);
             panic!("[ble_task] error: {:?}", e);
         }
@@ -95,7 +94,7 @@ async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnect
                     GattEvent::Read(event) => {
                         if event.handle() == level.handle {
                             let value = server.get(&level);
-                            info!("[gatt] Read Event to Level Characteristic:");
+                            info!("[gatt] Read Event to Level Characteristic: {:?}", Debug2Format(&value));
                         }
                     }
                     GattEvent::Write(event) => {
