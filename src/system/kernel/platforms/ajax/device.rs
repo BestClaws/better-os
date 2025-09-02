@@ -49,7 +49,6 @@ use crate::system::ui::window::WindowHandle;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
-use crate::system::kernel::platforms::ajax::display_driver::{ResetDriver, Ws43AmoledDriver};
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
 use crate::system::vendor::chipone::co5300::{Co5300, ColorMode};
 
@@ -134,11 +133,18 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         ColorMode::Rgb565,
     );
 
+    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
 
+    let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+    let timer_group_0_timer_0 = timer_group_0.timer0;
+
+    let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
 
     PlatformDevice {
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
+        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+
     }
 }
 
