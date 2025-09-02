@@ -20,7 +20,7 @@ esp-radio = { version = "0.15.0", features = [ "unstable", "ble", "esp32c6" ] }
 esp-radio-preempt-baremetal = { version = "0.0.1", features = ["defmt", "esp32c6"] }
 trouble-host = { git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4", features = ["default-packet-pool-mtu-255"] }
 static_cell = "2"
-
+esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32c6"] }
 
 
 # from top

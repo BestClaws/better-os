@@ -83,6 +83,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let st_alarm = system_timer.alarm0;
     crate::system::kernel::platforms::ajax::async_runtime::init(st_alarm);
 
+
     let i2c = I2c::new(
         peripherals.I2C0,
         esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
@@ -132,12 +133,11 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         ColorMode::Rgb565,
     );
 
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
 
     let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
     let timer_group_0_timer_0 = timer_group_0.timer0;
 
-    let radio_driver = RadioDriver::new(timer_group_0_timer_0, rng, peripherals.BT);
+    let radio_driver = RadioDriver::new(timer_group_0_timer_0, peripherals.BT);
 
     PlatformDevice {
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),

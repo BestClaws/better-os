@@ -6,9 +6,8 @@ use core::time::Duration;
 use defmt::info;
 use esp_hal::rng::Rng;
 use esp_hal::{peripherals::BT, timer::timg::Timer};
-use esp_wifi::ble::controller::BleConnector;
-use esp_wifi::{EspWifiController, EspWifiRngSource, EspWifiTimerSource, InitializationError};
-use mpu6050_dmp::address;
+use esp_radio::ble::controller::BleConnector;
+use esp_radio::Controller;
 use static_cell::StaticCell;
 use trouble_host::prelude::{DefaultPacketPool, Peripheral, Runner};
 use trouble_host::{peripheral, Address, Host, HostResources, Stack};
@@ -22,17 +21,15 @@ const L2CAP_CHANNELS_MAX: usize = 2;
 
 pub struct RadioDriver {
     timer: Option<Timer<'static>>,
-    rng: Rng,
     bt: Option<BT<'static>>,
 }
 
 
 impl RadioDriver {
-    pub fn new(timer: Timer<'static>, rng: Rng, bt: BT<'static>) -> Self {
+    pub fn new(timer: Timer<'static>, bt: BT<'static>) -> Self {
         Self {
             timer: Some(timer),
             bt: Some(bt),
-            rng,
         }
     }
 }
@@ -44,12 +41,17 @@ impl AsyncRadio for RadioDriver {
     {
             let timer = self.timer.take().unwrap();
             let bt = self.bt.take().unwrap();
-            let i = esp_wifi::init(timer, self.rng).unwrap();
-            let radio_init = Box::leak(Box::new(i));
-            let connector= BleConnector::new(radio_init, bt);
-            let controller = ExternalController::new(connector);
+            esp_radio_preempt_baremetal::init(timer);
+
+        static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
+        let radio = RADIO.init(esp_radio::init().unwrap());
+
+
+        let connector = BleConnector::new(radio, bt);
+        let controller: ExternalController<_, 20> = ExternalController::new(connector);
+
             let address = Address::random([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
-            info!("[run] BLE address = {:?}", address.addr);
+            info!("[run] BLE address = {:?}", address.addr.raw());
             let resources: &'static mut HostResources<
                 DefaultPacketPool,
                 CONNECTIONS_MAX,

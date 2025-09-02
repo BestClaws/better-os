@@ -10,7 +10,7 @@ mod util;
 mod libs;
 
 extern crate alloc;
-
+esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner)  {
         system::kernel::start::start(spawner);
