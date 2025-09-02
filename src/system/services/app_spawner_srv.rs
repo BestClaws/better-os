@@ -21,9 +21,9 @@ pub async fn app_spawner_service(
     // let ctx = create_context(spawner, compositor, 2, "notification", 2).await;
     // spawner.spawn(notifications_app(ctx)).unwrap();
     // let ctx = create_context(spawner, compositor, 2, "battery", 2).await;
-    // spawner.spawn(battery_app(ctx)).unwrap();
+    // spawner.spawn(arrow_app(ctx)).unwrap();
     let ctx = create_context(spawner, compositor, 3, "battery", 3).await;
-    spawner.spawn(arrow_app(ctx)).unwrap();
+    spawner.spawn(battery_app(ctx)).unwrap();
 
 
 }
