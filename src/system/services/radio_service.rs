@@ -56,7 +56,8 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     loop {
         match runner.run().await {
             Ok(_) => info!("[ble] Runner cycle completed"),
-            Err(e) => warn!("[ble] Error in BLE runner: {:?}", defmt::Debug2Format(&e)),
+            Err(BleHostError::BleHost(e)) => warn!("[ble] Error in BLE runner: {:?}", defmt::Debug2Format(&e)),
+            Err(BleHostError::Controller(e)) => warn!("[ble] Error2 in BLE runner: {:?}", defmt::Debug2Format(&e))
         }
     }
 }

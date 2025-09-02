@@ -8,30 +8,35 @@ name = "better-os"
 path = "src/main.rs"
 test = false
 
+
+
 [dependencies]
+# try 0.7.0 if u want
+embassy-executor    = { version = "0.7.0", features = [ "defmt", "task-arena-size-98304"] }
+esp-hal = { version = "1.0.0-rc.0", features = [ "unstable", "esp32c6", "rt", "defmt" ] }
+esp-hal-embassy = { version = "0.9.0",  features = ["esp32c6"]  }
+esp-alloc = { version = "0.8.0" }
+esp-radio = { version = "0.15.0", features = [ "unstable", "ble", "esp32c6" ] }
+esp-radio-preempt-baremetal = { version = "0.0.1", features = ["defmt", "esp32c6"] }
+trouble-host = { git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4", features = ["default-packet-pool-mtu-255"] }
+static_cell = "2"
 
 
-heapless = { version = "0.8.0", features = ["defmt-03"] }
-esp-hal = { version = "1.0.0-beta.1", features = [
-  "defmt",
-  "esp32c6",
-  "unstable",
-  "rt"
-] }
-esp-wifi = { version = "0.15.0", features = [
-  "ble",
-  "builtin-scheduler",
-  "defmt",
-  "esp-alloc",
-  "esp32c6",
-] }
-esp-alloc = "0.8.0"
-esp-hal-embassy = { version = "0.9.0", features = ["esp32c6"] }
+
+# from top
+
+bt-hci = { version = "0.4" }
+
+
+# unchecked needs replacement
+
+
+
+heapless = { version = "0.8", features = ["defmt-03"] }
 
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 embedded-graphics-core = { version = "0.4.0", features = ["defmt"] }
-
 defmt = "1.0.1"
 
 
@@ -40,35 +45,18 @@ rtt-target = { version = "0.6.1", features = ["defmt"] }
 
 nb = "1.1.0"
 
-embassy-executor = { version = "0.7.0", features = [
-  "defmt",
-  "task-arena-size-81920",
-] }
+
 embassy-time = { version = "0.4.0", features = ["generic-queue-8", "defmt"] }
 
 
-static_cell = { version = "2.1.0", features = [] }
-
-trouble-host = { version = "0.2.4", features = [
-    "default-packet-pool-mtu-255", "derive", "scan"
-] }
 
 kolibri-embedded-gui = { path = "../kolibri"}
 embedded-graphics = { version = "0.8.0", features = ["defmt"] }
-ssd1306 = { version = "0.10.0", features = ["async", "graphics"] }
-
-display-interface-i2c = { version = "0.5.0" }
-display-interface = "0.5.0"
-display-interface-spi = { version = "0.5.0"}
-ili9341 = { version = "0.6.0", features = ["embedded-graphics-core", "graphics"] }
-
-mpu6050-dmp = { version = "0.6.0", features = ["async", "defmt-03"] }
-embassy-embedded-hal = { version = "0.3.0", features = ["defmt"] }
+embassy-embedded-hal = { version = "0.5.0", features = ["defmt"] }
 
 micromath = "2.1.0"
 
 embassy-futures = "0.1.1"
-bt-hci = "0.3.0"
 embassy-sync = { version = "0.7.0" }
 log = "0.4.27"
 async-trait = "0.1.88"
@@ -77,9 +65,27 @@ tinybmp = { version = "0.6.0", features = [] }
 libm = "0.2.15"
 
 
+
+
+
 [features]
 default = ["single_thread_static_parser"]
 single_thread_static_parser = []
+
+
+
+
+
+
+[patch.crates-io]
+esp-radio = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+esp-radio-preempt-baremetal = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+esp-backtrace = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+esp-hal = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+esp-bootloader-esp-idf = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+esp-hal-embassy = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+esp-alloc = {git = "https://github.com/esp-rs/esp-hal.git", rev = "a7bd8980ea2aff28d20bc501e86886dc917c9e28"}
+
 
 [profile.dev]
 # Rust debug is too slow.
