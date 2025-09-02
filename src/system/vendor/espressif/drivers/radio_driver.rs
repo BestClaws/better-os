@@ -50,7 +50,7 @@ impl AsyncRadio for RadioDriver {
         let connector = BleConnector::new(radio, bt);
         let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-            let address = Address::random([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        let address = Address::random([0xC0, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
             info!("[run] BLE address = {:?}", address.addr.raw());
             let resources: &'static mut HostResources<
                 DefaultPacketPool,
