@@ -1,4 +1,4 @@
-// Clean bouncing ball implementation
+// Fixed bouncing ball with animated battery
 #![allow(unused)]
 use core::fmt::Write;
 use alloc::vec::Vec;
@@ -23,27 +23,89 @@ use crate::util::math::primitives::Vec3;
 
 const CANVAS_WIDTH: i32 = 320;
 const CANVAS_HEIGHT: i32 = 240;
-const BALL_RADIUS: i32 = 15;
-const GRAVITY: f32 = 300.0;
-const BOUNCE_DAMPING: f32 = 0.85;
-const AIR_RESISTANCE: f32 = 0.995;
 
 struct Ball {
-    position: (f32, f32),
-    velocity: (f32, f32),
-    radius: i32,
-    last_update: Instant,
-    color: Rgb565,
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    radius: f32,
 }
 
 impl Ball {
     fn new() -> Self {
         Self {
-            position: (CANVAS_WIDTH as f32 / 2.0, 50.0),
-            velocity: (100.0, -120.0),
-            radius: BALL_RADIUS,
+            x: 160.0,  // Center of screen
+            y: 60.0,   // Near top
+            vx: 80.0,  // Moving right
+            vy: 0.0,   // No initial vertical velocity
+            radius: 12.0,
+        }
+    }
+
+    fn update(&mut self, dt: f32) {
+        // Apply gravity
+        self.vy += 200.0 * dt;
+
+        // Update position
+        self.x += self.vx * dt;
+        self.y += self.vy * dt;
+
+        // Bounce off walls
+        if self.x - self.radius <= 0.0 {
+            self.x = self.radius;
+            self.vx = -self.vx * 0.8;
+        }
+        if self.x + self.radius >= CANVAS_WIDTH as f32 {
+            self.x = CANVAS_WIDTH as f32 - self.radius;
+            self.vx = -self.vx * 0.8;
+        }
+        if self.y - self.radius <= 0.0 {
+            self.y = self.radius;
+            self.vy = -self.vy * 0.8;
+        }
+        if self.y + self.radius >= CANVAS_HEIGHT as f32 {
+            self.y = CANVAS_HEIGHT as f32 - self.radius;
+            self.vy = -self.vy * 0.8;
+        }
+
+        // Add some energy if too slow
+        if self.vy.abs() < 10.0 && self.y + self.radius >= CANVAS_HEIGHT as f32 - 1.0 {
+            self.vy = -100.0;
+        }
+    }
+
+    fn draw(&self, canvas: &mut Canvas<Rgb565>) {
+        let center = Point::new(self.x as i32, self.y as i32);
+        let r = self.radius as i32;
+
+        // Draw the ball with a bright color
+        Circle::new(center - Point::new(r, r), (r * 2) as u32)
+            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::RED), canvas)
+            .ok();
+
+        // Draw a white highlight
+        let highlight_center = center - Point::new(r/3, r/3);
+        Circle::new(highlight_center - Point::new(r/4, r/4), (r/2) as u32)
+            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas)
+            .ok();
+    }
+}
+
+struct BatteryAnimation {
+    level: f32,          // Current battery level (0.0 to 1.0)
+    target_level: f32,   // Target battery level
+    last_update: Instant,
+    pulse_time: f32,     // For pulsing effect
+}
+
+impl BatteryAnimation {
+    fn new() -> Self {
+        Self {
+            level: 0.7,
+            target_level: 0.7,
             last_update: Instant::now(),
-            color: Rgb565::new(31, 15, 15), // Bright red
+            pulse_time: 0.0,
         }
     }
 
@@ -52,119 +114,77 @@ impl Ball {
         let dt = (now - self.last_update).as_millis() as f32 / 1000.0;
         self.last_update = now;
 
-        // Cap delta time to prevent large jumps
-        let dt = dt.min(0.02);
+        // Smooth interpolation to target
+        let diff = self.target_level - self.level;
+        self.level += diff * dt * 3.0; // Adjust speed here
 
-        // Apply physics
-        self.velocity.1 += GRAVITY * dt; // Gravity affects Y velocity
-        self.velocity.0 *= AIR_RESISTANCE.powf(dt * 60.0);
-        self.velocity.1 *= AIR_RESISTANCE.powf(dt * 60.0);
+        // Update pulse animation
+        self.pulse_time += dt * 2.0;
 
-        // Update position
-        self.position.0 += self.velocity.0 * dt;
-        self.position.1 += self.velocity.1 * dt;
-
-        // Boundary checking and bouncing
-        self.handle_collisions();
-        self.update_color();
-    }
-
-    fn handle_collisions(&mut self) {
-        let r = self.radius as f32;
-
-        // Left/Right walls
-        if self.position.0 - r <= 0.0 {
-            self.position.0 = r;
-            self.velocity.0 = -self.velocity.0 * BOUNCE_DAMPING;
-        } else if self.position.0 + r >= CANVAS_WIDTH as f32 {
-            self.position.0 = CANVAS_WIDTH as f32 - r;
-            self.velocity.0 = -self.velocity.0 * BOUNCE_DAMPING;
+        // Simulate battery drain
+        self.target_level -= dt * 0.02; // Slowly drain
+        if self.target_level < 0.1 {
+            self.target_level = 0.9; // Reset for demo
         }
-
-        // Top/Bottom walls
-        if self.position.1 - r <= 0.0 {
-            self.position.1 = r;
-            self.velocity.1 = -self.velocity.1 * BOUNCE_DAMPING;
-        } else if self.position.1 + r >= CANVAS_HEIGHT as f32 {
-            self.position.1 = CANVAS_HEIGHT as f32 - r;
-            self.velocity.1 = -self.velocity.1 * BOUNCE_DAMPING;
-
-            // Add energy to prevent settling
-            if self.velocity.1.abs() < 30.0 {
-                self.velocity.1 = -80.0;
-            }
-        }
-    }
-
-    fn update_color(&mut self) {
-        let speed = (self.velocity.0 * self.velocity.0 + self.velocity.1 * self.velocity.1).sqrt();
-        let intensity = (speed / 200.0).min(1.0);
-
-        let red = (15 + (intensity * 16.0) as u8).min(31);
-        let green = (5 + (intensity * 10.0) as u8).min(63);
-        let blue = (5 + (intensity * 10.0) as u8).min(31);
-
-        self.color = Rgb565::new(red, green, blue);
     }
 
     fn draw(&self, canvas: &mut Canvas<Rgb565>) {
-        let center = Point::new(self.position.0 as i32, self.position.1 as i32);
+        let x = 20;
+        let y = 20;
+        let width = 80;
+        let height = 20;
 
-        // Draw shadow/trail
-        let trail_offset = Point::new(
-            -(self.velocity.0 * 0.008) as i32,
-            -(self.velocity.1 * 0.008) as i32
-        );
-        let trail_center = center + trail_offset;
+        // Battery outline
+        Rectangle::new(Point::new(x, y), Size::new(width, height))
+            .draw_styled(&PrimitiveStyle::with_stroke(Rgb565::WHITE, 1), canvas)
+            .ok();
 
-        if self.is_point_in_bounds(trail_center) {
-            let shadow_color = Rgb565::new(5, 2, 2);
-            Circle::new(
-                trail_center - Point::new(self.radius, self.radius),
-                (self.radius * 2) as u32
-            )
-                .draw_styled(&PrimitiveStyle::with_fill(shadow_color), canvas)
+        // Battery terminal
+        Rectangle::new(Point::new(x + width as i32, y + 5), Size::new(4, height - 10))
+            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas)
+            .ok();
+
+        // Calculate fill width and color
+        let fill_width = (self.level * (width - 4) as f32) as u32;
+        let pulse_intensity = (self.pulse_time.sin() * 0.3 + 0.7).max(0.4).min(1.0);
+
+        let color = if self.level > 0.5 {
+            // Green when high
+            Rgb565::new(0, (31.0 * pulse_intensity) as u8, 0)
+        } else if self.level > 0.2 {
+            // Yellow when medium
+            Rgb565::new((31.0 * pulse_intensity) as u8, (31.0 * pulse_intensity) as u8, 0)
+        } else {
+            // Red when low (with more pulsing)
+            let low_pulse = (self.pulse_time * 3.0).sin() * 0.5 + 0.5;
+            Rgb565::new((31.0 * low_pulse) as u8, 0, 0)
+        };
+
+        // Battery fill
+        if fill_width > 0 {
+            Rectangle::new(Point::new(x + 2, y + 2), Size::new(fill_width, height - 4))
+                .draw_styled(&PrimitiveStyle::with_fill(color), canvas)
                 .ok();
         }
 
-        // Draw main ball
-        Circle::new(
-            center - Point::new(self.radius, self.radius),
-            (self.radius * 2) as u32
-        )
-            .draw_styled(&PrimitiveStyle::with_fill(self.color), canvas)
-            .unwrap();
+        // Battery percentage text
+        let mut text_buf = heapless::String::<16>::new();
+        write!(text_buf, "{}%", (self.level * 100.0) as u8).ok();
 
-        // Draw highlight for 3D effect
-        let highlight = Circle::new(
-            center - Point::new(self.radius, self.radius) + Point::new(self.radius/3, self.radius/3),
-            (self.radius / 2) as u32
-        );
-        highlight
-            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas)
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+        Text::new(&text_buf, Point::new(x, y + height as i32 + 15), text_style)
+            .draw(canvas)
             .ok();
-    }
-
-    fn is_point_in_bounds(&self, point: Point) -> bool {
-        point.x >= self.radius &&
-            point.x < CANVAS_WIDTH - self.radius &&
-            point.y >= self.radius &&
-            point.y < CANVAS_HEIGHT - self.radius
-    }
-
-    fn get_debug_info(&self) -> heapless::String<64> {
-        let mut buf = heapless::String::<64>::new();
-        let speed = (self.velocity.0 * self.velocity.0 + self.velocity.1 * self.velocity.1).sqrt();
-        write!(buf, "Speed: {:.0} px/s | Pos: ({:.0},{:.0})",
-               speed, self.position.0, self.position.1).ok();
-        buf
     }
 }
 
 #[embassy_executor::task]
 pub async fn battery_app(context: AppContext) {
     let mut ball = Ball::new();
-    info!("Battery app started with bouncing ball");
+    let mut battery = BatteryAnimation::new();
+    let mut last_time = Instant::now();
+
+    info!("Battery app started - Ball should be visible!");
 
     loop {
         if !context.is_focused().await {
@@ -172,58 +192,42 @@ pub async fn battery_app(context: AppContext) {
             continue;
         }
 
+        // Calculate delta time
+        let now = Instant::now();
+        let dt = (now - last_time).as_millis() as f32 / 1000.0;
+        let dt = dt.min(0.02); // Cap at 50fps equivalent
+        last_time = now;
+
         context.draw(|canvas: &mut Canvas<Rgb565>| {
-            // Clear screen with dark background
+            // Clear with black background
             canvas.clear(Rgb565::BLACK);
 
             // Update and draw ball
-            ball.update();
+            ball.update(dt);
             ball.draw(canvas);
 
-            // Draw battery indicator
-            draw_battery_info(canvas);
+            // Update and draw battery
+            battery.update();
+            battery.draw(canvas);
 
-            // Draw debug info
-            draw_debug_info(canvas, &ball);
+            // Draw some debug info
+            let mut debug_buf = heapless::String::<64>::new();
+            write!(debug_buf, "Ball: ({:.0},{:.0}) Speed: ({:.0},{:.0})",
+                   ball.x, ball.y, ball.vx, ball.vy).ok();
+
+            let debug_style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(15, 15, 15));
+            Text::new(&debug_buf, Point::new(10, CANVAS_HEIGHT - 15), debug_style)
+                .draw(canvas)
+                .ok();
+
+            // Draw title
+            let title_style = MonoTextStyle::new(&FONT_8X13, Rgb565::CYAN);
+            Text::new("Battery Demo", Point::new(200, 30), title_style)
+                .draw(canvas)
+                .ok();
         }).await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(16)).await; // ~60 FPS
+        Timer::after(Duration::from_millis(16)).await; // 60 FPS
     }
-}
-
-fn draw_battery_info(canvas: &mut Canvas<Rgb565>) {
-    // Battery outline
-    let battery_rect = Rectangle::new(Point::new(10, 10), Size::new(60, 20));
-    battery_rect
-        .draw_styled(&PrimitiveStyle::with_stroke(Rgb565::WHITE, 2), canvas)
-        .ok();
-
-    // Battery fill (placeholder - replace with actual battery level)
-    let fill_width = 45; // Represents battery percentage
-    let battery_fill = Rectangle::new(Point::new(12, 12), Size::new(fill_width, 16));
-    battery_fill
-        .draw_styled(&PrimitiveStyle::with_fill(Rgb565::GREEN), canvas)
-        .ok();
-
-    // Battery terminal
-    let terminal = Rectangle::new(Point::new(70, 15), Size::new(4, 10));
-    terminal
-        .draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas)
-        .ok();
-
-    // Battery text
-    let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
-    Text::new("Battery", Point::new(10, 45), text_style)
-        .draw(canvas)
-        .ok();
-}
-
-fn draw_debug_info(canvas: &mut Canvas<Rgb565>, ball: &Ball) {
-    let debug_info = ball.get_debug_info();
-    let debug_style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(20, 20, 20));
-
-    Text::new(&debug_info, Point::new(10, CANVAS_HEIGHT - 20), debug_style)
-        .draw(canvas)
-        .ok();
 }
