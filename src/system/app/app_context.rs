@@ -31,12 +31,12 @@ impl AppContext {
 
     pub async fn is_focused(&self) -> bool {
         let comp = self.compositor.lock().await;
-        comp.is_focused(self.handle)
+        comp.is_window_focused(self.handle)
     }
 
     pub async fn poll_input(&self) -> Option<HumanInputEvent> {
         let mut comp = self.compositor.lock().await;
-        comp.poll_input(self.handle)
+        comp.poll_window_input(self.handle)
     }
 
     pub async fn request_redraw(&self) {

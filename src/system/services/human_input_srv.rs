@@ -4,6 +4,7 @@ use embassy_sync::channel::Channel;
 
 
 #[derive(Format)]
+#[derive(Debug)]
 pub(crate) enum HumanInputEvent {
     NavUp,
     NavDown,
