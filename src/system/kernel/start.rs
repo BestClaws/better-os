@@ -31,7 +31,7 @@ pub(crate) fn start(spawner: Spawner) {
     // Spawn input services
     info!("[{}s] spawned human input services", Instant::now().as_millis() as f32 / 1000f32);
     // spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
-    // spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
+    spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
     spawner.spawn(human_input_srv::sub::listen_touch(device.touch.unwrap())).unwrap();
 
 

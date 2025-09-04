@@ -59,6 +59,8 @@ pub(crate) mod sub {
                 let mut e = button.lock().await;
                 e.next().await
             };
+            
+            info!("bt=utton press");
 
             match state {
                 ButtonState::Up => HUMAN_INPUT_CH.send(HumanInputEvent::OkReleased).await,
@@ -84,7 +86,7 @@ pub(crate) mod sub {
 
             debug!("touch. x: {}, y: {}, z: {}", x, y, z);
 
-            HUMAN_INPUT_CH.send(HumanInputEvent::Touch((x as u32 / FRAME_SCALE_FACTOR) as i32,  (y as u32  / FRAME_SCALE_FACTOR) as i32)).await;
+            // HUMAN_INPUT_CH.send(HumanInputEvent::Touch((x as u32 / FRAME_SCALE_FACTOR) as i32,  (y as u32  / FRAME_SCALE_FACTOR) as i32)).await;
             Timer::after_millis(16).await;
         }
     }

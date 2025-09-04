@@ -159,7 +159,7 @@ impl UICompositor {
     pub fn request_redraw(&mut self, handle: WindowHandle) {
         if !self.redraw_requests.contains(&handle) {
             self.redraw_requests.push(handle).ok();
-            info!("Redraw requested for window {:?}", handle);
+            debug!("Redraw requested for window {:?}", handle);
         }
     }
 

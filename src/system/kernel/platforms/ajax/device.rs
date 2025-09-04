@@ -137,6 +137,11 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     );
 
 
+    let button_pin = Input::new(peripherals.GPIO9, InputConfig::default());
+
+
+    let button  = ButtonDriver::new(button_pin);
+
     // let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
     // let timer_group_0_timer_0 = timer_group_0.timer0;
     // 
@@ -147,6 +152,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
         // radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
         gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(accel)))),
+        button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
 
     }
 }

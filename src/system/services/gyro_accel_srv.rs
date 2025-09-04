@@ -23,7 +23,7 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
     loop {
         let (x, y, z) = sensor_g.read_accel().await;
-        info!("gyro: x: {}, y: {}, z: {}", x, y, z);
+        debug!("gyro: x: {}, y: {}, z: {}", x, y, z);
         // ORIENTATION_CHANNEL.signal(q);
         Timer::after_millis(50).await;
 
