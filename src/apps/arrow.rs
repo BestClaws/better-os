@@ -1,4 +1,4 @@
-use defmt::info;
+use defmt::{debug, info};
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
     pixelcolor::BinaryColor,
@@ -92,7 +92,7 @@ pub async fn arrow_app(context: AppContext) {
                 info!("Draw error: {:?}", e);
             }
 
-            info!("arrow time: {}", (Instant::now() - then).as_millis());
+            debug!("arrow time: {}", (Instant::now() - then).as_millis());
 
 
 

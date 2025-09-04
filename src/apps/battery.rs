@@ -9,7 +9,8 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Line, PrimitiveStyle, Triangle, Circle},
 };
-use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_8X13};
+use embedded_graphics::mono_font::ascii::FONT_4X6;
+use embedded_graphics::mono_font::iso_8859_1::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::{Rectangle, Styled, StyledDrawable};
 use embedded_graphics::text::Text;
@@ -17,7 +18,6 @@ use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::battery_srv::BATTERY_CHANNEL;
-use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
 use crate::system::ui::canvas::{Canvas};
 use crate::util::math::primitives::Vec3;
 
@@ -171,7 +171,7 @@ impl BatteryAnimation {
         let mut text_buf = heapless::String::<16>::new();
         write!(text_buf, "{}%", (self.level * 100.0) as u8).ok();
 
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+        let text_style = MonoTextStyle::new(&FONT_4X6, Rgb565::WHITE);
         Text::new(&text_buf, Point::new(x, y + height as i32 + 15), text_style)
             .draw(canvas)
             .ok();
@@ -221,7 +221,7 @@ pub async fn battery_app(context: AppContext) {
                 .ok();
 
             // Draw title
-            let title_style = MonoTextStyle::new(&FONT_8X13, Rgb565::CYAN);
+            let title_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CYAN);
             Text::new("Battery Demo", Point::new(200, 30), title_style)
                 .draw(canvas)
                 .ok();

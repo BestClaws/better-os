@@ -1,19 +1,24 @@
 #![allow(unused)]
 
 use alloc::boxed::Box;
-
 use async_trait::async_trait;
 use crate::util::math::primitives::Quaternion;
 
+/// Async interface for motion sensors with accel+gyro (and orientation if supported).
 #[async_trait(?Send)]
 pub trait AsyncGyroAccelerometer {
+    /// Initialize sensor, set up registers, check WHO_AM_I.
+    async fn init(&mut self) -> Result<(), ()>;
 
-    async fn init(&mut self);
+    /// Read acceleration in g.
+    async fn read_accel(&mut self) -> (f32, f32, f32);
 
+    /// Read angular velocity in dps.
+    async fn read_gyro(&mut self) -> (f32, f32, f32);
 
-    // async fn get_acceleration(&mut self) -> (f32, f32, f32);
-    // async fn get_temperature_celsius(&mut self) -> u8;
-    async fn get_orientation(&mut self) -> Quaternion;
+    /// Read temperature in °C.
+    async fn read_temp(&mut self) -> f32;
 
+    /// Read orientation as quaternion (if available, otherwise identity).
+    async fn read_orientation(&mut self) -> Quaternion;
 }
-

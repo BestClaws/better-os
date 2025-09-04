@@ -6,7 +6,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, Instant};
 
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::kernel::config::resources::FRAME_BUFFER_WIDTH;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 use crate::system::ui::compositor::{SlideDir, UICompositor};
 
@@ -59,12 +59,13 @@ pub async fn compositor_service(
             match event {
                 HumanInputEvent::Touch(x, y) => {
 
-                    // if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
-                    //     last_slide = Some(SlideDir::Right);
-                    // } else {
-                    //     last_slide = Some(SlideDir::Left);
-                    //
-                    // }
+                    if (y < (FRAME_BUFFER_HEIGHT / 2) as i32) {
+                        if (x < (FRAME_BUFFER_WIDTH / 2) as i32) {
+                            last_slide = Some(SlideDir::Right);
+                        } else {
+                            last_slide = Some(SlideDir::Left);
+                        }
+                    }
 
                 }
                 HumanInputEvent::OkPressed => {

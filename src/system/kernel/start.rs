@@ -53,13 +53,13 @@ pub(crate) fn start(spawner: Spawner) {
     info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
     spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
 
-    //
-    // // Spawn accel service
-    // info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
+    
+    // Spawn accel service
+    info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
+    spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
 
-    info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
+    // info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
+    // spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
 
     //
     // Spawn app spawner service

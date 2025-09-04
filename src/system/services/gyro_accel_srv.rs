@@ -7,7 +7,6 @@ use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::util::math::primitives::{Quaternion, Vec3};
-use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll};
 
 pub static ORIENTATION_CHANNEL: Signal<CriticalSectionRawMutex, Quaternion> =
     Signal::new();
@@ -18,13 +17,14 @@ pub(crate) async fn gyro_accelerometer_service(sensor: &'static Mutex<CriticalSe
 
     info!("initializing gyro accelerometer service...");
     let mut sensor_g = sensor.lock().await;
-    sensor_g.init().await;
+    sensor_g.init().await.unwrap();
     info!("gyro accelerometer service initialized");
 
 
     loop {
-        let q = sensor_g.get_orientation().await;
-        ORIENTATION_CHANNEL.signal(q);
+        let (x, y, z) = sensor_g.read_accel().await;
+        info!("gyro: x: {}, y: {}, z: {}", x, y, z);
+        // ORIENTATION_CHANNEL.signal(q);
         Timer::after_millis(50).await;
 
     }

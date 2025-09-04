@@ -17,7 +17,6 @@ use trouble_host::prelude::{gatt_server, gatt_service, AttributeHandle, DefaultP
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::system::hal::radio::AsyncRadio;
 use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
-use crate::system::vendor::invensense::drivers::mpu6050::sensor::{get_gravity, get_yaw_pitch_roll};
 use crate::util::math::primitives::Vec3;
 
 

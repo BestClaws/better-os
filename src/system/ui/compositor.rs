@@ -263,7 +263,6 @@ impl UICompositor {
             ViewMode::Single => ViewMode::Split,
             ViewMode::Split => ViewMode::Single,
         };
-        info!("View mode toggled to {:?}", self.view_mode);
         debug!("View mode toggled to {:?}", self.view_mode);
         self.ensure_window_resources().await;
     }
@@ -340,7 +339,6 @@ impl UICompositor {
 
         let old_prev_idx = (self.current_window + self.windows.len() - 2) % self.windows.len();
         self.current_window = (self.current_window + 1) % self.windows.len();
-        info!("Switched to next window: {}", self.current_window);
         debug!("Switched to next window: {}", self.current_window);
 
         // Release resources for the old previous window first
@@ -367,7 +365,6 @@ impl UICompositor {
 
         let old_next_idx = (self.current_window + 2) % self.windows.len();
         self.current_window = (self.current_window + self.windows.len() - 1) % self.windows.len();
-        info!("Switched to previous window: {}", self.current_window);
         debug!("Switched to previous window: {}", self.current_window);
 
         // Release resources for the old next window first
@@ -399,7 +396,6 @@ impl UICompositor {
             SlideDir::Right => (self.current_window + 1) % len,
         };
 
-        info!("Animating slide from window {} to {}", from_index, to_index);
         debug!("Animating slide from window {} to {}", from_index, to_index);
 
         // Ensure resources for the target window before switching

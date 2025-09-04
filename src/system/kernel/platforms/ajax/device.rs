@@ -14,7 +14,6 @@ use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
 use crate::system::vendor::espressif::drivers::radio_driver::RadioDriver;
-use crate::system::vendor::invensense::drivers::mpu6050::sensor::MPU6050;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -49,6 +48,7 @@ use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
+use crate::system::vendor::boby::drivers::qmi8658c::Qmi8658C;
 use crate::system::vendor::chipone::co5300::{Co5300, ColorMode};
 
 static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
@@ -97,8 +97,11 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let i2c = I2C_BUS.init(i2c);
     let i2c_1: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
         I2cDevice::new(i2c);
+    let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
+        I2cDevice::new(i2c);
 
     let touch = FT5336::new(i2c_1);
+    let accel = Qmi8658C::new(i2c_2);
 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(16384);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
@@ -134,15 +137,16 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     );
 
 
-    let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
-    let timer_group_0_timer_0 = timer_group_0.timer0;
-
-    let radio_driver = RadioDriver::new(timer_group_0_timer_0, peripherals.BT);
+    // let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
+    // let timer_group_0_timer_0 = timer_group_0.timer0;
+    // 
+    // let radio_driver = RadioDriver::new(timer_group_0_timer_0, peripherals.BT);
 
     PlatformDevice {
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
-        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+        // radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+        gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(accel)))),
 
     }
 }

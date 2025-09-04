@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use embedded_hal::digital::OutputPin;
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
-use defmt::{info, error};
+use defmt::{info, error, debug};
 use embedded_graphics_core::prelude::{Point, Size};
 use embedded_graphics_core::primitives::Rectangle;
 use crate::system::hal::display::{AsyncDisplay, Orientation};
@@ -357,7 +357,7 @@ where
             total_transfer += transfer_start.elapsed().as_micros();
         }
 
-        info!(
+        debug!(
             "compute time: {} ms, transfer time: {} ms",
             total_compute as f64 / 1000.0,
             total_transfer as f64 / 1000.0
@@ -486,7 +486,7 @@ where
         }
 
         let frame_time = frame_start.elapsed().as_micros();
-        info!(
+        debug!(
         "draw_region: scaling {} ms, transfer {} ms, total {} ms",
         total_scaling as f64 / 1000.0,
         total_transfer as f64 / 1000.0,

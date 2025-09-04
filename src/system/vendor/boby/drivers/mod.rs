@@ -5,4 +5,5 @@ pub(crate) mod vibrator;
 pub(crate) mod xpt2046;
 pub(crate) mod ili9341;
 pub(crate) mod ft5336;
+pub(crate) mod qmi8658c;
 
