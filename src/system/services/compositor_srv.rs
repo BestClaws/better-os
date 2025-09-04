@@ -10,7 +10,6 @@ use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UIComp
 use crate::system::ui::compositor::{ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
 
 /// Service loop timing constants
-const IDLE_REFRESH_INTERVAL_MS: u64 = 100;
 const MIN_FRAME_TIME_MS: u64 = 16; // ~60 FPS max
 const INPUT_POLL_TIMEOUT_MS: u64 = 1;
 
@@ -18,7 +17,7 @@ const INPUT_POLL_TIMEOUT_MS: u64 = 1;
 ///
 /// This service:
 /// - Initializes display hardware
-/// - Processes user input events and routes them appropriately  
+/// - Processes user input events and routes them appropriately
 /// - Manages window transitions and animations
 /// - Provides idle refresh for dynamic content (clocks, sensors, etc.)
 /// - Maintains consistent frame timing for smooth operation
@@ -44,8 +43,8 @@ pub async fn compositor_service(
 
         // Configure smooth animations with cubic easing
         let animation_config = AnimationConfig {
-            steps: 10,
-            frame_delay_ms: 20,
+            steps: 5,
+            frame_delay_ms: 16,
             easing_fn: ease_in_out_cubic,
         };
         compositor_lock.set_animation_config(animation_config);
@@ -98,8 +97,7 @@ pub async fn compositor_service(
 
             InputAction::IdleRefresh => {
                 // Idle refresh for dynamic content updates
-                Timer::after(Duration::from_millis(IDLE_REFRESH_INTERVAL_MS)).await;
-
+                Timer::after(Duration::from_millis(0)).await;
                 let mut compositor_lock = compositor.lock().await;
                 if let Some(focused_handle) = compositor_lock.focused_window_handle() {
                     compositor_lock.request_redraw(focused_handle);
@@ -116,7 +114,7 @@ pub async fn compositor_service(
 /// Categorizes input events into actionable items
 #[derive(Debug)]
 enum InputAction {
-    /// Animate to next window  
+    /// Animate to next window
     AnimateNext,
     /// Animate to previous window
     AnimatePrevious,
@@ -154,6 +152,17 @@ async fn process_input_events() -> InputAction {
             process_touch_gesture(x, y)
         }
 
+        // Some(HumanInputEvent::SwipeLeft) => {
+        //     InputAction::AnimateNext
+        // }
+        //
+        // Some(HumanInputEvent::SwipeRight) => {
+        //     InputAction::AnimatePrevious
+        // }
+        //
+        // Some(HumanInputEvent::LongPress) => {
+        //     InputAction::ToggleView
+        // }
 
         Some(other_event) => {
             // Forward all other events to the focused window
@@ -256,7 +265,7 @@ mod animation_presets {
         easing_fn: ease_in_out_cubic,
     };
 
-    /// Smooth, cinematic animations for premium feel  
+    /// Smooth, cinematic animations for premium feel
     pub const CINEMATIC_ANIMATIONS: AnimationConfig = AnimationConfig {
         steps: 15,
         frame_delay_ms: 25,
@@ -305,7 +314,7 @@ mod debug_utils {
             if self.frame_count % 60 == 0 {
                 let avg_time = self.average_frame_time();
                 let max_time = self.max_frame_time();
-                debug!("Performance: avg={}μs, max={}μs, fps≈{}", 
+                debug!("Performance: avg={}μs, max={}μs, fps≈{}",
                        avg_time, max_time, 1_000_000 / avg_time);
             }
         }

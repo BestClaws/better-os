@@ -47,12 +47,12 @@ pub async fn arrow_app(context: AppContext) {
         enable_lighting: true,
         enable_depth_sorting: true,
         enable_near_clipping: true,
-        enable_frustum_clipping: false,
+        enable_frustum_clipping: true,
         enable_wireframe: false,
         enable_shading: true,
         enable_antialiasing: true,
         antialiasing_factor: 1,
-        edge_only_antialiasing: false,
+        edge_only_antialiasing: true,
     };
 
     loop {
