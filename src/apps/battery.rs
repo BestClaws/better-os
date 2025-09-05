@@ -5,7 +5,7 @@ use micromath::F32Ext;
 use crate::libs::gfx::math::Quaternion;
 use crate::libs::gfx::{Model, Vec3};
 use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
-use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode, RenderStats};
+use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
                               draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
                               fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
@@ -67,22 +67,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         // Base model surface color (white so lighting colors are visible)
         model_color: Rgb565::from_rgb(255, 255, 255),
     };
-    let mut stats = RenderStats::default();
-    fn now_micros() -> u64 { embassy_time::Instant::now().as_micros() as u64 }
-    draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts, Some(&mut stats), Some(now_micros));
-    defmt::info!("3D stats: total={}us tx={}us px={}us sort={}us rast={}us tri_in={} tri_culled={} tri_out={} px_fill={} px_blend={} edges={}",
-        stats.micros_total,
-        stats.micros_transform,
-        stats.micros_project,
-        stats.micros_sort,
-        stats.micros_clip_raster,
-        stats.triangles_input,
-        stats.triangles_culled,
-        stats.triangles_emitted,
-        stats.pixels_filled,
-        stats.pixels_blended,
-        stats.edges_drawn,
-    );
+    draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 
     info!("3d demo frame time: {}", now.elapsed().as_millis());
 }

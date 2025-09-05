@@ -247,7 +247,7 @@ async fn maintain_frame_timing(loop_start: Instant) {
     if loop_duration < min_frame_time {
         let sleep_time = min_frame_time - loop_duration;
         Timer::after(sleep_time).await;
-    } else if loop_duration > Duration::from_millis(25) {
+    } else if loop_duration > Duration::from_millis(16) {
         // Warn if frame took too long (may indicate performance issues)
         warn!("Slow frame: {} ms", loop_duration.as_millis());
     }

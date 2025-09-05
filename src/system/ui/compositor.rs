@@ -177,7 +177,7 @@ impl CanvasBlitter {
             dest_w, dest_h
         );
 
-        info!("Full blit: {} μs", timer.elapsed().as_micros());
+        debug!("Full blit: {} μs", timer.elapsed().as_micros());
     }
 
     /// Copy specific region of source canvas to destination
@@ -199,7 +199,7 @@ impl CanvasBlitter {
         let region_h = (region.top_left.y as u32 + region.size.height).min(src_h);
 
         if region_x >= region_w || region_y >= region_h {
-            info!("Region blit skipped: empty bounds");
+            debug!("Region blit skipped: empty bounds");
             return;
         }
 
@@ -210,7 +210,7 @@ impl CanvasBlitter {
             dest_w, dest_h
         );
 
-        info!("Region blit: {} μs", timer.elapsed().as_micros());
+        debug!("Region blit: {} μs", timer.elapsed().as_micros());
     }
 
     /// Internal: fast row-based copy with clipping computed once per row.
@@ -279,7 +279,7 @@ pub struct UICompositor {
 impl UICompositor {
     /// Initialize new compositor instance
     pub fn new() -> Self {
-        info!("Initializing UI Compositor");
+        debug!("Initializing UI Compositor");
         Self {
             windows: heapless::Vec::new(),
             focused_window_idx: 0,
@@ -296,13 +296,13 @@ impl UICompositor {
         display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     ) {
         self.display_driver = Some(display);
-        info!("Display driver attached");
+        debug!("Display driver attached");
     }
 
     /// Configure animation parameters
     pub fn set_animation_config(&mut self, config: AnimationConfig) {
         self.animation_config = config;
-        info!("Animation config updated: steps={}, delay={}ms",
+        debug!("Animation config updated: steps={}, delay={}ms",
                config.steps, config.frame_delay_ms);
     }
 
@@ -312,7 +312,7 @@ impl UICompositor {
             if self.pending_redraws.push(window_handle).is_err() {
                 warn!("Redraw queue full, dropping request for {:?}", window_handle);
             } else {
-                info!("Redraw queued for window {:?}", window_handle);
+                debug!("Redraw queued for window {:?}", window_handle);
             }
         }
     }
@@ -336,51 +336,59 @@ impl UICompositor {
 
             let current_mode = self.display_mode;
             let dirty_regions = self.get_focused_window_dirty_regions();
-
-            // Compose final frame
-            self.compose_frame(&mut composite_canvas).await;
+            debug!("Dirty regions count: {}", dirty_regions.len());
 
             // Update display efficiently
             let mut display_lock = display.lock().await;
-            if current_mode == ViewMode::Single && !dirty_regions.is_empty() {
-                // Decide between partial and full based on total dirty area and count
-                let mut total_area: u32 = 0;
-                for r in dirty_regions.iter() {
-                    total_area = total_area.saturating_add(r.size.width.saturating_mul(r.size.height));
-                }
-                let full_area = FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT;
-
-                // Heuristics: if too many regions or too much area, prefer full
-                let use_full = dirty_regions.len() > 6 || total_area * 3 > full_area; // > ~33%
-
-                if use_full {
-                    display_lock.draw(
-                        composite_canvas.buffer(),
-                        FRAME_SCALE_FACTOR
-                    ).await;
-                } else {
-                    for region in dirty_regions.iter() {
-                        // Extract region-sized buffer from composite canvas
-                        let region_buffer = extract_region_buffer(
-                            composite_canvas.buffer(),
-                            region,
-                            FRAME_BUFFER_WIDTH,
-                            FRAME_BUFFER_HEIGHT
-                        );
-                        
-                        display_lock.draw_region(
-                            &region_buffer,
-                            Rectangle::new(
-                                EgPoint::new(region.top_left.x, region.top_left.y),
-                                EgSize::new(region.size.width, region.size.height),
-                            ),
-                            FRAME_SCALE_FACTOR,
-                        ).await;
+            if current_mode == ViewMode::Single {
+                if !dirty_regions.is_empty() {
+                    // Compose final frame only when there are dirty regions
+                    self.compose_frame(&mut composite_canvas).await;
+                    // Decide between partial and full based on total dirty area and count
+                    let mut total_area: u32 = 0;
+                    for r in dirty_regions.iter() {
+                        total_area = total_area.saturating_add(r.size.width.saturating_mul(r.size.height));
                     }
+                    let full_area = FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT;
+
+                    // Heuristics: if too many regions or too much area, prefer full
+                    let use_full = dirty_regions.len() > 6 || total_area * 3 > full_area; // > ~33%
+
+                    if use_full {
+                        debug!("Using full screen update ({} regions, {} area)", dirty_regions.len(), total_area);
+                        display_lock.draw(
+                            composite_canvas.buffer(),
+                            FRAME_SCALE_FACTOR
+                        ).await;
+                    } else {
+                        debug!("Using partial update ({} regions, {} area)", dirty_regions.len(), total_area);
+                        for region in dirty_regions.iter() {
+                            // Extract region-sized buffer from composite canvas
+                            let region_buffer = extract_region_buffer(
+                                composite_canvas.buffer(),
+                                region,
+                                FRAME_BUFFER_WIDTH,
+                                FRAME_BUFFER_HEIGHT
+                            );
+                            
+                            display_lock.draw_region(
+                                &region_buffer,
+                                Rectangle::new(
+                                    EgPoint::new(region.top_left.x, region.top_left.y),
+                                    EgSize::new(region.size.width, region.size.height),
+                                ),
+                                FRAME_SCALE_FACTOR,
+                            ).await;
+                        }
+                    }
+                    self.clear_focused_window_dirty_regions();
+                } else {
+                    // No dirty regions - no display update needed
+                    debug!("No dirty regions, skipping display update");
                 }
-                self.clear_focused_window_dirty_regions();
             } else {
-                // Full frame update
+                // Split mode - always full frame update
+                self.compose_frame(&mut composite_canvas).await;
                 display_lock.draw(
                     composite_canvas.buffer(),
                     FRAME_SCALE_FACTOR
@@ -389,7 +397,7 @@ impl UICompositor {
         }
 
         self.pending_redraws.clear();
-        info!("Frame rendered in {} μs", render_start.elapsed().as_micros());
+        debug!("Frame rendered in {} μs", render_start.elapsed().as_micros());
     }
 
     /// Compose windows into final frame buffer
@@ -412,9 +420,8 @@ impl UICompositor {
                         for r in regions {
                             CanvasBlitter::copy_region(output_canvas, window_canvas, *r, 0, 0);
                         }
-                    } else {
-                        CanvasBlitter::copy_full(output_canvas, window_canvas, 0, 0);
                     }
+                    // If no dirty regions, don't update the composite canvas
                 }
                 ViewMode::Split => {
                     // Render split view with two windows
@@ -456,7 +463,7 @@ impl UICompositor {
 
         match self.windows.push(window) {
             Ok(_) => {
-                info!("Window created: id={}, size={}x{}", window_id, width, height);
+                debug!("Window created: id={}, size={}x{}", window_id, width, height);
 
                 // Allocate resources if this is the first window
                 if self.windows.len() == 1 {
@@ -479,7 +486,7 @@ impl UICompositor {
             ViewMode::Split => ViewMode::Single,
         };
 
-        info!("Display mode: {:?}", self.display_mode);
+        debug!("Display mode: {:?}", self.display_mode);
         self.allocate_active_window_resources().await;
     }
 
@@ -496,7 +503,7 @@ impl UICompositor {
     /// Execute smooth animated transition between windows
     async fn animate_window_transition(&mut self, direction: TransitionDirection) {
         if self.windows.len() < 2 || self.display_mode == ViewMode::Split {
-            info!("Animation skipped: insufficient windows or split mode");
+            debug!("Animation skipped: insufficient windows or split mode");
             return;
         }
 
@@ -504,7 +511,7 @@ impl UICompositor {
         let source_idx = self.focused_window_idx;
         let target_idx = self.calculate_transition_target_index(direction);
 
-        info!("Animating {} from window {} to {}",
+        debug!("Animating {} from window {} to {}",
               animation.name(), source_idx, target_idx);
 
         // Ensure target window has allocated resources
@@ -557,7 +564,7 @@ impl UICompositor {
                 display_lock.draw(canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
-            info!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
+            debug!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
             Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
         }
 
@@ -577,7 +584,7 @@ impl UICompositor {
         // Release resources from inactive windows
         for (idx, window) in self.windows.iter_mut().enumerate() {
             if !active_indices.contains(&idx) && window.framebuffer_id().is_some() {
-                info!("Releasing resources for inactive window {}", idx);
+                debug!("Releasing resources for inactive window {}", idx);
                 window.relax();
             }
         }
@@ -596,7 +603,7 @@ impl UICompositor {
             return; // Already has resources
         }
 
-        info!("Allocating resources for window {}", window_idx);
+        debug!("Allocating resources for window {}", window_idx);
 
         match FRAMEBUFFER_POOL.allocate().await {
             Some(framebuffer) => {
@@ -675,6 +682,7 @@ impl UICompositor {
         let mut out: heapless::Vec<Rect, 8> = heapless::Vec::new();
         if let Some(canvas) = self.windows[self.focused_window_idx].canvas().as_mut() {
             for r in canvas.dirty_regions() {
+                debug!("Dirty region: {:?}", r);
                 out.push(*r).ok();
             }
         }

@@ -8,6 +8,8 @@ use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use core::cmp::Ordering;
 use embedded_graphics_core::prelude::RgbColor;
 use micromath::F32Ext;
+use defmt::debug;
+use embassy_time::Instant;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ShadingMode { Flat, Gouraud }
@@ -155,7 +157,7 @@ struct FlatTriangle { p0: Point, p1: Point, p2: Point, color: Rgb565 }
 struct GouraudTriangle { p0: Point, p1: Point, p2: Point, i0: f32, i1: f32, i2: f32 }
 
 /// Simple scanline triangle filler.
-fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle, aa: bool, mut stats: Option<&mut RenderStats>) {
+fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle, aa: bool) {
     let mut pts = [tri.p0, tri.p1, tri.p2];
     pts.sort_by_key(|p| p.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
@@ -190,27 +192,25 @@ fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle, aa: bool, mut sta
                     let cov_start = 1.0 - (x_start_f.fract()).abs();
                     let alpha = (cov_start.clamp(0.0, 1.0) * 255.0) as u8;
                     r.blend_pixel(xs, y, tri.color, alpha);
-                    if let Some(s) = stats.as_deref_mut() { s.pixels_blended = s.pixels_blended.saturating_add(1); }
                 }
                 if xe >= 0 && xe < w && xe != xs {
                     let cov_end = (x_end_f.fract()).abs();
                     let alpha = (cov_end.clamp(0.0, 1.0) * 255.0) as u8;
                     r.blend_pixel(xe, y, tri.color, alpha);
-                    if let Some(s) = stats.as_deref_mut() { s.pixels_blended = s.pixels_blended.saturating_add(1); }
                 }
                 // Fill inner (exclusive of edges)
                 let inner_start = (xs + 1).min(xe);
-                for x in inner_start..xe { r.set_pixel(x, y, tri.color); if let Some(s) = stats.as_deref_mut() { s.pixels_filled = s.pixels_filled.saturating_add(1); } }
+                for x in inner_start..xe { r.set_pixel(x, y, tri.color); }
             } else {
                 // Solid fill inclusive
-                for x in xs..=xe { r.set_pixel(x, y, tri.color); if let Some(s) = stats.as_deref_mut() { s.pixels_filled = s.pixels_filled.saturating_add(1); } }
+                for x in xs..=xe { r.set_pixel(x, y, tri.color); }
             }
         }
     }
 }
 
 /// Gouraud scanline fill (interpolate intensity along edges and across span).
-fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgb565, ambient: Rgb565, directional: Rgb565, aa: bool, mut stats: Option<&mut RenderStats>) {
+fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgb565, ambient: Rgb565, directional: Rgb565, aa: bool) {
     let mut pts = [(tri.p0, tri.i0), (tri.p1, tri.i1), (tri.p2, tri.i2)];
     pts.sort_by_key(|p| p.0.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
@@ -245,13 +245,11 @@ fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range:
                     let i = i_start.clamp(0.0, 1.0);
                     let color = modulate_lit_color(model, ambient, directional, i);
                     r.blend_pixel(xs, y, color, 160);
-                    if let Some(s) = stats.as_deref_mut() { s.pixels_blended = s.pixels_blended.saturating_add(1); }
                 }
                 if xe >= 0 && xe < w && xe != xs {
                     let i = i_end.clamp(0.0, 1.0);
                     let color = modulate_lit_color(model, ambient, directional, i);
                     r.blend_pixel(xe, y, color, 160);
-                    if let Some(s) = stats.as_deref_mut() { s.pixels_blended = s.pixels_blended.saturating_add(1); }
                 }
                 let inner_start = (xs + 1).min(xe);
                 for x in inner_start..xe {
@@ -259,7 +257,6 @@ fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range:
                     let i = (i_start + (i_end - i_start) * t).clamp(0.0, 1.0);
                     let color = modulate_lit_color(model, ambient, directional, i);
                     r.set_pixel(x, y, color);
-                    if let Some(s) = stats.as_deref_mut() { s.pixels_filled = s.pixels_filled.saturating_add(1); }
                 }
             } else {
                 for x in xs..=xe {
@@ -267,7 +264,6 @@ fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range:
                     let i = (i_start + (i_end - i_start) * t).clamp(0.0, 1.0);
                     let color = modulate_lit_color(model, ambient, directional, i);
                     r.set_pixel(x, y, color);
-                    if let Some(s) = stats.as_deref_mut() { s.pixels_filled = s.pixels_filled.saturating_add(1); }
                 }
             }
         }
@@ -327,34 +323,40 @@ fn compute_vertex_normals_cam_space(model: &Model, vertices_cam: &[Vec3; MAX_VER
     normals
 }
 
-pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3, model_rotation: Quaternion, width: u32, height: u32, options: &RenderOptions, mut stats: Option<&mut RenderStats>, now_micros: Option<fn() -> u64>) {
-    let t0 = now_micros.map(|f| f()).unwrap_or(0);
+pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3, model_rotation: Quaternion, width: u32, height: u32, options: &RenderOptions) {
+    let start_time = Instant::now();
     let light_dir = options.light_dir.normalize();
     let fov_rad = options.fov_deg.to_radians();
     let f = 1.0 / (fov_rad * 0.5).tan();
     let aspect = width as f32 / height as f32;
 
     // Camera-space transform (model -> camera).
-    let t1 = now_micros.map(|f| f()).unwrap_or(0);
+    let transform_start = Instant::now();
     let vertices_cam = transform_vertices(model, origin_cam, model_rotation);
-    if let Some(s) = stats.as_deref_mut() { s.micros_transform = t1.saturating_sub(t0); }
-    let t2 = now_micros.map(|f| f()).unwrap_or(0);
+    let transform_time = transform_start.elapsed().as_micros();
+    
+    let project_start = Instant::now();
     let projected = project_vertices(&vertices_cam, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping);
-    if let Some(s) = stats.as_deref_mut() { s.micros_project = t2.saturating_sub(t1); }
+    let project_time = project_start.elapsed().as_micros();
+    
     let vertex_normals_cam = if matches!(options.shading_mode, ShadingMode::Gouraud) || !matches!(options.lighting_mode, LightingMode::None) {
         compute_vertex_normals_cam_space(model, &vertices_cam)
     } else { [Vec3(0.0, 0.0, 0.0); MAX_VERTICES] };
 
     // Painter's algorithm ordering (optional).
-    if let Some(s) = stats.as_deref_mut() { s.triangles_input = model.triangle_count as u32; }
     let mut order = triangle_order(model, &vertices_cam);
-    let t3 = now_micros.map(|f| f()).unwrap_or(0);
+    let sort_start = Instant::now();
     if options.enable_depth_sorting {
         order[..model.triangle_count].sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
     }
-    if let Some(s) = stats.as_deref_mut() { s.micros_sort = now_micros.map(|f| f()).unwrap_or(0).saturating_sub(t3); }
+    let sort_time = sort_start.elapsed().as_micros();
 
-    let t4 = now_micros.map(|f| f()).unwrap_or(0);
+    let raster_start = Instant::now();
+    let mut triangles_culled = 0u32;
+    let mut triangles_emitted = 0u32;
+    let mut pixels_filled = 0u32;
+    let mut pixels_blended = 0u32;
+    let mut edges_drawn = 0u32;
     for &(tri_idx, _) in order.iter().take(model.triangle_count) {
         let tri = &model.triangles[tri_idx];
         let i0 = tri.vertices[0];
@@ -364,7 +366,10 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
         // Backface culling in camera space: camera looks +Z, front faces have normal.z < 0.
         if options.enable_backface_culling {
             let n = face_normal_cam_space(vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]);
-            if n.2 >= 0.0 { if let Some(s) = stats.as_deref_mut() { s.triangles_culled = s.triangles_culled.saturating_add(1); } continue; }
+            if n.2 >= 0.0 { 
+                triangles_culled += 1;
+                continue; 
+            }
         }
 
         // Prepare camera-space vertices for clipping and shading
@@ -442,7 +447,6 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
                         options.ambient_color,
                         options.directional_color,
                         matches!(options.aa_mode, AntiAliasing::Edge),
-                        stats.as_deref_mut(),
                     );
                 } else {
                     let lambert = a.1; // flat path: all equal
@@ -458,16 +462,16 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
                         modulate_lit_color(options.model_color, amb, options.directional_color, lambert_eff)
                     } else { options.model_color };
                     if matches!(options.view_mode, ViewMode::Fill | ViewMode::FillAndWireframe) {
-                        fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }, matches!(options.aa_mode, AntiAliasing::Edge), stats.as_deref_mut());
+                        fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }, matches!(options.aa_mode, AntiAliasing::Edge));
                     }
                 }
                 if matches!(options.view_mode, ViewMode::Wireframe | ViewMode::FillAndWireframe) {
                     draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
                     draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));
                     draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0));
-                    if let Some(s) = stats.as_deref_mut() { s.edges_drawn = s.edges_drawn.saturating_add(3); }
+                    edges_drawn += 3;
                 }
-                if let Some(s) = stats.as_deref_mut() { s.triangles_emitted = s.triangles_emitted.saturating_add(1); }
+                triangles_emitted += 1;
             }
         };
 
@@ -475,5 +479,20 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
             draw_poly(out[0], out[k], out[k + 1]);
         }
     }
-    if let Some(s) = stats.as_deref_mut() { s.micros_clip_raster = now_micros.map(|f| f()).unwrap_or(0).saturating_sub(t4); s.micros_total = now_micros.map(|f| f()).unwrap_or(0).saturating_sub(t0); }
+    
+    let raster_time = raster_start.elapsed().as_micros();
+    let total_time = start_time.elapsed().as_micros();
+    
+    debug!(
+        "3D render: total={}us transform={}us project={}us sort={}us raster={}us tri_in={} tri_culled={} tri_out={} edges={}",
+        total_time,
+        transform_time,
+        project_time,
+        sort_time,
+        raster_time,
+        model.triangle_count,
+        triangles_culled,
+        triangles_emitted,
+        edges_drawn
+    );
 }
