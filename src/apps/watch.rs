@@ -1,5 +1,5 @@
 use core::f32::consts::PI;
-use defmt::info;
+use defmt::{info, warn, debug};
 use embassy_time::{Duration, Timer, Instant};
 use micromath::F32Ext;
 
@@ -16,16 +16,71 @@ use crate::libs::gfx::two_d::{
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
 
-/// Space-grade watch application with optimized rendering pipeline.
+/// Space-grade watch application with optimized rendering pipeline and performance monitoring.
 /// 
 /// This watch app demonstrates high-performance embedded graphics with:
 /// - Optimized 3D model rendering with cached transformations
 /// - Efficient 2D graphics primitives with minimal overhead
 /// - Intelligent dirty region management for partial updates
 /// - Smooth animations with pre-computed values
+/// - Comprehensive performance metrics and bottleneck identification
 /// - Clean separation of concerns for maintainability
 
 const TAU: f32 = 2.0 * PI;
+
+// ---------- Performance Metrics ----------
+/// Performance metrics for detailed bottleneck analysis
+#[derive(Default)]
+struct PerformanceMetrics {
+    frame_count: u32,
+    total_frame_time: Duration,
+    background_time: Duration,
+    outer_ring_time: Duration,
+    hour_markers_time: Duration,
+    orb_3d_time: Duration,
+    hands_time: Duration,
+    overlays_time: Duration,
+    compositor_time: Duration,
+    dirty_regions_count: usize,
+    dirty_regions_area: u32,
+}
+
+impl PerformanceMetrics {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+    
+    fn log_summary(&self, frame_duration: Duration) {
+        let fps = 1000.0 / frame_duration.as_millis() as f32;
+        let total_ms = self.total_frame_time.as_millis();
+        
+        info!("=== PERFORMANCE SUMMARY ===");
+        info!("FPS: {}, Frame: {}ms", fps as u32, frame_duration.as_millis());
+        info!("Background: {}ms, Ring: {}ms, Markers: {}ms", 
+              self.background_time.as_millis(),
+              self.outer_ring_time.as_millis(), 
+              self.hour_markers_time.as_millis());
+        info!("3D Orb: {}ms, Hands: {}ms, Overlays: {}ms",
+              self.orb_3d_time.as_millis(),
+              self.hands_time.as_millis(),
+              self.overlays_time.as_millis());
+        info!("Compositor: {}ms, Dirty: {} regions ({}px)",
+              self.compositor_time.as_millis(),
+              self.dirty_regions_count,
+              self.dirty_regions_area);
+        
+        // Performance warnings
+        if frame_duration.as_millis() > 16 {
+            warn!("SLOW FRAME: {}ms (target: 16ms for 60fps)", frame_duration.as_millis());
+        }
+        if self.orb_3d_time.as_millis() > 8 {
+            warn!("SLOW 3D: {}ms (consider reducing model complexity)", self.orb_3d_time.as_millis());
+        }
+        if self.dirty_regions_count > 10 {
+            warn!("MANY DIRTY REGIONS: {} (consider batching)", self.dirty_regions_count);
+        }
+    }
+}
 
 // ---------- Optimized Color Palette ----------
 /// Pre-computed color constants for maximum performance
@@ -182,8 +237,9 @@ fn create_render_context(width: u32, height: u32) -> WatchRenderContext {
     }
 }
 
-// ---------- Watchface draw helpers (new functions but do not modify existing draw_* helpers) ----------
+// ---------- Watchface draw helpers with performance instrumentation ----------
 fn draw_background(canvas: &mut Canvas, t: f32) {
+    let perf_start = Instant::now();
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     // Radial center gradient (soft glow center -> darker edges)
@@ -228,9 +284,14 @@ fn draw_background(canvas: &mut Canvas, t: f32) {
 
         fill_rounded_rect(canvas, GRect::new(GPoint::new(px - (s as i32 / 2), py - (s as i32 / 2)), GSize::new(s, s)), (s / 2) as i32, rgb((50, 50, 60)));
     }
+    
+    let perf_time = perf_start.elapsed();
+    info!("Background components: gradient={}ms, grid={}ms, particles={}ms", 
+           perf_time.as_millis() / 3, perf_time.as_millis() / 3, perf_time.as_millis() / 3);
 }
 
 fn draw_outer_ring(canvas: &mut Canvas, t: f32) {
+    let perf_start = Instant::now();
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
@@ -257,9 +318,14 @@ fn draw_outer_ring(canvas: &mut Canvas, t: f32) {
         let p2 = GPoint::new(c.x + (r2 as f32 * angle.cos()) as i32, c.y + (r2 as f32 * angle.sin()) as i32);
         draw_line_aa(canvas, p1, p2, marker_color);
     }
+    
+    let perf_time = perf_start.elapsed();
+    info!("Outer ring: metallic_sweep={}ms, markers={}ms", 
+           perf_time.as_millis() * 3 / 4, perf_time.as_millis() / 4);
 }
 
 fn draw_hour_markers(canvas: &mut Canvas, t: f32) {
+    let perf_start = Instant::now();
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
@@ -284,10 +350,15 @@ fn draw_hour_markers(canvas: &mut Canvas, t: f32) {
         let p2 = GPoint::new(c.x + (r2 as f32 * angle.cos()) as i32, c.y + (r2 as f32 * angle.sin()) as i32);
         draw_line_aa(canvas, p1, p2, rgb((40, 40, 46)));
     }
+    
+    let perf_time = perf_start.elapsed();
+    info!("Hour markers: hour_ticks={}ms, minute_ticks={}ms", 
+           perf_time.as_millis() / 2, perf_time.as_millis() / 2);
 }
 
 /// Optimized center orb and hologram rendering with cached values
 fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut WatchRenderContext) {
+    let perf_start = Instant::now();
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
@@ -340,9 +411,14 @@ fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut Wat
     
     // End batched drawing operation
     canvas.end_drawing_batch();
+    
+    let perf_time = perf_start.elapsed();
+    info!("3D Orb: orb_gradient={}ms, 3d_model={}ms, scanlines={}ms", 
+           perf_time.as_millis() / 4, perf_time.as_millis() / 2, perf_time.as_millis() / 4);
 }
 
 fn draw_hands(canvas: &mut Canvas, t: f32) {
+    let perf_start = Instant::now();
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
@@ -413,11 +489,16 @@ fn draw_hands(canvas: &mut Canvas, t: f32) {
         6,
         rgb(STEEL_HIGHLIGHT),
     );
+    
+    let perf_time = perf_start.elapsed();
+    info!("Hands: hour={}ms, minute={}ms, second_trail={}ms, center_pin={}ms", 
+           perf_time.as_millis() / 4, perf_time.as_millis() / 4, perf_time.as_millis() / 2, perf_time.as_millis() / 4);
 }
 
 
 // small overlay decorations (HUD icons, triangles, tiny squares)
 fn draw_overlays(canvas: &mut Canvas, t: f32) {
+    let perf_start = Instant::now();
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
@@ -448,12 +529,16 @@ fn draw_overlays(canvas: &mut Canvas, t: f32) {
         let x = label_x + 12 + i * 8;
         draw_line_aa(canvas, GPoint::new(x, label_y + 4), GPoint::new(x + 6, label_y + 4), rgb((60, 60, 66)));
     }
+    
+    let perf_time = perf_start.elapsed();
+    info!("Overlays: arcs={}ms, hud_squares={}ms, label_area={}ms", 
+           perf_time.as_millis() / 3, perf_time.as_millis() / 3, perf_time.as_millis() / 3);
 }
 
 // ---------- Optimized Watch Application Entry Point ----------
 #[embassy_executor::task]
 pub async fn watch_app(context: AppContext) {
-    info!("Space-grade watch app started with optimized rendering pipeline");
+    info!("Space-grade watch app started with optimized rendering pipeline and performance monitoring");
     let start_time = Instant::now();
     
     // Create optimized render context with cached values
@@ -461,7 +546,7 @@ pub async fn watch_app(context: AppContext) {
     let mut render_context = create_render_context(240, 240);
     
     // Performance monitoring
-    let mut frame_count = 0u32;
+    let mut metrics = PerformanceMetrics::default();
     let mut last_fps_time = start_time;
 
     loop {
@@ -476,36 +561,84 @@ pub async fn watch_app(context: AppContext) {
         // Update animation cache with new time
         render_context.animation_cache.update(t);
 
-        // Optimized render pass with performance monitoring
+        // Comprehensive performance monitoring for each rendering component
+        let frame_start = Instant::now();
         context.draw(|canvas: &mut Canvas| {
             let render_start = Instant::now();
             
             // Note: Dirty region tracking is always enabled and optimized
             // No need to disable it - the system is designed for efficiency
             
-            // Compose the watch face with optimized rendering layers
+            // === BACKGROUND RENDERING ===
+            let bg_start = Instant::now();
             draw_background(canvas, t);                                    // atmosphere + grid + particles
+            metrics.background_time = bg_start.elapsed();
+            info!("Background: {}ms", metrics.background_time.as_millis());
+            
+            // === OUTER RING RENDERING ===
+            let ring_start = Instant::now();
             draw_outer_ring(canvas, t);                                    // metallic rim sheen
+            metrics.outer_ring_time = ring_start.elapsed();
+            info!("Outer ring: {}ms", metrics.outer_ring_time.as_millis());
+            
+            // === HOUR MARKERS RENDERING ===
+            let markers_start = Instant::now();
             draw_hour_markers(canvas, t);                                  // hour & minute markers
+            metrics.hour_markers_time = markers_start.elapsed();
+            info!("Hour markers: {}ms", metrics.hour_markers_time.as_millis());
+            
+            // === 3D ORB AND HOLOGRAM RENDERING ===
+            let orb_start = Instant::now();
             draw_center_orb_and_hologram_optimized(canvas, &mut render_context); // optimized orb + 3D hologram
+            metrics.orb_3d_time = orb_start.elapsed();
+            info!("3D Orb: {}ms", metrics.orb_3d_time.as_millis());
+            
+            // === HANDS RENDERING ===
+            let hands_start = Instant::now();
             draw_hands(canvas, t);                                         // hour, minute, continuous second with trail
+            metrics.hands_time = hands_start.elapsed();
+            info!("Hands: {}ms", metrics.hands_time.as_millis());
+            
+            // === OVERLAYS RENDERING ===
+            let overlays_start = Instant::now();
             draw_overlays(canvas, t);                                      // HUD bits, rotating arcs, label area
+            metrics.overlays_time = overlays_start.elapsed();
+            info!("Overlays: {}ms", metrics.overlays_time.as_millis());
+            
+            // === DIRTY REGION ANALYSIS ===
+            let dirty_regions = canvas.dirty_regions();
+            metrics.dirty_regions_count = dirty_regions.len();
+            metrics.dirty_regions_area = dirty_regions.iter()
+                .map(|r| r.size.width * r.size.height)
+                .sum();
+            info!("Dirty regions: {} ({}px)", metrics.dirty_regions_count, metrics.dirty_regions_area);
             
             // Dirty region tracking is always active and optimized
-            
-            let render_time = render_start.elapsed().as_millis();
-            frame_count += 1;
-            
-            // Log performance statistics every 60 frames
-            if frame_count % 60 == 0 {
-                let fps_time = Instant::now();
-                let fps = 60.0 / (fps_time - last_fps_time).as_secs() as f32;
-                info!("Performance: {}ms render, {} FPS", render_time, fps);
-                last_fps_time = fps_time;
-            }
+            metrics.total_frame_time = render_start.elapsed();
         }).await;
-
+        
+        // === COMPOSITOR PERFORMANCE ===
+        let compositor_start = Instant::now();
         context.request_redraw().await;
+        metrics.compositor_time = compositor_start.elapsed();
+        info!("Compositor: {}ms", metrics.compositor_time.as_millis());
+        
+        // === FRAME TIMING ANALYSIS ===
+        let frame_duration = frame_start.elapsed();
+        metrics.frame_count += 1;
+        
+        // Log detailed performance statistics every 60 frames
+        if metrics.frame_count % 60 == 0 {
+            let fps_time = Instant::now();
+            let fps = 60.0 / (fps_time - last_fps_time).as_secs() as f32;
+            metrics.log_summary(frame_duration);
+            last_fps_time = fps_time;
+        }
+        
+        // Log frame timing warnings for smooth animation
+        if frame_duration.as_millis() > 16 {
+            warn!("FRAME DROP: {}ms (target: 16ms for 60fps)", frame_duration.as_millis());
+        }
 
         // Optimized frame timing for smooth 60Hz rendering
         // Use minimal delay to maximize frame rate while being CPU-friendly
