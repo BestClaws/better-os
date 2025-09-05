@@ -1,9 +1,7 @@
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
-use crate::apps::arrow::arrow_app;
 use crate::apps::battery::battery_app;
-use crate::apps::dummy::dummy_app;
 
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -15,21 +13,13 @@ use defmt::{debug, error, info, warn, Format};
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
-    AppDescriptor {
-        name: "Arrow Navigation",
-        id: 0,
-        spawn_fn: spawn_arrow_app,
-    },
+
     AppDescriptor {
         name: "Battery Monitor",
         id: 1,
         spawn_fn: spawn_battery_app,
     },
-    AppDescriptor {
-        name: "System Status",
-        id: 2,
-        spawn_fn: spawn_dummy_app,
-    },
+
 ];
 
 /// Application descriptor for registration
@@ -145,17 +135,11 @@ pub enum AppSpawnError {
 // Application spawn functions
 // These wrapper functions provide type safety and error handling
 
-fn spawn_arrow_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(arrow_app(context))
-}
 
 fn spawn_battery_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(battery_app(context))
 }
 
-fn spawn_dummy_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(dummy_app(context))
-}
 
 /// Utility functions for application management
 impl AppDescriptor {
