@@ -379,12 +379,8 @@ impl TextRenderer {
     
     /// Calculate the X position of a character in the atlas.
     fn calculate_atlas_x(&self, char_index: usize) -> u16 {
-        // Simple linear layout - could be optimized with more complex packing
-        let mut x = 0;
-        for i in 0..char_index {
-            x += self.font.metrics[i].width as u16;
-        }
-        x
+        // Each character is 8 pixels wide in the atlas
+        (char_index * 8) as u16
     }
     
     /// Calculate the Y position of a character in the atlas.
@@ -406,12 +402,20 @@ impl TextRenderer {
             return None;
         }
         
-        let index = (y as usize * self.font.atlas_width as usize + x as usize) / 8;
-        let bit_offset = (y as usize * self.font.atlas_width as usize + x as usize) % 8;
+        // The font data is stored as 8x8 bitmaps, one byte per row
+        // Each character is 8 bytes (8 rows of 8 pixels each)
+        let char_index = x as usize / 8; // Which character we're in
+        let pixel_in_char = x as usize % 8; // Which pixel within the character
+        let row = y as usize; // Which row (0-7)
         
-        if index < self.font.bitmap_data.len() {
-            let byte = self.font.bitmap_data[index];
-            let bit = (byte >> (7 - bit_offset)) & 1;
+        if char_index >= 95 || row >= 8 {
+            return None;
+        }
+        
+        let data_index = char_index * 8 + row;
+        if data_index < self.font.bitmap_data.len() {
+            let byte = self.font.bitmap_data[data_index];
+            let bit = (byte >> (7 - pixel_in_char)) & 1;
             Some(if bit != 0 { 255 } else { 0 })
         } else {
             None

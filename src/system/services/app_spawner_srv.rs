@@ -2,6 +2,7 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::apps::battery::battery_app;
+use crate::apps::text_demo::text_demo_app;
 
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -25,6 +26,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         name: "watch Monitor",
         id: 2,
         spawn_fn: spawn_watch_app,
+    },
+    AppDescriptor {
+        name: "Text Demo",
+        id: 3,
+        spawn_fn: spawn_text_demo_app,
     },
 
 ];
@@ -148,6 +154,10 @@ fn spawn_watch_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_
 }
 fn spawn_battery_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(battery_app(context))
+}
+
+fn spawn_text_demo_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(text_demo_app(context))
 }
 
 
