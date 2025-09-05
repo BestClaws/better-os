@@ -12,7 +12,7 @@ use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb
 fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     let now = Instant::now();
     // Clear background
-    canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
+    // canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
     // Two-phase demo: first 10s rotate light (all axes), keep model still; afterwards, fix light and rotate model
     let (rot, light_dir) = if t < 10.0 {
         let rot = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
@@ -235,13 +235,13 @@ pub async fn battery_app(context: AppContext) {
         let t = start_time.elapsed().as_millis() as f32 / 1000.0;
         context.draw(|canvas: &mut Canvas| {
             match scene {
-                DemoScene::Rects => draw_rects(canvas, t),
-                DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
-                DemoScene::Arcs => draw_arcs(canvas, t),
-                DemoScene::Lines => draw_lines(canvas, t),
-                DemoScene::GradLinear => draw_grad_linear(canvas, t),
-                DemoScene::GradRadial => draw_grad_radial(canvas, t),
-                DemoScene::Alpha => draw_alpha(canvas, t),
+                // DemoScene::Rects => draw_rects(canvas, t),
+                // DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
+                // DemoScene::Arcs => draw_arcs(canvas, t),
+                // DemoScene::Lines => draw_lines(canvas, t),
+                // DemoScene::GradLinear => draw_grad_linear(canvas, t),
+                // DemoScene::GradRadial => draw_grad_radial(canvas, t),
+                // DemoScene::Alpha => draw_alpha(canvas, t),
                 _=> draw_3d_demo(canvas, t, &model),
             }
         }).await;

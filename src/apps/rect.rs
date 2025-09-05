@@ -33,6 +33,6 @@ pub async fn rect_app(context: AppContext) {
             .await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(100)).await;
+        Timer::after(Duration::from_millis(1)).await;
     }
 }

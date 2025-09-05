@@ -138,7 +138,7 @@ pub enum AppSpawnError {
 
 
 fn spawn_battery_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(rect_app(context))
+    spawner.spawn(battery_app(context))
 }
 
 
