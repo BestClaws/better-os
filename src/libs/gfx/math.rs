@@ -82,8 +82,18 @@ impl Quaternion {
     /// Rotate a 3D vector using this quaternion
     #[inline(always)]
     pub fn rotate_vector(self, v: Vec3) -> Vec3 {
-        let q_vec = Quaternion { w: 0.0, x: v.0, y: v.1, z: v.2 };
-        let q_conj = Quaternion { w: self.w, x: -self.x, y: -self.y, z: -self.z };
+        let q_vec = Quaternion {
+            w: 0.0,
+            x: v.0,
+            y: v.1,
+            z: v.2,
+        };
+        let q_conj = Quaternion {
+            w: self.w,
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        };
         let result = self.mul(q_vec).mul(q_conj);
         Vec3(result.x, result.y, result.z)
     }

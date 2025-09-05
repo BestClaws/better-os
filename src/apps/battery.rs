@@ -2,10 +2,13 @@
 use defmt::info;
 use embassy_time::{Duration, Timer, Instant};
 use micromath::F32Ext;
+use crate::libs::gfx::math::Quaternion;
+use crate::libs::gfx::{Model, Vec3};
+use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
+use crate::libs::gfx::three_d::render::{draw_model, RenderOptions};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
-    draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
-    fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
-use crate::libs::gfx::three_d::{Model, Quaternion, Vec3, RenderOptions, draw_model, parse_binary_stl_into, MAX_VERTICES};
+                              draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
+                              fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
 fn draw_3d_demo(canvas: &mut Canvas, t: f32) {
     // Load and cache the STL model statically
     static mut MODEL: Option<Model> = None;
@@ -13,7 +16,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32) {
     unsafe {
         if MODEL.is_none() {
             // Embedded asset path; parse_binary_stl expects &[u8]
-            let bytes = include_bytes!("../assets/geofix.stl");
+            let bytes = include_bytes!("../assets/arrow2.stl");
             let mut model = Model::new();
             if parse_binary_stl_into(bytes, &mut model, &mut MAP).is_ok() {
                 MODEL = Some(model);
@@ -28,12 +31,12 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32) {
             let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.3);
             let rot = rot_y.mul(rot_x);
             // Position the model slightly in front of camera
-            let origin = Vec3(0.0, 0.0, 3.0);
+            let origin = Vec3(0.0, 0.0, 2.0);
             let opts = RenderOptions {
-                fov_deg: 60.0,
-                light_dir: Vec3(0.3, 0.6, 1.0),
+                fov_deg: 40.0,
+                light_dir: Vec3(0.9, 0.6, 1.0),
                 intensity_range: (0.2, 1.0),
-                enable_backface_culling: true,
+                enable_backface_culling: false,
                 enable_zbuffer: false,
                 enable_lighting: true,
                 enable_depth_sorting: true,
@@ -193,14 +196,14 @@ pub async fn battery_app(context: AppContext) {
         let t = start_time.elapsed().as_millis() as f32 / 1000.0;
         context.draw(|canvas: &mut Canvas| {
             match scene {
-                DemoScene::Rects => draw_rects(canvas, t),
-                DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
-                DemoScene::Arcs => draw_arcs(canvas, t),
-                DemoScene::Lines => draw_lines(canvas, t),
-                DemoScene::GradLinear => draw_grad_linear(canvas, t),
-                DemoScene::GradRadial => draw_grad_radial(canvas, t),
-                DemoScene::Alpha => draw_alpha(canvas, t),
-                DemoScene::ThreeD => draw_3d_demo(canvas, t),
+                // DemoScene::Rects => draw_rects(canvas, t),
+                // DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
+                // DemoScene::Arcs => draw_arcs(canvas, t),
+                // DemoScene::Lines => draw_lines(canvas, t),
+                // DemoScene::GradLinear => draw_grad_linear(canvas, t),
+                // DemoScene::GradRadial => draw_grad_radial(canvas, t),
+                // DemoScene::Alpha => draw_alpha(canvas, t),
+                _=> draw_3d_demo(canvas, t),
             }
         }).await;
 

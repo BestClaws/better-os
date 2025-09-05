@@ -1,14 +1,13 @@
 #![no_std]
 
-use core::iter::Iterator;
+use crate::libs::gfx::math::{Quaternion, Vec3};
 use crate::libs::gfx::two_d::types::{Point, Rgb565};
-use micromath::F32Ext;
-use defmt::{info, debug, warn, error};
-use embedded_graphics_core::prelude::RgbColor;
-use crate::libs::gfx::Model;
 use crate::libs::gfx::two_d::{draw_line_aa, Rasterizer};
+use crate::libs::gfx::Model;
 use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
-use super::math::{Quaternion, Vec3};
+use core::iter::Iterator;
+use embedded_graphics_core::prelude::RgbColor;
+use micromath::F32Ext;
 
 #[derive(Clone, Copy)]
 pub struct RenderOptions {
@@ -77,20 +76,38 @@ fn draw_triangle<R: Rasterizer>(r: &mut R, tri: &ShadedTriangle) {
     let mut pts = [tri.p0, tri.p1, tri.p2];
     pts.sort_by_key(|p| p.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
-    if top.y == bot.y { return; }
+    if top.y == bot.y {
+        return;
+    }
     let w = r.width() as i32;
     let h = r.height() as i32;
-    let interp = |y, y0, y1, x0, x1| if y1 == y0 { x0 } else { x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
-    for y in top.y..=bot.y {
-        if y < 0 || y >= h { continue; }
-        let (xa, xb) = if y < mid.y {
-            (interp(y, top.y, bot.y, top.x, bot.x), interp(y, top.y, mid.y, top.x, mid.x))
+    let interp = |y, y0, y1, x0, x1| {
+        if y1 == y0 {
+            x0
         } else {
-            (interp(y, top.y, bot.y, top.x, bot.x), interp(y, mid.y, bot.y, mid.x, bot.x))
+            x0 + ((x1 - x0) * (y - y0)) / (y1 - y0)
+        }
+    };
+    for y in top.y..=bot.y {
+        if y < 0 || y >= h {
+            continue;
+        }
+        let (xa, xb) = if y < mid.y {
+            (
+                interp(y, top.y, bot.y, top.x, bot.x),
+                interp(y, top.y, mid.y, top.x, mid.x),
+            )
+        } else {
+            (
+                interp(y, top.y, bot.y, top.x, bot.x),
+                interp(y, mid.y, bot.y, mid.x, bot.x),
+            )
         };
         let (x_start, x_end) = if xa < xb { (xa, xb) } else { (xb, xa) };
         for x in x_start..=x_end {
-            if x >= 0 && x < w { r.set_pixel(x, y, tri.color); }
+            if x >= 0 && x < w {
+                r.set_pixel(x, y, tri.color);
+            }
         }
     }
 }
@@ -121,15 +138,29 @@ fn transform_and_project_vertices(
 
     for i in 0..model.vertex_count {
         let rotated = rotation.rotate_vector(model.vertices[i]);
-        let world = Vec3(origin.0 + rotated.0, origin.1 + rotated.1, origin.2 + rotated.2);
+        let world = Vec3(
+            origin.0 + rotated.0,
+            origin.1 + rotated.1,
+            origin.2 + rotated.2,
+        );
         world_vertices[i] = world;
-        projected[i] = project(world, options.fov_deg, width, height, options.enable_near_clipping, options.enable_frustum_clipping);
+        projected[i] = project(
+            world,
+            options.fov_deg,
+            width,
+            height,
+            options.enable_near_clipping,
+            options.enable_frustum_clipping,
+        );
     }
 
     (world_vertices, projected)
 }
 
-fn sort_triangles(model: &Model, world_vertices: &[Vec3; MAX_VERTICES]) -> [(usize, f32); MAX_TRIANGLES] {
+fn sort_triangles(
+    model: &Model,
+    world_vertices: &[Vec3; MAX_VERTICES],
+) -> [(usize, f32); MAX_TRIANGLES] {
     let mut triangle_meta = [(0usize, 0.0f32); MAX_TRIANGLES];
     for i in 0..model.triangle_count {
         let tri = &model.triangles[i];
@@ -152,17 +183,23 @@ pub fn draw_model<R: Rasterizer>(
 ) {
     let light_dir = options.light_dir.normalize();
 
-    let (world_vertices, projected) = transform_and_project_vertices(model, origin, rotation, width, height, options);
+    let (world_vertices, projected) =
+        transform_and_project_vertices(model, origin, rotation, width, height, options);
 
     let mut triangle_meta = sort_triangles(model, &world_vertices);
     if options.enable_depth_sorting {
-        triangle_meta[..model.triangle_count].sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
+        triangle_meta[..model.triangle_count]
+            .sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
     }
 
     for &(tri_idx, _) in triangle_meta.iter().take(model.triangle_count) {
         let tri = &model.triangles[tri_idx];
 
-        if let (Some(p0), Some(p1), Some(p2)) = (projected[tri.vertices[0]], projected[tri.vertices[1]], projected[tri.vertices[2]]) {
+        if let (Some(p0), Some(p1), Some(p2)) = (
+            projected[tri.vertices[0]],
+            projected[tri.vertices[1]],
+            projected[tri.vertices[2]],
+        ) {
             if options.enable_backface_culling {
                 let edge1 = world_vertices[tri.vertices[1]].sub(world_vertices[tri.vertices[0]]);
                 let edge2 = world_vertices[tri.vertices[2]].sub(world_vertices[tri.vertices[0]]);
@@ -170,21 +207,33 @@ pub fn draw_model<R: Rasterizer>(
                     edge1.1 * edge2.2 - edge1.2 * edge2.1,
                     edge1.2 * edge2.0 - edge1.0 * edge2.2,
                     edge1.0 * edge2.1 - edge1.1 * edge2.0,
-                ).normalize();
+                )
+                .normalize();
                 let view_dir = Vec3(0.0, 0.0, -1.0);
-                if normal.dot(view_dir) <= 0.0 { continue; }
+                if normal.dot(view_dir) <= 0.0 {
+                    continue;
+                }
             }
 
             let diffuse = if options.enable_lighting {
                 let rotated_normal = rotation.rotate_vector(tri.normal);
                 rotated_normal.dot(light_dir).max(0.0)
-            } else { 1.0 };
+            } else {
+                1.0
+            };
 
-            let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * diffuse;
+            let intensity = options.intensity_range.0
+                + (options.intensity_range.1 - options.intensity_range.0) * diffuse;
             let color = get_grayscale_color(intensity);
 
-            if options.enable_shading { draw_triangle(raster, &ShadedTriangle { p0, p1, p2, color }); }
-            if options.enable_wireframe { draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0)); draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0)); draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0)); }
+            if options.enable_shading {
+                draw_triangle(raster, &ShadedTriangle { p0, p1, p2, color });
+            }
+            if options.enable_wireframe {
+                draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
+                draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));
+                draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0));
+            }
         }
     }
 }

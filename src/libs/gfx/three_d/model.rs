@@ -1,8 +1,8 @@
 // model.rs
 
-use super::math::Vec3;
-use defmt::{debug, error, info, Format};
+use crate::libs::gfx::Vec3;
 pub(crate) use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
+use defmt::{debug, error, info, Format};
 
 /// A triangle in a 3D model, represented by indices into the vertex buffer.
 #[derive(Clone, Copy, Debug)]
@@ -35,13 +35,10 @@ impl Model {
         Model {
             vertices: [Vec3(0.0, 0.0, 0.0); MAX_VERTICES],
             vertex_count: 0,
-            triangles: [
-                Triangle {
-                    vertices: [0, 0, 0],
-                    normal: Vec3(0.0, 0.0, 0.0),
-                };
-                MAX_TRIANGLES
-            ],
+            triangles: [Triangle {
+                vertices: [0, 0, 0],
+                normal: Vec3(0.0, 0.0, 0.0),
+            }; MAX_TRIANGLES],
             triangle_count: 0,
         }
     }
@@ -65,7 +62,13 @@ impl Model {
     }
 
     /// Add a triangle referencing existing vertex indices.
-    pub fn add_triangle(&mut self, v0: usize, v1: usize, v2: usize, normal: Vec3) -> Result<(), StlError> {
+    pub fn add_triangle(
+        &mut self,
+        v0: usize,
+        v1: usize,
+        v2: usize,
+        normal: Vec3,
+    ) -> Result<(), StlError> {
         if self.triangle_count >= MAX_TRIANGLES {
             return Err(StlError::TriangleCapacityExceeded);
         }
@@ -101,7 +104,9 @@ pub enum StlError {
 /// Returns `Err(StlError::BufferTooSmall)` if out-of-bounds.
 #[inline]
 fn read_f32_le(buffer: &[u8], offset: usize) -> Result<f32, StlError> {
-    let slice = buffer.get(offset..offset + 4).ok_or(StlError::BufferTooSmall)?;
+    let slice = buffer
+        .get(offset..offset + 4)
+        .ok_or(StlError::BufferTooSmall)?;
     let arr: [u8; 4] = slice.try_into().map_err(|_| StlError::BufferTooSmall)?;
     Ok(f32::from_le_bytes(arr))
 }
@@ -154,7 +159,12 @@ pub fn parse_binary_stl_into(
     }
 
     // Each triangle record in binary STL is 50 bytes (12 bytes normal, 36 bytes vertices, 2 bytes attribute)
-    let required_len = 84usize.checked_add(triangle_count.checked_mul(50).ok_or(StlError::BufferTooSmall)?)
+    let required_len = 84usize
+        .checked_add(
+            triangle_count
+                .checked_mul(50)
+                .ok_or(StlError::BufferTooSmall)?,
+        )
         .ok_or(StlError::BufferTooSmall)?;
     if buffer.len() < required_len {
         return Err(StlError::BufferTooSmall);
