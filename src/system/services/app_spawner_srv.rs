@@ -8,6 +8,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use defmt::{debug, error, info, warn, Format};
 use crate::apps::rect::rect_app;
+use crate::apps::watch::watch_app;
 
 /// Application registry for system apps
 ///
@@ -138,7 +139,7 @@ pub enum AppSpawnError {
 
 
 fn spawn_battery_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(battery_app(context))
+    spawner.spawn(watch_app(context))
 }
 
 
