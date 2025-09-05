@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use defmt::Format;
 use embedded_graphics_core::primitives::Rectangle;
+use embedded_graphics_core::geometry::{Point as EgPoint, Size as EgSize};
 
 #[async_trait(?Send)]
 pub trait AsyncDisplay {

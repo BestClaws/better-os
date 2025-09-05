@@ -4,21 +4,11 @@ use core::fmt::Write;
 use alloc::vec::Vec;
 use defmt::info;
 use embassy_time::{Duration, Timer, Instant};
-use embedded_graphics::{
-    pixelcolor::BinaryColor,
-    prelude::*,
-    primitives::{Line, PrimitiveStyle, Triangle, Circle},
-};
-use embedded_graphics::mono_font::ascii::FONT_4X6;
-use embedded_graphics::mono_font::iso_8859_1::FONT_6X10;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::primitives::{Rectangle, Styled, StyledDrawable};
-use embedded_graphics::text::Text;
-use embedded_graphics_core::pixelcolor::{Gray4, Rgb565};
+use crate::system::ui::gfx::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, draw_line_aa, draw_circle_aa, fill_rect, draw_rect_outline_aa, fill_circle};
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::battery_srv::BATTERY_CHANNEL;
-use crate::system::ui::canvas::{Canvas};
+use crate::system::ui::canvas::Canvas;
 use crate::util::math::primitives::Vec3;
 
 const CANVAS_WIDTH: i32 = 320;
@@ -75,20 +65,12 @@ impl Ball {
         }
     }
 
-    fn draw(&self, canvas: &mut Canvas<Rgb565>) {
-        let center = Point::new(self.x as i32, self.y as i32);
+    fn draw(&self, canvas: &mut Canvas) {
+        let center = GPoint::new(self.x as i32, self.y as i32);
         let r = self.radius as i32;
-
-        // Draw the ball with a bright color
-        Circle::new(center - Point::new(r, r), (r * 2) as u32)
-            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::RED), canvas)
-            .ok();
-
-        // Draw a white highlight
-        let highlight_center = center - Point::new(r/3, r/3);
-        Circle::new(highlight_center - Point::new(r/4, r/4), (r/2) as u32)
-            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas)
-            .ok();
+        fill_circle(canvas, center, r, Rgb565::from_rgb(220, 40, 40));
+        let highlight_center = GPoint::new(center.x - r/3, center.y - r/3);
+        fill_circle(canvas, highlight_center, r/4, Rgb565::WHITE);
     }
 }
 
@@ -128,21 +110,14 @@ impl BatteryAnimation {
         }
     }
 
-    fn draw(&self, canvas: &mut Canvas<Rgb565>) {
+    fn draw(&self, canvas: &mut Canvas) {
         let x = 20;
         let y = 20;
         let width = 80;
         let height = 20;
-
-        // Battery outline
-        Rectangle::new(Point::new(x, y), Size::new(width, height))
-            .draw_styled(&PrimitiveStyle::with_stroke(Rgb565::WHITE, 1), canvas)
-            .ok();
-
-        // Battery terminal
-        Rectangle::new(Point::new(x + width as i32, y + 5), Size::new(4, height - 10))
-            .draw_styled(&PrimitiveStyle::with_fill(Rgb565::WHITE), canvas)
-            .ok();
+        // Battery outline and terminal
+        draw_rect_outline_aa(canvas, GRect::new(GPoint::new(x, y), GSize::new(width as u32, height as u32)), 1, Rgb565::WHITE);
+        fill_rect(canvas, GRect::new(GPoint::new(x + width as i32, y + 5), GSize::new(4, (height - 10) as u32)), Rgb565::WHITE);
 
         // Calculate fill width and color
         let fill_width = (self.level * (width - 4) as f32) as u32;
@@ -150,31 +125,21 @@ impl BatteryAnimation {
 
         let color = if self.level > 0.5 {
             // Green when high
-            Rgb565::new(0, (31.0 * pulse_intensity) as u8, 0)
+            Rgb565::from_rgb(0, (255.0 * pulse_intensity) as u8, 0)
         } else if self.level > 0.2 {
-            // Yellow when medium
-            Rgb565::new((31.0 * pulse_intensity) as u8, (31.0 * pulse_intensity) as u8, 0)
+            Rgb565::from_rgb((255.0 * pulse_intensity) as u8, (255.0 * pulse_intensity) as u8, 0)
         } else {
             // Red when low (with more pulsing)
             let low_pulse = (self.pulse_time * 3.0).sin() * 0.5 + 0.5;
-            Rgb565::new((31.0 * low_pulse) as u8, 0, 0)
+            Rgb565::from_rgb((255.0 * low_pulse) as u8, 0, 0)
         };
 
         // Battery fill
         if fill_width > 0 {
-            Rectangle::new(Point::new(x + 2, y + 2), Size::new(fill_width, height - 4))
-                .draw_styled(&PrimitiveStyle::with_fill(color), canvas)
-                .ok();
+            fill_rect(canvas, GRect::new(GPoint::new(x + 2, y + 2), GSize::new(fill_width, (height - 4) as u32)), color);
         }
 
-        // Battery percentage text
-        let mut text_buf = heapless::String::<16>::new();
-        write!(text_buf, "{}%", (self.level * 100.0) as u8).ok();
-
-        let text_style = MonoTextStyle::new(&FONT_4X6, Rgb565::WHITE);
-        Text::new(&text_buf, Point::new(x, y + height as i32 + 15), text_style)
-            .draw(canvas)
-            .ok();
+        // Battery percentage text (simple bar as placeholder; full text rendering can be added later)
     }
 }
 
@@ -198,9 +163,9 @@ pub async fn battery_app(context: AppContext) {
         let dt = dt.min(0.02); // Cap at 50fps equivalent
         last_time = now;
 
-        context.draw(|canvas: &mut Canvas<Rgb565>| {
+        context.draw(|canvas: &mut Canvas| {
             // Clear with black background
-            canvas.clear(Rgb565::BLACK);
+            canvas.clear_rgb(Rgb565::BLACK);
 
             // Update and draw ball
             ball.update(dt);
@@ -215,16 +180,7 @@ pub async fn battery_app(context: AppContext) {
             write!(debug_buf, "Ball: ({:.0},{:.0}) Speed: ({:.0},{:.0})",
                    ball.x, ball.y, ball.vx, ball.vy).ok();
 
-            let debug_style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(15, 15, 15));
-            Text::new(&debug_buf, Point::new(10, CANVAS_HEIGHT - 15), debug_style)
-                .draw(canvas)
-                .ok();
-
-            // Draw title
-            let title_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CYAN);
-            Text::new("Battery Demo", Point::new(200, 30), title_style)
-                .draw(canvas)
-                .ok();
+            // Placeholder: could add bitmap-based text later using gfx primitives
         }).await;
 
         context.request_redraw().await;

@@ -1,39 +1,29 @@
 use core::marker::PhantomData;
-use defmt::info;
-use embedded_graphics::{
-    draw_target::DrawTarget,
-    geometry::{OriginDimensions, Point, Size},
-    pixelcolor::{Gray4, PixelColor, Rgb565},
-    prelude::*,
-    primitives::Rectangle,
-};
-use embedded_graphics_core::pixelcolor::raw::{RawU16, RawU4};
+use crate::system::ui::gfx::{Rasterizer, Rgb565, Rect, Point, Size};
 
 /// A statically-safe, framebuffer-backed drawing canvas.
 ///
 /// Supports dirty region tracking and pixel-level rendering. Efficient
 /// for embedded systems that rely on partial screen updates.
 ///
-/// Supported color formats: `Rgb565`, `Gray4`.
-pub struct Canvas<'a, C: PixelColor> {
+/// Supported color format: `Rgb565`.
+pub struct Canvas<'a> {
     buf: Option<&'a mut [u8]>,
     // buffer: &'a mut [u8],
     width: u32,
     height: u32,
-    _color: PhantomData<C>,
-    dirty_region: Option<Rectangle>,
+    dirty_region: Option<Rect>,
 }
 
-// ===== Common (Generic) Canvas Implementation =====
-impl<'a, C: PixelColor> Canvas<'a, C> {
+// ===== Canvas Implementation =====
+impl<'a> Canvas<'a> {
 
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             buf: None,
             width,
             height,
-            _color: PhantomData,
-            dirty_region: Some(Rectangle::new(Point::zero(), Size::new(width, height))),
+            dirty_region: Some(Rect::new(Point::zero(), Size::new(width, height))),
         }
     }
     
@@ -84,12 +74,12 @@ impl<'a, C: PixelColor> Canvas<'a, C> {
     }
 
     /// Returns the current dirty region (if any).
-    pub fn dirty_region(&self) -> Option<Rectangle> {
+    pub fn dirty_region(&self) -> Option<Rect> {
         self.dirty_region
     }
 
     /// Expands the dirty region to include the given rectangle.
-    fn update_dirty(&mut self, new: Rectangle) {
+    fn update_dirty(&mut self, new: Rect) {
         self.dirty_region = Some(match self.dirty_region {
             Some(existing) => union_rect(existing, new),
             None => new,
@@ -100,112 +90,7 @@ impl<'a, C: PixelColor> Canvas<'a, C> {
     
 }
 
-impl<C: PixelColor> OriginDimensions for Canvas<'_, C> {
-    fn size(&self) -> Size {
-        Size::new(self.width, self.height)
-    }
-}
-
-
-
-impl DrawTarget for Canvas<'_, Rgb565> {
-    type Color = Rgb565;
-    type Error = core::convert::Infallible;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        let mut region = None;
-
-        for Pixel(Point { x, y }, color) in pixels {
-            if x < 0 || y < 0 || (x as u32) >= self.width || (y as u32) >= self.height {
-                continue;
-            }
-
-            let offset = ((x as u32 + y as u32 * self.width) * 2) as usize;
-            let raw = color.into_storage();
-            self._buf_mut()[offset] = (raw >> 8) as u8;
-            self._buf_mut()[offset + 1] = raw as u8;
-
-            let point = Point::new(x, y);
-            region = Some(region.map_or(Rectangle::new(point, Size::new(1, 1)), |r| union_rect(r, Rectangle::new(point, Size::new(1, 1)))));
-        }
-
-        if let Some(r) = region {
-            self.update_dirty(r);
-        }
-
-        Ok(())
-    }
-
-    fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
-    where I: IntoIterator<Item = Self::Color>,
-    {
-        let (x0, y0, x1, y1) = clip_rect(area, self.width, self.height);
-        if x0 >= x1 || y0 >= y1 {
-            return Ok(());
-        }
-
-        let mut iter = colors.into_iter();
-        for y in y0..y1 {
-            for x in x0..x1 {
-                if let Some(color) = iter.next() {
-                    let idx = (x + y * self.width) * 2;
-                    let raw = color.into_storage();
-                    self._buf_mut()[idx as usize] = (raw >> 8) as u8;
-                    self._buf_mut()[idx as usize + 1] = raw as u8;
-                } else {
-                    return Ok(());
-                }
-            }
-        }
-
-        self.update_dirty(Rectangle::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0)));
-        Ok(())
-    }
-
-    fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        let (x0, y0, x1, y1) = clip_rect(area, self.width, self.height);
-        if x0 >= x1 || y0 >= y1 {
-            return Ok(());
-        }
-
-        let raw = color.into_storage();
-        let hi = (raw >> 8) as u8;
-        let lo = raw as u8;
-
-        for y in y0..y1 {
-            let row_start = (x0 + y * self.width) * 2;
-            let row_end = (x1 + y * self.width) * 2;
-            for idx in (row_start as usize..row_end as usize).step_by(2) {
-                self._buf_mut()[idx] = hi;
-                self._buf_mut()[idx + 1] = lo;
-            }
-        }
-
-        self.update_dirty(Rectangle::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0)));
-        Ok(())
-    }
-
-    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        let raw = color.into_storage();
-        let hi = (raw >> 8) as u8;
-        let lo = raw as u8;
-
-        for chunk in self._buf_mut().chunks_mut(2) {
-            if chunk.len() == 2 {
-                chunk[0] = hi;
-                chunk[1] = lo;
-            }
-        }
-
-        self.update_dirty(Rectangle::new(Point::zero(), Size::new(self.width, self.height)));
-        Ok(())
-    }
-}
-
-// ===== Gray4 Implementation =====
-impl<'a> Canvas<'a, Rgb565> {
+impl<'a> Canvas<'a> {
     pub fn resize(&mut self, width: u32, height: u32) {
         let required = (width * height * 2) as usize;
         assert!(self._buf_mut().len() >= required, "Buffer too small for Rgb565");
@@ -219,13 +104,26 @@ impl<'a> Canvas<'a, Rgb565> {
         assert!(buffer.len() >= required, "Buffer too small for Rgb565");
         self.buf = Some(buffer);
     }
+
+    pub fn clear_rgb(&mut self, color: Rgb565) {
+        let raw = color.into_storage();
+        let hi = (raw >> 8) as u8;
+        let lo = raw as u8;
+        for chunk in self._buf_mut().chunks_mut(2) {
+            if chunk.len() == 2 {
+                chunk[0] = hi;
+                chunk[1] = lo;
+            }
+        }
+        self.update_dirty(Rect::new(Point::zero(), Size::new(self.width, self.height)));
+    }
 }
 
 
 
 
 /// Clips the given rectangle to canvas bounds and returns coordinates.
-fn clip_rect(area: &Rectangle, width: u32, height: u32) -> (u32, u32, u32, u32) {
+fn clip_rect(area: &Rect, width: u32, height: u32) -> (u32, u32, u32, u32) {
     let x0 = area.top_left.x.max(0) as u32;
     let y0 = area.top_left.y.max(0) as u32;
     let x1 = (area.top_left.x as u32 + area.size.width).min(width);
@@ -234,16 +132,44 @@ fn clip_rect(area: &Rectangle, width: u32, height: u32) -> (u32, u32, u32, u32) 
 }
 
 /// Computes the union (bounding box) of two rectangles.
-fn union_rect(r1: Rectangle, r2: Rectangle) -> Rectangle {
+fn union_rect(r1: Rect, r2: Rect) -> Rect {
     let left = r1.top_left.x.min(r2.top_left.x);
     let top = r1.top_left.y.min(r2.top_left.y);
 
     let right = (r1.top_left.x + r1.size.width as i32).max(r2.top_left.x + r2.size.width as i32);
     let bottom = (r1.top_left.y + r1.size.height as i32).max(r2.top_left.y + r2.size.height as i32);
 
-    Rectangle::with_corners(Point::new(left, top), Point::new(right - 1, bottom - 1))
+    Rect::with_corners(Point::new(left, top), Point::new(right - 1, bottom - 1))
 }
-
+// ===== Rasterizer implementation =====
+impl Rasterizer for Canvas<'_> {
+    fn width(&self) -> u32 { self.width }
+    fn height(&self) -> u32 { self.height }
+    fn set_pixel(&mut self, x: i32, y: i32, color: Rgb565) {
+        if x < 0 || y < 0 { return; }
+        let (x, y) = (x as u32, y as u32);
+        if x >= self.width || y >= self.height { return; }
+        let idx = ((x + y * self.width) * 2) as usize;
+        let raw = color.into_storage();
+        self._buf_mut()[idx] = (raw >> 8) as u8;
+        self._buf_mut()[idx + 1] = raw as u8;
+        self.update_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
+    }
+    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
+        if x < 0 || y < 0 { return; }
+        let (x, y) = (x as u32, y as u32);
+        if x >= self.width || y >= self.height { return; }
+        let idx = ((x + y * self.width) * 2) as usize;
+        let hi = self._buf_mut()[idx] as u16;
+        let lo = self._buf_mut()[idx + 1] as u16;
+        let bg = Rgb565((hi << 8) | lo);
+        let out = color.blend_over(bg, alpha);
+        let raw = out.into_storage();
+        self._buf_mut()[idx] = (raw >> 8) as u8;
+        self._buf_mut()[idx + 1] = raw as u8;
+        self.update_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
+    }
+}
 
 
 

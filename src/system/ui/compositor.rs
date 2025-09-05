@@ -1,6 +1,7 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::ui::canvas::Canvas;
+use crate::system::ui::gfx::{Rect, Rgb565};
 use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR
 };
@@ -12,9 +13,8 @@ use defmt::{debug, error, info, warn, Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
-use embedded_graphics::pixelcolor::{PixelColor, Rgb565};
-use embedded_graphics_core::prelude::{DrawTarget, RgbColor};
 use embedded_graphics_core::primitives::Rectangle;
+use embedded_graphics_core::geometry::{Point as EgPoint, Size as EgSize};
 use heapless::Vec;
 use libm::sqrtf;
 use micromath::F32Ext;
@@ -148,46 +148,16 @@ impl WindowAnimation for FadeAnimation {
     }
 }
 
-/// Efficient pixel blitting for different color formats
-trait PixelBlit: PixelColor {
-    /// Copy single pixel from source to destination buffer
-    /// Returns false if indices are out of bounds
-    fn copy_pixel(
-        source_buffer: &[u8],
-        source_idx: usize,
-        dest_buffer: &mut [u8],
-        dest_idx: usize
-    ) -> bool;
-}
-
-impl PixelBlit for Rgb565 {
-    fn copy_pixel(
-        source_buffer: &[u8],
-        source_idx: usize,
-        dest_buffer: &mut [u8],
-        dest_idx: usize
-    ) -> bool {
-        let src_byte_idx = source_idx * 2;
-        let dest_byte_idx = dest_idx * 2;
-
-        if src_byte_idx + 1 < source_buffer.len() && dest_byte_idx + 1 < dest_buffer.len() {
-            dest_buffer[dest_byte_idx] = source_buffer[src_byte_idx];
-            dest_buffer[dest_byte_idx + 1] = source_buffer[src_byte_idx + 1];
-            true
-        } else {
-            false
-        }
-    }
-}
+// Note: legacy PixelColor-based blitting removed. We operate directly on Rgb565 buffers.
 
 /// High-performance canvas blitting operations
 pub struct BlitOperations;
 
 impl BlitOperations {
     /// Copy entire source canvas to destination with offset
-    pub fn copy_full<'a, C: PixelBlit>(
-        dest: &mut Canvas<'a, C>,
-        source: &Canvas<'a, C>,
+    pub fn copy_full<'a>(
+        dest: &mut Canvas<'a>,
+        source: &Canvas<'a>,
         offset_x: i32,
         offset_y: i32,
     ) {
@@ -206,10 +176,10 @@ impl BlitOperations {
     }
 
     /// Copy specific region of source canvas to destination
-    pub fn copy_region<'a, C: PixelBlit>(
-        dest: &mut Canvas<'a, C>,
-        source: &Canvas<'a, C>,
-        region: Rectangle,
+    pub fn copy_region<'a>(
+        dest: &mut Canvas<'a>,
+        source: &Canvas<'a>,
+        region: Rect,
         offset_x: i32,
         offset_y: i32,
     ) {
@@ -239,9 +209,9 @@ impl BlitOperations {
     }
 
     /// Internal bounds-checked pixel copying
-    fn copy_pixels_bounded<'a, C: PixelBlit>(
-        dest: &mut Canvas<'a, C>,
-        source: &Canvas<'a, C>,
+    fn copy_pixels_bounded<'a>(
+        dest: &mut Canvas<'a>,
+        source: &Canvas<'a>,
         src_x: u32, src_y: u32, src_w: u32, src_h: u32,
         offset_x: i32, offset_y: i32,
         dest_w: u32, dest_h: u32,
@@ -260,13 +230,12 @@ impl BlitOperations {
 
                 let src_pixel_idx = (y * source.width() + x) as usize;
                 let dest_pixel_idx = (dest_y as u32 * dest_w + dest_x as u32) as usize;
-
-                C::copy_pixel(
-                    source.buffer(),
-                    src_pixel_idx,
-                    dest.buffer_mut(),
-                    dest_pixel_idx,
-                );
+                let src_byte_idx = src_pixel_idx * 2;
+                let dest_byte_idx = dest_pixel_idx * 2;
+                if src_byte_idx + 1 < source.buffer().len() && dest_byte_idx + 1 < dest.buffer_mut().len() {
+                    dest.buffer_mut()[dest_byte_idx] = source.buffer()[src_byte_idx];
+                    dest.buffer_mut()[dest_byte_idx + 1] = source.buffer()[src_byte_idx + 1];
+                }
             }
         }
     }
@@ -340,7 +309,7 @@ impl UICompositor {
         if let Some(display) = self.display_driver {
             // Allocate working buffer for composition
             let mut frame_buffer = [0u8; FRAME_BUFFER_SIZE];
-            let mut composite_canvas = Canvas::<Rgb565>::new(
+            let mut composite_canvas = Canvas::new(
                 FRAME_BUFFER_WIDTH,
                 FRAME_BUFFER_HEIGHT
             );
@@ -359,7 +328,10 @@ impl UICompositor {
                 let region = dirty_region.unwrap();
                 display_lock.draw_region(
                     composite_canvas.buffer(),
-                    region,
+                    Rectangle::new(
+                        EgPoint::new(region.top_left.x, region.top_left.y),
+                        EgSize::new(region.size.width, region.size.height),
+                    ),
                     FRAME_SCALE_FACTOR,
                 ).await;
                 self.clear_focused_window_dirty_region();
@@ -377,9 +349,9 @@ impl UICompositor {
     }
 
     /// Compose windows into final frame buffer
-    async fn compose_frame<'a>(&mut self, output_canvas: &mut Canvas<'a, Rgb565>) {
+    async fn compose_frame<'a>(&mut self, output_canvas: &mut Canvas<'a>) {
         // Clear to black background
-        output_canvas.clear(Rgb565::BLACK).unwrap();
+        output_canvas.clear_rgb(Rgb565::BLACK);
 
         if self.windows.is_empty() {
             return;
@@ -510,7 +482,7 @@ impl UICompositor {
         target_idx: usize,
     ) {
         let mut composition_buffer = [0u8; FRAME_BUFFER_SIZE];
-        let mut canvas = Canvas::<Rgb565>::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+        let mut canvas = Canvas::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
         canvas.set_resources(&mut composition_buffer);
 
         // Temporarily take ownership of canvases
@@ -528,7 +500,7 @@ impl UICompositor {
             let frame = animation.animate_frame(eased_progress, direction);
 
             // Clear and compose frame
-            canvas.clear(Rgb565::BLACK).unwrap();
+            canvas.clear_rgb(Rgb565::BLACK);
             BlitOperations::copy_full(&mut canvas, &source_canvas, frame.source_x, frame.source_y);
             BlitOperations::copy_full(&mut canvas, &target_canvas, frame.target_x, frame.target_y);
 
@@ -652,7 +624,7 @@ impl UICompositor {
         self.allocate_window_resources(target_idx).await;
     }
 
-    fn get_focused_window_dirty_region(&mut self) -> Option<Rectangle> {
+    fn get_focused_window_dirty_region(&mut self) -> Option<Rect> {
         self.windows[self.focused_window_idx]
             .canvas()
             .as_mut()
