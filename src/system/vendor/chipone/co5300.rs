@@ -428,12 +428,12 @@ where
                 let bytes_per_src_row = region_width as usize * 2; // 2 bytes per pixel (RGB565)
 
                 for row in 0..chunk_height as usize {
-                    let src_row = (row + y_chunk_start as usize) / scale as usize + region_y as usize;
+                    let src_row = (row + y_chunk_start as usize) / scale as usize;
 
                     // Only regenerate scaled row when we hit a new source row
                     if src_row != current_src_row {
                         current_src_row = src_row;
-                        let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row + region_x as usize * 2);
+                        let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
 
                         // ULTRA-fast row scaling optimized for scale=4
                         let mut scaled_idx = 0;
@@ -487,7 +487,8 @@ where
 
         let frame_time = frame_start.elapsed().as_micros();
         info!(
-        "draw_region: scaling {} ms, transfer {} ms, total {} ms",
+        "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
+            region,
         total_scaling as f64 / 1000.0,
         total_transfer as f64 / 1000.0,
         frame_time as f64 / 1000.0

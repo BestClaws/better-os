@@ -9,6 +9,8 @@ use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;
 
 use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec as AllocVec;
 use defmt::{debug, error, info, warn, Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -261,7 +263,7 @@ impl CanvasBlitter {
 /// Space-grade UI compositor for window management and rendering
 pub struct UICompositor {
     /// Active window stack
-    windows: Vec<Window, MAX_WINDOWS>,
+    windows: heapless::Vec<Window, MAX_WINDOWS>,
     /// Index of currently focused window
     focused_window_idx: usize,
     /// Current display mode (single/split view)
@@ -269,7 +271,7 @@ pub struct UICompositor {
     /// Display hardware interface
     display_driver: Option<&'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>>,
     /// Pending redraw requests for dirty windows
-    pending_redraws: Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
+    pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
     /// Animation configuration
     animation_config: AnimationConfig,
 }
@@ -279,11 +281,11 @@ impl UICompositor {
     pub fn new() -> Self {
         info!("Initializing UI Compositor");
         Self {
-            windows: Vec::new(),
+            windows: heapless::Vec::new(),
             focused_window_idx: 0,
             display_mode: ViewMode::Single,
             display_driver: None,
-            pending_redraws: Vec::new(),
+            pending_redraws: heapless::Vec::new(),
             animation_config: AnimationConfig::default(),
         }
     }
@@ -358,8 +360,16 @@ impl UICompositor {
                     ).await;
                 } else {
                     for region in dirty_regions.iter() {
-                        display_lock.draw_region(
+                        // Extract region-sized buffer from composite canvas
+                        let region_buffer = extract_region_buffer(
                             composite_canvas.buffer(),
+                            region,
+                            FRAME_BUFFER_WIDTH,
+                            FRAME_BUFFER_HEIGHT
+                        );
+                        
+                        display_lock.draw_region(
+                            &region_buffer,
                             Rectangle::new(
                                 EgPoint::new(region.top_left.x, region.top_left.y),
                                 EgSize::new(region.size.width, region.size.height),
@@ -607,8 +617,8 @@ impl UICompositor {
     }
 
     /// Calculate which windows need resources allocated
-    fn calculate_active_window_indices(&self) -> Vec<usize, 4> {
-        let mut active = Vec::new();
+    fn calculate_active_window_indices(&self) -> heapless::Vec<usize, 4> {
+        let mut active = heapless::Vec::new();
         let window_count = self.windows.len();
 
         if window_count == 0 {
@@ -733,3 +743,33 @@ pub(crate) fn ease_out_bounce(t: f32) -> f32 {
 }
 
 use micromath::F32Ext;
+
+/// Extract a region-sized buffer from a full framebuffer
+fn extract_region_buffer(
+    full_buffer: &[u8],
+    region: &Rect,
+    full_width: u32,
+    _full_height: u32,
+) -> AllocVec<u8> {
+    let region_x = region.top_left.x as u32;
+    let region_y = region.top_left.y as u32;
+    let region_width = region.size.width as u32;
+    let region_height = region.size.height as u32;
+    
+    let bytes_per_pixel = 2usize; // RGB565
+    let region_size = (region_width * region_height * bytes_per_pixel as u32) as usize;
+    let mut region_buffer = vec![0u8; region_size];
+    
+    let full_bytes_per_row = full_width as usize * bytes_per_pixel;
+    let region_bytes_per_row = region_width as usize * bytes_per_pixel;
+    
+    for row in 0..region_height as usize {
+        let src_start = ((region_y as usize + row) * full_bytes_per_row) + (region_x as usize * bytes_per_pixel);
+        let dst_start = row * region_bytes_per_row;
+        
+        region_buffer[dst_start..dst_start + region_bytes_per_row]
+            .copy_from_slice(&full_buffer[src_start..src_start + region_bytes_per_row]);
+    }
+    
+    region_buffer
+}
