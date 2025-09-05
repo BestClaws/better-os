@@ -293,8 +293,8 @@ fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut Wat
     let c = GPoint::new(w / 2, h / 2);
     let orb_r = (w.min(h) as f32 * 0.18) as u32;
 
-    // Begin batch operation for orb rendering
-    canvas.begin_batch(GRect::new(
+    // Begin batched drawing operation for orb rendering
+    canvas.begin_drawing_batch(GRect::new(
         GPoint::new(c.x - orb_r as i32 - 10, c.y - orb_r as i32 - 10),
         GSize::new((orb_r * 2 + 20) as u32, (orb_r * 2 + 20) as u32)
     ));
@@ -338,8 +338,8 @@ fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut Wat
         draw_line_aa(canvas, GPoint::new(c.x - orb_r as i32, y), GPoint::new(c.x + orb_r as i32, y), rgb((28, 30, 36)));
     }
     
-    // End batch operation
-    canvas.end_batch();
+    // End batched drawing operation
+    canvas.end_drawing_batch();
 }
 
 fn draw_hands(canvas: &mut Canvas, t: f32) {
@@ -480,8 +480,8 @@ pub async fn watch_app(context: AppContext) {
         context.draw(|canvas: &mut Canvas| {
             let render_start = Instant::now();
             
-            // Disable dirty tracking for bulk operations to improve performance
-            canvas.set_dirty_tracking(false);
+            // Note: Dirty region tracking is always enabled and optimized
+            // No need to disable it - the system is designed for efficiency
             
             // Compose the watch face with optimized rendering layers
             draw_background(canvas, t);                                    // atmosphere + grid + particles
@@ -491,8 +491,7 @@ pub async fn watch_app(context: AppContext) {
             draw_hands(canvas, t);                                         // hour, minute, continuous second with trail
             draw_overlays(canvas, t);                                      // HUD bits, rotating arcs, label area
             
-            // Re-enable dirty tracking
-            canvas.set_dirty_tracking(true);
+            // Dirty region tracking is always active and optimized
             
             let render_time = render_start.elapsed().as_millis();
             frame_count += 1;

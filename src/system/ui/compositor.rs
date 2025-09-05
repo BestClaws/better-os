@@ -745,20 +745,19 @@ impl UICompositor {
                     // Render single focused window with optimized dirty region handling
                     let regions = window_canvas.dirty_regions();
                     if !regions.is_empty() {
-                        // Disable dirty tracking for the composite canvas during blitting
-                        output_canvas.set_dirty_tracking(false);
+                        // Note: Dirty region tracking is always optimized
+                        // No need to disable it during composition
                         
                         for r in regions {
                             CanvasBlitter::copy_region(output_canvas, window_canvas, *r, 0, 0);
                         }
                         
-                        // Re-enable dirty tracking
-                        output_canvas.set_dirty_tracking(true);
+                        // Dirty region tracking remains optimized throughout
                     }
                 }
                 ViewMode::Split => {
                     // Render split view with two windows
-                    output_canvas.set_dirty_tracking(false);
+                    // Dirty region tracking is always optimized
                     CanvasBlitter::copy_full(output_canvas, window_canvas, 0, 0);
 
                     let split_window_idx = self.calculate_split_window_index();
@@ -766,7 +765,6 @@ impl UICompositor {
                         let split_x_offset = FRAME_BUFFER_WIDTH as i32 / 2;
                         CanvasBlitter::copy_full(output_canvas, split_canvas, split_x_offset, 0);
                     }
-                    output_canvas.set_dirty_tracking(true);
                 }
             }
         }

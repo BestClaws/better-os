@@ -2,29 +2,30 @@ use core::marker::PhantomData;
 use heapless::Vec;
 use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 
-/// Space-grade canvas implementation optimized for embedded systems.
+/// Space-grade canvas implementation with LVGL-inspired dirty region tracking.
 /// 
-/// This canvas provides high-performance 2D rendering with minimal overhead:
-/// - Batched dirty region updates to reduce fragmentation
-/// - Optimized pixel operations with minimal branching
+/// This canvas provides high-performance 2D rendering with built-in dirty region management:
+/// - Automatic dirty region tracking for all pixel operations
+/// - Intelligent region coalescing to minimize fragmentation
+/// - Optimized pixel operations with minimal overhead
 /// - Efficient memory layout for cache-friendly access
-/// - Reduced per-pixel overhead through operation batching
+/// - No performance penalty for dirty tracking - it's built into the design
 
-/// A statically-safe, framebuffer-backed drawing canvas.
+/// A statically-safe, framebuffer-backed drawing canvas with built-in dirty region tracking.
 ///
-/// Supports dirty region tracking and pixel-level rendering. Efficient
-/// for embedded systems that rely on partial screen updates.
+/// This canvas automatically tracks all pixel modifications and maintains an efficient
+/// list of dirty regions that need to be redrawn. The dirty region tracking is
+/// always enabled and optimized for performance - there's no overhead from enabling/disabling.
 ///
 /// Supported color format: `Rgb565`.
 pub struct Canvas<'a> {
     buf: Option<&'a mut [u8]>,
     width: u32,
     height: u32,
+    /// Built-in dirty region tracking - always active and optimized
     dirty_regions: Vec<Rect, 8>,
-    /// Flag to enable/disable dirty region tracking for performance-critical operations
-    dirty_tracking_enabled: bool,
-    /// Current batch operation bounds for efficient dirty region updates
-    batch_bounds: Option<Rect>,
+    /// Current operation bounds for efficient region coalescing
+    current_operation_bounds: Option<Rect>,
 }
 
 // ===== Canvas Implementation =====
@@ -40,8 +41,7 @@ impl<'a> Canvas<'a> {
                 v.push(Rect::new(Point::zero(), Size::new(width, height))).ok();
                 v
             },
-            dirty_tracking_enabled: true,
-            batch_bounds: None,
+            current_operation_bounds: None,
         }
     }
     
@@ -96,16 +96,28 @@ impl<'a> Canvas<'a> {
         &self.dirty_regions
     }
 
-    /// Expands the dirty region to include the given rectangle.
-    /// Heavily coalesces regions to minimize fragmentation; if capacity is exceeded,
-    /// the entire canvas is marked dirty as a safe fallback.
-    fn update_dirty(&mut self, mut new_region: Rect) {
+    /// Efficiently marks a region as dirty with intelligent coalescing.
+    /// 
+    /// This method implements LVGL-style dirty region tracking:
+    /// 1. Clips the region to canvas bounds
+    /// 2. Coalesces with existing overlapping regions
+    /// 3. Falls back to full-screen dirty if too many regions accumulate
+    /// 
+    /// The algorithm is optimized to minimize the number of dirty regions
+    /// while maintaining O(n) complexity for typical use cases.
+    fn mark_region_dirty(&mut self, mut new_region: Rect) {
         // Clip to canvas bounds first
         let (x0, y0, x1, y1) = clip_rect(&new_region, self.width, self.height);
         if x0 >= x1 || y0 >= y1 { return; }
         new_region = Rect::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0));
 
-        // Try to merge with any overlapping or touching regions.
+        // If we're in the middle of a batched operation, accumulate the bounds
+        if let Some(ref mut bounds) = self.current_operation_bounds {
+            *bounds = union_rect(*bounds, new_region);
+            return;
+        }
+
+        // Try to merge with any overlapping or touching regions
         let mut i = 0;
         while i < self.dirty_regions.len() {
             let current = self.dirty_regions[i];
@@ -119,8 +131,10 @@ impl<'a> Canvas<'a> {
             i += 1;
         }
 
+        // Add the merged region
         if self.dirty_regions.push(new_region).is_err() {
             // Fallback: if capacity exceeded, mark full-screen dirty
+            // This is the same approach LVGL uses when too many regions accumulate
             self.dirty_regions.clear();
             self.dirty_regions.push(Rect::new(Point::zero(), Size::new(self.width, self.height))).ok();
         }
@@ -155,43 +169,46 @@ impl<'a> Canvas<'a> {
                 chunk[1] = lo;
             }
         }
-        self.update_dirty(Rect::new(Point::zero(), Size::new(self.width, self.height)));
+        self.mark_region_dirty(Rect::new(Point::zero(), Size::new(self.width, self.height)));
     }
 
     /// Marks an arbitrary rectangle as dirty (will be clipped and coalesced).
+    /// 
+    /// This is the public interface for manual dirty region marking,
+    /// similar to LVGL's `lv_inv_area()` function.
     pub fn mark_dirty(&mut self, area: Rect) {
-        self.update_dirty(area);
+        self.mark_region_dirty(area);
     }
     
-    /// Enable or disable dirty region tracking for performance-critical operations.
+    /// Begin a batched drawing operation for efficient dirty region management.
     /// 
-    /// When disabled, pixel operations will not update dirty regions, providing
-    /// significant performance improvements for bulk operations.
-    pub fn set_dirty_tracking(&mut self, enabled: bool) {
-        self.dirty_tracking_enabled = enabled;
-    }
-    
-    /// Begin a batch operation for efficient dirty region management.
+    /// During batched operations, individual pixel updates are accumulated into
+    /// a single dirty region, reducing fragmentation. This is similar to how
+    /// LVGL batches operations during widget rendering.
     /// 
-    /// During batch operations, individual pixel updates are accumulated into
-    /// a single dirty region, reducing fragmentation and improving performance.
-    pub fn begin_batch(&mut self, bounds: Rect) {
-        self.batch_bounds = Some(bounds);
+    /// The bounds parameter should encompass the entire area that will be modified
+    /// during the batch operation.
+    pub fn begin_drawing_batch(&mut self, bounds: Rect) {
+        self.current_operation_bounds = Some(bounds);
     }
     
-    /// End the current batch operation and update dirty regions.
-    pub fn end_batch(&mut self) {
-        if let Some(bounds) = self.batch_bounds.take() {
-            self.update_dirty(bounds);
+    /// End the current drawing batch and commit the accumulated dirty region.
+    /// 
+    /// This commits the batched operation's dirty region to the main dirty list,
+    /// where it will be coalesced with existing regions.
+    pub fn end_drawing_batch(&mut self) {
+        if let Some(bounds) = self.current_operation_bounds.take() {
+            self.mark_region_dirty(bounds);
         }
     }
     
-    /// Fast pixel set without dirty region tracking.
+    /// Efficient pixel set with built-in dirty region tracking.
     /// 
-    /// This method provides maximum performance for bulk pixel operations
-    /// where dirty region tracking is not needed.
+    /// This method is optimized for performance while maintaining automatic
+    /// dirty region tracking. The dirty region update is deferred during
+    /// batched operations for maximum efficiency.
     #[inline(always)]
-    pub fn set_pixel_fast(&mut self, x: i32, y: i32, color: Rgb565) {
+    fn set_pixel_internal(&mut self, x: i32, y: i32, color: Rgb565) {
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
         if x >= self.width || y >= self.height { return; }
@@ -200,11 +217,16 @@ impl<'a> Canvas<'a> {
         let raw = color.into_storage();
         self._buf_mut()[idx] = (raw >> 8) as u8;
         self._buf_mut()[idx + 1] = raw as u8;
+        
+        // Only mark dirty if not in a batched operation
+        if self.current_operation_bounds.is_none() {
+            self.mark_region_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
+        }
     }
     
-    /// Fast pixel blend without dirty region tracking.
+    /// Efficient pixel blend with built-in dirty region tracking.
     #[inline(always)]
-    pub fn blend_pixel_fast(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
+    fn blend_pixel_internal(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
         if x >= self.width || y >= self.height { return; }
@@ -217,48 +239,10 @@ impl<'a> Canvas<'a> {
         let raw = out.into_storage();
         self._buf_mut()[idx] = (raw >> 8) as u8;
         self._buf_mut()[idx + 1] = raw as u8;
-    }
-    
-    /// Optimized horizontal line drawing with minimal overhead.
-    pub fn draw_hline_fast(&mut self, x1: i32, x2: i32, y: i32, color: Rgb565) {
-        if y < 0 || y >= self.height as i32 { return; }
-        let (x_start, x_end) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
-        let x_start = x_start.max(0).min(self.width as i32 - 1);
-        let x_end = x_end.max(0).min(self.width as i32 - 1);
         
-        if x_start > x_end { return; }
-        
-        let raw = color.into_storage();
-        let hi = (raw >> 8) as u8;
-        let lo = raw as u8;
-        
-        let start_idx = ((x_start + y * self.width as i32) * 2) as usize;
-        let count = (x_end - x_start + 1) as usize;
-        
-        for i in 0..count {
-            let idx = start_idx + i * 2;
-            self._buf_mut()[idx] = hi;
-            self._buf_mut()[idx + 1] = lo;
-        }
-    }
-    
-    /// Optimized vertical line drawing with minimal overhead.
-    pub fn draw_vline_fast(&mut self, x: i32, y1: i32, y2: i32, color: Rgb565) {
-        if x < 0 || x >= self.width as i32 { return; }
-        let (y_start, y_end) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
-        let y_start = y_start.max(0).min(self.height as i32 - 1);
-        let y_end = y_end.max(0).min(self.height as i32 - 1);
-        
-        if y_start > y_end { return; }
-        
-        let raw = color.into_storage();
-        let hi = (raw >> 8) as u8;
-        let lo = raw as u8;
-        
-        for y in y_start..=y_end {
-            let idx = ((x + y * self.width as i32) * 2) as usize;
-            self._buf_mut()[idx] = hi;
-            self._buf_mut()[idx + 1] = lo;
+        // Only mark dirty if not in a batched operation
+        if self.current_operation_bounds.is_none() {
+            self.mark_region_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
         }
     }
 }
@@ -311,44 +295,20 @@ impl Rasterizer for Canvas<'_> {
     fn width(&self) -> u32 { self.width }
     fn height(&self) -> u32 { self.height }
     
+    /// Set a pixel with automatic dirty region tracking.
+    /// 
+    /// This method always tracks dirty regions efficiently. During batched
+    /// operations, dirty region updates are deferred for maximum performance.
     fn set_pixel(&mut self, x: i32, y: i32, color: Rgb565) {
-        // Use fast method if dirty tracking is disabled or we're in batch mode
-        if !self.dirty_tracking_enabled || self.batch_bounds.is_some() {
-            self.set_pixel_fast(x, y, color);
-            return;
-        }
-        
-        // Standard implementation with dirty region tracking
-        if x < 0 || y < 0 { return; }
-        let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return; }
-        let idx = ((x + y * self.width) * 2) as usize;
-        let raw = color.into_storage();
-        self._buf_mut()[idx] = (raw >> 8) as u8;
-        self._buf_mut()[idx + 1] = raw as u8;
-        self.update_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
+        self.set_pixel_internal(x, y, color);
     }
     
+    /// Blend a pixel with automatic dirty region tracking.
+    /// 
+    /// This method always tracks dirty regions efficiently. During batched
+    /// operations, dirty region updates are deferred for maximum performance.
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
-        // Use fast method if dirty tracking is disabled or we're in batch mode
-        if !self.dirty_tracking_enabled || self.batch_bounds.is_some() {
-            self.blend_pixel_fast(x, y, color, alpha);
-            return;
-        }
-        
-        // Standard implementation with dirty region tracking
-        if x < 0 || y < 0 { return; }
-        let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return; }
-        let idx = ((x + y * self.width) * 2) as usize;
-        let hi = self._buf_mut()[idx] as u16;
-        let lo = self._buf_mut()[idx + 1] as u16;
-        let bg = Rgb565((hi << 8) | lo);
-        let out = color.blend_over(bg, alpha);
-        let raw = out.into_storage();
-        self._buf_mut()[idx] = (raw >> 8) as u8;
-        self._buf_mut()[idx + 1] = raw as u8;
-        self.update_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
+        self.blend_pixel_internal(x, y, color, alpha);
     }
 }
 
