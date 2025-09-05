@@ -12,15 +12,25 @@ use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb
 fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     // Clear background
     canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
-    // Compose rotations around Y and X axes
-    let rot_y = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.7);
-    let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.3);
-    let rot = rot_y.mul(rot_x);
+    // Two-phase demo: first 10s rotate light (all axes), keep model still; afterwards, fix light and rotate model
+    let (rot, light_dir) = if t < 10.0 {
+        let rot = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
+        let light_rot =
+            Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.7)
+                .mul(Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.8))
+                .mul(Quaternion::from_axis_angle(Vec3(0.0, 0.0, 1.0), t * 0.6));
+        let light_dir = light_rot.rotate_vector(Vec3(0.9, -0.6, -1.0));
+        (rot, light_dir)
+    } else {
+        let dt = t - 10.0;
+        let rot_y = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), dt * 0.7);
+        let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), dt * 0.3);
+        let rot = rot_y.mul(rot_x);
+        let light_dir = Vec3(0.0, 0.0, -1.0);
+        (rot, light_dir)
+    };
     // Position the model slightly in front of camera (camera looks +Z)
     let origin = Vec3(0.0, 0.0, 2.0);
-    let light_rot = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 }
-        .mul(Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.5));
-    let light_dir = light_rot.rotate_vector(Vec3(0.9, -0.6, -1.0));
     let opts = RenderOptions {
         fov_deg: 40.0,
         light_dir,

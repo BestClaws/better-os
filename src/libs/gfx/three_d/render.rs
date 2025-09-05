@@ -288,43 +288,103 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
             if n.2 >= 0.0 { continue; }
         }
 
-        // Projected points must all be valid to draw.
-        let (Some(p0), Some(p1), Some(p2)) = (projected[i0], projected[i1], projected[i2]) else { continue };
-
-        if options.enable_gouraud_shading && options.enable_lighting {
-            // Per-vertex lambert using camera-space averaged normals
-            let n0 = vertex_normals_cam[i0];
-            let n1 = vertex_normals_cam[i1];
-            let n2 = vertex_normals_cam[i2];
-            let i0 = (-n0.dot(light_dir)).max(0.0);
-            let i1 = (-n1.dot(light_dir)).max(0.0);
-            let i2 = (-n2.dot(light_dir)).max(0.0);
-            fill_triangle_gouraud(
-                raster,
-                &GouraudTriangle { p0, p1, p2, i0, i1, i2 },
-                options.intensity_range,
-                options.model_color,
-                options.ambient_color,
-                options.directional_color,
-            );
+        // Prepare camera-space vertices for clipping and shading
+        let mut cam = [vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]];
+        let mut intens = [0.0f32; 3];
+        if options.enable_lighting {
+            if options.enable_gouraud_shading {
+                let n0 = vertex_normals_cam[i0];
+                let n1 = vertex_normals_cam[i1];
+                let n2 = vertex_normals_cam[i2];
+                intens = [(-n0.dot(light_dir)).max(0.0), (-n1.dot(light_dir)).max(0.0), (-n2.dot(light_dir)).max(0.0)];
+            } else {
+                let n = face_normal_cam_space(cam[0], cam[1], cam[2]);
+                let l = (-n.dot(light_dir)).max(0.0);
+                intens = [l, l, l];
+            }
         } else {
-            // Flat Lambert lighting using face normal in camera space.
-            let color = if options.enable_lighting {
-                let n = face_normal_cam_space(vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]);
-                let lambert = (-n.dot(light_dir)).max(0.0);
-                modulate_lit_color(
-                    options.model_color,
-                    options.ambient_color,
-                    options.directional_color,
-                    lambert,
-                )
-            } else { grayscale(1.0) };
-            if options.enable_shading { fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }); }
+            intens = [1.0, 1.0, 1.0];
         }
-        if options.enable_wireframe {
-            draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
-            draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));
-            draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0));
+
+        // Near-plane clipping (z >= near_z)
+        let near_z = options.near_z;
+        let inside = |v: Vec3| v.2 >= near_z;
+        let intersect = |a: Vec3, b: Vec3, ia: f32, ib: f32| {
+            let t = if (b.2 - a.2) == 0.0 { 0.0 } else { (near_z - a.2) / (b.2 - a.2) };
+            let p = Vec3(
+                a.0 + (b.0 - a.0) * t,
+                a.1 + (b.1 - a.1) * t,
+                near_z,
+            );
+            let i = ia + (ib - ia) * t;
+            (p, i)
+        };
+
+        // Sutherland–Hodgman for a single plane
+        let mut pts: [(Vec3, f32); 5] = [(cam[0], intens[0]), (cam[1], intens[1]), (cam[2], intens[2]), (Vec3(0.0,0.0,0.0),0.0), (Vec3(0.0,0.0,0.0),0.0)];
+        let mut out: [(Vec3, f32); 5] = [(Vec3(0.0,0.0,0.0),0.0); 5];
+        let mut out_len = 0usize;
+        for e in 0..3 {
+            let curr = pts[e];
+            let next = pts[(e + 1) % 3];
+            let curr_in = inside(curr.0);
+            let next_in = inside(next.0);
+            match (curr_in, next_in) {
+                (true, true) => {
+                    out[out_len] = next; out_len += 1;
+                }
+                (true, false) => {
+                    let (p, i) = intersect(curr.0, next.0, curr.1, next.1);
+                    out[out_len] = (p, i); out_len += 1;
+                }
+                (false, true) => {
+                    let (p, i) = intersect(curr.0, next.0, curr.1, next.1);
+                    out[out_len] = (p, i); out_len += 1;
+                    out[out_len] = next; out_len += 1;
+                }
+                (false, false) => {}
+            }
+        }
+        if out_len < 3 { continue; }
+
+        // Triangulate fan (can be triangle or quad -> two triangles)
+        let mut draw_poly = |a: (Vec3,f32), b: (Vec3,f32), c: (Vec3,f32)| {
+            if let (Some(p0), Some(p1), Some(p2)) = (
+                project_perspective(a.0, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
+                project_perspective(b.0, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
+                project_perspective(c.0, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
+            ) {
+                if options.enable_gouraud_shading && options.enable_lighting {
+                    fill_triangle_gouraud(
+                        raster,
+                        &GouraudTriangle { p0, p1, p2, i0: a.1, i1: b.1, i2: c.1 },
+                        options.intensity_range,
+                        options.model_color,
+                        options.ambient_color,
+                        options.directional_color,
+                    );
+                } else {
+                    let lambert = a.1; // flat path: all equal
+                    let color = if options.enable_lighting {
+                        modulate_lit_color(
+                            options.model_color,
+                            options.ambient_color,
+                            options.directional_color,
+                            lambert,
+                        )
+                    } else { grayscale(1.0) };
+                    if options.enable_shading { fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }); }
+                }
+                if options.enable_wireframe {
+                    draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
+                    draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));
+                    draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0));
+                }
+            }
+        };
+
+        for k in 1..(out_len - 1) {
+            draw_poly(out[0], out[k], out[k + 1]);
         }
     }
 }
