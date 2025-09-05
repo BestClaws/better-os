@@ -4,7 +4,7 @@ use core::fmt::Write;
 use alloc::vec::Vec;
 use defmt::info;
 use embassy_time::{Duration, Timer, Instant};
-use crate::system::ui::gfx::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, draw_line_aa, draw_circle_aa, fill_rect, draw_rect_outline_aa, fill_circle};
+use crate::system::ui::gfx::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, draw_line_aa, draw_line_rgba_aa, draw_circle_aa, fill_rect, draw_rect_outline_aa, fill_circle, fill_rect_linear_gradient, LinearGradient, draw_arc_aa, fill_rounded_rect, fill_rect_rgba};
 use micromath::F32Ext;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::battery_srv::BATTERY_CHANNEL;
@@ -134,12 +134,18 @@ impl BatteryAnimation {
             Rgb565::from_rgb((255.0 * low_pulse) as u8, 0, 0)
         };
 
-        // Battery fill
+        // Battery fill with gradient and gloss line
         if fill_width > 0 {
             fill_rect(canvas, GRect::new(GPoint::new(x + 2, y + 2), GSize::new(fill_width, (height - 4) as u32)), color);
+            let grad = LinearGradient { start: GPoint::new(x + 2, y + 2), end: GPoint::new(x + 2, y + height as i32 - 2), start_color: Rgb565::from_rgb(255, 255, 255), end_color: color };
+            fill_rect_linear_gradient(canvas, GRect::new(GPoint::new(x + 2, y + 2), GSize::new(fill_width, (height - 4) as u32)), &grad);
+            draw_line_rgba_aa(canvas, GPoint::new(x + 2, y + 2), GPoint::new(x + 2 + fill_width as i32 - 1, y + 2), Rgba8888::new(255, 255, 255, 90));
         }
 
-        // Battery percentage text (simple bar as placeholder; full text rendering can be added later)
+        // Rounded indicator arc showing charge
+        let arc_center = GPoint::new(x + width as i32 + 20, y + height as i32 / 2);
+        let arc_radius = 14;
+        draw_arc_aa(canvas, arc_center, arc_radius, -3.14/2.0, -3.14/2.0 + 3.14 * (self.level as f32), Rgb565::from_rgb(0, 200, 255));
     }
 }
 
@@ -180,7 +186,10 @@ pub async fn battery_app(context: AppContext) {
             write!(debug_buf, "Ball: ({:.0},{:.0}) Speed: ({:.0},{:.0})",
                    ball.x, ball.y, ball.vx, ball.vy).ok();
 
-            // Placeholder: could add bitmap-based text later using gfx primitives
+            // Demo AA lines, rounded rect, and alpha blend overlay
+            draw_line_rgba_aa(canvas, GPoint::new(10, 120), GPoint::new(150, 160), Rgba8888::new(255, 255, 0, 128));
+            fill_rounded_rect(canvas, GRect::new(GPoint::new(180, 100), GSize::new(60, 30)), 8, Rgb565::from_rgb(50, 120, 200));
+            fill_rect_rgba(canvas, GRect::new(GPoint::new(190, 110), GSize::new(40, 10)), Rgba8888::new(255, 255, 255, 120));
         }).await;
 
         context.request_redraw().await;

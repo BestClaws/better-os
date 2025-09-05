@@ -129,6 +129,21 @@ impl Rgb565 {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rgba8888 {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl Rgba8888 {
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self { Self { r, g, b, a } }
+    pub const fn opaque(r: u8, g: u8, b: u8) -> Self { Self { r, g, b, a: 255 } }
+    pub const fn transparent() -> Self { Self { r: 0, g: 0, b: 0, a: 0 } }
+    pub fn to_rgb565(self) -> Rgb565 { Rgb565::from_rgb(self.r, self.g, self.b) }
+}
+
 // ========================= Rasterizer Trait =========================
 
 pub trait Rasterizer {
@@ -208,6 +223,18 @@ pub fn fill_rect(r: &mut dyn Rasterizer, rect: Rect, color: Rgb565) {
     }
 }
 
+pub fn fill_rect_rgba(r: &mut dyn Rasterizer, rect: Rect, color: Rgba8888) {
+    let clip = Rect::new(Point::zero(), Size::new(r.width(), r.height()));
+    if let Some(rc) = rect.intersection(&clip) {
+        let rgb = color.to_rgb565();
+        for y in rc.top_left.y..=rc.bottom() {
+            for x in rc.top_left.x..=rc.right() {
+                r.blend_pixel(x, y, rgb, color.a);
+            }
+        }
+    }
+}
+
 pub fn fill_rect_linear_gradient(r: &mut dyn Rasterizer, rect: Rect, grad: &LinearGradient) {
     let clip = Rect::new(Point::zero(), Size::new(r.width(), r.height()));
     if let Some(rc) = rect.intersection(&clip) {
@@ -274,6 +301,55 @@ pub fn draw_line_aa(r: &mut dyn Rasterizer, p0: Point, p1: Point, color: Rgb565)
     }
     plot(r, steep, xpxl2, ypxl2, color, rfpart(yend2) * xgap2);
     plot(r, steep, xpxl2, ypxl2 + 1, color, fpart(yend2) * xgap2);
+
+    fn plot(r: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: Rgb565, a: f32) {
+        let a_u8 = (a.clamp(0.0, 1.0) * 255.0) as u8;
+        if steep { r.blend_pixel(y, x, color, a_u8) } else { r.blend_pixel(x, y, color, a_u8) }
+    }
+}
+
+pub fn draw_line_rgba_aa(r: &mut dyn Rasterizer, p0: Point, p1: Point, color: Rgba8888) {
+    // Use AA and scale per-sample alpha by color.a
+    fn ipart(x: f32) -> i32 { x.floor() as i32 }
+    fn round(x: f32) -> i32 { (x + 0.5).floor() as i32 }
+    fn fpart(x: f32) -> f32 { x - x.floor() }
+    fn rfpart(x: f32) -> f32 { 1.0 - fpart(x) }
+
+    let mut x0 = p0.x as f32;
+    let mut y0 = p0.y as f32;
+    let mut x1 = p1.x as f32;
+    let mut y1 = p1.y as f32;
+    let steep = (y1 - y0).abs() > (x1 - x0).abs();
+    if steep { core::mem::swap(&mut x0, &mut y0); core::mem::swap(&mut x1, &mut y1); }
+    if x0 > x1 { core::mem::swap(&mut x0, &mut x1); core::mem::swap(&mut y0, &mut y1); }
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let gradient = if dx == 0.0 { 1.0 } else { dy / dx };
+
+    let base = color.to_rgb565();
+    let a_base = color.a as f32 / 255.0;
+
+    let xend = round(x0) as f32;
+    let yend = y0 + gradient * (xend - x0);
+    let xgap = rfpart(x0 + 0.5);
+    let xpxl1 = xend as i32;
+    let ypxl1 = ipart(yend);
+    plot(r, steep, xpxl1, ypxl1, base, (rfpart(yend) * xgap * a_base));
+    plot(r, steep, xpxl1, ypxl1 + 1, base, (fpart(yend) * xgap * a_base));
+    let mut intery = yend + gradient;
+
+    let xend2 = round(x1) as f32;
+    let yend2 = y1 + gradient * (xend2 - x1);
+    let xgap2 = fpart(x1 + 0.5);
+    let xpxl2 = xend2 as i32;
+    let ypxl2 = ipart(yend2);
+    for x in (xpxl1 + 1)..(xpxl2) {
+        plot(r, steep, x, ipart(intery), base, rfpart(intery) * a_base);
+        plot(r, steep, x, ipart(intery) + 1, base, fpart(intery) * a_base);
+        intery += gradient;
+    }
+    plot(r, steep, xpxl2, ypxl2, base, rfpart(yend2) * xgap2 * a_base);
+    plot(r, steep, xpxl2, ypxl2 + 1, base, fpart(yend2) * xgap2 * a_base);
 
     fn plot(r: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: Rgb565, a: f32) {
         let a_u8 = (a.clamp(0.0, 1.0) * 255.0) as u8;

@@ -316,25 +316,26 @@ impl UICompositor {
             composite_canvas.set_resources(&mut frame_buffer);
 
             let current_mode = self.display_mode;
-            let dirty_region = self.get_focused_window_dirty_region();
+            let dirty_regions = self.get_focused_window_dirty_regions();
 
             // Compose final frame
             self.compose_frame(&mut composite_canvas).await;
 
             // Update display efficiently
             let mut display_lock = display.lock().await;
-            if current_mode == ViewMode::Single && dirty_region.is_some() {
-                // Partial update for better performance
-                let region = dirty_region.unwrap();
-                display_lock.draw_region(
-                    composite_canvas.buffer(),
-                    Rectangle::new(
-                        EgPoint::new(region.top_left.x, region.top_left.y),
-                        EgSize::new(region.size.width, region.size.height),
-                    ),
-                    FRAME_SCALE_FACTOR,
-                ).await;
-                self.clear_focused_window_dirty_region();
+            if current_mode == ViewMode::Single && !dirty_regions.is_empty() {
+                // Partial updates for better performance: draw each dirty region
+                for region in dirty_regions.iter() {
+                    display_lock.draw_region(
+                        composite_canvas.buffer(),
+                        Rectangle::new(
+                            EgPoint::new(region.top_left.x, region.top_left.y),
+                            EgSize::new(region.size.width, region.size.height),
+                        ),
+                        FRAME_SCALE_FACTOR,
+                    ).await;
+                }
+                self.clear_focused_window_dirty_regions();
             } else {
                 // Full frame update
                 display_lock.draw(
@@ -363,8 +364,11 @@ impl UICompositor {
             match self.display_mode {
                 ViewMode::Single => {
                     // Render single focused window
-                    if let Some(dirty_region) = window_canvas.dirty_region() {
-                        BlitOperations::copy_region(output_canvas, window_canvas, dirty_region, 0, 0);
+                    let regions = window_canvas.dirty_regions();
+                    if !regions.is_empty() {
+                        for r in regions {
+                            BlitOperations::copy_region(output_canvas, window_canvas, *r, 0, 0);
+                        }
                     } else {
                         BlitOperations::copy_full(output_canvas, window_canvas, 0, 0);
                     }
@@ -624,14 +628,17 @@ impl UICompositor {
         self.allocate_window_resources(target_idx).await;
     }
 
-    fn get_focused_window_dirty_region(&mut self) -> Option<Rect> {
-        self.windows[self.focused_window_idx]
-            .canvas()
-            .as_mut()
-            .and_then(|canvas| canvas.dirty_region())
+    fn get_focused_window_dirty_regions(&mut self) -> heapless::Vec<Rect, 8> {
+        let mut out: heapless::Vec<Rect, 8> = heapless::Vec::new();
+        if let Some(canvas) = self.windows[self.focused_window_idx].canvas().as_mut() {
+            for r in canvas.dirty_regions() {
+                out.push(*r).ok();
+            }
+        }
+        out
     }
 
-    fn clear_focused_window_dirty_region(&mut self) {
+    fn clear_focused_window_dirty_regions(&mut self) {
         if let Some(canvas) = self.windows[self.focused_window_idx].canvas().as_mut() {
             canvas.flush();
         }

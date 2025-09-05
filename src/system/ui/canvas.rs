@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use heapless::Vec;
 use crate::system::ui::gfx::{Rasterizer, Rgb565, Rect, Point, Size};
 
 /// A statically-safe, framebuffer-backed drawing canvas.
@@ -12,7 +13,7 @@ pub struct Canvas<'a> {
     // buffer: &'a mut [u8],
     width: u32,
     height: u32,
-    dirty_region: Option<Rect>,
+    dirty_regions: Vec<Rect, 8>,
 }
 
 // ===== Canvas Implementation =====
@@ -23,7 +24,11 @@ impl<'a> Canvas<'a> {
             buf: None,
             width,
             height,
-            dirty_region: Some(Rect::new(Point::zero(), Size::new(width, height))),
+            dirty_regions: {
+                let mut v: Vec<Rect, 8> = Vec::new();
+                v.push(Rect::new(Point::zero(), Size::new(width, height))).ok();
+                v
+            },
         }
     }
     
@@ -70,20 +75,34 @@ impl<'a> Canvas<'a> {
 
     /// Clears the dirty region, marking the canvas as fully flushed.
     pub fn flush(&mut self) {
-        self.dirty_region = None;
+        self.dirty_regions.clear();
     }
 
-    /// Returns the current dirty region (if any).
-    pub fn dirty_region(&self) -> Option<Rect> {
-        self.dirty_region
+    /// Returns the current dirty regions slice (may be empty).
+    pub fn dirty_regions(&self) -> &[Rect] {
+        &self.dirty_regions
     }
 
     /// Expands the dirty region to include the given rectangle.
     fn update_dirty(&mut self, new: Rect) {
-        self.dirty_region = Some(match self.dirty_region {
-            Some(existing) => union_rect(existing, new),
-            None => new,
-        });
+        // Try to merge with existing regions to limit fragmentation
+        let mut merged = false;
+        for i in 0..self.dirty_regions.len() {
+            let existing = self.dirty_regions[i];
+            if existing.intersects(&new) {
+                self.dirty_regions[i] = union_rect(existing, new);
+                merged = true;
+                break;
+            }
+        }
+
+        if !merged {
+            if self.dirty_regions.push(new).is_err() {
+                // Fallback: if capacity exceeded, mark full-screen dirty
+                self.dirty_regions.clear();
+                self.dirty_regions.push(Rect::new(Point::zero(), Size::new(self.width, self.height))).ok();
+            }
+        }
     }
     
     
