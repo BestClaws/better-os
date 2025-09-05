@@ -10,6 +10,7 @@ use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb
                               draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
                               fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
 fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
+    let now = Instant::now();
     // Clear background
     canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
     // Two-phase demo: first 10s rotate light (all axes), keep model still; afterwards, fix light and rotate model
@@ -82,6 +83,8 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         stats.pixels_blended,
         stats.edges_drawn,
     );
+
+    info!("3d demo frame time: {}", now.elapsed().as_millis());
 }
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
@@ -232,13 +235,13 @@ pub async fn battery_app(context: AppContext) {
         let t = start_time.elapsed().as_millis() as f32 / 1000.0;
         context.draw(|canvas: &mut Canvas| {
             match scene {
-                // DemoScene::Rects => draw_rects(canvas, t),
-                // DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
-                // DemoScene::Arcs => draw_arcs(canvas, t),
-                // DemoScene::Lines => draw_lines(canvas, t),
-                // DemoScene::GradLinear => draw_grad_linear(canvas, t),
-                // DemoScene::GradRadial => draw_grad_radial(canvas, t),
-                // DemoScene::Alpha => draw_alpha(canvas, t),
+                DemoScene::Rects => draw_rects(canvas, t),
+                DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
+                DemoScene::Arcs => draw_arcs(canvas, t),
+                DemoScene::Lines => draw_lines(canvas, t),
+                DemoScene::GradLinear => draw_grad_linear(canvas, t),
+                DemoScene::GradRadial => draw_grad_radial(canvas, t),
+                DemoScene::Alpha => draw_alpha(canvas, t),
                 _=> draw_3d_demo(canvas, t, &model),
             }
         }).await;
