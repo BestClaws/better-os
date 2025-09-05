@@ -5,7 +5,7 @@ use micromath::F32Ext;
 use crate::libs::gfx::math::Quaternion;
 use crate::libs::gfx::{Model, Vec3};
 use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
-use crate::libs::gfx::three_d::render::{draw_model, RenderOptions};
+use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
                               draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
                               fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
@@ -31,22 +31,40 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     };
     // Position the model slightly in front of camera (camera looks +Z)
     let origin = Vec3(0.0, 0.0, 2.0);
+    // Restore original two-phase demo (showcase behavior controlled elsewhere)
     let opts = RenderOptions {
+        // Vertical field-of-view in degrees (smaller narrows perspective, larger widens it)
         fov_deg: 40.0,
+        // Direction the directional light comes FROM in camera space (unit length recommended)
+        // Camera looks along +Z, so a vector with negative Z lights faces pointing to camera.
         light_dir,
+        // Grayscale-only intensity clamp for computed lighting in [min, max].
+        // This does not affect colored lighting; it is used by grayscale helpers.
         intensity_range: (0.2, 1.0),
+        // If true, triangles whose face normal points away from camera are skipped.
         enable_backface_culling: true,
+        // If true, triangles are painter-sorted by average camera-space Z before drawing.
         enable_depth_sorting: true,
-        enable_lighting: true,
+        // Lighting mode selection
+        lighting_mode: LightingMode::AmbientAndDirectional,
+        // If true, clip geometry against a near plane at `near_z` in camera space.
         enable_near_clipping: true,
+        // If true, drop projected points outside the viewport (cheap bounds cull).
         enable_frustum_clipping: false,
-        enable_wireframe: false,
-        enable_shading: true,
+        // View mode
+        view_mode: ViewMode::Fill,
+        // Near plane distance for clipping; only used when `enable_near_clipping` is true.
         near_z: 0.1,
-        enable_gouraud_shading: true,
-        ambient_color: Rgb565::from_rgb(40, 40, 60),
-        directional_color: Rgb565::from_rgb(220, 220, 240),
-        model_color: Rgb565::from_rgb(200, 200, 255),
+        // Shading mode
+        shading_mode: ShadingMode::Gouraud,
+        // Anti-aliasing mode
+        aa_mode: AntiAliasing::None,
+        // Ambient light color (blue-tinted to distinguish from model)
+        ambient_color: Rgb565::from_rgb(80, 120, 255),
+        // Directional light color (red to be obvious)
+        directional_color: Rgb565::from_rgb(255, 80, 80),
+        // Base model surface color (white so lighting colors are visible)
+        model_color: Rgb565::from_rgb(255, 255, 255),
     };
     draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 }

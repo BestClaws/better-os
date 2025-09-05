@@ -9,38 +9,59 @@ use core::cmp::Ordering;
 use embedded_graphics_core::prelude::RgbColor;
 use micromath::F32Ext;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ShadingMode { Flat, Gouraud }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AntiAliasing { None, Edge }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode { Fill, Wireframe, FillAndWireframe }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LightingMode { None, Ambient, Directional, AmbientAndDirectional }
+
 /// Options controlling the software renderer.
+///
+/// These fields configure projection, lighting, rasterization behavior, and quality/perf toggles.
 #[derive(Clone, Copy)]
 pub struct RenderOptions {
     /// Vertical field-of-view in degrees for perspective projection.
     pub fov_deg: f32,
     /// Directional light direction in camera space.
+    /// Camera looks along +Z; vectors with negative Z light faces oriented to the camera.
     pub light_dir: Vec3,
     /// Grayscale intensity range for lit fragments (min, max).
+    /// Used by grayscale utilities; colored lighting ignores this directly.
     pub intensity_range: (f32, f32),
     /// Reject back-facing triangles.
     pub enable_backface_culling: bool,
     /// Enable painter's depth sorting by triangle centroid Z.
+    /// This is a coarse visibility approximation without a z-buffer.
     pub enable_depth_sorting: bool,
-    /// Enable simple Lambert lighting.
-    pub enable_lighting: bool,
+    /// Lighting mode selection (None, Ambient, Directional, Both).
+    pub lighting_mode: LightingMode,
     /// Clip geometry with a near plane at z = near_z.
+    /// Triangles intersecting the plane are split in camera space.
     pub enable_near_clipping: bool,
     /// Discard projected points outside viewport bounds.
+    /// Cheap bounds cull; does not perform full frustum clipping.
     pub enable_frustum_clipping: bool,
-    /// Draw wireframe edges for debugging.
-    pub enable_wireframe: bool,
-    /// Fill triangles with flat shading.
-    pub enable_shading: bool,
+    /// View mode: fill, wireframe, or both.
+    pub view_mode: ViewMode,
     /// Near plane distance. Only used when `enable_near_clipping` is true.
     pub near_z: f32,
-    /// Enable Gouraud shading (per-vertex lighting interpolation).
-    pub enable_gouraud_shading: bool,
+    /// Shading mode: flat or Gouraud.
+    pub shading_mode: ShadingMode,
+    /// Anti-aliasing mode.
+    /// Blends subpixel coverage on scanline edges (slower; reduces jaggies and seam visibility).
+    pub aa_mode: AntiAliasing,
     /// Ambient light color (per-channel 5/6/5 expanded to 8-bit internally).
     pub ambient_color: Rgb565,
     /// Directional light color (per-channel 5/6/5 expanded to 8-bit internally).
     pub directional_color: Rgb565,
     /// Base model color (per-channel 5/6/5 expanded to 8-bit internally).
+    /// Final color is: model × (ambient + lambert × directional).
     pub model_color: Rgb565,
 }
 
@@ -79,13 +100,8 @@ fn modulate_lit_color(model: Rgb565, ambient: Rgb565, directional: Rgb565, lambe
 
 /// Perspective projection from camera space (camera at origin looking +Z).
 #[inline(always)]
-fn project_perspective(v: Vec3, fov_deg: f32, w: u32, h: u32, near_z: f32, clip_near: bool, clip_bounds: bool) -> Option<Point> {
+fn project_perspective_precomputed(v: Vec3, f: f32, aspect: f32, w: u32, h: u32, near_z: f32, clip_near: bool, clip_bounds: bool) -> Option<Point> {
     if clip_near && v.2 <= near_z { return None; }
-
-    let fov_rad = fov_deg.to_radians();
-    let f = 1.0 / (fov_rad * 0.5).tan();
-    let aspect = w as f32 / h as f32;
-
     // Camera looks along +Z; perspective divide by z
     let x_ndc = (v.0 * f) / (v.2 * aspect);
     let y_ndc = (v.1 * f) / v.2;
@@ -97,6 +113,14 @@ fn project_perspective(v: Vec3, fov_deg: f32, w: u32, h: u32, near_z: f32, clip_
     Some(Point::new(x, y))
 }
 
+#[inline(always)]
+fn project_perspective(v: Vec3, fov_deg: f32, w: u32, h: u32, near_z: f32, clip_near: bool, clip_bounds: bool) -> Option<Point> {
+    let fov_rad = fov_deg.to_radians();
+    let f = 1.0 / (fov_rad * 0.5).tan();
+    let aspect = w as f32 / h as f32;
+    project_perspective_precomputed(v, f, aspect, w, h, near_z, clip_near, clip_bounds)
+}
+
 #[derive(Clone, Copy)]
 struct FlatTriangle { p0: Point, p1: Point, p2: Point, color: Rgb565 }
 
@@ -104,7 +128,7 @@ struct FlatTriangle { p0: Point, p1: Point, p2: Point, color: Rgb565 }
 struct GouraudTriangle { p0: Point, p1: Point, p2: Point, i0: f32, i1: f32, i2: f32 }
 
 /// Simple scanline triangle filler.
-fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle) {
+fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle, aa: bool) {
     let mut pts = [tri.p0, tri.p1, tri.p2];
     pts.sort_by_key(|p| p.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
@@ -133,26 +157,31 @@ fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle) {
         let (x_start, x_end, x_start_f, x_end_f) = if xa <= xb { (xa, xb, xa_f, xb_f) } else { (xb, xa, xb_f, xa_f) };
         let xs = x_start.max(0); let xe = x_end.min(w - 1);
         if xs <= xe {
-            // Subpixel edge coverage for start and end pixels
-            if xs >= 0 && xs < w {
-                let cov_start = 1.0 - (x_start_f.fract()).abs();
-                let alpha = (cov_start.clamp(0.0, 1.0) * 255.0) as u8;
-                r.blend_pixel(xs, y, tri.color, alpha);
+            if aa {
+                // Subpixel edge coverage for start and end pixels
+                if xs >= 0 && xs < w {
+                    let cov_start = 1.0 - (x_start_f.fract()).abs();
+                    let alpha = (cov_start.clamp(0.0, 1.0) * 255.0) as u8;
+                    r.blend_pixel(xs, y, tri.color, alpha);
+                }
+                if xe >= 0 && xe < w && xe != xs {
+                    let cov_end = (x_end_f.fract()).abs();
+                    let alpha = (cov_end.clamp(0.0, 1.0) * 255.0) as u8;
+                    r.blend_pixel(xe, y, tri.color, alpha);
+                }
+                // Fill inner (exclusive of edges)
+                let inner_start = (xs + 1).min(xe);
+                for x in inner_start..xe { r.set_pixel(x, y, tri.color); }
+            } else {
+                // Solid fill inclusive
+                for x in xs..=xe { r.set_pixel(x, y, tri.color); }
             }
-            if xe >= 0 && xe < w && xe != xs {
-                let cov_end = (x_end_f.fract()).abs();
-                let alpha = (cov_end.clamp(0.0, 1.0) * 255.0) as u8;
-                r.blend_pixel(xe, y, tri.color, alpha);
-            }
-            // Fill inner
-            let inner_start = (xs + 1).min(xe);
-            for x in inner_start..xe { r.set_pixel(x, y, tri.color); }
         }
     }
 }
 
 /// Gouraud scanline fill (interpolate intensity along edges and across span).
-fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgb565, ambient: Rgb565, directional: Rgb565) {
+fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgb565, ambient: Rgb565, directional: Rgb565, aa: bool) {
     let mut pts = [(tri.p0, tri.i0), (tri.p1, tri.i1), (tri.p2, tri.i2)];
     pts.sort_by_key(|p| p.0.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
@@ -181,27 +210,32 @@ fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range:
         let (x_start, x_end, i_start, i_end) = if xa <= xb { (xa, xb, ia, ib) } else { (xb, xa, ib, ia) };
         let xs = x_start.max(0); let xe = x_end.min(w - 1);
         if xs <= xe {
-            // Blend AA at the edges using fractional coverage
-            if xs >= 0 && xs < w {
-                let i = i_start;
-                let lambert = i.clamp(0.0, 1.0);
-                let color = modulate_lit_color(model, ambient, directional, lambert);
-                r.blend_pixel(xs, y, color, 160);
-            }
-            if xe >= 0 && xe < w && xe != xs {
-                let i = i_end;
-                let lambert = i.clamp(0.0, 1.0);
-                let color = modulate_lit_color(model, ambient, directional, lambert);
-                r.blend_pixel(xe, y, color, 160);
-            }
-            let inner_start = (xs + 1).min(xe);
-            for x in inner_start..xe {
-                let t = if x_end == x_start { 0.0 } else { (x - x_start) as f32 / (x_end - x_start) as f32 };
-                let i = i_start + (i_end - i_start) * t;
-                let intensity = range.0 + (range.1 - range.0) * i.clamp(0.0, 1.0);
-                let lambert = ((intensity - range.0) / (range.1 - range.0)).clamp(0.0, 1.0);
-                let color = modulate_lit_color(model, ambient, directional, lambert);
-                r.set_pixel(x, y, color);
+            if aa {
+                // Blend AA at edges
+                if xs >= 0 && xs < w {
+                    let i = i_start.clamp(0.0, 1.0);
+                    let color = modulate_lit_color(model, ambient, directional, i);
+                    r.blend_pixel(xs, y, color, 160);
+                }
+                if xe >= 0 && xe < w && xe != xs {
+                    let i = i_end.clamp(0.0, 1.0);
+                    let color = modulate_lit_color(model, ambient, directional, i);
+                    r.blend_pixel(xe, y, color, 160);
+                }
+                let inner_start = (xs + 1).min(xe);
+                for x in inner_start..xe {
+                    let t = if x_end == x_start { 0.0 } else { (x - x_start) as f32 / (x_end - x_start) as f32 };
+                    let i = (i_start + (i_end - i_start) * t).clamp(0.0, 1.0);
+                    let color = modulate_lit_color(model, ambient, directional, i);
+                    r.set_pixel(x, y, color);
+                }
+            } else {
+                for x in xs..=xe {
+                    let t = if x_end == x_start { 0.0 } else { (x - x_start) as f32 / (x_end - x_start) as f32 };
+                    let i = (i_start + (i_end - i_start) * t).clamp(0.0, 1.0);
+                    let color = modulate_lit_color(model, ambient, directional, i);
+                    r.set_pixel(x, y, color);
+                }
             }
         }
     }
@@ -262,11 +296,14 @@ fn compute_vertex_normals_cam_space(model: &Model, vertices_cam: &[Vec3; MAX_VER
 
 pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3, model_rotation: Quaternion, width: u32, height: u32, options: &RenderOptions) {
     let light_dir = options.light_dir.normalize();
+    let fov_rad = options.fov_deg.to_radians();
+    let f = 1.0 / (fov_rad * 0.5).tan();
+    let aspect = width as f32 / height as f32;
 
     // Camera-space transform (model -> camera).
     let vertices_cam = transform_vertices(model, origin_cam, model_rotation);
     let projected = project_vertices(&vertices_cam, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping);
-    let vertex_normals_cam = if options.enable_gouraud_shading || options.enable_lighting {
+    let vertex_normals_cam = if matches!(options.shading_mode, ShadingMode::Gouraud) || !matches!(options.lighting_mode, LightingMode::None) {
         compute_vertex_normals_cam_space(model, &vertices_cam)
     } else { [Vec3(0.0, 0.0, 0.0); MAX_VERTICES] };
 
@@ -291,15 +328,15 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
         // Prepare camera-space vertices for clipping and shading
         let mut cam = [vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]];
         let mut intens = [0.0f32; 3];
-        if options.enable_lighting {
-            if options.enable_gouraud_shading {
+        if !matches!(options.lighting_mode, LightingMode::None) {
+            if matches!(options.shading_mode, ShadingMode::Gouraud) {
                 let n0 = vertex_normals_cam[i0];
                 let n1 = vertex_normals_cam[i1];
                 let n2 = vertex_normals_cam[i2];
-                intens = [(-n0.dot(light_dir)).max(0.0), (-n1.dot(light_dir)).max(0.0), (-n2.dot(light_dir)).max(0.0)];
+                intens = [n0.dot(light_dir).max(0.0), n1.dot(light_dir).max(0.0), n2.dot(light_dir).max(0.0)];
             } else {
                 let n = face_normal_cam_space(cam[0], cam[1], cam[2]);
-                let l = (-n.dot(light_dir)).max(0.0);
+                let l = n.dot(light_dir).max(0.0);
                 intens = [l, l, l];
             }
         } else {
@@ -350,11 +387,11 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
         // Triangulate fan (can be triangle or quad -> two triangles)
         let mut draw_poly = |a: (Vec3,f32), b: (Vec3,f32), c: (Vec3,f32)| {
             if let (Some(p0), Some(p1), Some(p2)) = (
-                project_perspective(a.0, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
-                project_perspective(b.0, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
-                project_perspective(c.0, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
+                project_perspective_precomputed(a.0, f, aspect, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
+                project_perspective_precomputed(b.0, f, aspect, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
+                project_perspective_precomputed(c.0, f, aspect, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping),
             ) {
-                if options.enable_gouraud_shading && options.enable_lighting {
+                if matches!(options.shading_mode, ShadingMode::Gouraud) && !matches!(options.lighting_mode, LightingMode::None) {
                     fill_triangle_gouraud(
                         raster,
                         &GouraudTriangle { p0, p1, p2, i0: a.1, i1: b.1, i2: c.1 },
@@ -362,20 +399,26 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
                         options.model_color,
                         options.ambient_color,
                         options.directional_color,
+                        matches!(options.aa_mode, AntiAliasing::Edge),
                     );
                 } else {
                     let lambert = a.1; // flat path: all equal
-                    let color = if options.enable_lighting {
-                        modulate_lit_color(
-                            options.model_color,
-                            options.ambient_color,
-                            options.directional_color,
-                            lambert,
-                        )
-                    } else { grayscale(1.0) };
-                    if options.enable_shading { fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }); }
+                    let (amb_on, dir_on) = match options.lighting_mode {
+                        LightingMode::None => (false, false),
+                        LightingMode::Ambient => (true, false),
+                        LightingMode::Directional => (false, true),
+                        LightingMode::AmbientAndDirectional => (true, true),
+                    };
+                    let color = if amb_on || dir_on {
+                        let lambert_eff = if dir_on { lambert } else { 0.0 };
+                        let amb = if amb_on { options.ambient_color } else { Rgb565::from_rgb(0,0,0) };
+                        modulate_lit_color(options.model_color, amb, options.directional_color, lambert_eff)
+                    } else { options.model_color };
+                    if matches!(options.view_mode, ViewMode::Fill | ViewMode::FillAndWireframe) {
+                        fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }, matches!(options.aa_mode, AntiAliasing::Edge));
+                    }
                 }
-                if options.enable_wireframe {
+                if matches!(options.view_mode, ViewMode::Wireframe | ViewMode::FillAndWireframe) {
                     draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
                     draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));
                     draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0));
