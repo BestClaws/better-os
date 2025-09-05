@@ -5,7 +5,7 @@ use micromath::F32Ext;
 use crate::libs::gfx::math::Quaternion;
 use crate::libs::gfx::{Model, Vec3};
 use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
-use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode};
+use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode, RenderStats};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
                               draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
                               fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
@@ -30,7 +30,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         (rot, light_dir)
     };
     // Position the model slightly in front of camera (camera looks +Z)
-    let origin = Vec3(0.0, 0.0, 2.0);
+    let origin = Vec3(0.0, 0.0, 1.0);
     // Restore original two-phase demo (showcase behavior controlled elsewhere)
     let opts = RenderOptions {
         // Vertical field-of-view in degrees (smaller narrows perspective, larger widens it)
@@ -56,7 +56,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         // Near plane distance for clipping; only used when `enable_near_clipping` is true.
         near_z: 0.1,
         // Shading mode
-        shading_mode: ShadingMode::Gouraud,
+        shading_mode: ShadingMode::Flat,
         // Anti-aliasing mode
         aa_mode: AntiAliasing::None,
         // Ambient light color (blue-tinted to distinguish from model)
@@ -66,7 +66,22 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         // Base model surface color (white so lighting colors are visible)
         model_color: Rgb565::from_rgb(255, 255, 255),
     };
-    draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
+    let mut stats = RenderStats::default();
+    fn now_micros() -> u64 { embassy_time::Instant::now().as_micros() as u64 }
+    draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts, Some(&mut stats), Some(now_micros));
+    defmt::info!("3D stats: total={}us tx={}us px={}us sort={}us rast={}us tri_in={} tri_culled={} tri_out={} px_fill={} px_blend={} edges={}",
+        stats.micros_total,
+        stats.micros_transform,
+        stats.micros_project,
+        stats.micros_sort,
+        stats.micros_clip_raster,
+        stats.triangles_input,
+        stats.triangles_culled,
+        stats.triangles_emitted,
+        stats.pixels_filled,
+        stats.pixels_blended,
+        stats.edges_drawn,
+    );
 }
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
@@ -198,7 +213,7 @@ pub async fn battery_app(context: AppContext) {
     let mut last_switch = Instant::now();
     let start_time = Instant::now();
     // Load model once safely; reuse across frames.
-    let bytes = include_bytes!("../assets/arrow2.stl");
+    let bytes = include_bytes!("../assets/geofix.stl");
     let mut model = Model::new();
     let mut vertex_map: [Option<usize>; MAX_VERTICES] = [None; MAX_VERTICES];
     let _ = parse_binary_stl_into(bytes, &mut model, &mut vertex_map);
