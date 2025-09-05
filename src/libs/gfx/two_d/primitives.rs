@@ -294,12 +294,23 @@ fn fill_quarter_circle(
     let r2 = radius * radius;
     for dy in 0..=radius {
         for dx in 0..=radius {
-            if dx * dx + dy * dy <= r2 {
+            let dist_sq = dx * dx + dy * dy;
+            if dist_sq <= r2 {
+                // Calculate distance from circle edge for anti-aliasing
+                let dist = (dist_sq as f32).sqrt();
+                let dist_from_edge = radius as f32 - dist;
+                let alpha = if dist_from_edge <= 1.0 {
+                    dist_from_edge.clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                
+                let alpha_u8 = (alpha * 255.0) as u8;
                 match quadrant {
-                    0 => r.set_pixel(center.x - dx, center.y - dy, color),
-                    1 => r.set_pixel(center.x + dx, center.y - dy, color),
-                    2 => r.set_pixel(center.x - dx, center.y + dy, color),
-                    _ => r.set_pixel(center.x + dx, center.y + dy, color),
+                    0 => r.blend_pixel(center.x - dx, center.y - dy, color, alpha_u8),
+                    1 => r.blend_pixel(center.x + dx, center.y - dy, color, alpha_u8),
+                    2 => r.blend_pixel(center.x - dx, center.y + dy, color, alpha_u8),
+                    _ => r.blend_pixel(center.x + dx, center.y + dy, color, alpha_u8),
                 }
             }
         }
@@ -314,16 +325,57 @@ pub fn draw_arc_aa(
     end_angle_rad: f32,
     color: Rgb565,
 ) {
+    // Use more steps for smoother arcs, especially for larger radii
+    let angle_diff = (end_angle_rad - start_angle_rad).abs();
+    let steps = (radius as f32 * angle_diff * 2.0).max(32.0) as i32;
+    
+    // Draw the arc by plotting individual pixels with anti-aliasing
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let ang = start_angle_rad + (end_angle_rad - start_angle_rad) * t;
+        let x_f = center.x as f32 + radius as f32 * ang.cos();
+        let y_f = center.y as f32 + radius as f32 * ang.sin();
+        
+        // Calculate sub-pixel position for anti-aliasing
+        let x = x_f.floor() as i32;
+        let y = y_f.floor() as i32;
+        let fx = x_f - x as f32;
+        let fy = y_f - y as f32;
+        
+        // Plot the main pixel
+        let alpha = ((1.0 - fx) * (1.0 - fy) * 255.0) as u8;
+        r.blend_pixel(x, y, color, alpha);
+        
+        // Plot adjacent pixels for better anti-aliasing
+        if fx > 0.0 {
+            let alpha = (fx * (1.0 - fy) * 255.0) as u8;
+            r.blend_pixel(x + 1, y, color, alpha);
+        }
+        if fy > 0.0 {
+            let alpha = ((1.0 - fx) * fy * 255.0) as u8;
+            r.blend_pixel(x, y + 1, color, alpha);
+        }
+        if fx > 0.0 && fy > 0.0 {
+            let alpha = (fx * fy * 255.0) as u8;
+            r.blend_pixel(x + 1, y + 1, color, alpha);
+        }
+    }
+}
+
+pub fn draw_arc(
+    r: &mut dyn Rasterizer,
+    center: Point,
+    radius: i32,
+    start_angle_rad: f32,
+    end_angle_rad: f32,
+    color: Rgb565,
+) {
     let steps = (radius as f32 * (end_angle_rad - start_angle_rad).abs()).max(16.0) as i32;
-    let mut prev = None;
     for i in 0..=steps {
         let t = i as f32 / steps as f32;
         let ang = start_angle_rad + (end_angle_rad - start_angle_rad) * t;
         let x = center.x + (radius as f32 * ang.cos()) as i32;
         let y = center.y + (radius as f32 * ang.sin()) as i32;
-        if let Some(p) = prev {
-            draw_line_aa(r, p, Point::new(x, y), color);
-        }
-        prev = Some(Point::new(x, y));
+        r.set_pixel(x, y, color);
     }
 }
