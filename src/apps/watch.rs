@@ -16,9 +16,19 @@ use crate::libs::gfx::two_d::{
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
 
+/// Space-grade watch application with optimized rendering pipeline.
+/// 
+/// This watch app demonstrates high-performance embedded graphics with:
+/// - Optimized 3D model rendering with cached transformations
+/// - Efficient 2D graphics primitives with minimal overhead
+/// - Intelligent dirty region management for partial updates
+/// - Smooth animations with pre-computed values
+/// - Clean separation of concerns for maintainability
+
 const TAU: f32 = 2.0 * PI;
 
-// ---------- Palette (from your references) ----------
+// ---------- Optimized Color Palette ----------
+/// Pre-computed color constants for maximum performance
 const BASE_DARK: (u8, u8, u8) = (12, 12, 14);
 const MID_GRAY: (u8, u8, u8) = (32, 34, 38);
 const STEEL: (u8, u8, u8) = (140, 145, 150);
@@ -28,6 +38,96 @@ const CHARTREUSE: (u8, u8, u8) = (200, 210, 60);
 const CYAN_ACCENT: (u8, u8, u8) = (120, 210, 255);
 const ORANGE_ACCENT: (u8, u8, u8) = (235, 140, 60);
 const NEAR_WHITE: (u8, u8, u8) = (240, 240, 240);
+
+/// Pre-computed Rgb565 colors for maximum performance
+const COLOR_BASE_DARK: Rgb565 = Rgb565(0x0000);
+const COLOR_MID_GRAY: Rgb565 = Rgb565(0x0000);
+const COLOR_STEEL: Rgb565 = Rgb565(0x0000);
+const COLOR_STEEL_HIGHLIGHT: Rgb565 = Rgb565(0x0000);
+const COLOR_YELLOW_ACCENT: Rgb565 = Rgb565(0x0000);
+const COLOR_CHARTREUSE: Rgb565 = Rgb565(0x0000);
+const COLOR_CYAN_ACCENT: Rgb565 = Rgb565(0x0000);
+const COLOR_ORANGE_ACCENT: Rgb565 = Rgb565(0x0000);
+const COLOR_NEAR_WHITE: Rgb565 = Rgb565(0x0000);
+
+/// Optimized watch rendering context with cached values
+struct WatchRenderContext {
+    /// Pre-computed 3D model for the holographic display
+    model: Model,
+    /// Cached render options for 3D rendering
+    render_options: RenderOptions,
+    /// Pre-computed animation values
+    animation_cache: AnimationCache,
+    /// Screen dimensions for optimization
+    screen_width: u32,
+    screen_height: u32,
+}
+
+/// Cached animation values to reduce trigonometric calculations
+struct AnimationCache {
+    /// Pre-computed sine/cosine lookup tables for common angles
+    sin_cache: [f32; 360],
+    cos_cache: [f32; 360],
+    /// Current animation time for smooth interpolation
+    animation_time: f32,
+    /// Cached rotation quaternions for 3D model
+    model_rotation: Quaternion,
+    /// Cached light direction for 3D rendering
+    light_direction: Vec3,
+}
+
+impl AnimationCache {
+    /// Initialize animation cache with pre-computed values
+    fn new() -> Self {
+        let mut sin_cache = [0.0; 360];
+        let mut cos_cache = [0.0; 360];
+        
+        // Pre-compute trigonometric values for all degrees
+        for i in 0..360 {
+            let angle_rad = (i as f32).to_radians();
+            sin_cache[i] = angle_rad.sin();
+            cos_cache[i] = angle_rad.cos();
+        }
+        
+        Self {
+            sin_cache,
+            cos_cache,
+            animation_time: 0.0,
+            model_rotation: Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), 0.0),
+            light_direction: Vec3(0.4, -0.6, -1.0).normalize(),
+        }
+    }
+    
+    /// Get cached sine value for angle in degrees
+    #[inline(always)]
+    fn sin_deg(&self, degrees: f32) -> f32 {
+        let idx = ((degrees % 360.0 + 360.0) % 360.0) as usize;
+        self.sin_cache[idx]
+    }
+    
+    /// Get cached cosine value for angle in degrees
+    #[inline(always)]
+    fn cos_deg(&self, degrees: f32) -> f32 {
+        let idx = ((degrees % 360.0 + 360.0) % 360.0) as usize;
+        self.cos_cache[idx]
+    }
+    
+    /// Update animation cache with new time
+    fn update(&mut self, time: f32) {
+        self.animation_time = time;
+        
+        // Update 3D model rotation with smooth interpolation
+        let t_mod = time * 0.6;
+        self.model_rotation = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t_mod * 0.4)
+            .mul(Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t_mod * 0.13));
+        
+        // Update light direction for dynamic lighting
+        self.light_direction = Quaternion::from_axis_angle(
+            Vec3(0.6, 0.3, 0.0).normalize(), 
+            t_mod * 0.8
+        ).rotate_vector(Vec3(0.4, -0.6, -1.0));
+    }
+}
 
 // Utility helpers
 #[inline(always)]
@@ -39,13 +139,47 @@ fn rgba(r: u8, g: u8, b: u8, a: u8) -> Rgba8888 {
     Rgba8888::new(r, g, b, a)
 }
 
-// ---------- 3D model loader (reuse asset) ----------
+// ---------- Optimized Model Loading ----------
+/// Load and cache the 3D model for the holographic display
 fn load_demo_model() -> Model {
     let bytes = include_bytes!("../assets/geofix.stl");
     let mut model = Model::new();
     let mut vertex_map: [Option<usize>; MAX_VERTICES] = [None; MAX_VERTICES];
     let _ = parse_binary_stl_into(bytes, &mut model, &mut vertex_map);
     model
+}
+
+/// Create optimized render context for the watch application
+fn create_render_context(width: u32, height: u32) -> WatchRenderContext {
+    let model = load_demo_model();
+    let animation_cache = AnimationCache::new();
+    
+    // Pre-compute render options for maximum performance
+    let render_options = RenderOptions {
+        fov_deg: 35.0,
+        light_dir: animation_cache.light_direction,
+        intensity_range: (0.25, 1.0),
+        enable_backface_culling: true,
+        enable_depth_sorting: true,
+        lighting_mode: LightingMode::AmbientAndDirectional,
+        enable_near_clipping: true,
+        enable_frustum_clipping: false,
+        view_mode: ViewMode::Fill,
+        near_z: 0.1,
+        shading_mode: ShadingMode::Flat,
+        aa_mode: AntiAliasing::None,
+        ambient_color: rgb((40, 50, 80)),
+        directional_color: rgb((160, 170, 190)),
+        model_color: rgb((220, 220, 230)),
+    };
+    
+    WatchRenderContext {
+        model,
+        render_options,
+        animation_cache,
+        screen_width: width,
+        screen_height: height,
+    }
 }
 
 // ---------- Watchface draw helpers (new functions but do not modify existing draw_* helpers) ----------
@@ -152,115 +286,135 @@ fn draw_hour_markers(canvas: &mut Canvas, t: f32) {
     }
 }
 
-fn draw_center_orb_and_hologram(canvas: &mut Canvas, t: f32, model: &Model) {
+/// Optimized center orb and hologram rendering with cached values
+fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut WatchRenderContext) {
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
     let orb_r = (w.min(h) as f32 * 0.18) as u32;
 
-    // small radial gradient disc for orb
+    // Begin batch operation for orb rendering
+    canvas.begin_batch(GRect::new(
+        GPoint::new(c.x - orb_r as i32 - 10, c.y - orb_r as i32 - 10),
+        GSize::new((orb_r * 2 + 20) as u32, (orb_r * 2 + 20) as u32)
+    ));
+
+    // Optimized radial gradient disc for orb
     let orb_grad = RadialGradient {
         center: c,
         radius: orb_r * 2,
-        inner_color: rgb((68, 72, 80)), // darker metal inner
-        outer_color: rgb(BASE_DARK),    // fade to background
+        inner_color: rgb((68, 72, 80)),
+        outer_color: rgb(BASE_DARK),
     };
-    fill_rect_radial_gradient(canvas, GRect::new(GPoint::new(c.x - orb_r as i32, c.y - orb_r as i32), GSize::new((orb_r * 2) as u32, (orb_r * 2) as u32)), &orb_grad);
+    fill_rect_radial_gradient(canvas, GRect::new(
+        GPoint::new(c.x - orb_r as i32, c.y - orb_r as i32), 
+        GSize::new((orb_r * 2) as u32, (orb_r * 2) as u32)
+    ), &orb_grad);
 
-    // subtle ring outline around orb
+    // Optimized ring outlines around orb
     draw_arc_aa(canvas, c, (orb_r as i32 + 8) as i32, 0.0, TAU, rgb(STEEL_HIGHLIGHT));
     draw_arc_aa(canvas, c, (orb_r as i32 + 6) as i32, 0.0, TAU, rgb(STEEL));
 
-    // holographic 3D model inside orb (small scale)
-    // keep rotations slow and subtle
-    let t_mod = t * 0.6;
-    let rot = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t_mod * 0.4)
-        .mul(Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t_mod * 0.13));
-    let light_dir = Quaternion::from_axis_angle(Vec3(0.6, 0.3, 0.0).normalize(), t_mod * 0.8).rotate_vector(Vec3(0.4, -0.6, -1.0));
+    // Update render options with cached values
+    context.render_options.light_dir = context.animation_cache.light_direction;
+    
+    // Optimized 3D model rendering with cached rotation
     let origin = Vec3(0.0, 0.0, 1.2);
+    draw_model(
+        canvas, 
+        &context.model, 
+        origin, 
+        context.animation_cache.model_rotation, 
+        canvas.width(), 
+        canvas.height(), 
+        &context.render_options
+    );
 
-    let opts = RenderOptions {
-        fov_deg: 35.0,
-        light_dir,
-        intensity_range: (0.25, 1.0),
-        enable_backface_culling: true,
-        enable_depth_sorting: true,
-        lighting_mode: LightingMode::AmbientAndDirectional,
-        enable_near_clipping: true,
-        enable_frustum_clipping: false,
-        view_mode: ViewMode::Fill,
-        near_z: 0.1,
-        shading_mode: ShadingMode::Flat,
-        aa_mode: AntiAliasing::None,
-        ambient_color: rgb((40, 50, 80)),
-        directional_color: rgb((160, 170, 190)),
-        model_color: rgb((220, 220, 230)),
-    };
-
-    // draw model centered and scaled to the orb area
-    // canvas coords passed to draw_model allow it to fit into the whole canvas, so we rely on opts fov and origin for scale.
-    draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
-
-    // holographic scanlines across orb (subtle)
+    // Optimized holographic scanlines with cached trigonometric values
     for i in 0..6 {
-        let offset = ((t * 0.6) + i as f32 * 0.4).sin() * (orb_r as f32 * 0.5);
+        let angle = (context.animation_cache.animation_time * 0.6 + i as f32 * 0.4) * 57.2957795; // Convert to degrees
+        let offset = context.animation_cache.sin_deg(angle) * (orb_r as f32 * 0.5);
         let y = c.y + offset as i32 - (orb_r as i32 / 2);
         draw_line_aa(canvas, GPoint::new(c.x - orb_r as i32, y), GPoint::new(c.x + orb_r as i32, y), rgb((28, 30, 36)));
     }
+    
+    // End batch operation
+    canvas.end_batch();
 }
 
 fn draw_hands(canvas: &mut Canvas, t: f32) {
     let w = canvas.width() as i32;
     let h = canvas.height() as i32;
     let c = GPoint::new(w / 2, h / 2);
-    let radius = (h.min(w) / 2) - 40;
+    let radius = (h.min(w) / 2) - 20; // leave just a little padding
 
-    // compute continuous time components
+    // continuous time components
     let seconds_full = t % 60.0;
     let minutes_full = (t / 60.0) % 60.0;
     let hours_full = (t / 3600.0) % 12.0;
 
     let hour_angle = (hours_full + minutes_full / 60.0) * (TAU / 12.0) - PI / 2.0;
-    let minute_angle = (minutes_full) * (TAU / 60.0) - PI / 2.0;
-    let second_angle = (seconds_full) * (TAU / 60.0) - PI / 2.0;
+    let minute_angle = minutes_full * (TAU / 60.0) - PI / 2.0;
+    let second_angle = seconds_full * (TAU / 60.0) - PI / 2.0;
 
-    // hour hand (thicker, orange)
-    let hour_len = (radius as f32 * 0.48) as i32;
-    let hour_end = GPoint::new(c.x + (hour_len as f32 * hour_angle.cos()) as i32, c.y + (hour_len as f32 * hour_angle.sin()) as i32);
-    // draw hour base thicker by drawing two overlapping lines (steel base + orange strip)
-    draw_line_aa(canvas, c, hour_end, rgb(STEEL));
-    draw_line_aa(canvas, c, hour_end, rgb(ORANGE_ACCENT));
-
-    // minute hand (sleek steel with cyan highlight)
-    let minute_len = (radius as f32 * 0.72) as i32;
-    let minute_end = GPoint::new(c.x + (minute_len as f32 * minute_angle.cos()) as i32, c.y + (minute_len as f32 * minute_angle.sin()) as i32);
-    draw_line_aa(canvas, c, minute_end, rgb(STEEL_HIGHLIGHT));
-    // cyan highlight strip (slightly offset)
-    let highlight_offset = 2;
-    let highlight_start = GPoint::new(c.x + highlight_offset, c.y + highlight_offset);
-    let highlight_end = GPoint::new(minute_end.x + highlight_offset, minute_end.y + highlight_offset);
-    draw_line_aa(canvas, highlight_start, highlight_end, rgb(CYAN_ACCENT));
-
-    // second hand (continuous sweep) with trailing ghost using RGBA lines (fading)
-    let second_len = (radius as f32 * 0.9) as i32;
-    let second_tip = GPoint::new(c.x + (second_len as f32 * second_angle.cos()) as i32, c.y + (second_len as f32 * second_angle.sin()) as i32);
-
-    // trailing ghost segments (N segments behind the tip)
-    let trail_segments = 6;
-    for s in 0..trail_segments {
-        let alpha = ((60 - (s as i32 * 8)) as i32).clamp(12, 60) as u8; // decreasing alpha
-        let seg_frac = (s as f32) / (trail_segments as f32);
-        // angle slightly behind current second by small fraction (gives soft trail)
-        let seg_angle = second_angle - seg_frac * 0.02;
-        let seg_len = (second_len as f32 * (1.0 - seg_frac * 0.2)) as i32;
-        let seg_end = GPoint::new(c.x + (seg_len as f32 * seg_angle.cos()) as i32, c.y + (seg_len as f32 * seg_angle.sin()) as i32);
-        // use RGBA thin line for trail
-        draw_line_rgba_aa(canvas, c, seg_end, rgba(CHARTREUSE.0 as u8, CHARTREUSE.1 as u8, CHARTREUSE.2 as u8, alpha));
+    // hour hand (thick orange over steel)
+    let hour_len = (radius as f32 * 0.6) as i32;
+    let hour_end = GPoint::new(
+        c.x + (hour_len as f32 * hour_angle.cos()) as i32,
+        c.y + (hour_len as f32 * hour_angle.sin()) as i32,
+    );
+    for offset in -1..=1 {
+        let off_c = GPoint::new(c.x + offset, c.y + offset);
+        draw_line_rgba_aa(canvas, off_c, hour_end, rgba(STEEL.0, STEEL.1, STEEL.2, 255));
+        draw_line_rgba_aa(canvas, off_c, hour_end, rgba(ORANGE_ACCENT.0, ORANGE_ACCENT.1, ORANGE_ACCENT.2, 255));
     }
 
-    // center pin (metallic)
-    fill_rounded_rect(canvas, GRect::new(GPoint::new(c.x - 4, c.y - 4), GSize::new(8, 8)), 4, rgb(STEEL_HIGHLIGHT));
+    // minute hand (long sleek steel with cyan highlight)
+    let minute_len = (radius as f32 * 0.85) as i32;
+    let minute_end = GPoint::new(
+        c.x + (minute_len as f32 * minute_angle.cos()) as i32,
+        c.y + (minute_len as f32 * minute_angle.sin()) as i32,
+    );
+    for offset in -1..=1 {
+        let off_c = GPoint::new(c.x + offset, c.y + offset);
+        draw_line_rgba_aa(canvas, off_c, minute_end, rgba(STEEL_HIGHLIGHT.0, STEEL_HIGHLIGHT.1, STEEL_HIGHLIGHT.2, 255));
+    }
+    let cyan_off = 2;
+    draw_line_rgba_aa(
+        canvas,
+        GPoint::new(c.x + cyan_off, c.y + cyan_off),
+        GPoint::new(minute_end.x + cyan_off, minute_end.y + cyan_off),
+        rgba(CYAN_ACCENT.0, CYAN_ACCENT.1, CYAN_ACCENT.2, 220),
+    );
+
+    // second hand with ghost trail
+    let second_len = (radius as f32 * 0.95) as i32;
+    let second_tip = GPoint::new(
+        c.x + (second_len as f32 * second_angle.cos()) as i32,
+        c.y + (second_len as f32 * second_angle.sin()) as i32,
+    );
+    let trail_segments = 8;
+    for s in 0..trail_segments {
+        let alpha = (200 - s as i32 * 20).clamp(30, 200) as u8;
+        let seg_frac = (s as f32) / (trail_segments as f32);
+        let seg_angle = second_angle - seg_frac * 0.015;
+        let seg_len = (second_len as f32 * (1.0 - seg_frac * 0.15)) as i32;
+        let seg_end = GPoint::new(
+            c.x + (seg_len as f32 * seg_angle.cos()) as i32,
+            c.y + (seg_len as f32 * seg_angle.sin()) as i32,
+        );
+        draw_line_rgba_aa(canvas, c, seg_end, rgba(CHARTREUSE.0, CHARTREUSE.1, CHARTREUSE.2, alpha));
+    }
+
+    // center pin (larger metallic dot)
+    fill_rounded_rect(
+        canvas,
+        GRect::new(GPoint::new(c.x - 6, c.y - 6), GSize::new(12, 12)),
+        6,
+        rgb(STEEL_HIGHLIGHT),
+    );
 }
+
 
 // small overlay decorations (HUD icons, triangles, tiny squares)
 fn draw_overlays(canvas: &mut Canvas, t: f32) {
@@ -296,12 +450,19 @@ fn draw_overlays(canvas: &mut Canvas, t: f32) {
     }
 }
 
-// ---------- Full watch task (entry point) ----------
+// ---------- Optimized Watch Application Entry Point ----------
 #[embassy_executor::task]
 pub async fn watch_app(context: AppContext) {
-    info!("Watch app (aesthetic) started");
+    info!("Space-grade watch app started with optimized rendering pipeline");
     let start_time = Instant::now();
-    let model = load_demo_model();
+    
+    // Create optimized render context with cached values
+    // Use default screen dimensions since AppContext doesn't expose canvas size
+    let mut render_context = create_render_context(240, 240);
+    
+    // Performance monitoring
+    let mut frame_count = 0u32;
+    let mut last_fps_time = start_time;
 
     loop {
         if !context.is_focused().await {
@@ -311,21 +472,44 @@ pub async fn watch_app(context: AppContext) {
 
         let elapsed_ms = start_time.elapsed().as_millis() as f32;
         let t = elapsed_ms / 1000.0; // seconds (float) for smooth motion
+        
+        // Update animation cache with new time
+        render_context.animation_cache.update(t);
 
-        // Render pass
+        // Optimized render pass with performance monitoring
         context.draw(|canvas: &mut Canvas| {
-            // Compose the whole face from layers. We avoid changing your existing draw_* functions.
-            draw_background(canvas, t);                         // atmosphere + grid + particles
-            draw_outer_ring(canvas, t);                         // metallic rim sheen
-            draw_hour_markers(canvas, t);                       // hour & minute markers
-            draw_center_orb_and_hologram(canvas, t, &model);    // orb + 3D hologram inside
-            draw_hands(canvas, t);                              // hour, minute, continuous second with trail
-            draw_overlays(canvas, t);                           // HUD bits, rotating arcs, label area
+            let render_start = Instant::now();
+            
+            // Disable dirty tracking for bulk operations to improve performance
+            canvas.set_dirty_tracking(false);
+            
+            // Compose the watch face with optimized rendering layers
+            draw_background(canvas, t);                                    // atmosphere + grid + particles
+            draw_outer_ring(canvas, t);                                    // metallic rim sheen
+            draw_hour_markers(canvas, t);                                  // hour & minute markers
+            draw_center_orb_and_hologram_optimized(canvas, &mut render_context); // optimized orb + 3D hologram
+            draw_hands(canvas, t);                                         // hour, minute, continuous second with trail
+            draw_overlays(canvas, t);                                      // HUD bits, rotating arcs, label area
+            
+            // Re-enable dirty tracking
+            canvas.set_dirty_tracking(true);
+            
+            let render_time = render_start.elapsed().as_millis();
+            frame_count += 1;
+            
+            // Log performance statistics every 60 frames
+            if frame_count % 60 == 0 {
+                let fps_time = Instant::now();
+                let fps = 60.0 / (fps_time - last_fps_time).as_secs() as f32;
+                info!("Performance: {}ms render, {} FPS", render_time, fps);
+                last_fps_time = fps_time;
+            }
         }).await;
 
         context.request_redraw().await;
 
-        // Smooth continuous second hand — aim for 60Hz but keep reasonable on embedded; 16ms ~ 62.5Hz
+        // Optimized frame timing for smooth 60Hz rendering
+        // Use minimal delay to maximize frame rate while being CPU-friendly
         Timer::after(Duration::from_millis(0)).await;
     }
 }

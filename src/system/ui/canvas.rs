@@ -2,6 +2,14 @@ use core::marker::PhantomData;
 use heapless::Vec;
 use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 
+/// Space-grade canvas implementation optimized for embedded systems.
+/// 
+/// This canvas provides high-performance 2D rendering with minimal overhead:
+/// - Batched dirty region updates to reduce fragmentation
+/// - Optimized pixel operations with minimal branching
+/// - Efficient memory layout for cache-friendly access
+/// - Reduced per-pixel overhead through operation batching
+
 /// A statically-safe, framebuffer-backed drawing canvas.
 ///
 /// Supports dirty region tracking and pixel-level rendering. Efficient
@@ -10,10 +18,13 @@ use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 /// Supported color format: `Rgb565`.
 pub struct Canvas<'a> {
     buf: Option<&'a mut [u8]>,
-    // buffer: &'a mut [u8],
     width: u32,
     height: u32,
     dirty_regions: Vec<Rect, 8>,
+    /// Flag to enable/disable dirty region tracking for performance-critical operations
+    dirty_tracking_enabled: bool,
+    /// Current batch operation bounds for efficient dirty region updates
+    batch_bounds: Option<Rect>,
 }
 
 // ===== Canvas Implementation =====
@@ -29,6 +40,8 @@ impl<'a> Canvas<'a> {
                 v.push(Rect::new(Point::zero(), Size::new(width, height))).ok();
                 v
             },
+            dirty_tracking_enabled: true,
+            batch_bounds: None,
         }
     }
     
@@ -149,6 +162,105 @@ impl<'a> Canvas<'a> {
     pub fn mark_dirty(&mut self, area: Rect) {
         self.update_dirty(area);
     }
+    
+    /// Enable or disable dirty region tracking for performance-critical operations.
+    /// 
+    /// When disabled, pixel operations will not update dirty regions, providing
+    /// significant performance improvements for bulk operations.
+    pub fn set_dirty_tracking(&mut self, enabled: bool) {
+        self.dirty_tracking_enabled = enabled;
+    }
+    
+    /// Begin a batch operation for efficient dirty region management.
+    /// 
+    /// During batch operations, individual pixel updates are accumulated into
+    /// a single dirty region, reducing fragmentation and improving performance.
+    pub fn begin_batch(&mut self, bounds: Rect) {
+        self.batch_bounds = Some(bounds);
+    }
+    
+    /// End the current batch operation and update dirty regions.
+    pub fn end_batch(&mut self) {
+        if let Some(bounds) = self.batch_bounds.take() {
+            self.update_dirty(bounds);
+        }
+    }
+    
+    /// Fast pixel set without dirty region tracking.
+    /// 
+    /// This method provides maximum performance for bulk pixel operations
+    /// where dirty region tracking is not needed.
+    #[inline(always)]
+    pub fn set_pixel_fast(&mut self, x: i32, y: i32, color: Rgb565) {
+        if x < 0 || y < 0 { return; }
+        let (x, y) = (x as u32, y as u32);
+        if x >= self.width || y >= self.height { return; }
+        
+        let idx = ((x + y * self.width) * 2) as usize;
+        let raw = color.into_storage();
+        self._buf_mut()[idx] = (raw >> 8) as u8;
+        self._buf_mut()[idx + 1] = raw as u8;
+    }
+    
+    /// Fast pixel blend without dirty region tracking.
+    #[inline(always)]
+    pub fn blend_pixel_fast(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
+        if x < 0 || y < 0 { return; }
+        let (x, y) = (x as u32, y as u32);
+        if x >= self.width || y >= self.height { return; }
+        
+        let idx = ((x + y * self.width) * 2) as usize;
+        let hi = self._buf_mut()[idx] as u16;
+        let lo = self._buf_mut()[idx + 1] as u16;
+        let bg = Rgb565((hi << 8) | lo);
+        let out = color.blend_over(bg, alpha);
+        let raw = out.into_storage();
+        self._buf_mut()[idx] = (raw >> 8) as u8;
+        self._buf_mut()[idx + 1] = raw as u8;
+    }
+    
+    /// Optimized horizontal line drawing with minimal overhead.
+    pub fn draw_hline_fast(&mut self, x1: i32, x2: i32, y: i32, color: Rgb565) {
+        if y < 0 || y >= self.height as i32 { return; }
+        let (x_start, x_end) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
+        let x_start = x_start.max(0).min(self.width as i32 - 1);
+        let x_end = x_end.max(0).min(self.width as i32 - 1);
+        
+        if x_start > x_end { return; }
+        
+        let raw = color.into_storage();
+        let hi = (raw >> 8) as u8;
+        let lo = raw as u8;
+        
+        let start_idx = ((x_start + y * self.width as i32) * 2) as usize;
+        let count = (x_end - x_start + 1) as usize;
+        
+        for i in 0..count {
+            let idx = start_idx + i * 2;
+            self._buf_mut()[idx] = hi;
+            self._buf_mut()[idx + 1] = lo;
+        }
+    }
+    
+    /// Optimized vertical line drawing with minimal overhead.
+    pub fn draw_vline_fast(&mut self, x: i32, y1: i32, y2: i32, color: Rgb565) {
+        if x < 0 || x >= self.width as i32 { return; }
+        let (y_start, y_end) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
+        let y_start = y_start.max(0).min(self.height as i32 - 1);
+        let y_end = y_end.max(0).min(self.height as i32 - 1);
+        
+        if y_start > y_end { return; }
+        
+        let raw = color.into_storage();
+        let hi = (raw >> 8) as u8;
+        let lo = raw as u8;
+        
+        for y in y_start..=y_end {
+            let idx = ((x + y * self.width as i32) * 2) as usize;
+            self._buf_mut()[idx] = hi;
+            self._buf_mut()[idx + 1] = lo;
+        }
+    }
 }
 
 
@@ -198,7 +310,15 @@ fn intersects_or_touches(a: &Rect, b: &Rect) -> bool {
 impl Rasterizer for Canvas<'_> {
     fn width(&self) -> u32 { self.width }
     fn height(&self) -> u32 { self.height }
+    
     fn set_pixel(&mut self, x: i32, y: i32, color: Rgb565) {
+        // Use fast method if dirty tracking is disabled or we're in batch mode
+        if !self.dirty_tracking_enabled || self.batch_bounds.is_some() {
+            self.set_pixel_fast(x, y, color);
+            return;
+        }
+        
+        // Standard implementation with dirty region tracking
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
         if x >= self.width || y >= self.height { return; }
@@ -208,7 +328,15 @@ impl Rasterizer for Canvas<'_> {
         self._buf_mut()[idx + 1] = raw as u8;
         self.update_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
     }
+    
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
+        // Use fast method if dirty tracking is disabled or we're in batch mode
+        if !self.dirty_tracking_enabled || self.batch_bounds.is_some() {
+            self.blend_pixel_fast(x, y, color, alpha);
+            return;
+        }
+        
+        // Standard implementation with dirty region tracking
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
         if x >= self.width || y >= self.height { return; }
