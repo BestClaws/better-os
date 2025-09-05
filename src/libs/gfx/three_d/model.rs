@@ -151,7 +151,10 @@ pub fn parse_binary_stl_into(
 
     // Read triangle count from bytes 80..84 (little endian u32)
     let count_slice = buffer.get(80..84).ok_or(StlError::BufferTooSmall)?;
-    let triangle_count = u32::from_le_bytes(count_slice.try_into().unwrap()) as usize;
+    let count_arr: [u8; 4] = count_slice
+        .try_into()
+        .map_err(|_| StlError::BufferTooSmall)?;
+    let triangle_count = u32::from_le_bytes(count_arr) as usize;
 
     if triangle_count > MAX_TRIANGLES {
         debug!("triangle count exceeds maximum. count: {}", triangle_count);

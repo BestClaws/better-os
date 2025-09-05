@@ -9,48 +9,29 @@ use crate::libs::gfx::three_d::render::{draw_model, RenderOptions};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
                               draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
                               fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
-fn draw_3d_demo(canvas: &mut Canvas, t: f32) {
-    // Load and cache the STL model statically
-    static mut MODEL: Option<Model> = None;
-    static mut MAP: [Option<usize>; MAX_VERTICES] = [None; MAX_VERTICES];
-    unsafe {
-        if MODEL.is_none() {
-            // Embedded asset path; parse_binary_stl expects &[u8]
-            let bytes = include_bytes!("../assets/arrow2.stl");
-            let mut model = Model::new();
-            if parse_binary_stl_into(bytes, &mut model, &mut MAP).is_ok() {
-                MODEL = Some(model);
-            }
-        }
-        if let Some(model) = &MODEL {
-            // Clear background
-            canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
-            // Compute rotation
-            // Compose rotations around Y and X axes
-            let rot_y = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.7);
-            let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.3);
-            let rot = rot_y.mul(rot_x);
-            // Position the model slightly in front of camera
-            let origin = Vec3(0.0, 0.0, 2.0);
-            let opts = RenderOptions {
-                fov_deg: 40.0,
-                light_dir: Vec3(0.9, 0.6, 1.0),
-                intensity_range: (0.2, 1.0),
-                enable_backface_culling: false,
-                enable_zbuffer: false,
-                enable_lighting: true,
-                enable_depth_sorting: true,
-                enable_near_clipping: true,
-                enable_frustum_clipping: false,
-                enable_wireframe: false,
-                enable_shading: true,
-                enable_antialiasing: true,
-                antialiasing_factor: 1,
-                edge_only_antialiasing: true,
-            };
-            draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
-        }
-    }
+fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
+    // Clear background
+    canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
+    // Compose rotations around Y and X axes
+    let rot_y = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.7);
+    let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.3);
+    let rot = rot_y.mul(rot_x);
+    // Position the model slightly in front of camera (camera looks +Z)
+    let origin = Vec3(0.0, 0.0, 2.0);
+    let opts = RenderOptions {
+        fov_deg: 40.0,
+        light_dir: Vec3(-0.9, -0.6, -1.0), // pointing from light towards origin in camera space
+        intensity_range: (0.2, 1.0),
+        enable_backface_culling: true,
+        enable_depth_sorting: true,
+        enable_lighting: true,
+        enable_near_clipping: true,
+        enable_frustum_clipping: false,
+        enable_wireframe: false,
+        enable_shading: true,
+        near_z: 0.1,
+    };
+    draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 }
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
@@ -181,6 +162,11 @@ pub async fn battery_app(context: AppContext) {
     let mut scene = DemoScene::Rects;
     let mut last_switch = Instant::now();
     let start_time = Instant::now();
+    // Load model once safely; reuse across frames.
+    let bytes = include_bytes!("../assets/arrow2.stl");
+    let mut model = Model::new();
+    let mut vertex_map: [Option<usize>; MAX_VERTICES] = [None; MAX_VERTICES];
+    let _ = parse_binary_stl_into(bytes, &mut model, &mut vertex_map);
 
     loop {
         if !context.is_focused().await {
@@ -203,7 +189,7 @@ pub async fn battery_app(context: AppContext) {
                 // DemoScene::GradLinear => draw_grad_linear(canvas, t),
                 // DemoScene::GradRadial => draw_grad_radial(canvas, t),
                 // DemoScene::Alpha => draw_alpha(canvas, t),
-                _=> draw_3d_demo(canvas, t),
+                _=> draw_3d_demo(canvas, t, &model),
             }
         }).await;
 
