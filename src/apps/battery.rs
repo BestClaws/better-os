@@ -2,9 +2,53 @@
 use defmt::info;
 use embassy_time::{Duration, Timer, Instant};
 use micromath::F32Ext;
-use crate::system::ui::gfx::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
+use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
     draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
     fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
+use crate::libs::gfx::three_d::{Model, Quaternion, Vec3, RenderOptions, draw_model, parse_binary_stl_into, MAX_VERTICES};
+fn draw_3d_demo(canvas: &mut Canvas, t: f32) {
+    // Load and cache the STL model statically
+    static mut MODEL: Option<Model> = None;
+    static mut MAP: [Option<usize>; MAX_VERTICES] = [None; MAX_VERTICES];
+    unsafe {
+        if MODEL.is_none() {
+            // Embedded asset path; parse_binary_stl expects &[u8]
+            let bytes = include_bytes!("../assets/geofix.stl");
+            let mut model = Model::new();
+            if parse_binary_stl_into(bytes, &mut model, &mut MAP).is_ok() {
+                MODEL = Some(model);
+            }
+        }
+        if let Some(model) = &MODEL {
+            // Clear background
+            canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
+            // Compute rotation
+            // Compose rotations around Y and X axes
+            let rot_y = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.7);
+            let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.3);
+            let rot = rot_y.mul(rot_x);
+            // Position the model slightly in front of camera
+            let origin = Vec3(0.0, 0.0, 3.0);
+            let opts = RenderOptions {
+                fov_deg: 60.0,
+                light_dir: Vec3(0.3, 0.6, 1.0),
+                intensity_range: (0.2, 1.0),
+                enable_backface_culling: true,
+                enable_zbuffer: false,
+                enable_lighting: true,
+                enable_depth_sorting: true,
+                enable_near_clipping: true,
+                enable_frustum_clipping: false,
+                enable_wireframe: false,
+                enable_shading: true,
+                enable_antialiasing: true,
+                antialiasing_factor: 1,
+                edge_only_antialiasing: true,
+            };
+            draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
+        }
+    }
+}
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
 
@@ -12,10 +56,10 @@ const CANVAS_WIDTH: i32 = 320;
 const CANVAS_HEIGHT: i32 = 240;
 
 #[derive(Clone, Copy)]
-enum DemoScene { Rects, RoundedRects, Arcs, Lines, GradLinear, GradRadial, Alpha }
+enum DemoScene { Rects, RoundedRects, Arcs, Lines, GradLinear, GradRadial, Alpha, ThreeD }
 
 impl DemoScene {
-    fn next(self) -> Self { match self { DemoScene::Rects => DemoScene::RoundedRects, DemoScene::RoundedRects => DemoScene::Arcs, DemoScene::Arcs => DemoScene::Lines, DemoScene::Lines => DemoScene::GradLinear, DemoScene::GradLinear => DemoScene::GradRadial, DemoScene::GradRadial => DemoScene::Alpha, DemoScene::Alpha => DemoScene::Rects } }
+    fn next(self) -> Self { match self { DemoScene::Rects => DemoScene::RoundedRects, DemoScene::RoundedRects => DemoScene::Arcs, DemoScene::Arcs => DemoScene::Lines, DemoScene::Lines => DemoScene::GradLinear, DemoScene::GradLinear => DemoScene::GradRadial, DemoScene::GradRadial => DemoScene::Alpha, DemoScene::Alpha => DemoScene::ThreeD, DemoScene::ThreeD => DemoScene::Rects } }
 }
 
 fn draw_rects(canvas: &mut Canvas, t: f32) {
@@ -156,6 +200,7 @@ pub async fn battery_app(context: AppContext) {
                 DemoScene::GradLinear => draw_grad_linear(canvas, t),
                 DemoScene::GradRadial => draw_grad_radial(canvas, t),
                 DemoScene::Alpha => draw_alpha(canvas, t),
+                DemoScene::ThreeD => draw_3d_demo(canvas, t),
             }
         }).await;
 

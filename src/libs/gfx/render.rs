@@ -1,17 +1,12 @@
 #![no_std]
 
 use core::iter::Iterator;
-use embedded_graphics::{
-    pixelcolor::Rgb565,
-    prelude::{DrawTarget, Dimensions, OriginDimensions, Point, Size},
-    Drawable, Pixel,
-};
-use embedded_graphics::primitives::{Triangle, Line, PrimitiveStyle};
+use crate::libs::gfx::two_d::types::{Point, Rgb565};
 use micromath::F32Ext;
 use defmt::{info, debug, warn, error};
-use embedded_graphics::prelude::Primitive;
 use embedded_graphics_core::prelude::RgbColor;
 use crate::libs::gfx::Model;
+use crate::libs::gfx::two_d::{draw_line_aa, Rasterizer};
 use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use super::math::{Quaternion, Vec3};
 
@@ -36,8 +31,8 @@ pub struct RenderOptions {
 #[inline(always)]
 fn get_grayscale_color(intensity: f32) -> Rgb565 {
     let clamped = intensity.clamp(0.0, 1.0);
-    let value = (clamped * 31.0).round() as u8; // map to 5-bit red
-    Rgb565::new(value, value * 2, value) // simple gray mapping, green gets 6 bits
+    let v8 = (clamped * 255.0).round() as u8;
+    Rgb565::from_rgb(v8, v8, v8)
 }
 
 #[inline(always)]
@@ -77,49 +72,26 @@ struct ShadedTriangle {
     color: Rgb565,
 }
 
-impl OriginDimensions for ShadedTriangle {
-    fn size(&self) -> Size {
-        Triangle::new(self.p0, self.p1, self.p2).bounding_box().size
-    }
-}
-
-impl Drawable for ShadedTriangle {
-    type Color = Rgb565;
-    type Output = ();
-
-    fn draw<D: DrawTarget<Color = Rgb565>>(&self, target: &mut D) -> Result<(), D::Error> {
-        let mut pts = [self.p0, self.p1, self.p2];
-        pts.sort_by_key(|p| p.y);
-        let (top, mid, bot) = (pts[0], pts[1], pts[2]);
-
-        if top.y == bot.y { return Ok(()); }
-
-        let w = target.bounding_box().size.width as i32;
-        let h = target.bounding_box().size.height as i32;
-
-        let interp = |y, y0, y1, x0, x1| if y1 == y0 { x0 } else { x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
-
-        for y in top.y..=bot.y {
-            if y < 0 || y >= h { continue; }
-
-            let (xa, xb) = if y < mid.y {
-                (interp(y, top.y, bot.y, top.x, bot.x), interp(y, top.y, mid.y, top.x, mid.x))
-            } else {
-                (interp(y, top.y, bot.y, top.x, bot.x), interp(y, mid.y, bot.y, mid.x, bot.x))
-            };
-
-            let (x_start, x_end) = if xa < xb { (xa, xb) } else { (xb, xa) };
-            for x in x_start..=x_end {
-                if x >= 0 && x < w {
-                    let mut final_color = self.color;
-                    if let Some(aa_color) = apply_antialiasing(x, y, self) {
-                        final_color = aa_color;
-                    }
-                    target.draw_iter(core::iter::once(Pixel(Point::new(x, y), final_color)))?;
-                }
-            }
+// Triangle fill using our rasterizer target
+fn draw_triangle<R: Rasterizer>(r: &mut R, tri: &ShadedTriangle) {
+    let mut pts = [tri.p0, tri.p1, tri.p2];
+    pts.sort_by_key(|p| p.y);
+    let (top, mid, bot) = (pts[0], pts[1], pts[2]);
+    if top.y == bot.y { return; }
+    let w = r.width() as i32;
+    let h = r.height() as i32;
+    let interp = |y, y0, y1, x0, x1| if y1 == y0 { x0 } else { x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
+    for y in top.y..=bot.y {
+        if y < 0 || y >= h { continue; }
+        let (xa, xb) = if y < mid.y {
+            (interp(y, top.y, bot.y, top.x, bot.x), interp(y, top.y, mid.y, top.x, mid.x))
+        } else {
+            (interp(y, top.y, bot.y, top.x, bot.x), interp(y, mid.y, bot.y, mid.x, bot.x))
+        };
+        let (x_start, x_end) = if xa < xb { (xa, xb) } else { (xb, xa) };
+        for x in x_start..=x_end {
+            if x >= 0 && x < w { r.set_pixel(x, y, tri.color); }
         }
-        Ok(())
     }
 }
 
@@ -130,10 +102,8 @@ fn apply_antialiasing(x: i32, y: i32, tri: &ShadedTriangle) -> Option<Rgb565> {
 
     let min_dist = dist0.min(dist1).min(dist2);
     if min_dist < 2 {
-        let mut r = tri.color.r() >> 3; // reduce 5-bit red by 1
-        if r > 0 { r -= 1; }
-        let aa_color = Rgb565::new(r, r * 2, r);
-        return Some(aa_color);
+        // Dim towards black for edge pixels to approximate AA
+        return Some(tri.color.blend_over(Rgb565::BLACK, 128));
     }
     None
 }
@@ -171,15 +141,15 @@ fn sort_triangles(model: &Model, world_vertices: &[Vec3; MAX_VERTICES]) -> [(usi
     triangle_meta
 }
 
-pub fn draw_model<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
+pub fn draw_model<R: Rasterizer>(
+    raster: &mut R,
     model: &Model,
     origin: Vec3,
     rotation: Quaternion,
     width: u32,
     height: u32,
     options: &RenderOptions,
-) -> Result<(), D::Error> {
+) {
     let light_dir = options.light_dir.normalize();
 
     let (world_vertices, projected) = transform_and_project_vertices(model, origin, rotation, width, height, options);
@@ -213,18 +183,8 @@ pub fn draw_model<D: DrawTarget<Color = Rgb565>>(
             let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * diffuse;
             let color = get_grayscale_color(intensity);
 
-            if options.enable_shading {
-                ShadedTriangle { p0, p1, p2, color }.draw(display)?;
-            }
-
-            if options.enable_wireframe {
-                let style = PrimitiveStyle::with_stroke(Rgb565::new(31, 63, 31), 1);
-                Line::new(p0, p1).into_styled(style).draw(display)?;
-                Line::new(p1, p2).into_styled(style).draw(display)?;
-                Line::new(p2, p0).into_styled(style).draw(display)?;
-            }
+            if options.enable_shading { draw_triangle(raster, &ShadedTriangle { p0, p1, p2, color }); }
+            if options.enable_wireframe { draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0)); draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0)); draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0)); }
         }
     }
-
-    Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::ui::canvas::Canvas;
-use crate::system::ui::gfx::{Rect, Rgb565};
+use crate::libs::gfx::two_d::{Rect, Rgb565};
 use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR
 };

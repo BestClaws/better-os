@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 use heapless::Vec;
-use crate::system::ui::gfx::{Rasterizer, Rgb565, Rect, Point, Size};
+use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 
 /// A statically-safe, framebuffer-backed drawing canvas.
 ///

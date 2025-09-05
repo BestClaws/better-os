@@ -1,7 +1,6 @@
 use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
-use crate::system::ui::gfx::Rgb565;
 use crate::system::services::human_input_srv::HumanInputEvent;
 use crate::system::ui::canvas::Canvas;
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};

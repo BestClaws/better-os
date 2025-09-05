@@ -5,7 +5,6 @@ use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use crate::system::ui::gfx::Rgb565;
 
 pub struct AppContext {
     pub handle: WindowHandle,
