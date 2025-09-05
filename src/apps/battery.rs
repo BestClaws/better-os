@@ -162,7 +162,12 @@ fn draw_grad_linear(canvas: &mut Canvas, t: f32) {
     let rect = GRect::new(GPoint::new(m, ch / 2 - ch / 6), GSize::new((cw - 2 * m) as u32, (ch / 3) as u32));
     let end_x = cw - m - ((cw as f32 * 0.1) * (t * 0.7).sin()) as i32;
     let end_y = ch / 2 + ch / 6 + ((ch as f32 * 0.05) * (t * 0.9).cos()) as i32;
-    let grad = LinearGradient { start: GPoint::new(m, ch / 2 - ch / 6), end: GPoint::new(end_x, end_y), start_color: Rgb565::from_rgb(255, 0, 0), end_color: Rgb565::from_rgb(0, 0, 255) };
+    let grad = LinearGradient::new(
+        GPoint::new(m, ch / 2 - ch / 6), 
+        GPoint::new(end_x, end_y), 
+        Rgb565::from_rgb(255, 0, 0), 
+        Rgb565::from_rgb(0, 0, 255)
+    );
     fill_rect_linear_gradient(canvas, rect, &grad);
 }
 
@@ -175,7 +180,12 @@ fn draw_grad_radial(canvas: &mut Canvas, t: f32) {
     let r = (cw.min(ch) / 3).max(16) as u32;
     let cx = cw / 2 + ((cw as f32 * 0.1) * (t * 0.6).sin()) as i32;
     let cy = ch / 2 + ((ch as f32 * 0.1) * (t * 0.6).cos()) as i32;
-    let grad = RadialGradient { center: GPoint::new(cx, cy), radius: r, inner_color: Rgb565::from_rgb(255, 255, 0), outer_color: Rgb565::from_rgb(0, 0, 0) };
+    let grad = RadialGradient::new(
+        GPoint::new(cx, cy), 
+        r, 
+        Rgb565::from_rgb(255, 255, 0), 
+        Rgb565::from_rgb(0, 0, 0)
+    );
     fill_rect_radial_gradient(canvas, rect, &grad);
 }
 

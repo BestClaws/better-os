@@ -245,21 +245,21 @@ fn draw_background(canvas: &mut Canvas, t: f32) {
     // Radial center gradient (soft glow center -> darker edges)
     let center = GPoint::new(w / 2, h / 2);
     let radius = (w.max(h) / 2) as u32;
-    let grad = RadialGradient {
+    let grad = RadialGradient::new(
         center,
         radius,
-        inner_color: rgb(MID_GRAY),
-        outer_color: rgb(BASE_DARK),
-    };
+        rgb(MID_GRAY),
+        rgb(BASE_DARK),
+    );
     fill_rect_radial_gradient(canvas, GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)), &grad);
 
     // Subtle long linear wash (a faint diagonal color wash derived from cyan/steel)
-    let grad2 = LinearGradient {
-        start: GPoint::new(0, 0),
-        end: GPoint::new(w, h),
-        start_color: rgb((20, 24, 30)),
-        end_color: rgb((40, 36, 44)),
-    };
+    let grad2 = LinearGradient::new(
+        GPoint::new(0, 0),
+        GPoint::new(w, h),
+        rgb((20, 24, 30)),
+        rgb((40, 36, 44)),
+    );
     fill_rect_linear_gradient(canvas, GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)), &grad2);
 
     // Very faint gridlines for HUD aesthetic (draw a few thin lines)
@@ -371,12 +371,12 @@ fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut Wat
     ));
 
     // Optimized radial gradient disc for orb
-    let orb_grad = RadialGradient {
-        center: c,
-        radius: orb_r * 2,
-        inner_color: rgb((68, 72, 80)),
-        outer_color: rgb(BASE_DARK),
-    };
+    let orb_grad = RadialGradient::new(
+        c,
+        orb_r * 2,
+        rgb((68, 72, 80)),
+        rgb(BASE_DARK),
+    );
     fill_rect_radial_gradient(canvas, GRect::new(
         GPoint::new(c.x - orb_r as i32, c.y - orb_r as i32), 
         GSize::new((orb_r * 2) as u32, (orb_r * 2) as u32)

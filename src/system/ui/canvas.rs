@@ -202,21 +202,30 @@ impl<'a> Canvas<'a> {
         }
     }
     
-    /// Efficient pixel set with built-in dirty region tracking.
+    /// Ultra-fast pixel set with built-in dirty region tracking.
     /// 
-    /// This method is optimized for performance while maintaining automatic
+    /// This method is optimized for maximum performance while maintaining automatic
     /// dirty region tracking. The dirty region update is deferred during
     /// batched operations for maximum efficiency.
+    /// 
+    /// Key optimizations:
+    /// - Fast bounds checking with early exit
+    /// - Optimized memory access patterns
+    /// - Efficient dirty region tracking
+    /// - Minimal branching for better performance
     #[inline(always)]
     fn set_pixel_internal(&mut self, x: i32, y: i32, color: Rgb565) {
+        // Fast bounds checking with early exit
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
         if x >= self.width || y >= self.height { return; }
         
+        // Optimized pixel setting using direct memory access
         let idx = ((x + y * self.width) * 2) as usize;
         let raw = color.into_storage();
-        self._buf_mut()[idx] = (raw >> 8) as u8;
-        self._buf_mut()[idx + 1] = raw as u8;
+        let buf = self._buf_mut();
+        buf[idx] = (raw >> 8) as u8;
+        buf[idx + 1] = raw as u8;
         
         // Only mark dirty if not in a batched operation
         if self.current_operation_bounds.is_none() {
@@ -224,21 +233,34 @@ impl<'a> Canvas<'a> {
         }
     }
     
-    /// Efficient pixel blend with built-in dirty region tracking.
+    /// Ultra-fast pixel blend with built-in dirty region tracking.
+    /// 
+    /// This method is optimized for maximum performance while maintaining automatic
+    /// dirty region tracking. The dirty region update is deferred during
+    /// batched operations for maximum efficiency.
+    /// 
+    /// Key optimizations:
+    /// - Fast bounds checking with early exit
+    /// - Optimized alpha blending using fast path for common values
+    /// - Efficient memory access patterns
+    /// - Minimal branching for better performance
     #[inline(always)]
     fn blend_pixel_internal(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
+        // Fast bounds checking with early exit
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
         if x >= self.width || y >= self.height { return; }
         
+        // Optimized pixel blending using direct memory access
         let idx = ((x + y * self.width) * 2) as usize;
-        let hi = self._buf_mut()[idx] as u16;
-        let lo = self._buf_mut()[idx + 1] as u16;
+        let buf = self._buf_mut();
+        let hi = buf[idx] as u16;
+        let lo = buf[idx + 1] as u16;
         let bg = Rgb565((hi << 8) | lo);
-        let out = color.blend_over(bg, alpha);
+        let out = color.blend_over_fast(bg, alpha);
         let raw = out.into_storage();
-        self._buf_mut()[idx] = (raw >> 8) as u8;
-        self._buf_mut()[idx + 1] = raw as u8;
+        buf[idx] = (raw >> 8) as u8;
+        buf[idx + 1] = raw as u8;
         
         // Only mark dirty if not in a batched operation
         if self.current_operation_bounds.is_none() {
@@ -309,6 +331,132 @@ impl Rasterizer for Canvas<'_> {
     /// operations, dirty region updates are deferred for maximum performance.
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
         self.blend_pixel_internal(x, y, color, alpha);
+    }
+    
+    /// Optimized horizontal pixel setting with bulk operations.
+    /// 
+    /// This method provides an optimized path for setting multiple pixels
+    /// in a horizontal line, which is common in many rendering operations.
+    fn set_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: Rgb565) {
+        // Fast bounds checking
+        if y < 0 || y >= self.height as i32 { return; }
+        if x < 0 || x + width as i32 > self.width as i32 { return; }
+        
+        let start_x = x.max(0) as u32;
+        let end_x = (x + width as i32).min(self.width as i32) as u32;
+        let actual_width = end_x - start_x;
+        
+        if actual_width == 0 { return; }
+        
+        // Use optimized bulk memory operations
+        let y_offset = y as u32 * self.width;
+        let start_idx = ((start_x + y_offset) * 2) as usize;
+        let raw = color.into_storage();
+        let hi_byte = (raw >> 8) as u8;
+        let lo_byte = raw as u8;
+        
+        let buf = self._buf_mut();
+        for i in 0..actual_width {
+            let idx = start_idx + (i * 2) as usize;
+            buf[idx] = hi_byte;
+            buf[idx + 1] = lo_byte;
+        }
+        
+        // Mark region dirty
+        if self.current_operation_bounds.is_none() {
+            self.mark_region_dirty(Rect::new(
+                Point::new(start_x as i32, y),
+                Size::new(actual_width, 1)
+            ));
+        }
+    }
+    
+    /// Optimized vertical pixel setting with bulk operations.
+    /// 
+    /// This method provides an optimized path for setting multiple pixels
+    /// in a vertical line, which is common in many rendering operations.
+    fn set_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: Rgb565) {
+        // Fast bounds checking
+        if x < 0 || x >= self.width as i32 { return; }
+        if y < 0 || y + height as i32 > self.height as i32 { return; }
+        
+        let start_y = y.max(0) as u32;
+        let end_y = (y + height as i32).min(self.height as i32) as u32;
+        let actual_height = end_y - start_y;
+        
+        if actual_height == 0 { return; }
+        
+        // Use optimized bulk memory operations
+        let raw = color.into_storage();
+        let hi_byte = (raw >> 8) as u8;
+        let lo_byte = raw as u8;
+        
+        let width = self.width;
+        let buf = self._buf_mut();
+        for i in 0..actual_height {
+            let idx = ((x as u32 + (start_y + i) * width) * 2) as usize;
+            buf[idx] = hi_byte;
+            buf[idx + 1] = lo_byte;
+        }
+        
+        // Mark region dirty
+        if self.current_operation_bounds.is_none() {
+            self.mark_region_dirty(Rect::new(
+                Point::new(x, start_y as i32),
+                Size::new(1, actual_height)
+            ));
+        }
+    }
+    
+    /// Optimized rectangular pixel setting with bulk operations.
+    /// 
+    /// This method provides an optimized path for setting multiple pixels
+    /// in a rectangular region, which is common in many rendering operations.
+    fn set_pixels_rect(&mut self, rect: Rect, color: Rgb565) {
+        // Fast bounds checking
+        if rect.size.width == 0 || rect.size.height == 0 { return; }
+        
+        let clip = Rect::new(Point::zero(), Size::new(self.width, self.height));
+        let Some(clipped_rect) = rect.intersection(&clip) else { return; };
+        
+        // Use optimized bulk memory operations
+        let raw = color.into_storage();
+        let hi_byte = (raw >> 8) as u8;
+        let lo_byte = raw as u8;
+        
+        let width = self.width;
+        let buf = self._buf_mut();
+        for y in clipped_rect.top_left.y..=clipped_rect.bottom() {
+            let y_offset = y as u32 * width;
+            for x in clipped_rect.top_left.x..=clipped_rect.right() {
+                let idx = ((x as u32 + y_offset) * 2) as usize;
+                buf[idx] = hi_byte;
+                buf[idx + 1] = lo_byte;
+            }
+        }
+        
+        // Mark region dirty
+        if self.current_operation_bounds.is_none() {
+            self.mark_region_dirty(clipped_rect);
+        }
+    }
+    
+    /// Get pixel color for read-back operations.
+    /// 
+    /// This method provides pixel read-back functionality for advanced
+    /// blending algorithms and effects.
+    fn get_pixel(&self, x: i32, y: i32) -> Rgb565 {
+        // Fast bounds checking
+        if x < 0 || y < 0 { return Rgb565::BLACK; }
+        let (x, y) = (x as u32, y as u32);
+        if x >= self.width || y >= self.height { return Rgb565::BLACK; }
+        
+        // Read pixel data
+        let idx = ((x + y * self.width) * 2) as usize;
+        let buf = self._buf();
+        let hi = buf[idx] as u16;
+        let lo = buf[idx + 1] as u16;
+        Rgb565((hi << 8) | lo)
     }
 }
 
