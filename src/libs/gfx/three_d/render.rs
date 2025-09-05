@@ -36,6 +36,12 @@ pub struct RenderOptions {
     pub near_z: f32,
     /// Enable Gouraud shading (per-vertex lighting interpolation).
     pub enable_gouraud_shading: bool,
+    /// Ambient light color (per-channel 5/6/5 expanded to 8-bit internally).
+    pub ambient_color: Rgb565,
+    /// Directional light color (per-channel 5/6/5 expanded to 8-bit internally).
+    pub directional_color: Rgb565,
+    /// Base model color (per-channel 5/6/5 expanded to 8-bit internally).
+    pub model_color: Rgb565,
 }
 
 #[inline(always)]
@@ -43,6 +49,32 @@ fn grayscale(intensity: f32) -> Rgb565 {
     let clamped = intensity.clamp(0.0, 1.0);
     let v8 = (clamped * 255.0).round() as u8;
     Rgb565::from_rgb(v8, v8, v8)
+}
+
+#[inline(always)]
+fn rgb565_to_rgb8(c: Rgb565) -> (u8, u8, u8) {
+    let r5 = ((c.0 >> 11) & 0x1F) as u8;
+    let g6 = ((c.0 >> 5) & 0x3F) as u8;
+    let b5 = (c.0 & 0x1F) as u8;
+    let r = ((r5 as u16 * 527 + 23) >> 6) as u8;
+    let g = ((g6 as u16 * 259 + 33) >> 6) as u8;
+    let b = ((b5 as u16 * 527 + 23) >> 6) as u8;
+    (r, g, b)
+}
+
+#[inline(always)]
+fn modulate_lit_color(model: Rgb565, ambient: Rgb565, directional: Rgb565, lambert: f32) -> Rgb565 {
+    let (mr, mg, mb) = rgb565_to_rgb8(model);
+    let (ar, ag, ab) = rgb565_to_rgb8(ambient);
+    let (dr, dg, db) = rgb565_to_rgb8(directional);
+    let i = lambert.clamp(0.0, 1.0);
+    let fr = (ar as f32 / 255.0) + (dr as f32 / 255.0) * i;
+    let fg = (ag as f32 / 255.0) + (dg as f32 / 255.0) * i;
+    let fb = (ab as f32 / 255.0) + (db as f32 / 255.0) * i;
+    let rr = ((mr as f32) * fr).clamp(0.0, 255.0) as u8;
+    let rg = ((mg as f32) * fg).clamp(0.0, 255.0) as u8;
+    let rb = ((mb as f32) * fb).clamp(0.0, 255.0) as u8;
+    Rgb565::from_rgb(rr, rg, rb)
 }
 
 /// Perspective projection from camera space (camera at origin looking +Z).
@@ -80,21 +112,47 @@ fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle) {
     let w = r.width() as i32;
     let h = r.height() as i32;
     let interp = |y, y0, y1, x0, x1| if y1 == y0 { x0 } else { x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
+    let interp_f = |y: i32, y0: i32, y1: i32, x0: i32, x1: i32| if y1 == y0 { x0 as f32 } else { x0 as f32 + (x1 - x0) as f32 * (y - y0) as f32 / (y1 - y0) as f32 };
     for y in top.y..=bot.y {
         if y < 0 || y >= h { continue; }
-        let (xa, xb) = if y < mid.y {
-            (interp(y, top.y, bot.y, top.x, bot.x), interp(y, top.y, mid.y, top.x, mid.x))
+        let (xa, xb, xa_f, xb_f) = if y < mid.y {
+            (
+                interp(y, top.y, bot.y, top.x, bot.x),
+                interp(y, top.y, mid.y, top.x, mid.x),
+                interp_f(y, top.y, bot.y, top.x, bot.x),
+                interp_f(y, top.y, mid.y, top.x, mid.x),
+            )
         } else {
-            (interp(y, top.y, bot.y, top.x, bot.x), interp(y, mid.y, bot.y, mid.x, bot.x))
+            (
+                interp(y, top.y, bot.y, top.x, bot.x),
+                interp(y, mid.y, bot.y, mid.x, bot.x),
+                interp_f(y, top.y, bot.y, top.x, bot.x),
+                interp_f(y, mid.y, bot.y, mid.x, bot.x),
+            )
         };
-        let (x_start, x_end) = if xa <= xb { (xa, xb) } else { (xb, xa) };
+        let (x_start, x_end, x_start_f, x_end_f) = if xa <= xb { (xa, xb, xa_f, xb_f) } else { (xb, xa, xb_f, xa_f) };
         let xs = x_start.max(0); let xe = x_end.min(w - 1);
-        for x in xs..=xe { r.set_pixel(x, y, tri.color); }
+        if xs <= xe {
+            // Subpixel edge coverage for start and end pixels
+            if xs >= 0 && xs < w {
+                let cov_start = 1.0 - (x_start_f.fract()).abs();
+                let alpha = (cov_start.clamp(0.0, 1.0) * 255.0) as u8;
+                r.blend_pixel(xs, y, tri.color, alpha);
+            }
+            if xe >= 0 && xe < w && xe != xs {
+                let cov_end = (x_end_f.fract()).abs();
+                let alpha = (cov_end.clamp(0.0, 1.0) * 255.0) as u8;
+                r.blend_pixel(xe, y, tri.color, alpha);
+            }
+            // Fill inner
+            let inner_start = (xs + 1).min(xe);
+            for x in inner_start..xe { r.set_pixel(x, y, tri.color); }
+        }
     }
 }
 
 /// Gouraud scanline fill (interpolate intensity along edges and across span).
-fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32)) {
+fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgb565, ambient: Rgb565, directional: Rgb565) {
     let mut pts = [(tri.p0, tri.i0), (tri.p1, tri.i1), (tri.p2, tri.i2)];
     pts.sort_by_key(|p| p.0.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
@@ -122,11 +180,29 @@ fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range:
         };
         let (x_start, x_end, i_start, i_end) = if xa <= xb { (xa, xb, ia, ib) } else { (xb, xa, ib, ia) };
         let xs = x_start.max(0); let xe = x_end.min(w - 1);
-        for x in xs..=xe {
-            let t = if x_end == x_start { 0.0 } else { (x - x_start) as f32 / (x_end - x_start) as f32 };
-            let i = i_start + (i_end - i_start) * t;
-            let intensity = range.0 + (range.1 - range.0) * i.clamp(0.0, 1.0);
-            r.set_pixel(x, y, grayscale(intensity));
+        if xs <= xe {
+            // Blend AA at the edges using fractional coverage
+            if xs >= 0 && xs < w {
+                let i = i_start;
+                let lambert = i.clamp(0.0, 1.0);
+                let color = modulate_lit_color(model, ambient, directional, lambert);
+                r.blend_pixel(xs, y, color, 160);
+            }
+            if xe >= 0 && xe < w && xe != xs {
+                let i = i_end;
+                let lambert = i.clamp(0.0, 1.0);
+                let color = modulate_lit_color(model, ambient, directional, lambert);
+                r.blend_pixel(xe, y, color, 160);
+            }
+            let inner_start = (xs + 1).min(xe);
+            for x in inner_start..xe {
+                let t = if x_end == x_start { 0.0 } else { (x - x_start) as f32 / (x_end - x_start) as f32 };
+                let i = i_start + (i_end - i_start) * t;
+                let intensity = range.0 + (range.1 - range.0) * i.clamp(0.0, 1.0);
+                let lambert = ((intensity - range.0) / (range.1 - range.0)).clamp(0.0, 1.0);
+                let color = modulate_lit_color(model, ambient, directional, lambert);
+                r.set_pixel(x, y, color);
+            }
         }
     }
 }
@@ -223,14 +299,25 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
             let i0 = (-n0.dot(light_dir)).max(0.0);
             let i1 = (-n1.dot(light_dir)).max(0.0);
             let i2 = (-n2.dot(light_dir)).max(0.0);
-            fill_triangle_gouraud(raster, &GouraudTriangle { p0, p1, p2, i0, i1, i2 }, options.intensity_range);
+            fill_triangle_gouraud(
+                raster,
+                &GouraudTriangle { p0, p1, p2, i0, i1, i2 },
+                options.intensity_range,
+                options.model_color,
+                options.ambient_color,
+                options.directional_color,
+            );
         } else {
             // Flat Lambert lighting using face normal in camera space.
             let color = if options.enable_lighting {
                 let n = face_normal_cam_space(vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]);
                 let lambert = (-n.dot(light_dir)).max(0.0);
-                let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * lambert;
-                grayscale(intensity)
+                modulate_lit_color(
+                    options.model_color,
+                    options.ambient_color,
+                    options.directional_color,
+                    lambert,
+                )
             } else { grayscale(1.0) };
             if options.enable_shading { fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }); }
         }

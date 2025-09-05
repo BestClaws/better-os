@@ -18,9 +18,12 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     let rot = rot_y.mul(rot_x);
     // Position the model slightly in front of camera (camera looks +Z)
     let origin = Vec3(0.0, 0.0, 2.0);
+    let light_rot = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 }
+        .mul(Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.5));
+    let light_dir = light_rot.rotate_vector(Vec3(0.9, -0.6, -1.0));
     let opts = RenderOptions {
         fov_deg: 40.0,
-        light_dir: Vec3(-0.9, -0.6, -1.0), // pointing from light towards origin in camera space
+        light_dir,
         intensity_range: (0.2, 1.0),
         enable_backface_culling: true,
         enable_depth_sorting: true,
@@ -31,6 +34,9 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         enable_shading: true,
         near_z: 0.1,
         enable_gouraud_shading: true,
+        ambient_color: Rgb565::from_rgb(40, 40, 60),
+        directional_color: Rgb565::from_rgb(220, 220, 240),
+        model_color: Rgb565::from_rgb(200, 200, 255),
     };
     draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 }
