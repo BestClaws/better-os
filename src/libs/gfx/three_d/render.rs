@@ -34,6 +34,8 @@ pub struct RenderOptions {
     pub enable_shading: bool,
     /// Near plane distance. Only used when `enable_near_clipping` is true.
     pub near_z: f32,
+    /// Enable Gouraud shading (per-vertex lighting interpolation).
+    pub enable_gouraud_shading: bool,
 }
 
 #[inline(always)]
@@ -66,6 +68,9 @@ fn project_perspective(v: Vec3, fov_deg: f32, w: u32, h: u32, near_z: f32, clip_
 #[derive(Clone, Copy)]
 struct FlatTriangle { p0: Point, p1: Point, p2: Point, color: Rgb565 }
 
+#[derive(Clone, Copy)]
+struct GouraudTriangle { p0: Point, p1: Point, p2: Point, i0: f32, i1: f32, i2: f32 }
+
 /// Simple scanline triangle filler.
 fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle) {
     let mut pts = [tri.p0, tri.p1, tri.p2];
@@ -85,6 +90,44 @@ fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle) {
         let (x_start, x_end) = if xa <= xb { (xa, xb) } else { (xb, xa) };
         let xs = x_start.max(0); let xe = x_end.min(w - 1);
         for x in xs..=xe { r.set_pixel(x, y, tri.color); }
+    }
+}
+
+/// Gouraud scanline fill (interpolate intensity along edges and across span).
+fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32)) {
+    let mut pts = [(tri.p0, tri.i0), (tri.p1, tri.i1), (tri.p2, tri.i2)];
+    pts.sort_by_key(|p| p.0.y);
+    let (top, mid, bot) = (pts[0], pts[1], pts[2]);
+    if top.0.y == bot.0.y { return; }
+    let w = r.width() as i32;
+    let h = r.height() as i32;
+    let interp = |y, y0, y1, x0, x1| if y1 == y0 { x0 } else { x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
+    let interpf = |y: i32, y0: i32, y1: i32, v0: f32, v1: f32| if y1 == y0 { v0 } else { v0 + (v1 - v0) * ((y - y0) as f32) / ((y1 - y0) as f32) };
+    for y in top.0.y..=bot.0.y {
+        if y < 0 || y >= h { continue; }
+        let (xa, ia, xb, ib) = if y < mid.0.y {
+            (
+                interp(y, top.0.y, bot.0.y, top.0.x, bot.0.x),
+                interpf(y, top.0.y, bot.0.y, top.1, bot.1),
+                interp(y, top.0.y, mid.0.y, top.0.x, mid.0.x),
+                interpf(y, top.0.y, mid.0.y, top.1, mid.1),
+            )
+        } else {
+            (
+                interp(y, top.0.y, bot.0.y, top.0.x, bot.0.x),
+                interpf(y, top.0.y, bot.0.y, top.1, bot.1),
+                interp(y, mid.0.y, bot.0.y, mid.0.x, bot.0.x),
+                interpf(y, mid.0.y, bot.0.y, mid.1, bot.1),
+            )
+        };
+        let (x_start, x_end, i_start, i_end) = if xa <= xb { (xa, xb, ia, ib) } else { (xb, xa, ib, ia) };
+        let xs = x_start.max(0); let xe = x_end.min(w - 1);
+        for x in xs..=xe {
+            let t = if x_end == x_start { 0.0 } else { (x - x_start) as f32 / (x_end - x_start) as f32 };
+            let i = i_start + (i_end - i_start) * t;
+            let intensity = range.0 + (range.1 - range.0) * i.clamp(0.0, 1.0);
+            r.set_pixel(x, y, grayscale(intensity));
+        }
     }
 }
 
@@ -123,12 +166,33 @@ fn triangle_order(model: &Model, vertices_cam: &[Vec3; MAX_VERTICES]) -> [(usize
     order
 }
 
+fn compute_vertex_normals_cam_space(model: &Model, vertices_cam: &[Vec3; MAX_VERTICES]) -> [Vec3; MAX_VERTICES] {
+    let mut normals = [Vec3(0.0, 0.0, 0.0); MAX_VERTICES];
+    for i in 0..model.triangle_count {
+        let tri = &model.triangles[i];
+        let n = face_normal_cam_space(
+            vertices_cam[tri.vertices[0]],
+            vertices_cam[tri.vertices[1]],
+            vertices_cam[tri.vertices[2]],
+        );
+        // Accumulate face normal to each vertex normal
+        for &vi in &tri.vertices {
+            normals[vi] = normals[vi].add(n);
+        }
+    }
+    for i in 0..model.vertex_count { normals[i] = normals[i].normalize(); }
+    normals
+}
+
 pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3, model_rotation: Quaternion, width: u32, height: u32, options: &RenderOptions) {
     let light_dir = options.light_dir.normalize();
 
     // Camera-space transform (model -> camera).
     let vertices_cam = transform_vertices(model, origin_cam, model_rotation);
     let projected = project_vertices(&vertices_cam, options.fov_deg, width, height, options.near_z, options.enable_near_clipping, options.enable_frustum_clipping);
+    let vertex_normals_cam = if options.enable_gouraud_shading || options.enable_lighting {
+        compute_vertex_normals_cam_space(model, &vertices_cam)
+    } else { [Vec3(0.0, 0.0, 0.0); MAX_VERTICES] };
 
     // Painter's algorithm ordering (optional).
     let mut order = triangle_order(model, &vertices_cam);
@@ -151,15 +215,25 @@ pub fn draw_model<R: Rasterizer>(raster: &mut R, model: &Model, origin_cam: Vec3
         // Projected points must all be valid to draw.
         let (Some(p0), Some(p1), Some(p2)) = (projected[i0], projected[i1], projected[i2]) else { continue };
 
-        // Flat Lambert lighting using face normal in camera space.
-        let color = if options.enable_lighting {
-            let n = face_normal_cam_space(vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]);
-            let lambert = (-n.dot(light_dir)).max(0.0); // negative because front faces have n.z < 0
-            let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * lambert;
-            grayscale(intensity)
-        } else { grayscale(1.0) };
-
-        if options.enable_shading { fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }); }
+        if options.enable_gouraud_shading && options.enable_lighting {
+            // Per-vertex lambert using camera-space averaged normals
+            let n0 = vertex_normals_cam[i0];
+            let n1 = vertex_normals_cam[i1];
+            let n2 = vertex_normals_cam[i2];
+            let i0 = (-n0.dot(light_dir)).max(0.0);
+            let i1 = (-n1.dot(light_dir)).max(0.0);
+            let i2 = (-n2.dot(light_dir)).max(0.0);
+            fill_triangle_gouraud(raster, &GouraudTriangle { p0, p1, p2, i0, i1, i2 }, options.intensity_range);
+        } else {
+            // Flat Lambert lighting using face normal in camera space.
+            let color = if options.enable_lighting {
+                let n = face_normal_cam_space(vertices_cam[i0], vertices_cam[i1], vertices_cam[i2]);
+                let lambert = (-n.dot(light_dir)).max(0.0);
+                let intensity = options.intensity_range.0 + (options.intensity_range.1 - options.intensity_range.0) * lambert;
+                grayscale(intensity)
+            } else { grayscale(1.0) };
+            if options.enable_shading { fill_triangle(raster, &FlatTriangle { p0, p1, p2, color }); }
+        }
         if options.enable_wireframe {
             draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
             draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));

@@ -30,6 +30,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
         enable_wireframe: false,
         enable_shading: true,
         near_z: 0.1,
+        enable_gouraud_shading: true,
     };
     draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 }
