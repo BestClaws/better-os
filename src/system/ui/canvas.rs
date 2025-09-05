@@ -84,24 +84,32 @@ impl<'a> Canvas<'a> {
     }
 
     /// Expands the dirty region to include the given rectangle.
-    fn update_dirty(&mut self, new: Rect) {
-        // Try to merge with existing regions to limit fragmentation
-        let mut merged = false;
-        for i in 0..self.dirty_regions.len() {
-            let existing = self.dirty_regions[i];
-            if existing.intersects(&new) {
-                self.dirty_regions[i] = union_rect(existing, new);
-                merged = true;
-                break;
+    /// Heavily coalesces regions to minimize fragmentation; if capacity is exceeded,
+    /// the entire canvas is marked dirty as a safe fallback.
+    fn update_dirty(&mut self, mut new_region: Rect) {
+        // Clip to canvas bounds first
+        let (x0, y0, x1, y1) = clip_rect(&new_region, self.width, self.height);
+        if x0 >= x1 || y0 >= y1 { return; }
+        new_region = Rect::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0));
+
+        // Try to merge with any overlapping or touching regions.
+        let mut i = 0;
+        while i < self.dirty_regions.len() {
+            let current = self.dirty_regions[i];
+            if intersects_or_touches(&current, &new_region) {
+                // Merge and restart scan to catch transitive merges
+                new_region = union_rect(current, new_region);
+                self.dirty_regions.swap_remove(i);
+                i = 0;
+                continue;
             }
+            i += 1;
         }
 
-        if !merged {
-            if self.dirty_regions.push(new).is_err() {
-                // Fallback: if capacity exceeded, mark full-screen dirty
-                self.dirty_regions.clear();
-                self.dirty_regions.push(Rect::new(Point::zero(), Size::new(self.width, self.height))).ok();
-            }
+        if self.dirty_regions.push(new_region).is_err() {
+            // Fallback: if capacity exceeded, mark full-screen dirty
+            self.dirty_regions.clear();
+            self.dirty_regions.push(Rect::new(Point::zero(), Size::new(self.width, self.height))).ok();
         }
     }
     
@@ -136,6 +144,11 @@ impl<'a> Canvas<'a> {
         }
         self.update_dirty(Rect::new(Point::zero(), Size::new(self.width, self.height)));
     }
+
+    /// Marks an arbitrary rectangle as dirty (will be clipped and coalesced).
+    pub fn mark_dirty(&mut self, area: Rect) {
+        self.update_dirty(area);
+    }
 }
 
 
@@ -159,6 +172,27 @@ fn union_rect(r1: Rect, r2: Rect) -> Rect {
     let bottom = (r1.top_left.y + r1.size.height as i32).max(r2.top_left.y + r2.size.height as i32);
 
     Rect::with_corners(Point::new(left, top), Point::new(right - 1, bottom - 1))
+}
+
+/// Returns true if two rectangles overlap or touch along edges (useful for coalescing dirty regions).
+fn intersects_or_touches(a: &Rect, b: &Rect) -> bool {
+    let ax0 = a.top_left.x;
+    let ay0 = a.top_left.y;
+    let ax1 = a.top_left.x + a.size.width as i32; // exclusive
+    let ay1 = a.top_left.y + a.size.height as i32; // exclusive
+
+    let bx0 = b.top_left.x;
+    let by0 = b.top_left.y;
+    let bx1 = b.top_left.x + b.size.width as i32; // exclusive
+    let by1 = b.top_left.y + b.size.height as i32; // exclusive
+
+    // Allow touching by expanding B by 1 pixel in each direction
+    let bx0t = bx0 - 1;
+    let by0t = by0 - 1;
+    let bx1t = bx1 + 1;
+    let by1t = by1 + 1;
+
+    !(ax1 <= bx0t || ax0 >= bx1t || ay1 <= by0t || ay0 >= by1t)
 }
 // ===== Rasterizer implementation =====
 impl Rasterizer for Canvas<'_> {

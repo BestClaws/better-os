@@ -17,7 +17,7 @@ use embedded_graphics_core::primitives::Rectangle;
 use embedded_graphics_core::geometry::{Point as EgPoint, Size as EgSize};
 use heapless::Vec;
 use libm::sqrtf;
-use micromath::F32Ext;
+// micromath::F32Ext not required; easing uses libm and core ops only
 
 /// Maximum supported windows in the compositor
 const MAX_WINDOWS: usize = 8;
@@ -150,11 +150,14 @@ impl WindowAnimation for FadeAnimation {
 
 // Note: legacy PixelColor-based blitting removed. We operate directly on Rgb565 buffers.
 
-/// High-performance canvas blitting operations
-pub struct BlitOperations;
+/// High-performance canvas blitting operations.
+/// Performs row-based clipped copies between `Canvas` instances.
+/// Space-grade: no per-pixel bounds checks, only row-level clipping and memcpy.
+pub struct CanvasBlitter;
 
-impl BlitOperations {
-    /// Copy entire source canvas to destination with offset
+impl CanvasBlitter {
+    /// Copy entire source canvas to destination with offset.
+    /// Internally performs row-based memcpy with precomputed clipping.
     pub fn copy_full<'a>(
         dest: &mut Canvas<'a>,
         source: &Canvas<'a>,
@@ -165,14 +168,14 @@ impl BlitOperations {
         let (dest_w, dest_h) = (dest.width(), dest.height());
         let (src_w, src_h) = (source.width(), source.height());
 
-        Self::copy_pixels_bounded(
+        Self::copy_rows_clipped(
             dest, source,
             0, 0, src_w, src_h,
             offset_x, offset_y,
             dest_w, dest_h
         );
 
-        debug!("Full blit: {} μs", timer.elapsed().as_micros());
+        info!("Full blit: {} μs", timer.elapsed().as_micros());
     }
 
     /// Copy specific region of source canvas to destination
@@ -194,49 +197,63 @@ impl BlitOperations {
         let region_h = (region.top_left.y as u32 + region.size.height).min(src_h);
 
         if region_x >= region_w || region_y >= region_h {
-            debug!("Region blit skipped: empty bounds");
+            info!("Region blit skipped: empty bounds");
             return;
         }
 
-        Self::copy_pixels_bounded(
+        Self::copy_rows_clipped(
             dest, source,
             region_x, region_y, region_w, region_h,
             offset_x, offset_y,
             dest_w, dest_h
         );
 
-        debug!("Region blit: {} μs", timer.elapsed().as_micros());
+        info!("Region blit: {} μs", timer.elapsed().as_micros());
     }
 
-    /// Internal bounds-checked pixel copying
-    fn copy_pixels_bounded<'a>(
+    /// Internal: fast row-based copy with clipping computed once per row.
+    fn copy_rows_clipped<'a>(
         dest: &mut Canvas<'a>,
         source: &Canvas<'a>,
-        src_x: u32, src_y: u32, src_w: u32, src_h: u32,
+        src_x0: u32, src_y0: u32, src_x1: u32, src_y1: u32,
         offset_x: i32, offset_y: i32,
         dest_w: u32, dest_h: u32,
     ) {
-        for y in src_y..src_h {
-            let dest_y = y as i32 + offset_y;
-            if dest_y < 0 || dest_y >= dest_h as i32 {
-                continue;
-            }
+        // Convert to i32 for math once
+        let dest_w_i = dest_w as i32;
+        let dest_h_i = dest_h as i32;
+        let src_w = source.width();
 
-            for x in src_x..src_w {
-                let dest_x = x as i32 + offset_x;
-                if dest_x < 0 || dest_x >= dest_w as i32 {
-                    continue;
-                }
+        // Walk rows once; each row does at most two bound checks and one memcpy
+        for sy in src_y0..src_y1 {
+            let dy = sy as i32 + offset_y;
+            if dy < 0 || dy >= dest_h_i { continue; }
 
-                let src_pixel_idx = (y * source.width() + x) as usize;
-                let dest_pixel_idx = (dest_y as u32 * dest_w + dest_x as u32) as usize;
-                let src_byte_idx = src_pixel_idx * 2;
-                let dest_byte_idx = dest_pixel_idx * 2;
-                if src_byte_idx + 1 < source.buffer().len() && dest_byte_idx + 1 < dest.buffer_mut().len() {
-                    dest.buffer_mut()[dest_byte_idx] = source.buffer()[src_byte_idx];
-                    dest.buffer_mut()[dest_byte_idx + 1] = source.buffer()[src_byte_idx + 1];
-                }
-            }
+            // Compute horizontal clip for this row
+            let dx0 = src_x0 as i32 + offset_x;
+            let dx1 = src_x1 as i32 + offset_x;
+            let clip_x0 = dx0.max(0).min(dest_w_i);
+            let clip_x1 = dx1.max(0).min(dest_w_i);
+            if clip_x0 >= clip_x1 { continue; }
+
+            // Map back to source x range based on clipping
+            let sx0 = (clip_x0 - offset_x).max(src_x0 as i32) as u32;
+            let sx1 = (clip_x1 - offset_x).min(src_x1 as i32) as u32;
+            if sx0 >= sx1 { continue; }
+
+            let pixels = (sx1 - sx0) as usize;
+            let bytes = pixels * 2;
+
+            // Compute byte indices once and copy the entire run
+            let src_first_pixel = (sx0 + sy * src_w) as usize;
+            let dst_first_pixel = (clip_x0 as u32 + dy as u32 * dest_w) as usize;
+            let src_byte = src_first_pixel * 2;
+            let dst_byte = dst_first_pixel * 2;
+
+            // Safety: all indices computed with clipping; copy in one slice move
+            let src_slice = &source.buffer()[src_byte .. src_byte + bytes];
+            let dst_slice = &mut dest.buffer_mut()[dst_byte .. dst_byte + bytes];
+            dst_slice.copy_from_slice(src_slice);
         }
     }
 }
@@ -283,7 +300,7 @@ impl UICompositor {
     /// Configure animation parameters
     pub fn set_animation_config(&mut self, config: AnimationConfig) {
         self.animation_config = config;
-        debug!("Animation config updated: steps={}, delay={}ms",
+        info!("Animation config updated: steps={}, delay={}ms",
                config.steps, config.frame_delay_ms);
     }
 
@@ -293,7 +310,7 @@ impl UICompositor {
             if self.pending_redraws.push(window_handle).is_err() {
                 warn!("Redraw queue full, dropping request for {:?}", window_handle);
             } else {
-                debug!("Redraw queued for window {:?}", window_handle);
+                info!("Redraw queued for window {:?}", window_handle);
             }
         }
     }
@@ -324,16 +341,32 @@ impl UICompositor {
             // Update display efficiently
             let mut display_lock = display.lock().await;
             if current_mode == ViewMode::Single && !dirty_regions.is_empty() {
-                // Partial updates for better performance: draw each dirty region
-                for region in dirty_regions.iter() {
-                    display_lock.draw_region(
+                // Decide between partial and full based on total dirty area and count
+                let mut total_area: u32 = 0;
+                for r in dirty_regions.iter() {
+                    total_area = total_area.saturating_add(r.size.width.saturating_mul(r.size.height));
+                }
+                let full_area = FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT;
+
+                // Heuristics: if too many regions or too much area, prefer full
+                let use_full = dirty_regions.len() > 6 || total_area * 3 > full_area; // > ~33%
+
+                if use_full {
+                    display_lock.draw(
                         composite_canvas.buffer(),
-                        Rectangle::new(
-                            EgPoint::new(region.top_left.x, region.top_left.y),
-                            EgSize::new(region.size.width, region.size.height),
-                        ),
-                        FRAME_SCALE_FACTOR,
+                        FRAME_SCALE_FACTOR
                     ).await;
+                } else {
+                    for region in dirty_regions.iter() {
+                        display_lock.draw_region(
+                            composite_canvas.buffer(),
+                            Rectangle::new(
+                                EgPoint::new(region.top_left.x, region.top_left.y),
+                                EgSize::new(region.size.width, region.size.height),
+                            ),
+                            FRAME_SCALE_FACTOR,
+                        ).await;
+                    }
                 }
                 self.clear_focused_window_dirty_regions();
             } else {
@@ -346,7 +379,7 @@ impl UICompositor {
         }
 
         self.pending_redraws.clear();
-        debug!("Frame rendered in {} μs", render_start.elapsed().as_micros());
+        info!("Frame rendered in {} μs", render_start.elapsed().as_micros());
     }
 
     /// Compose windows into final frame buffer
@@ -367,20 +400,20 @@ impl UICompositor {
                     let regions = window_canvas.dirty_regions();
                     if !regions.is_empty() {
                         for r in regions {
-                            BlitOperations::copy_region(output_canvas, window_canvas, *r, 0, 0);
+                            CanvasBlitter::copy_region(output_canvas, window_canvas, *r, 0, 0);
                         }
                     } else {
-                        BlitOperations::copy_full(output_canvas, window_canvas, 0, 0);
+                        CanvasBlitter::copy_full(output_canvas, window_canvas, 0, 0);
                     }
                 }
                 ViewMode::Split => {
                     // Render split view with two windows
-                    BlitOperations::copy_full(output_canvas, window_canvas, 0, 0);
+                    CanvasBlitter::copy_full(output_canvas, window_canvas, 0, 0);
 
                     let split_window_idx = self.calculate_split_window_index();
                     if let Some(split_canvas) = self.windows[split_window_idx].canvas().as_mut() {
                         let split_x_offset = FRAME_BUFFER_WIDTH as i32 / 2;
-                        BlitOperations::copy_full(output_canvas, split_canvas, split_x_offset, 0);
+                        CanvasBlitter::copy_full(output_canvas, split_canvas, split_x_offset, 0);
                     }
                 }
             }
@@ -453,7 +486,7 @@ impl UICompositor {
     /// Execute smooth animated transition between windows
     async fn animate_window_transition(&mut self, direction: TransitionDirection) {
         if self.windows.len() < 2 || self.display_mode == ViewMode::Split {
-            debug!("Animation skipped: insufficient windows or split mode");
+            info!("Animation skipped: insufficient windows or split mode");
             return;
         }
 
@@ -505,8 +538,8 @@ impl UICompositor {
 
             // Clear and compose frame
             canvas.clear_rgb(Rgb565::BLACK);
-            BlitOperations::copy_full(&mut canvas, &source_canvas, frame.source_x, frame.source_y);
-            BlitOperations::copy_full(&mut canvas, &target_canvas, frame.target_x, frame.target_y);
+            CanvasBlitter::copy_full(&mut canvas, &source_canvas, frame.source_x, frame.source_y);
+            CanvasBlitter::copy_full(&mut canvas, &target_canvas, frame.target_x, frame.target_y);
 
             // Display frame
             if let Some(display) = self.display_driver {
@@ -514,7 +547,7 @@ impl UICompositor {
                 display_lock.draw(canvas.buffer(), FRAME_SCALE_FACTOR).await;
             }
 
-            debug!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
+            info!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
             Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
         }
 
@@ -534,7 +567,7 @@ impl UICompositor {
         // Release resources from inactive windows
         for (idx, window) in self.windows.iter_mut().enumerate() {
             if !active_indices.contains(&idx) && window.framebuffer_id().is_some() {
-                debug!("Releasing resources for inactive window {}", idx);
+                info!("Releasing resources for inactive window {}", idx);
                 window.relax();
             }
         }
@@ -553,7 +586,7 @@ impl UICompositor {
             return; // Already has resources
         }
 
-        debug!("Allocating resources for window {}", window_idx);
+        info!("Allocating resources for window {}", window_idx);
 
         match FRAMEBUFFER_POOL.allocate().await {
             Some(framebuffer) => {
@@ -698,3 +731,5 @@ pub(crate) fn ease_out_bounce(t: f32) -> f32 {
         N1 * shifted * shifted + 0.984375
     }
 }
+
+use micromath::F32Ext;
