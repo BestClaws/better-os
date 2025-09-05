@@ -15,6 +15,8 @@ pub mod types;
 pub mod raster;
 pub mod primitives;
 pub mod gradients;
+pub mod text;
+pub mod fonts;
 
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgb565, Rgba8888};
@@ -31,4 +33,8 @@ pub use gradients::{
     LinearGradient, RadialGradient, 
     fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba
 };
+
+// Space-grade text rendering system
+pub use text::{TextRenderer, TextOptions};
+pub use fonts::{FONT_8X8};
 

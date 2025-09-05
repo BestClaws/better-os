@@ -8,7 +8,8 @@ use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
 use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
                               draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
-                              fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba};
+                              fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba,
+                              TextRenderer, FONT_8X8};
 fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     let now = Instant::now();
     // Clear background
@@ -69,10 +70,23 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     };
     draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 
+    // Add text labels to demonstrate text rendering
+    let text_renderer = TextRenderer::new(&FONT_8X8)
+        .with_color(Rgb565::from_rgb(255, 255, 255))
+        .with_anti_alias(true);
+    
+    text_renderer.draw_text(canvas, GPoint::new(10, 10), "BATTERY DEMO");
+    text_renderer.draw_text(canvas, GPoint::new(10, 25), "3D GRAPHICS");
+    text_renderer.draw_text(canvas, GPoint::new(10, 40), "GRADIENTS");
+    
+    let time_text = format!("TIME: {:.1}s", t);
+    text_renderer.draw_text(canvas, GPoint::new(10, 200), &time_text);
+
     info!("3d demo frame time: {}", now.elapsed().as_millis());
 }
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
+use alloc::format;
 
 const CANVAS_WIDTH: i32 = 320;
 const CANVAS_HEIGHT: i32 = 240;

@@ -11,10 +11,12 @@ use crate::libs::gfx::two_d::{
     Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
     draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
     fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba,
+    TextRenderer, FONT_8X8,
 };
 
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
+use alloc::format;
 
 /// Space-grade watch application with optimized rendering pipeline and performance monitoring.
 /// 
@@ -519,16 +521,34 @@ fn draw_overlays(canvas: &mut Canvas, t: f32) {
         fill_rect(canvas, GRect::new(GPoint::new(p.x - (size as i32 / 2), p.y - (size as i32 / 2)), GSize::new(size, size)), rgb(YELLOW_ACCENT));
     }
 
-    // faint corner label "ARKNIGHTS:" in near-white (approx)
-    // We don't have text draw helper here; instead make a small square block and tiny grid to evoke label area
+    // Render "ARKNIGHTS:" label using real text rendering
     let label_x = w - 92;
     let label_y = h - 28;
-    fill_rect(canvas, GRect::new(GPoint::new(label_x, label_y), GSize::new(8, 8)), rgb(NEAR_WHITE));
-    // small horizontal ticks near label
-    for i in 0..6 {
-        let x = label_x + 12 + i * 8;
-        draw_line_aa(canvas, GPoint::new(x, label_y + 4), GPoint::new(x + 6, label_y + 4), rgb((60, 60, 66)));
-    }
+    let text_renderer = TextRenderer::new(&FONT_8X8)
+        .with_color(rgb(NEAR_WHITE))
+        .with_anti_alias(true);
+    text_renderer.draw_text(canvas, GPoint::new(label_x, label_y), "ARKNIGHTS:");
+    
+    // Add time display using text rendering
+    let time_x = 20;
+    let time_y = 20;
+    let time_text = format!("{:02}:{:02}:{:02}", 
+        ((t * 0.1) as u32) % 24,
+        ((t * 0.6) as u32) % 60,
+        ((t * 3.6) as u32) % 60
+    );
+    let time_renderer = TextRenderer::new(&FONT_8X8)
+        .with_color(rgb(STEEL_HIGHLIGHT))
+        .with_anti_alias(true);
+    time_renderer.draw_text(canvas, GPoint::new(time_x, time_y), &time_text);
+    
+    // Add status text
+    let status_x = 20;
+    let status_y = h - 20;
+    let status_renderer = TextRenderer::new(&FONT_8X8)
+        .with_color(rgb(YELLOW_ACCENT))
+        .with_anti_alias(true);
+    status_renderer.draw_text(canvas, GPoint::new(status_x, status_y), "ONLINE");
     
     let perf_time = perf_start.elapsed();
     info!("Overlays: arcs={}ms, hud_squares={}ms, label_area={}ms", 
