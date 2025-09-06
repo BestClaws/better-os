@@ -486,7 +486,7 @@ where
         }
 
         let frame_time = frame_start.elapsed().as_micros();
-        debug!(
+        info!(
         "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
             region,
         total_scaling as f64 / 1000.0,

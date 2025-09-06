@@ -12,19 +12,8 @@ use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb
                               TextRenderer, FONT_8X8};
 fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     let now = Instant::now();
-    // Clear background
-    // canvas.clear_rgb(Rgb565::from_rgb(4, 4, 8));
-    // Two-phase demo: first 10s rotate light (all axes), keep model still; afterwards, fix light and rotate model
-    let (rot, light_dir) = if t < 10.0 {
-        let rot = Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
-        let light_rot =
-            Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), t * 0.7)
-                .mul(Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), t * 0.8))
-                .mul(Quaternion::from_axis_angle(Vec3(0.0, 0.0, 1.0), t * 0.6));
-        let light_dir = light_rot.rotate_vector(Vec3(0.9, -0.6, -1.0));
-        (rot, light_dir)
-    } else {
-        let dt = t - 10.0;
+    let (rot, light_dir) =  {
+        let dt = t;
         let rot_y = Quaternion::from_axis_angle(Vec3(0.0, 1.0, 0.0), dt * 0.7);
         let rot_x = Quaternion::from_axis_angle(Vec3(1.0, 0.0, 0.0), dt * 0.3);
         let rot = rot_y.mul(rot_x);
@@ -70,17 +59,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     };
     draw_model(canvas, model, origin, rot, canvas.width(), canvas.height(), &opts);
 
-    // Add text labels to demonstrate text rendering
-    let text_renderer = TextRenderer::new(&FONT_8X8)
-        .with_color(Rgb565::from_rgb(255, 255, 255))
-        .with_anti_alias(true);
-    
-    text_renderer.draw_text(canvas, GPoint::new(10, 10), "BATTERY DEMO");
-    text_renderer.draw_text(canvas, GPoint::new(10, 25), "3D GRAPHICS");
-    text_renderer.draw_text(canvas, GPoint::new(10, 40), "GRADIENTS");
-    
-    let time_text = format!("TIME: {:.1}s", t);
-    text_renderer.draw_text(canvas, GPoint::new(10, 200), &time_text);
+
 
     debug!("3d demo frame time: {}", now.elapsed().as_millis());
 }
@@ -244,13 +223,13 @@ pub async fn battery_app(context: AppContext) {
         let t = start_time.elapsed().as_millis() as f32 / 1000.0;
         context.draw(|canvas: &mut Canvas| {
             match scene {
-                DemoScene::Rects => draw_rects(canvas, t),
-                DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
-                DemoScene::Arcs => draw_arcs(canvas, t),
-                DemoScene::Lines => draw_lines(canvas, t),
-                DemoScene::GradLinear => draw_grad_linear(canvas, t),
-                DemoScene::GradRadial => draw_grad_radial(canvas, t),
-                DemoScene::Alpha => draw_alpha(canvas, t),
+                // DemoScene::Rects => draw_rects(canvas, t),
+                // DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
+                // DemoScene::Arcs => draw_arcs(canvas, t),
+                // DemoScene::Lines => draw_lines(canvas, t),
+                // DemoScene::GradLinear => draw_grad_linear(canvas, t),
+                // DemoScene::GradRadial => draw_grad_radial(canvas, t),
+                // DemoScene::Alpha => draw_alpha(canvas, t),
                 _=> draw_3d_demo(canvas, t, &model),
             }
         }).await;
