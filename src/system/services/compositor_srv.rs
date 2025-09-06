@@ -7,6 +7,7 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::services::human_input_srv::{HumanInputEvent, HUMAN_INPUT_CH};
 use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UICompositor};
+use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::compositor::{ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
 
 /// Service loop timing constants
@@ -25,6 +26,7 @@ const INPUT_POLL_TIMEOUT_MS: u64 = 1;
 pub async fn compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
 ) {
     info!("Starting compositor service");
 
@@ -64,35 +66,39 @@ pub async fn compositor_service(
             InputAction::AnimateNext => {
                 debug!("Processing next window animation");
                 let mut compositor_lock = compositor.lock().await;
-                compositor_lock.animate_to_next_window().await;
+                let mut wm_lock = window_manager.lock().await;
+                compositor_lock.animate_to_next_window(&mut wm_lock).await;
                 request_focused_window_redraw(&mut compositor_lock).await;
-                compositor_lock.process_redraws().await;
+                compositor_lock.process_redraws(&mut wm_lock).await;
             }
 
             InputAction::AnimatePrevious => {
                 debug!("Processing previous window animation");
                 let mut compositor_lock = compositor.lock().await;
-                compositor_lock.animate_to_previous_window().await;
+                let mut wm_lock = window_manager.lock().await;
+                compositor_lock.animate_to_previous_window(&mut wm_lock).await;
                 request_focused_window_redraw(&mut compositor_lock).await;
-                compositor_lock.process_redraws().await;
+                compositor_lock.process_redraws(&mut wm_lock).await;
             }
 
             InputAction::ToggleView => {
                 debug!("Processing view mode toggle");
+                // No split view on round display; ignore or repurpose if needed
                 let mut compositor_lock = compositor.lock().await;
-                compositor_lock.toggle_display_mode().await;
+                let mut wm_lock = window_manager.lock().await;
                 request_focused_window_redraw(&mut compositor_lock).await;
-                compositor_lock.process_redraws().await;
+                compositor_lock.process_redraws(&mut wm_lock).await;
             }
 
             InputAction::ForwardToWindow(event) => {
                 debug!("Forwarding input to focused window: {:?}", event);
-                forward_input_to_focused_window(compositor, event).await;
+                forward_input_to_focused_window(compositor, window_manager, event).await;
 
                 // Trigger redraw after input processing
                 let mut compositor_lock = compositor.lock().await;
+                let mut wm_lock = window_manager.lock().await;
                 request_focused_window_redraw(&mut compositor_lock).await;
-                compositor_lock.process_redraws().await;
+                compositor_lock.process_redraws(&mut wm_lock).await;
             }
 
             InputAction::IdleRefresh => {
@@ -101,8 +107,9 @@ pub async fn compositor_service(
                 let mut compositor_lock = compositor.lock().await;
                 if let Some(focused_handle) = compositor_lock.focused_window_handle() {
                     compositor_lock.request_redraw(focused_handle);
-                    compositor_lock.process_redraws().await;
                 }
+                let mut wm_lock = window_manager.lock().await;
+                compositor_lock.process_redraws(&mut wm_lock).await;
             }
         }
 
@@ -206,26 +213,16 @@ fn process_touch_gesture(x: i32, y: i32) -> InputAction {
 /// Forward input event to the currently focused window
 async fn forward_input_to_focused_window(
     compositor: &Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &Mutex<CriticalSectionRawMutex, WindowManager>,
     event: HumanInputEvent,
 ) {
     let mut compositor_lock = compositor.lock().await;
+    let mut wm_lock = window_manager.lock().await;
 
     if let Some(focused_handle) = compositor_lock.focused_window_handle() {
-        if let Some(window) = compositor_lock.get_window_mut(focused_handle) {
-            if let Some(sender) = window.input_sender().await {
-                match sender.try_send(event) {
-                    Ok(_) => {
-                        debug!("Input forwarded to window {:?}", focused_handle);
-                    }
-                    Err(_) => {
-                        warn!("Failed to forward input: window input queue full");
-                    }
-                }
-            } else {
-                warn!("No input sender available for focused window");
-            }
-        } else {
-            warn!("Focused window not found for input forwarding");
+        match wm_lock.try_send_input(focused_handle, event).await {
+            Ok(()) => debug!("Input forwarded to window {:?}", focused_handle),
+            Err(()) => warn!("Failed to forward input to focused window"),
         }
     } else {
         debug!("No focused window to forward input to");

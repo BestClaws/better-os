@@ -1,5 +1,6 @@
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
+use crate::system::ui::window_manager::WindowManager;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::apps::battery::battery_app;
 use crate::apps::text_demo::text_demo_app;
@@ -55,6 +56,7 @@ struct AppDescriptor {
 #[embassy_executor::task]
 pub async fn app_spawner_service(
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
     spawner: Spawner,
 ) {
     info!("Starting application spawner service");
@@ -66,7 +68,7 @@ pub async fn app_spawner_service(
     for app_descriptor in SYSTEM_APPS {
         debug!("Spawning app: {} (id={})", app_descriptor.name, app_descriptor.id);
 
-        match spawn_application(&spawner, compositor, app_descriptor).await {
+        match spawn_application(&spawner, compositor, window_manager, app_descriptor).await {
             Ok(_) => {
                 successful_apps += 1;
                 info!("✓ App spawned: {}", app_descriptor.name);
@@ -91,11 +93,13 @@ pub async fn app_spawner_service(
 async fn spawn_application(
     spawner: &Spawner,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
     app_descriptor: &AppDescriptor,
 ) -> Result<(), AppSpawnError> {
     // Create application context with window and resources
     let app_context = create_application_context(
         compositor,
+        window_manager,
         app_descriptor.id,
         app_descriptor.name
     ).await?;
@@ -115,23 +119,32 @@ async fn spawn_application(
 /// - Ensures proper resource allocation and error handling
 pub async fn create_application_context(
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
     app_id: usize,
     app_name: &'static str,
 ) -> Result<AppContext, AppSpawnError> {
     debug!("Creating context for app: {} (id={})", app_name, app_id);
 
-    let mut compositor_lock = compositor.lock().await;
+    // Create window via WindowManager
+    let window_handle = {
+        let mut wm_lock = window_manager.lock().await;
+        let handle = wm_lock
+            .create_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, app_id)
+            .await
+            .ok_or(AppSpawnError::WindowAllocationFailed)?;
+        debug!("Window created for {}: {:?}", app_name, handle);
+        handle
+    };
 
-    // Create window with full screen dimensions
-    let window_handle = compositor_lock
-        .create_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, app_id)
-        .await
-        .ok_or(AppSpawnError::WindowAllocationFailed)?;
-
-    debug!("Window allocated for {}: {:?}", app_name, window_handle);
+    // Register window into compositor order
+    let mut comp_lock = compositor.lock().await;
+    let mut wm_for_register = window_manager.lock().await;
+    comp_lock.register_window(&mut wm_for_register, window_handle).await;
+    // Kick the compositor to render the first frame for this window soon
+    comp_lock.request_redraw(window_handle);
 
     // Create application context
-    let app_context = AppContext::new(window_handle, app_id, app_name, compositor);
+    let app_context = AppContext::new(window_handle, app_id, app_name, compositor, window_manager);
 
     Ok(app_context)
 }
@@ -183,14 +196,19 @@ impl AppDescriptor {
 #[allow(dead_code)]
 pub struct DynamicAppSpawner {
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
     next_app_id: usize,
 }
 
 #[allow(dead_code)]
 impl DynamicAppSpawner {
-    pub fn new(compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>) -> Self {
+    pub fn new(
+        compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+        window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
+    ) -> Self {
         Self {
             compositor,
+            window_manager,
             next_app_id: 1000, // Start dynamic apps at high IDs
         }
     }
@@ -211,6 +229,7 @@ impl DynamicAppSpawner {
 
         let context = create_application_context(
             self.compositor,
+            self.window_manager,
             app_id,
             app_name,
         ).await?;

@@ -11,6 +11,7 @@ use crate::system::services::compositor_srv::compositor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
 use crate::system::services::{human_input_srv, vibrator_srv};
 use crate::system::ui::compositor::UICompositor;
+use crate::system::ui::window_manager::WindowManager;
 
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -19,6 +20,7 @@ use crate::system::services::radio_service::radio_service;
 use crate::system::services::vibrator_srv::vibrator_service;
 
 pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> = StaticCell::new();
+pub static WINDOW_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, WindowManager>> = StaticCell::new();
 
 pub(crate) fn start(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
@@ -49,9 +51,10 @@ pub(crate) fn start(spawner: Spawner) {
 
     // Initialize the global compositor
     let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
+    let window_manager_ref = WINDOW_MANAGER.init(Mutex::new(WindowManager::new()));
     // Spawn compositor service
     info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref)).unwrap();
+    spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref, window_manager_ref)).unwrap();
 
     
     // Spawn accel service
@@ -64,7 +67,7 @@ pub(crate) fn start(spawner: Spawner) {
     //
     // Spawn app spawner service
     info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(app_spawner_service(compositor_ref,spawner)).unwrap();
+    spawner.spawn(app_spawner_service(compositor_ref, window_manager_ref, spawner)).unwrap();
 
 
 }

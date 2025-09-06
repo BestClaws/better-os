@@ -3,6 +3,7 @@ use crate::system::services::human_input_srv::HumanInputEvent;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
+use crate::system::ui::window_manager::WindowManager;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
@@ -11,6 +12,7 @@ pub struct AppContext {
     pub app_id: usize,
     pub app_name: &'static str,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
 }
 
 impl AppContext {
@@ -19,12 +21,14 @@ impl AppContext {
         app_id: usize,
         app_name: &'static str,
         compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+        window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
     ) -> Self {
         Self {
             handle,
             app_id,
             app_name,
             compositor,
+            window_manager,
         }
     }
 
@@ -34,8 +38,8 @@ impl AppContext {
     }
 
     pub async fn poll_input(&self) -> Option<HumanInputEvent> {
-        let mut comp = self.compositor.lock().await;
-        comp.poll_window_input(self.handle)
+        let mut wm = self.window_manager.lock().await;
+        wm.poll_window_input(self.handle)
     }
 
     pub async fn request_redraw(&self) {
@@ -44,11 +48,7 @@ impl AppContext {
     }
 
     pub async fn draw(&self, f: impl FnOnce(&mut Canvas) + Send) {
-        let mut comp = self.compositor.lock().await;
-        if let Some(window) = comp.get_window_mut(self.handle) {
-            if let Some(canvas) = window.canvas().as_mut() {
-                f(canvas);
-            }
-        }
+        let mut wm = self.window_manager.lock().await;
+        let _ = wm.with_canvas(self.handle, f);
     }
 }
