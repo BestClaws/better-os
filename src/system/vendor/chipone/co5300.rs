@@ -397,8 +397,11 @@ where
 
         // Pre-allocate buffers
         let scaled_width = region_width * scale as u16;
-        let mut chunk_buffer = vec![0u8; (scaled_width * CHUNK_HEIGHT * 2) as usize];
-        let mut scaled_row_buffer = vec![0u16; scaled_width as usize];
+        // For scale=4 fast path, each source pixel expands to 4 pixels (8 bytes) -> 1 u64.
+        // Use u64-aligned buffers to enable wide copies without misalignment UB.
+        let row_u64s: usize = (scaled_width as usize) / 4; // equals region_width as usize when scale==4
+        let mut chunk_buffer: Vec<u64> = vec![0u64; row_u64s * (CHUNK_HEIGHT as usize)];
+        let mut scaled_row_buffer: Vec<u64> = vec![0u64; row_u64s];
 
         let mut total_scaling = 0u64;
         let mut total_transfer = 0u64;
@@ -420,8 +423,7 @@ where
 
             unsafe {
                 let src_ptr = buffer.as_ptr();
-                let dst_ptr = chunk_buffer.as_mut_ptr();
-                let mut dst_offset = 0;
+                let mut dst_offset_u64: usize = 0;
 
                 // Optimized scaling for scale=4
                 let mut current_src_row = usize::MAX;
@@ -430,54 +432,46 @@ where
                 for row in 0..chunk_height as usize {
                     let src_row = (row + y_chunk_start as usize) / scale as usize;
 
-                    // Only regenerate scaled row when we hit a new source row
+                    // Regenerate scaled row only when source row advances
                     if src_row != current_src_row {
                         current_src_row = src_row;
                         let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
 
                         // ULTRA-fast row scaling optimized for scale=4
-                        let mut scaled_idx = 0;
-                        for src_col in 0..region_width as usize {
-                            let pixel = *(src_row_ptr.add(src_col * 2) as *const u16);
-
-                            // For scale=4: pack exactly 4 pixels into one u64 write
-                            let pixel_u64 = (pixel as u64) | ((pixel as u64) << 16) | ((pixel as u64) << 32) | ((pixel as u64) << 48);
-
-                            *(scaled_row_buffer.as_mut_ptr().add(scaled_idx) as *mut u64) = pixel_u64;
-                            scaled_idx += 4;
+                        for src_col in 0..(region_width as usize) {
+                            let pixel: u16 = core::ptr::read_unaligned(src_row_ptr.add(src_col * 2) as *const u16);
+                            // Pack 4 copies of the RGB565 pixel into one u64
+                            let pixel_u64 = (pixel as u64)
+                                | ((pixel as u64) << 16)
+                                | ((pixel as u64) << 32)
+                                | ((pixel as u64) << 48);
+                            // Each entry represents 4 horizontally replicated pixels
+                            scaled_row_buffer[src_col] = pixel_u64;
                         }
                     }
 
-                    // BLAZING fast memcpy using 64-bit operations
-                    let bytes_to_copy = scaled_width as usize * 2;
-                    let u64_chunks = bytes_to_copy / 8;
-                    let remaining_bytes = bytes_to_copy % 8;
-
-                    // Copy in massive 64-bit chunks
+                    // Copy one scaled row into chunk buffer using wide copy
+                    let dst_row_ptr = chunk_buffer.as_mut_ptr().add(dst_offset_u64);
                     core::ptr::copy_nonoverlapping(
-                        scaled_row_buffer.as_ptr() as *const u64,
-                        dst_ptr.add(dst_offset) as *mut u64,
-                        u64_chunks
+                        scaled_row_buffer.as_ptr(),
+                        dst_row_ptr,
+                        row_u64s,
                     );
-
-                    // Handle any remaining bytes
-                    if remaining_bytes > 0 {
-                        core::ptr::copy_nonoverlapping(
-                            (scaled_row_buffer.as_ptr() as *const u8).add(u64_chunks * 8),
-                            dst_ptr.add(dst_offset + u64_chunks * 8),
-                            remaining_bytes
-                        );
-                    }
-
-                    dst_offset += bytes_to_copy;
+                    dst_offset_u64 += row_u64s;
                 }
             }
 
             total_scaling += scale_start.elapsed().as_micros();
             let transfer_start = Instant::now();
 
-            let chunk_size = (scaled_width * chunk_height * 2) as usize;
-            if let Err(_) = self.send_pixels(&chunk_buffer[..chunk_size]).await {
+            let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
+            let chunk_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    chunk_buffer.as_ptr() as *const u8,
+                    chunk_bytes_len,
+                )
+            };
+            if let Err(_) = self.send_pixels(chunk_bytes).await {
                 error!("Failed to send pixels for draw_region chunk");
                 return;
             }
