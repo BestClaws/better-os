@@ -7,7 +7,7 @@ use embassy_sync::{
 };
 use embassy_sync::semaphore::Semaphore;
 use embassy_time::Timer;
-use crate::system::services::human_input_srv::HumanInputEvent;
+use crate::system::input::types::HighLevelEvent;
 
 pub const MAX_CHANNELS: usize = 8;
 pub const CHANNEL_CAPACITY: usize = 16;
@@ -29,7 +29,7 @@ impl Drop for InputChannelHandle {
 pub struct InputChannelPool {
     status: AtomicU8,
     permits: GreedySemaphore<CriticalSectionRawMutex>,
-    channels: [Channel<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>; MAX_CHANNELS],
+    channels: [Channel<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>; MAX_CHANNELS],
 }
 
 impl InputChannelPool {
@@ -67,11 +67,11 @@ impl InputChannelPool {
         self.permits.release(1);
     }
 
-    pub fn sender(&self, handle: &InputChannelHandle) ->  Sender<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY> {
+    pub fn sender(&self, handle: &InputChannelHandle) ->  Sender<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY> {
         self.channels[handle.id].sender()
     }
 
-    pub fn receiver(&self, handle: &InputChannelHandle) -> Receiver<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY> {
+    pub fn receiver(&self, handle: &InputChannelHandle) -> Receiver<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY> {
         self.channels[handle.id].receiver()
     }
 }

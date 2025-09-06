@@ -1,5 +1,5 @@
 
-use crate::system::services::human_input_srv::HumanInputEvent;
+use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
@@ -37,7 +37,7 @@ impl AppContext {
         comp.is_window_focused(self.handle)
     }
 
-    pub async fn poll_input(&self) -> Option<HumanInputEvent> {
+    pub async fn poll_input(&self) -> Option<HighLevelEvent> {
         let mut wm = self.window_manager.lock().await;
         wm.poll_window_input(self.handle)
     }

@@ -1,6 +1,6 @@
 use defmt::{debug, warn};
 
-use crate::system::services::human_input_srv::HumanInputEvent;
+use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::canvas::Canvas;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
@@ -113,14 +113,14 @@ impl WindowManager {
     }
 
     /// Get a single pending input event for the window, if any.
-    pub fn poll_window_input(&mut self, handle: WindowHandle) -> Option<HumanInputEvent> {
+    pub fn poll_window_input(&mut self, handle: WindowHandle) -> Option<HighLevelEvent> {
         self.get_window_mut(handle)
             .and_then(|window| window.input_receiver())
             .and_then(|receiver| receiver.try_receive().ok())
     }
 
     /// Try to send an input event to the specified window.
-    pub async fn try_send_input(&mut self, handle: WindowHandle, event: HumanInputEvent) -> Result<(), ()> {
+    pub async fn try_send_input(&mut self, handle: WindowHandle, event: HighLevelEvent) -> Result<(), ()> {
         if let Some(window) = self.get_window_mut(handle) {
             if let Some(sender) = window.input_sender().await {
                 sender.try_send(event).map_err(|_| ())

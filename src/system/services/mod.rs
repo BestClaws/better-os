@@ -1,4 +1,4 @@
-pub(crate) mod human_input_srv;
+// pub(crate) mod human_input_srv; // legacy
 pub(crate) mod app_spawner_srv;
 pub(crate) mod ambient_srv;
 pub(crate) mod battery_srv;

@@ -9,7 +9,9 @@ use crate::system::services::ambient_srv::ambient_sensor_service;
 use crate::system::services::battery_srv::battery_service;
 use crate::system::services::compositor_srv::compositor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
-use crate::system::services::{human_input_srv, vibrator_srv};
+use crate::system::services::vibrator_srv;
+use crate::system::input::reader;
+use crate::system::input::dispatcher;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
 
@@ -23,51 +25,37 @@ pub static COMPOSITOR: StaticCell<Mutex<CriticalSectionRawMutex, UICompositor>> 
 pub static WINDOW_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, WindowManager>> = StaticCell::new();
 
 pub(crate) fn start(spawner: Spawner) {
-    rtt_target::rtt_init_defmt!();
-    esp_alloc::heap_allocator!(size: 180 * 1024);
+	rtt_target::rtt_init_defmt!();
+	esp_alloc::heap_allocator!(size: 180 * 1024);
 
-    let device = platforms::ajax::device::init_device();
+	let device = platforms::ajax::device::init_device();
 
+	// Initialize the global compositor and window manager early
+	let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
+	let window_manager_ref = WINDOW_MANAGER.init(Mutex::new(WindowManager::new()));
 
+	// Spawn input reader + dispatcher
+	info!("[{}s] spawned input reader/dispatcher", Instant::now().as_millis() as f32 / 1000f32);
+	// Note: current PlatformDevice has no encoder field
+	if let Some(button) = device.button { spawner.spawn(reader::read_button(button)).unwrap(); }
+	if let Some(touch) = device.touch { spawner.spawn(reader::read_touch(touch)).unwrap(); }
+	spawner.spawn(dispatcher::input_dispatcher(compositor_ref, window_manager_ref)).unwrap();
 
-    // Spawn input services
-    info!("[{}s] spawned human input services", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(human_input_srv::sub::listen_encoder(device.encoder.unwrap())).unwrap();
-    spawner.spawn(human_input_srv::sub::listen_button(device.button.unwrap())).unwrap();
-    spawner.spawn(human_input_srv::sub::listen_touch(device.touch.unwrap())).unwrap();
+	// Spawn compositor service
+	info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
+	spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref, window_manager_ref)).unwrap();
 
+	// Spawn System UI consumer for gestures
+	spawner.spawn(crate::system::ui::compositor::system_ui_consume_events()).unwrap();
 
-    // info!("[{}s] spawned vibrator service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(vibrator_service(device.vibrator.unwrap())).unwrap();
-    //
-    // Spawn sensors
-    // info!("[{}s] spawned ambient sensor service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(ambient_sensor_service(device.ambient_sensor.unwrap())).unwrap();
+	// Spawn accel service
+	info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
+	spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
 
+	// info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
+	// spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
 
-    // info!("[{}s] spawned battery service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(battery_service(device.battery.unwrap())).unwrap();
-    //
-
-    // Initialize the global compositor
-    let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
-    let window_manager_ref = WINDOW_MANAGER.init(Mutex::new(WindowManager::new()));
-    // Spawn compositor service
-    info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref, window_manager_ref)).unwrap();
-
-    
-    // Spawn accel service
-    info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(gyro_accelerometer_service(device.gyro_accelerometer.unwrap())).unwrap();
-
-    // info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
-
-    //
-    // Spawn app spawner service
-    info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
-    spawner.spawn(app_spawner_service(compositor_ref, window_manager_ref, spawner)).unwrap();
-
-
+	// Spawn app spawner service
+	info!("[{}s] spawned app spawner service", Instant::now().as_millis() as f32 / 1000f32);
+	spawner.spawn(app_spawner_service(compositor_ref, window_manager_ref, spawner)).unwrap();
 }

@@ -1,7 +1,7 @@
 use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
-use crate::system::services::human_input_srv::HumanInputEvent;
+use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::canvas::Canvas;
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
@@ -70,12 +70,12 @@ impl Window {
     }
 
     /// Return reference to the input channel sender.
-    pub async fn input_sender(&mut self) -> Option<Sender<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>> {
+    pub async fn input_sender(&mut self) -> Option<Sender<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>> {
         self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.sender(channel))
     }
 
     /// Return reference to the input channel receiver.
-    pub fn input_receiver(&self) -> Option<Receiver<CriticalSectionRawMutex, HumanInputEvent, CHANNEL_CAPACITY>> {
+    pub fn input_receiver(&self) -> Option<Receiver<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>> {
         self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.receiver(channel))
     }
 
