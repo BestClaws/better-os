@@ -1,5 +1,5 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565};
-use crate::libs::gfx::two_d::{TextRenderer, FONT_8X8};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888};
+use crate::libs::gfx::two_d::{TextRenderer, FONT_8X8, LinearGradient, fill_rect_linear_gradient, fill_rect_rgba};
 use super::style::{Fill, Stroke, CornerRadii, Color};
 use super::painter::Painter;
 
@@ -43,6 +43,13 @@ impl<'a> ImUi<'a> {
         self.theme_bg = color;
     }
 
+    /// Clear with a vertical linear gradient background.
+    pub fn clear_background_gradient_vertical(&mut self, top: Rgb565, bottom: Rgb565) {
+        let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
+        let grad = LinearGradient::new(Point::new(0, 0), Point::new(0, self.raster.height() as i32 - 1), top, bottom);
+        fill_rect_linear_gradient(self.raster, rect, &grad);
+    }
+
     fn next_rect(&mut self, size: Size) -> Rect {
         let x = self.cursor.x;
         let y = self.cursor.y;
@@ -77,18 +84,49 @@ impl<'a> ImUi<'a> {
         let size = Size::new(label_w + pad * 2, label_h + pad * 2);
         let rect = self.next_rect(size);
 
+        // State
+        let hovered = if let Some(p) = self.input.pointer_pos {
+            p.x >= rect.top_left.x && p.y >= rect.top_left.y && p.x <= rect.right() && p.y <= rect.bottom()
+        } else { false };
+        let pressed = hovered && self.input.pointer_down;
+
         // Draw button
-        let mut painter = Painter::new(self.raster);
-        let bg = Fill { color: Color::GRAY_20 };
         let border = Stroke { color: Color::GRAY_40, thickness: 1 };
         let corner = CornerRadii { uniform: 6 };
-        painter.rect(rect, Some(bg), Some(border), corner);
+        // subtle shadow first
+        self.shadow(rect, if pressed { 2 } else { 3 }, if hovered { 70 } else { 50 });
+        // gradient fill for depth (direct raster access)
+        let (top, bottom) = if pressed {
+            (Rgb565::from_rgb(48, 48, 52), Rgb565::from_rgb(32, 32, 36))
+        } else if hovered {
+            (Rgb565::from_rgb(72, 72, 78), Rgb565::from_rgb(52, 52, 58))
+        } else {
+            (Rgb565::from_rgb(60, 60, 65), Rgb565::from_rgb(40, 40, 45))
+        };
+        let grad = LinearGradient::new(
+            Point::new(rect.top_left.x, rect.top_left.y),
+            Point::new(rect.top_left.x, rect.bottom()),
+            top,
+            bottom,
+        );
+        fill_rect_linear_gradient(self.raster, rect, &grad);
+        if hovered && !pressed {
+            // subtle highlight overlay
+            fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 14));
+        }
+        // border stroke in its own short scope to avoid overlapping borrows
+        {
+            let mut painter = Painter::new(self.raster);
+            painter.stroke_rect(rect, border, corner);
+        }
 
         let text_pos = Point::new(
             rect.top_left.x + pad as i32,
-            rect.top_left.y + pad as i32,
+            rect.top_left.y + pad as i32 + if pressed { 1 } else { 0 },
         );
-        let mut tr = TextRenderer::new(&FONT_8X8).with_color(Rgb565::from_rgb(255, 255, 255)).with_anti_alias(true);
+        let mut tr = TextRenderer::new(&FONT_8X8)
+            .with_color(Rgb565::from_rgb(255, 255, 255))
+            .with_anti_alias(true);
         tr.draw_text(self.raster, text_pos, text);
 
         // Input
@@ -101,6 +139,25 @@ impl<'a> ImUi<'a> {
     }
 
     pub fn add_button_horizontal(&mut self, text: &str) -> Response { self.add_button(text) }
+
+    /// Soft shadow under a rect using alpha falloff.
+    pub fn shadow(&mut self, rect: Rect, radius: i32, opacity: u8) {
+        let grow = radius.max(1) as u32;
+        let shadow_rect = Rect::new(Point::new(rect.top_left.x - radius, rect.top_left.y - radius), Size::new(rect.size.width + grow * 2, rect.size.height + grow * 2));
+        // simple box blur-ish alpha ring
+        for y in shadow_rect.top_left.y..=shadow_rect.bottom() {
+            for x in shadow_rect.top_left.x..=shadow_rect.right() {
+                // distance to nearest point of rect
+                let dx = if x < rect.top_left.x { rect.top_left.x - x } else if x > rect.right() { x - rect.right() } else { 0 };
+                let dy = if y < rect.top_left.y { rect.top_left.y - y } else if y > rect.bottom() { y - rect.bottom() } else { 0 };
+                let d = (dx.max(dy)) as i32;
+                if d <= radius {
+                    let alpha = (((radius - d) * opacity as i32) / radius).clamp(0, 255) as u8;
+                    self.raster.blend_pixel(x, y, Rgb565::from_rgb(0, 0, 0), alpha);
+                }
+            }
+        }
+    }
 }
 
 

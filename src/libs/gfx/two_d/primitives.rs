@@ -660,6 +660,102 @@ pub fn draw_rounded_rect_outline_aa(
     }
 }
 
+/// Draw a rounded rectangle outline with anti-aliasing and thickness using RGBA color.
+///
+/// This variant allows specifying alpha for the stroke by leveraging RGBA AA lines.
+pub fn draw_rounded_rect_outline_rgba_aa(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    radius: i32,
+    thickness: i32,
+    color: Rgba8888,
+) {
+    if rect.size.width == 0 || rect.size.height == 0 || thickness <= 0 { return; }
+
+    let rx = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
+    if rx == 0 {
+        // Fallback to straight rectangle using thick RGBA lines
+        for d in 0..thickness {
+            let y_top = rect.top_left.y + d;
+            let y_bottom = rect.bottom() - d;
+            draw_line_rgba_aa(rasterizer, Point::new(rect.top_left.x, y_top), Point::new(rect.right(), y_top), color);
+            draw_line_rgba_aa(rasterizer, Point::new(rect.top_left.x, y_bottom), Point::new(rect.right(), y_bottom), color);
+            let x_left = rect.top_left.x + d;
+            let x_right = rect.right() - d;
+            draw_line_rgba_aa(rasterizer, Point::new(x_left, rect.top_left.y), Point::new(x_left, rect.bottom()), color);
+            draw_line_rgba_aa(rasterizer, Point::new(x_right, rect.top_left.y), Point::new(x_right, rect.bottom()), color);
+        }
+        return;
+    }
+
+    let left = rect.top_left.x;
+    let right = rect.right();
+    let top = rect.top_left.y;
+    let bottom = rect.bottom();
+
+    for d in 0..thickness {
+        let y_top = top + d;
+        draw_line_rgba_aa(rasterizer, Point::new(left + rx, y_top), Point::new(right - rx, y_top), color);
+        let y_bottom = bottom - d;
+        draw_line_rgba_aa(rasterizer, Point::new(left + rx, y_bottom), Point::new(right - rx, y_bottom), color);
+        let x_left = left + d;
+        draw_line_rgba_aa(rasterizer, Point::new(x_left, top + rx), Point::new(x_left, bottom - rx), color);
+        let x_right = right - d;
+        draw_line_rgba_aa(rasterizer, Point::new(x_right, top + rx), Point::new(x_right, bottom - rx), color);
+    }
+
+    // Corner arcs approximated by short RGBA AA arc segments
+    let c_tl = Point::new(left + rx, top + rx);
+    let c_tr = Point::new(right - rx, top + rx);
+    let c_bl = Point::new(left + rx, bottom - rx);
+    let c_br = Point::new(right - rx, bottom - rx);
+    let steps = (rx as f32 * core::f32::consts::PI * 0.5 / 2.0).max(8.0) as i32;
+    for d in 0..thickness {
+        let r = rx - d;
+        if r <= 0 { break; }
+        for i in 0..steps {
+            let t0 = i as f32 / steps as f32;
+            let t1 = (i + 1) as f32 / steps as f32;
+            // TL: 180..270 deg
+            let a0 = core::f32::consts::PI + (core::f32::consts::FRAC_PI_2) * t0;
+            let a1 = core::f32::consts::PI + (core::f32::consts::FRAC_PI_2) * t1;
+            draw_line_rgba_aa(
+                rasterizer,
+                Point::new(c_tl.x + (r as f32 * a0.cos()) as i32, c_tl.y + (r as f32 * a0.sin()) as i32),
+                Point::new(c_tl.x + (r as f32 * a1.cos()) as i32, c_tl.y + (r as f32 * a1.sin()) as i32),
+                color,
+            );
+            // TR: 270..360
+            let b0 = 1.5 * core::f32::consts::PI + (core::f32::consts::FRAC_PI_2) * t0;
+            let b1 = 1.5 * core::f32::consts::PI + (core::f32::consts::FRAC_PI_2) * t1;
+            draw_line_rgba_aa(
+                rasterizer,
+                Point::new(c_tr.x + (r as f32 * b0.cos()) as i32, c_tr.y + (r as f32 * b0.sin()) as i32),
+                Point::new(c_tr.x + (r as f32 * b1.cos()) as i32, c_tr.y + (r as f32 * b1.sin()) as i32),
+                color,
+            );
+            // BL: 90..180
+            let c0 = 0.5 * core::f32::consts::PI + (core::f32::consts::FRAC_PI_2) * t0;
+            let c1 = 0.5 * core::f32::consts::PI + (core::f32::consts::FRAC_PI_2) * t1;
+            draw_line_rgba_aa(
+                rasterizer,
+                Point::new(c_bl.x + (r as f32 * c0.cos()) as i32, c_bl.y + (r as f32 * c0.sin()) as i32),
+                Point::new(c_bl.x + (r as f32 * c1.cos()) as i32, c_bl.y + (r as f32 * c1.sin()) as i32),
+                color,
+            );
+            // BR: 0..90
+            let d0 = 0.0 + (core::f32::consts::FRAC_PI_2) * t0;
+            let d1 = 0.0 + (core::f32::consts::FRAC_PI_2) * t1;
+            draw_line_rgba_aa(
+                rasterizer,
+                Point::new(c_br.x + (r as f32 * d0.cos()) as i32, c_br.y + (r as f32 * d0.sin()) as i32),
+                Point::new(c_br.x + (r as f32 * d1.cos()) as i32, c_br.y + (r as f32 * d1.sin()) as i32),
+                color,
+            );
+        }
+    }
+}
+
 /// Fill a rectangle with optional rounded corners and an optional border.
 ///
 /// This helper is convenient for UI widgets.
