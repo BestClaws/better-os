@@ -13,7 +13,8 @@ use crate::libs::ui::{Theme, ImUi, ImInput};
 pub async fn ui_demo_app(context: AppContext) {
     info!("UI demo app started");
     let theme = Theme::default();
-    let mut _dummy = 0u32; // placeholder for future state if needed
+
+    let mut counter: u32 = 0;
     loop {
         if !context.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
@@ -25,21 +26,18 @@ pub async fn ui_demo_app(context: AppContext) {
             let mut ui = ImUi::new_fullscreen(canvas, input);
             ui.clear_background(Rgb565::from_rgb(15, 15, 18));
 
-            ui.add_label_newline("Basic Example");
-            ui.add_label_newline("Basic Counter (7LOC)");
 
             // Simple counter demo
-            static mut COUNTER: u32 = 0;
             // Safe here because single-threaded app task; if not, guard with Mutex
-            unsafe {
-                if ui.add_button_horizontal("-").clicked() { COUNTER = COUNTER.saturating_sub(1); }
-                use heapless::String;
-                let mut s: String<32> = String::new();
-                use core::fmt::Write;
-                let _ = write!(&mut s, "Clicked {} times", COUNTER);
-                ui.add_label(&s);
-                if ui.add_button_horizontal("+").clicked() { COUNTER = COUNTER.saturating_add(1); }
-            }
+                if ui.add_button_horizontal("++++++").clicked() { counter += 1}
+
+            use heapless::String;
+            let mut s: String<32> = String::new();
+            use core::fmt::Write;
+            let _ = write!(&mut s, "{}t", counter);
+            ui.add_label_newline(&s);
+
+
         }).await;
 
         context.request_redraw().await;
