@@ -645,7 +645,7 @@ pub async fn system_ui_consume_events() {
                     TouchAction::Down => {
                         tracking = false;
                         from_left = p.x <= EDGE_THRESHOLD;
-                        from_right = p.x >= (FRAME_BUFFER_WIDTH as i32 - EDGE_THRESHOLD);
+                        from_right = p.x >= ((FRAME_BUFFER_WIDTH as i32) - EDGE_THRESHOLD);
                         if from_left || from_right {
                             tracking = true;
                             start_x = p.x;
@@ -661,11 +661,13 @@ pub async fn system_ui_consume_events() {
                                 if from_left && dx > MIN_SWIPE_DISTANCE {
                                     consumed = true;
                                     fired = true;
-                                    SUI_COMMAND_CH.send(TransitionDirection::Previous).await;
-                                } else if from_right && dx < -MIN_SWIPE_DISTANCE {
+                                    // Swipe from left edge towards right -> navigate to next
+                                    SUI_COMMAND_CH.send(TransitionDirection::Next).await;
+                                } else if from_right && (-dx) > MIN_SWIPE_DISTANCE {
                                     consumed = true;
                                     fired = true;
-                                    SUI_COMMAND_CH.send(TransitionDirection::Next).await;
+                                    // Swipe from right edge towards left -> navigate to previous
+                                    SUI_COMMAND_CH.send(TransitionDirection::Previous).await;
                                 }
                             }
                         }

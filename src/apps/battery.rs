@@ -1,5 +1,5 @@
 #![allow(unused)]
-use defmt::info;
+use defmt::{debug, info};
 use embassy_time::{Duration, Timer, Instant};
 use micromath::F32Ext;
 use crate::libs::gfx::math::Quaternion;
@@ -82,7 +82,7 @@ fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     let time_text = format!("TIME: {:.1}s", t);
     text_renderer.draw_text(canvas, GPoint::new(10, 200), &time_text);
 
-    info!("3d demo frame time: {}", now.elapsed().as_millis());
+    debug!("3d demo frame time: {}", now.elapsed().as_millis());
 }
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
@@ -220,7 +220,7 @@ fn draw_alpha(canvas: &mut Canvas, t: f32) {
 
 #[embassy_executor::task]
 pub async fn battery_app(context: AppContext) {
-    info!("Graphics demo started");
+    debug!("Graphics demo started");
     let mut scene = DemoScene::Rects;
     let mut last_switch = Instant::now();
     let start_time = Instant::now();

@@ -11,6 +11,7 @@ use crate::system::hal::button::{AsyncButton, ButtonState};
 use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::input::types::{HighLevelEvent, KeyAction, KeyCode, KeyEvent, MotionEvent, PointerSample, TouchAction};
+use crate::system::kernel::config::resources::{FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, FRAME_SCALE_FACTOR};
 
 /// IR -> ID queue of high-level events (debounced/fused)
 pub static INPUT_EVENTS_CH: Channel<CriticalSectionRawMutex, HighLevelEvent, 64> = Channel::new();
@@ -26,7 +27,7 @@ pub async fn read_button(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn
         let event = match state {
             ButtonState::Down => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Down }),
             ButtonState::Up => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Up }),
-            ButtonState::Held => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::LongPress }),
+            ButtonState::Repeat => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Repeat }),
         };
 
         INPUT_EVENTS_CH.send(event).await;
@@ -68,8 +69,14 @@ pub async fn read_touch(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn A
         };
 
         let pressed = z != 0;
-        let xi = x as i32;
-        let yi = y as i32;
+        // Normalize raw touch to framebuffer coordinates to match SUI edge thresholds
+        let mut xi = (x as u32 / FRAME_SCALE_FACTOR) as i32;
+        let mut yi = (y as u32 / FRAME_SCALE_FACTOR) as i32;
+        // Clamp within framebuffer bounds
+        if xi < 0 { xi = 0; }
+        if yi < 0 { yi = 0; }
+        if xi >= FRAME_BUFFER_WIDTH as i32 { xi = FRAME_BUFFER_WIDTH as i32 - 1; }
+        if yi >= FRAME_BUFFER_HEIGHT as i32 { yi = FRAME_BUFFER_HEIGHT as i32 - 1; }
 
         let hle = if pressed && !was_pressed {
             // DOWN

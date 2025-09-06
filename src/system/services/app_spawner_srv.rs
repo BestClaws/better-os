@@ -24,9 +24,9 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         spawn_fn: spawn_battery_app,
     },
     AppDescriptor {
-        name: "watch Monitor",
+        name: "rect Monitor",
         id: 2,
-        spawn_fn: spawn_watch_app,
+        spawn_fn: spawn_rect_app,
     },
     AppDescriptor {
         name: "Text Demo",
@@ -162,8 +162,8 @@ pub enum AppSpawnError {
 // These wrapper functions provide type safety and error handling
 
 
-fn spawn_watch_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(watch_app(context))
+fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(rect_app(context))
 }
 fn spawn_battery_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(battery_app(context))

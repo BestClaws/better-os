@@ -8,7 +8,7 @@ use embassy_time::{Duration, Timer};
 use micromath::F32Ext;
 
 fn draw_rects(canvas: &mut Canvas) {
-    // canvas.clear_rgb(Rgb565::from_rgb(15, 15, 20));
+    canvas.clear_rgb(Rgb565::from_rgb(15, 15, 20));
 
 
     fill_rect(

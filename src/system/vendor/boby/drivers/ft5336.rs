@@ -79,9 +79,9 @@ where
             let touch_id = (coords[2] >> TOUCH_ID_POS) & TOUCH_ID_MSK;
             if touch_id != TOUCH_ID_INVALID {
                 pressed = true;
-                // Match Zephyr: x = Y regs (horizontal), y = X regs (vertical)
-                self.xraw = ((coords[2] & POSITION_H_MSK) as u16) << 8 | coords[3] as u16;
-                self.yraw = ((coords[0] & POSITION_H_MSK) as u16) << 8 | coords[1] as u16;
+                // Flip axes for this hardware: x from X regs, y from Y regs
+                self.xraw = ((coords[0] & POSITION_H_MSK) as u16) << 8 | coords[1] as u16;
+                self.yraw = ((coords[2] & POSITION_H_MSK) as u16) << 8 | coords[3] as u16;
             }
         }
 

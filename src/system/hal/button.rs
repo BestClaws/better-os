@@ -63,8 +63,9 @@ impl<P: InputPin + Wait> AsyncButton for ButtonDriver<P> {
 
                 Err(_) => {
                     // Timeout, no state change detected
+                    // Emit periodic repeat while button is held beyond threshold.
                     if self.last_state == ButtonState::Down && self.last_falling_edge < Instant::now() - Duration::from_secs(1) {
-                        return ButtonState::Held;
+                        return ButtonState::Repeat;
                     } else {
                         continue;
                     }
@@ -80,5 +81,6 @@ impl<P: InputPin + Wait> AsyncButton for ButtonDriver<P> {
 pub(crate) enum ButtonState {
     Down,
     Up,
-    Held,
+    /// Repeat indicates the button remains pressed beyond a threshold and generates periodic events.
+    Repeat,
 }
