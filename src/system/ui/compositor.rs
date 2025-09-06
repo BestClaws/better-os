@@ -616,8 +616,8 @@ impl UICompositor {
         total_area
     }
 }
-/// Internal: SUI -> compositor swipe decision channel
-pub static SWIPE_SIGNAL_CH: Channel<CriticalSectionRawMutex, TransitionDirection, 4> = Channel::new();
+/// Internal: SUI -> compositor command channel (e.g., navigation). Not limited to swipes.
+pub static SUI_COMMAND_CH: Channel<CriticalSectionRawMutex, TransitionDirection, 4> = Channel::new();
 
 /// Simple System UI input consumer: detects edge swipes for navigation.
 #[embassy_executor::task]
@@ -661,11 +661,11 @@ pub async fn system_ui_consume_events() {
                                 if from_left && dx > MIN_SWIPE_DISTANCE {
                                     consumed = true;
                                     fired = true;
-                                    SWIPE_SIGNAL_CH.send(TransitionDirection::Previous).await;
+                                    SUI_COMMAND_CH.send(TransitionDirection::Previous).await;
                                 } else if from_right && dx < -MIN_SWIPE_DISTANCE {
                                     consumed = true;
                                     fired = true;
-                                    SWIPE_SIGNAL_CH.send(TransitionDirection::Next).await;
+                                    SUI_COMMAND_CH.send(TransitionDirection::Next).await;
                                 }
                             }
                         }

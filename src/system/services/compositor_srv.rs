@@ -6,7 +6,7 @@ use embassy_time::{Duration, Instant, Timer};
 
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::compositor::system_ui_consume_events;
-use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UICompositor, SWIPE_SIGNAL_CH};
+use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UICompositor, SUI_COMMAND_CH};
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::compositor::{ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
 
@@ -61,7 +61,7 @@ pub async fn compositor_service(
         let loop_start = Instant::now();
 
         // React to SUI swipe decisions if any
-        if let Ok(dir) = SWIPE_SIGNAL_CH.try_receive() {
+        if let Ok(dir) = SUI_COMMAND_CH.try_receive() {
             match dir {
                 TransitionDirection::Next => {
                     let mut compositor_lock = compositor.lock().await;
