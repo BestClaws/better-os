@@ -531,6 +531,162 @@ pub fn draw_arc(
     }
 }
 
+/// High-quality thick line drawing using parallel AA lines.
+///
+/// Draws a line segment with a specified thickness by rendering multiple
+/// anti-aliased offset lines along the surface normal. This is efficient
+/// and visually robust for small-to-moderate thickness values.
+pub fn draw_line_thick_aa(
+    rasterizer: &mut dyn Rasterizer,
+    p0: Point,
+    p1: Point,
+    thickness: i32,
+    color: Rgb565,
+) {
+    // Guard conditions
+    if thickness <= 1 {
+        draw_line_aa(rasterizer, p0, p1, color);
+        return;
+    }
+
+    // Compute normal vector for offsetting
+    let dx = (p1.x - p0.x) as f32;
+    let dy = (p1.y - p0.y) as f32;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len == 0.0 {
+        // Render a small disc for degenerate segment
+        let r = (thickness / 2).max(1);
+        fill_circle(rasterizer, p0, r, color);
+        return;
+    }
+    let nx = -dy / len; // normalized normal x
+    let ny = dx / len;  // normalized normal y
+
+    // Evenly distribute offsets around the center line
+    let half = (thickness as f32) / 2.0;
+    let steps = thickness.max(1);
+    // Use symmetric offsets; include center if odd thickness
+    for i in 0..steps {
+        let t = (i as f32 + 0.5) - half; // centered in band
+        let off_x = (nx * t).round() as i32;
+        let off_y = (ny * t).round() as i32;
+        draw_line_aa(
+            rasterizer,
+            Point::new(p0.x + off_x, p0.y + off_y),
+            Point::new(p1.x + off_x, p1.y + off_y),
+            color,
+        );
+    }
+}
+
+/// Draw a rounded rectangle outline with anti-aliasing and thickness.
+///
+/// This function renders the border by combining horizontal/vertical edge runs
+/// and concentric corner arcs for each thickness layer.
+pub fn draw_rounded_rect_outline_aa(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    radius: i32,
+    thickness: i32,
+    color: Rgb565,
+) {
+    if rect.size.width == 0 || rect.size.height == 0 || thickness <= 0 {
+        return;
+    }
+
+    let rx = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
+    if rx == 0 {
+        draw_rect_outline_aa(rasterizer, rect, thickness, color);
+        return;
+    }
+
+    let left = rect.top_left.x;
+    let right = rect.right();
+    let top = rect.top_left.y;
+    let bottom = rect.bottom();
+
+    // Draw edges as multiple AA lines per thickness layer
+    for d in 0..thickness {
+        // Top edge (between rounded corners)
+        let y_top = top + d;
+        draw_line_aa(
+            rasterizer,
+            Point::new(left + rx, y_top),
+            Point::new(right - rx, y_top),
+            color,
+        );
+        // Bottom edge
+        let y_bottom = bottom - d;
+        draw_line_aa(
+            rasterizer,
+            Point::new(left + rx, y_bottom),
+            Point::new(right - rx, y_bottom),
+            color,
+        );
+        // Left edge
+        let x_left = left + d;
+        draw_line_aa(
+            rasterizer,
+            Point::new(x_left, top + rx),
+            Point::new(x_left, bottom - rx),
+            color,
+        );
+        // Right edge
+        let x_right = right - d;
+        draw_line_aa(
+            rasterizer,
+            Point::new(x_right, top + rx),
+            Point::new(x_right, bottom - rx),
+            color,
+        );
+    }
+
+    // Draw corner arcs concentrically for each thickness layer
+    let c_tl = Point::new(left + rx, top + rx);
+    let c_tr = Point::new(right - rx, top + rx);
+    let c_bl = Point::new(left + rx, bottom - rx);
+    let c_br = Point::new(right - rx, bottom - rx);
+    for d in 0..thickness {
+        let r = rx - d;
+        if r <= 0 { break; }
+        // Top-left: 180..270 deg
+        draw_arc_aa(rasterizer, c_tl, r, core::f32::consts::PI, 1.5 * core::f32::consts::PI, color);
+        // Top-right: 270..360 deg
+        draw_arc_aa(rasterizer, c_tr, r, 1.5 * core::f32::consts::PI, 2.0 * core::f32::consts::PI, color);
+        // Bottom-left: 90..180 deg
+        draw_arc_aa(rasterizer, c_bl, r, 0.5 * core::f32::consts::PI, core::f32::consts::PI, color);
+        // Bottom-right: 0..90 deg
+        draw_arc_aa(rasterizer, c_br, r, 0.0, 0.5 * core::f32::consts::PI, color);
+    }
+}
+
+/// Fill a rectangle with optional rounded corners and an optional border.
+///
+/// This helper is convenient for UI widgets.
+pub fn fill_rect_styled(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    corner_radius: i32,
+    background: Rgb565,
+    border_color: Option<Rgb565>,
+    border_thickness: i32,
+) {
+    if corner_radius > 0 {
+        fill_rounded_rect(rasterizer, rect, corner_radius, background);
+    } else {
+        fill_rect(rasterizer, rect, background);
+    }
+    if let Some(bc) = border_color {
+        if border_thickness > 0 {
+            if corner_radius > 0 {
+                draw_rounded_rect_outline_aa(rasterizer, rect, corner_radius, border_thickness, bc);
+            } else {
+                draw_rect_outline_aa(rasterizer, rect, border_thickness, bc);
+            }
+        }
+    }
+}
+
 // ===== Helper Functions =====
 
 /// Fast integer part calculation for anti-aliasing.

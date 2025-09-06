@@ -4,6 +4,8 @@ use crate::system::ui::canvas::Canvas;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::window_manager::WindowManager;
+use crate::libs::ui::imui::{ImInput};
+use crate::system::input::types::{MotionEvent, TouchAction};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
@@ -50,5 +52,31 @@ impl AppContext {
     pub async fn draw(&self, f: impl FnOnce(&mut Canvas) + Send) {
         let mut wm = self.window_manager.lock().await;
         let _ = wm.with_canvas(self.handle, f);
+    }
+
+    /// Gather pending input events and provide an `ImInput` snapshot, then draw.
+    pub async fn draw_immediate(&self, f: impl FnOnce(&mut Canvas, ImInput) + Send) {
+        // Collect input events into a single snapshot for this frame
+        let mut wm = self.window_manager.lock().await;
+        let mut input = ImInput::default();
+        loop {
+            if let Some(ev) = wm.poll_window_input(self.handle) {
+                match ev {
+                    HighLevelEvent::Motion(MotionEvent { action, pointers, .. }) => {
+                        if let Some(p) = pointers[0] {
+                            input.pointer_pos = Some(crate::libs::gfx::two_d::Point::new(p.x, p.y));
+                            match action {
+                                TouchAction::Down => { input.pointer_down = true; }
+                                TouchAction::Up => { input.pointer_released = true; input.pointer_down = false; }
+                                TouchAction::Move => { /* pos updated */ }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            } else { break; }
+        }
+
+        let _ = wm.with_canvas(self.handle, |canvas| f(canvas, input));
     }
 }

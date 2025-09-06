@@ -25,7 +25,8 @@ pub use raster::Rasterizer;
 // Optimized primitive drawing functions
 pub use primitives::{
     draw_line_aa, draw_line_rgba_aa, draw_arc_aa, draw_arc, 
-    draw_rect_outline_aa, fill_rounded_rect, fill_circle, fill_rect
+    draw_rect_outline_aa, fill_rounded_rect, fill_circle, fill_rect,
+    draw_line_thick_aa, draw_rounded_rect_outline_aa, fill_rect_styled
 };
 
 // High-performance gradient rendering
