@@ -1,5 +1,6 @@
 use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888};
 use crate::libs::gfx::two_d::{TextRenderer, FONT_8X8, LinearGradient, fill_rect_linear_gradient, fill_rect_rgba};
+use crate::libs::gfx::two_d::primitives::{fill_rounded_rect_linear_gradient, draw_rounded_rect_shadow_layers};
 use super::style::{Fill, Stroke, CornerRadii, Color};
 use super::painter::Painter;
 
@@ -94,7 +95,15 @@ impl<'a> ImUi<'a> {
         let border = Stroke { color: Color::GRAY_40, thickness: 1 };
         let corner = CornerRadii { uniform: 6 };
         // subtle shadow first
-        self.shadow(rect, if pressed { 3 } else { 5 }, if hovered { 110 } else { 80 });
+        // Rounded shadow outside
+        draw_rounded_rect_shadow_layers(
+            self.raster,
+            rect,
+            corner.uniform as i32,
+            if pressed { 3 } else { 5 },
+            Rgb565::from_rgb(32, 32, 32),
+            if hovered { 120 } else { 90 },
+        );
         // gradient fill for depth (direct raster access)
         // High-contrast green->blue gradient (horizontal)
         let (left_color, right_color) = if pressed {
@@ -110,53 +119,7 @@ impl<'a> ImUi<'a> {
             left_color,
             right_color,
         );
-        fill_rect_linear_gradient(self.raster, rect, &grad);
-        // Mask the gradient into rounded shape by overdrawing outside corners with background.
-        if corner.uniform > 0 {
-            // Four corner squares outside of rounded arc get the background color to avoid square corners
-            // Top-left
-            let r = corner.uniform as i32;
-            let bg = self.theme_bg;
-            for y in rect.top_left.y..rect.top_left.y + r {
-                for x in rect.top_left.x..rect.top_left.x + r {
-                    let dx = rect.top_left.x + r - 1 - x;
-                    let dy = rect.top_left.y + r - 1 - y;
-                    if dx * dx + dy * dy >= r * r {
-                        self.raster.set_pixel(x, y, bg);
-                    }
-                }
-            }
-            // Top-right
-            for y in rect.top_left.y..rect.top_left.y + r {
-                for x in rect.right() - r + 1..=rect.right() {
-                    let dx = x - (rect.right() - r + 1);
-                    let dy = rect.top_left.y + r - 1 - y;
-                    if dx * dx + dy * dy >= r * r {
-                        self.raster.set_pixel(x, y, bg);
-                    }
-                }
-            }
-            // Bottom-left
-            for y in rect.bottom() - r + 1..=rect.bottom() {
-                for x in rect.top_left.x..rect.top_left.x + r {
-                    let dx = rect.top_left.x + r - 1 - x;
-                    let dy = y - (rect.bottom() - r + 1);
-                    if dx * dx + dy * dy >= r * r {
-                        self.raster.set_pixel(x, y, bg);
-                    }
-                }
-            }
-            // Bottom-right
-            for y in rect.bottom() - r + 1..=rect.bottom() {
-                for x in rect.right() - r + 1..=rect.right() {
-                    let dx = x - (rect.right() - r + 1);
-                    let dy = y - (rect.bottom() - r + 1);
-                    if dx * dx + dy * dy >= r * r {
-                        self.raster.set_pixel(x, y, bg);
-                    }
-                }
-            }
-        }
+        fill_rounded_rect_linear_gradient(self.raster, rect, corner.uniform as i32, &grad);
         if hovered && !pressed {
             // stronger highlight for visibility
             fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 28));
@@ -164,7 +127,7 @@ impl<'a> ImUi<'a> {
         // border stroke in its own short scope to avoid overlapping borrows
         {
             let mut painter = Painter::new(self.raster);
-            // White border as requested
+            // Restore white rounded border
             let white_border = Stroke { color: Color::WHITE, thickness: 1 };
             painter.stroke_rect(rect, white_border, corner);
         }

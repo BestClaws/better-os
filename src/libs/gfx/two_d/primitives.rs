@@ -2,6 +2,7 @@
 
 use crate::libs::gfx::two_d::raster::Rasterizer;
 use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888, Size};
+use crate::libs::gfx::two_d::gradients::LinearGradient;
 use micromath::F32Ext;
 
 /// High-performance rectangle filling with optimized algorithms.
@@ -778,6 +779,244 @@ pub fn fill_rect_styled(
                 draw_rounded_rect_outline_aa(rasterizer, rect, corner_radius, border_thickness, bc);
             } else {
                 draw_rect_outline_aa(rasterizer, rect, border_thickness, bc);
+            }
+        }
+    }
+}
+
+/// Fill a rounded rectangle with a linear gradient. Samples gradient only inside rounded shape.
+pub fn fill_rounded_rect_linear_gradient(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    radius: i32,
+    gradient: &LinearGradient,
+) {
+    if rect.size.width == 0 || rect.size.height == 0 { return; }
+    let r = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
+    let left = rect.top_left.x;
+    let right = rect.right();
+    let top = rect.top_left.y;
+    let bottom = rect.bottom();
+
+    // Core horizontal band without corners
+    for y in top..=bottom {
+        for x in left..=right {
+            let inside = if x >= left + r && x <= right - r {
+                true
+            } else if y >= top + r && y <= bottom - r {
+                true
+            } else {
+                // Check corners
+                let mut ok = false;
+                // TL
+                if x < left + r && y < top + r {
+                    let cx = left + r;
+                    let cy = top + r;
+                    let dx = x - cx;
+                    let dy = y - cy;
+                    ok = dx*dx + dy*dy <= r*r;
+                }
+                // TR
+                if x > right - r && y < top + r {
+                    let cx = right - r;
+                    let cy = top + r;
+                    let dx = x - cx;
+                    let dy = y - cy;
+                    ok = ok || dx*dx + dy*dy <= r*r;
+                }
+                // BL
+                if x < left + r && y > bottom - r {
+                    let cx = left + r;
+                    let cy = bottom - r;
+                    let dx = x - cx;
+                    let dy = y - cy;
+                    ok = ok || dx*dx + dy*dy <= r*r;
+                }
+                // BR
+                if x > right - r && y > bottom - r {
+                    let cx = right - r;
+                    let cy = bottom - r;
+                    let dx = x - cx;
+                    let dy = y - cy;
+                    ok = ok || dx*dx + dy*dy <= r*r;
+                }
+                ok
+            };
+            if inside {
+                let color = gradient.sample(Point::new(x, y));
+                rasterizer.set_pixel(x, y, color);
+            }
+        }
+    }
+}
+
+/// Draw a rounded rectangle soft shadow outside the shape using a simple distance falloff.
+pub fn draw_rounded_rect_shadow(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    radius: i32,
+    blur_radius: i32,
+    color: Rgb565,
+    max_alpha: u8,
+) {
+    if blur_radius <= 0 { return; }
+    let r = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
+    let left = rect.top_left.x;
+    let right = rect.right();
+    let top = rect.top_left.y;
+    let bottom = rect.bottom();
+    let grow = blur_radius as u32;
+    let bounds = Rect::new(Point::new(left - blur_radius, top - blur_radius), Size::new(rect.size.width + grow*2, rect.size.height + grow*2));
+
+    for y in bounds.top_left.y..=bounds.bottom() {
+        for x in bounds.top_left.x..=bounds.right() {
+            // Skip interior
+            if x >= left && x <= right && y >= top && y <= bottom { continue; }
+            let d = distance_to_rounded_rect_edge(x, y, left, right, top, bottom, r);
+            if d <= blur_radius && d >= 0 {
+                // Bias one pixel inwards so shadow kisses the border (no visible gap)
+                let dd = (d - 1).max(0);
+                let alpha = ((blur_radius - dd) * (max_alpha as i32) / blur_radius).clamp(0, max_alpha as i32) as u8;
+                rasterizer.blend_pixel(x, y, color, alpha);
+            }
+        }
+    }
+}
+
+/// Distance (in pixels) from a point to the edge of a rounded rectangle.
+fn distance_to_rounded_rect_edge(x: i32, y: i32, left: i32, right: i32, top: i32, bottom: i32, r: i32) -> i32 {
+    // Inside central bands
+    if x >= left + r && x <= right - r {
+        if y < top { return top - y; }
+        if y > bottom { return y - bottom; }
+        return 0;
+    }
+    if y >= top + r && y <= bottom - r {
+        if x < left { return left - x; }
+        if x > right { return x - right; }
+        return 0;
+    }
+    // Corners
+    // Top-left
+    if x < left + r && y < top + r {
+        let cx = left + r; let cy = top + r;
+        let dx = x - cx; let dy = y - cy;
+        let dist2 = dx*dx + dy*dy;
+        let rr = r*r;
+        return ((dist2 as f32).sqrt() - (r as f32)).ceil() as i32;
+    }
+    // Top-right
+    if x > right - r && y < top + r {
+        let cx = right - r; let cy = top + r;
+        let dx = x - cx; let dy = y - cy;
+        return (((dx*dx + dy*dy) as f32).sqrt() - (r as f32)).ceil() as i32;
+    }
+    // Bottom-left
+    if x < left + r && y > bottom - r {
+        let cx = left + r; let cy = bottom - r;
+        let dx = x - cx; let dy = y - cy;
+        return (((dx*dx + dy*dy) as f32).sqrt() - (r as f32)).ceil() as i32;
+    }
+    // Bottom-right
+    if x > right - r && y > bottom - r {
+        let cx = right - r; let cy = bottom - r;
+        let dx = x - cx; let dy = y - cy;
+        return (((dx*dx + dy*dy) as f32).sqrt() - (r as f32)).ceil() as i32;
+    }
+    0
+}
+
+/// Layered rounded-rect shadow using concentric RGBA outlines (fast and gap-free).
+pub fn draw_rounded_rect_shadow_layers(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    radius: i32,
+    blur_radius: i32,
+    color: Rgb565,
+    max_alpha: u8,
+) {
+    if blur_radius <= 0 { return; }
+    let base_r = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
+    let left = rect.top_left.x;
+    let top = rect.top_left.y;
+    let mut alpha: i32;
+    let denom = (blur_radius + 1) as i32;
+    let denom_sq = denom * denom;
+    for o in 1..=blur_radius {
+        // Expand rect by o
+        let expanded = Rect::new(
+            Point::new(left - o, top - o),
+            Size::new((rect.size.width + (o as u32)*2), (rect.size.height + (o as u32)*2)),
+        );
+        // Quadratic falloff for softer look
+        let n = (blur_radius - o + 1) as i32;
+        let num = n * n * (max_alpha as i32);
+        alpha = (num / denom_sq).clamp(0, max_alpha as i32);
+        let rgba = Rgba8888::new(
+            // Use the provided shadow color's RGB565 expanded approximately to 8-bit
+            (((color.0 >> 11) & 0x1F) as u8) << 3,
+            (((color.0 >> 5) & 0x3F) as u8) << 2,
+            ((color.0 & 0x1F) as u8) << 3,
+            alpha as u8,
+        );
+        draw_rounded_rect_outline_rgba_aa(
+            rasterizer,
+            expanded,
+            base_r + o,
+            1,
+            rgba,
+        );
+    }
+}
+
+/// Fill a rounded rectangle with an RGBA color (alpha-blended).
+pub fn fill_rounded_rect_rgba(
+    rasterizer: &mut dyn Rasterizer,
+    rect: Rect,
+    radius: i32,
+    color: Rgba8888,
+) {
+    if rect.size.width == 0 || rect.size.height == 0 { return; }
+    let r = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
+    let left = rect.top_left.x;
+    let right = rect.right();
+    let top = rect.top_left.y;
+    let bottom = rect.bottom();
+    let rgb = color.to_rgb565();
+    let alpha = color.a;
+
+    for y in top..=bottom {
+        for x in left..=right {
+            let inside = if x >= left + r && x <= right - r {
+                true
+            } else if y >= top + r && y <= bottom - r {
+                true
+            } else {
+                let mut ok = false;
+                if x < left + r && y < top + r {
+                    let cx = left + r; let cy = top + r;
+                    let dx = x - cx; let dy = y - cy;
+                    ok = dx*dx + dy*dy <= r*r;
+                }
+                if x > right - r && y < top + r {
+                    let cx = right - r; let cy = top + r;
+                    let dx = x - cx; let dy = y - cy;
+                    ok = ok || dx*dx + dy*dy <= r*r;
+                }
+                if x < left + r && y > bottom - r {
+                    let cx = left + r; let cy = bottom - r;
+                    let dx = x - cx; let dy = y - cy;
+                    ok = ok || dx*dx + dy*dy <= r*r;
+                }
+                if x > right - r && y > bottom - r {
+                    let cx = right - r; let cy = bottom - r;
+                    let dx = x - cx; let dy = y - cy;
+                    ok = ok || dx*dx + dy*dy <= r*r;
+                }
+                ok
+            };
+            if inside {
+                rasterizer.blend_pixel(x, y, rgb, alpha);
             }
         }
     }
