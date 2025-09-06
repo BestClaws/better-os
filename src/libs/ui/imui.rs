@@ -94,30 +94,79 @@ impl<'a> ImUi<'a> {
         let border = Stroke { color: Color::GRAY_40, thickness: 1 };
         let corner = CornerRadii { uniform: 6 };
         // subtle shadow first
-        self.shadow(rect, if pressed { 2 } else { 3 }, if hovered { 70 } else { 50 });
+        self.shadow(rect, if pressed { 3 } else { 5 }, if hovered { 110 } else { 80 });
         // gradient fill for depth (direct raster access)
-        let (top, bottom) = if pressed {
-            (Rgb565::from_rgb(48, 48, 52), Rgb565::from_rgb(32, 32, 36))
+        // High-contrast green->blue gradient (horizontal)
+        let (left_color, right_color) = if pressed {
+            (Rgb565::from_rgb(40, 200, 60), Rgb565::from_rgb(20, 110, 220))
         } else if hovered {
-            (Rgb565::from_rgb(72, 72, 78), Rgb565::from_rgb(52, 52, 58))
+            (Rgb565::from_rgb(70, 255, 100), Rgb565::from_rgb(40, 160, 255))
         } else {
-            (Rgb565::from_rgb(60, 60, 65), Rgb565::from_rgb(40, 40, 45))
+            (Rgb565::from_rgb(50, 230, 80), Rgb565::from_rgb(30, 140, 240))
         };
         let grad = LinearGradient::new(
             Point::new(rect.top_left.x, rect.top_left.y),
-            Point::new(rect.top_left.x, rect.bottom()),
-            top,
-            bottom,
+            Point::new(rect.right(), rect.top_left.y),
+            left_color,
+            right_color,
         );
         fill_rect_linear_gradient(self.raster, rect, &grad);
+        // Mask the gradient into rounded shape by overdrawing outside corners with background.
+        if corner.uniform > 0 {
+            // Four corner squares outside of rounded arc get the background color to avoid square corners
+            // Top-left
+            let r = corner.uniform as i32;
+            let bg = self.theme_bg;
+            for y in rect.top_left.y..rect.top_left.y + r {
+                for x in rect.top_left.x..rect.top_left.x + r {
+                    let dx = rect.top_left.x + r - 1 - x;
+                    let dy = rect.top_left.y + r - 1 - y;
+                    if dx * dx + dy * dy >= r * r {
+                        self.raster.set_pixel(x, y, bg);
+                    }
+                }
+            }
+            // Top-right
+            for y in rect.top_left.y..rect.top_left.y + r {
+                for x in rect.right() - r + 1..=rect.right() {
+                    let dx = x - (rect.right() - r + 1);
+                    let dy = rect.top_left.y + r - 1 - y;
+                    if dx * dx + dy * dy >= r * r {
+                        self.raster.set_pixel(x, y, bg);
+                    }
+                }
+            }
+            // Bottom-left
+            for y in rect.bottom() - r + 1..=rect.bottom() {
+                for x in rect.top_left.x..rect.top_left.x + r {
+                    let dx = rect.top_left.x + r - 1 - x;
+                    let dy = y - (rect.bottom() - r + 1);
+                    if dx * dx + dy * dy >= r * r {
+                        self.raster.set_pixel(x, y, bg);
+                    }
+                }
+            }
+            // Bottom-right
+            for y in rect.bottom() - r + 1..=rect.bottom() {
+                for x in rect.right() - r + 1..=rect.right() {
+                    let dx = x - (rect.right() - r + 1);
+                    let dy = y - (rect.bottom() - r + 1);
+                    if dx * dx + dy * dy >= r * r {
+                        self.raster.set_pixel(x, y, bg);
+                    }
+                }
+            }
+        }
         if hovered && !pressed {
-            // subtle highlight overlay
-            fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 14));
+            // stronger highlight for visibility
+            fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 28));
         }
         // border stroke in its own short scope to avoid overlapping borrows
         {
             let mut painter = Painter::new(self.raster);
-            painter.stroke_rect(rect, border, corner);
+            // White border as requested
+            let white_border = Stroke { color: Color::WHITE, thickness: 1 };
+            painter.stroke_rect(rect, white_border, corner);
         }
 
         let text_pos = Point::new(
@@ -147,13 +196,18 @@ impl<'a> ImUi<'a> {
         // simple box blur-ish alpha ring
         for y in shadow_rect.top_left.y..=shadow_rect.bottom() {
             for x in shadow_rect.top_left.x..=shadow_rect.right() {
+                // Skip interior of the rect; shadow should be outside only
+                if x >= rect.top_left.x && x <= rect.right() && y >= rect.top_left.y && y <= rect.bottom() {
+                    continue;
+                }
                 // distance to nearest point of rect
                 let dx = if x < rect.top_left.x { rect.top_left.x - x } else if x > rect.right() { x - rect.right() } else { 0 };
                 let dy = if y < rect.top_left.y { rect.top_left.y - y } else if y > rect.bottom() { y - rect.bottom() } else { 0 };
                 let d = (dx.max(dy)) as i32;
                 if d <= radius {
                     let alpha = (((radius - d) * opacity as i32) / radius).clamp(0, 255) as u8;
-                    self.raster.blend_pixel(x, y, Rgb565::from_rgb(0, 0, 0), alpha);
+                    // dark gray shadow
+                    self.raster.blend_pixel(x, y, Rgb565::from_rgb(32, 32, 32), alpha);
                 }
             }
         }

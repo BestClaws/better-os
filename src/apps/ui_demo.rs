@@ -24,7 +24,7 @@ pub async fn ui_demo_app(context: AppContext) {
         context.draw_immediate(|canvas: &mut Canvas, input: ImInput| {
             // Use immediate-mode UI with built-in input snapshot
             let mut ui = ImUi::new_fullscreen(canvas, input);
-            ui.clear_background(Rgb565::from_rgb(15, 15, 18));
+            ui.clear_background(Rgb565::from_rgb(255, 255, 255));
 
 
             // Simple counter demo

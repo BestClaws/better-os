@@ -1,5 +1,6 @@
 use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565};
 use crate::libs::gfx::two_d::{fill_rect_styled, draw_line_thick_aa, draw_rect_outline_aa, fill_rect, fill_rounded_rect};
+use crate::libs::gfx::two_d::primitives::draw_rounded_rect_outline_aa;
 
 use super::style::{Color, Fill, Stroke, CornerRadii};
 
@@ -33,14 +34,13 @@ impl<'a> Painter<'a> {
         if corner.uniform == 0 {
             draw_rect_outline_aa(self.raster, rect, stroke.thickness as i32, color);
         } else {
-            // Use styled helper
-            fill_rect_styled(
+            // Draw ONLY the rounded outline, do not fill background
+            draw_rounded_rect_outline_aa(
                 self.raster,
                 rect,
                 corner.uniform as i32,
-                Rgb565::from_rgb(0, 0, 0), // background not used, border only
-                Some(color),
                 stroke.thickness as i32,
+                color,
             );
         }
     }
