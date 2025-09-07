@@ -19,6 +19,7 @@ pub mod text;
 pub mod fonts;
 pub mod draw; // Fluent, builder-based API
 pub mod fluent; // Embedded-graphics style API
+pub mod canvas2d;
 
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgb565, Rgba8888};
@@ -38,6 +39,7 @@ pub use gradients::{
 // Space-grade text rendering system
 pub use text::{TextRenderer, TextOptions};
 pub use fonts::{FONT_8X8};
+pub use canvas2d::Canvas2D;
 
 // Embedded-graphics style API re-exports
 pub use fluent::{

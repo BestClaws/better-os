@@ -1,22 +1,18 @@
 #![allow(unused)]
-use crate::libs::gfx::two_d::{Point as GPoint, Rect as GRect, Rgb565, Size as GSize, EgRectangle, EgPrimitiveStyleBuilder, EgDrawable};
+use crate::libs::gfx::two_d::{Point as GPoint, Rect as GRect, Rgb565, Size as GSize, EgRectangle, EgPrimitiveStyleBuilder, EgDrawable, Canvas2D};
 use crate::system::app::app_context::AppContext;
-use crate::system::ui::canvas::Canvas;
+use crate::system::ui::canvas::DrawingSurface as Canvas;
 use embassy_time::{Duration, Timer};
 use micromath::F32Ext;
 
-fn draw_rects(canvas: &mut Canvas) {
-    // canvas.clear_rgb(Rgb565::from_rgb(15, 15, 20));
-
-
+fn draw_rects(c2d: &mut Canvas2D) {
     EgRectangle::new(GPoint::new(25, 25), GSize::new(25 as u32, 25 as u32))
         .into_styled(
             EgPrimitiveStyleBuilder::new()
                 .fill_color(Rgb565::from_rgb(200, 60, 60))
                 .build(),
         )
-        .draw(canvas);
-
+        .draw(c2d);
 }
 
 #[embassy_executor::task]
@@ -26,11 +22,11 @@ pub async fn rect_app(context: AppContext) {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
-        context
-            .draw(|canvas: &mut Canvas| {
-                draw_rects(canvas);
-            })
-            .await;
+        context.draw(|canvas: &mut Canvas| {
+            // Use Canvas2D fluent drawing over the DrawingSurface
+            let mut c2d = Canvas2D::new(canvas as &mut dyn crate::libs::gfx::two_d::Rasterizer);
+            draw_rects(&mut c2d);
+        }).await;
 
         context.request_redraw().await;
         Timer::after(Duration::from_millis(1)).await;

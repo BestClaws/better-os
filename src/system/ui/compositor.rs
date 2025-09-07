@@ -1,11 +1,12 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::WindowHandle;
-use crate::system::ui::canvas::Canvas;
+use crate::system::ui::canvas::DrawingSurface as Canvas;
 use crate::libs::gfx::two_d::{Rect, Rgb565};
 use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR
 };
 use crate::system::ui::window_manager::WindowManager;
+use crate::system::services::display_service::DisplayService;
 use crate::system::input::dispatcher::{SUI_ACK_CH, SUI_EVENT_CH};
 use crate::system::input::types::{HighLevelEvent, MotionEvent, TouchAction};
 use embassy_sync::{
@@ -173,6 +174,7 @@ impl CanvasBlitter {
         source: &Canvas<'s>,
         offset_x: i32,
         offset_y: i32,
+        bytes_per_pixel: usize,
     ) {
         let timer = Instant::now();
         let (dest_w, dest_h) = (dest.width(), dest.height());
@@ -182,7 +184,8 @@ impl CanvasBlitter {
             dest, source,
             0, 0, src_w, src_h,
             offset_x, offset_y,
-            dest_w, dest_h
+            dest_w, dest_h,
+            bytes_per_pixel,
         );
 
         debug!("Full blit: {} μs", timer.elapsed().as_micros());
@@ -195,6 +198,7 @@ impl CanvasBlitter {
         region: Rect,
         offset_x: i32,
         offset_y: i32,
+        bytes_per_pixel: usize,
     ) {
         let timer = Instant::now();
         let (dest_w, dest_h) = (dest.width(), dest.height());
@@ -215,7 +219,8 @@ impl CanvasBlitter {
             dest, source,
             region_x, region_y, region_w, region_h,
             offset_x, offset_y,
-            dest_w, dest_h
+            dest_w, dest_h,
+            bytes_per_pixel,
         );
 
         debug!("Region blit: {} μs", timer.elapsed().as_micros());
@@ -228,6 +233,7 @@ impl CanvasBlitter {
         src_x0: u32, src_y0: u32, src_x1: u32, src_y1: u32,
         offset_x: i32, offset_y: i32,
         dest_w: u32, dest_h: u32,
+        bytes_per_pixel: usize,
     ) {
         // Convert to i32 for math once
         let dest_w_i = dest_w as i32;
@@ -252,13 +258,13 @@ impl CanvasBlitter {
             if sx0 >= sx1 { continue; }
 
             let pixels = (sx1 - sx0) as usize;
-            let bytes = pixels * 2;
+            let bytes = pixels * bytes_per_pixel;
 
             // Compute byte indices once and copy the entire run
             let src_first_pixel = (sx0 + sy * src_w) as usize;
             let dst_first_pixel = (clip_x0 as u32 + dy as u32 * dest_w) as usize;
-            let src_byte = src_first_pixel * 2;
-            let dst_byte = dst_first_pixel * 2;
+            let src_byte = src_first_pixel * bytes_per_pixel;
+            let dst_byte = dst_first_pixel * bytes_per_pixel;
 
             // Safety: all indices computed with clipping; copy in one slice move
             let src_slice = &source.buffer()[src_byte .. src_byte + bytes];
@@ -274,8 +280,10 @@ pub struct UICompositor {
     windows_order: heapless::Vec<WindowHandle, MAX_WINDOWS>,
     /// Index of currently focused window within `windows_order`
     current_index: usize,
-    /// Display hardware interface
+    /// Display hardware interface (legacy)
     display_driver: Option<&'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>>,
+    /// Display service (preferred)
+    display_service: Option<&'static DisplayService>,
     /// Pending redraw requests for dirty windows
     pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
     /// Animation configuration
@@ -290,6 +298,7 @@ impl UICompositor {
             windows_order: heapless::Vec::new(),
             current_index: 0,
             display_driver: None,
+            display_service: None,
             pending_redraws: heapless::Vec::new(),
             animation_config: AnimationConfig::default(),
         }
@@ -302,6 +311,12 @@ impl UICompositor {
     ) {
         self.display_driver = Some(display);
         debug!("Display driver attached");
+    }
+
+    /// Attach DisplayService abstraction
+    pub fn attach_display_service(&mut self, service: &'static DisplayService) {
+        self.display_service = Some(service);
+        debug!("Display service attached");
     }
 
     /// Configure animation parameters
@@ -370,7 +385,56 @@ impl UICompositor {
 
         let render_start = Instant::now();
 
-        if let Some(display) = self.display_driver {
+        if let Some(service) = self.display_service {
+            // Allocate working buffer for composition using service parameters
+            let fb_size = service.framebuffer_size(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let mut frame_buffer = vec![0u8; fb_size];
+            let mut composite_canvas = Canvas::new(
+                FRAME_BUFFER_WIDTH,
+                FRAME_BUFFER_HEIGHT
+            );
+            composite_canvas.set_resources(&mut frame_buffer);
+
+            let dirty_regions = if let Some((cur, _prev, _next)) = self.current_prev_next() {
+                self.collect_dirty_regions(wm, cur)
+            } else { heapless::Vec::new() };
+            debug!("Dirty regions count: {}", dirty_regions.len());
+
+            if !dirty_regions.is_empty() {
+                // Compose final frame only when there are dirty regions
+                self.compose_frame_optimized(wm, &mut composite_canvas).await;
+
+                // Optimized decision logic for partial vs full updates
+                let update_strategy = self.determine_update_strategy(&dirty_regions);
+
+                match update_strategy {
+                    UpdateStrategy::FullScreen => {
+                        debug!("Using full screen update ({} regions, {} area)", 
+                               dirty_regions.len(), self.calculate_total_dirty_area(&dirty_regions));
+                        service.draw_full(composite_canvas.buffer()).await;
+                    }
+                    UpdateStrategy::Partial(regions) => {
+                        debug!("Using partial update ({} regions)", regions.len());
+                        for region in regions.iter() {
+                            // Extract region-sized buffer from composite canvas
+                            let region_buffer = extract_region_buffer(
+                                composite_canvas.buffer(),
+                                region,
+                                FRAME_BUFFER_WIDTH,
+                                FRAME_BUFFER_HEIGHT
+                            );
+                            service.draw_region(&region_buffer, *region).await;
+                        }
+                    }
+                }
+                if let Some((cur, _p, _n)) = self.current_prev_next() {
+                    self.clear_window_dirty_regions(wm, cur);
+                }
+            } else {
+                // No dirty regions - no display update needed
+                debug!("No dirty regions, skipping display update");
+            }
+        } else if let Some(display) = self.display_driver {
             // Allocate working buffer for composition
             let mut frame_buffer = [0u8; FRAME_BUFFER_SIZE];
             let mut composite_canvas = Canvas::new(
@@ -484,6 +548,49 @@ impl UICompositor {
         animation: &dyn WindowAnimation,
         direction: TransitionDirection,
     ) {
+        // Prefer DisplayService for dynamic buffer sizing
+        if let Some(service) = self.display_service {
+            let fb_size = service.framebuffer_size(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
+            let mut canvas = Canvas::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            canvas.set_resources(&mut composition_buffer);
+
+            let (cur, prev, next) = self.current_prev_next().unwrap();
+            // Determine source and target by direction
+            let (source_h, target_h) = match direction {
+                TransitionDirection::Previous => (next, cur),
+                TransitionDirection::Next => (prev, cur),
+            };
+
+            // Animate through all steps
+            for step in 0..=self.animation_config.steps {
+                let frame_timer = Instant::now();
+                let progress = step as f32 / self.animation_config.steps as f32;
+                let eased_progress = (self.animation_config.easing_fn)(progress);
+
+                let frame = animation.animate_frame(eased_progress, direction);
+
+                // Clear and compose frame
+                canvas.clear_rgb(Rgb565::BLACK);
+                // Blit source window (contained within closure to keep borrows local)
+                let _ = wm.with_canvas(source_h, |src| {
+                    CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y, 2);
+                });
+                // Blit target window
+                let _ = wm.with_canvas(target_h, |dst| {
+                    CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y, 2);
+                });
+
+                // Display frame via service
+                service.draw_full(canvas.buffer()).await;
+
+                debug!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
+                Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
+            }
+            return;
+        }
+
+        // Legacy driver path
         let mut composition_buffer = [0u8; FRAME_BUFFER_SIZE];
         let mut canvas = Canvas::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
         canvas.set_resources(&mut composition_buffer);
@@ -507,11 +614,11 @@ impl UICompositor {
             canvas.clear_rgb(Rgb565::BLACK);
             // Blit source window (contained within closure to keep borrows local)
             let _ = wm.with_canvas(source_h, |src| {
-                CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y);
+                CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y, 2);
             });
             // Blit target window
             let _ = wm.with_canvas(target_h, |dst| {
-                CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y);
+                CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y, 2);
             });
 
             // Display frame
@@ -554,7 +661,7 @@ impl UICompositor {
             canvas.flush();
         });
     }
-
+    
     /// Poll for input events from specified window
     /// Check if window is currently focused
     pub fn is_window_focused(&self, handle: WindowHandle) -> bool {
@@ -576,7 +683,7 @@ impl UICompositor {
             if !regions.is_empty() {
                 for r in regions.iter() {
                     let _ = wm.with_canvas(cur, |canvas| {
-                        CanvasBlitter::copy_region(output_canvas, canvas, *r, 0, 0);
+                        CanvasBlitter::copy_region(output_canvas, canvas, *r, 0, 0, 2);
                     });
                 }
             }
@@ -736,7 +843,7 @@ fn extract_region_buffer(
     let region_width = region.size.width as u32;
     let region_height = region.size.height as u32;
     
-    let bytes_per_pixel = 2usize; // RGB565
+    let bytes_per_pixel = 2usize; // For now system uses RGB565; allow future generalization
     let region_size = (region_width * region_height * bytes_per_pixel as u32) as usize;
     let mut region_buffer = vec![0u8; region_size];
     

@@ -1,7 +1,7 @@
 use defmt::{debug, warn};
 
 use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::canvas::Canvas;
+use crate::system::ui::canvas::DrawingSurface as Canvas;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;

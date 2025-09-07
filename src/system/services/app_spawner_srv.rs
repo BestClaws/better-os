@@ -2,16 +2,13 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
-use crate::apps::battery::battery_app;
-use crate::apps::text_demo::text_demo_app;
-use crate::apps::ui_demo::ui_demo_app;
+// Simplify: only rect app is kept registered
 
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use defmt::{debug, error, info, warn, Format};
 use crate::apps::rect::rect_app;
-use crate::apps::watch::watch_app;
 
 /// Application registry for system apps
 ///
@@ -20,24 +17,9 @@ use crate::apps::watch::watch_app;
 const SYSTEM_APPS: &[AppDescriptor] = &[
 
     AppDescriptor {
-        name: "Battery Monitor",
-        id: 1,
-        spawn_fn: spawn_battery_app,
-    },
-    AppDescriptor {
         name: "rect Monitor",
         id: 2,
         spawn_fn: spawn_rect_app,
-    },
-    AppDescriptor {
-        name: "Text Demo",
-        id: 3,
-        spawn_fn: spawn_text_demo_app,
-    },
-    AppDescriptor {
-        name: "UI Demo",
-        id: 4,
-        spawn_fn: spawn_ui_demo_app,
     },
 
 ];
@@ -171,17 +153,7 @@ pub enum AppSpawnError {
 fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(rect_app(context))
 }
-fn spawn_battery_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(battery_app(context))
-}
-
-fn spawn_text_demo_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(text_demo_app(context))
-}
-
-fn spawn_ui_demo_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(ui_demo_app(context))
-}
+// Other app spawners removed for simplicity
 
 
 /// Utility functions for application management

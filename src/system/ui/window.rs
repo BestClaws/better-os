@@ -2,7 +2,7 @@ use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::canvas::Canvas;
+use crate::system::ui::canvas::DrawingSurface as Canvas;
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;

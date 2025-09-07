@@ -18,7 +18,7 @@ use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 /// always enabled and optimized for performance - there's no overhead from enabling/disabling.
 ///
 /// Supported color format: `Rgb565`.
-pub struct Canvas<'a> {
+pub struct DrawingSurface<'a> {
     buf: Option<&'a mut [u8]>,
     width: u32,
     height: u32,
@@ -29,7 +29,7 @@ pub struct Canvas<'a> {
 }
 
 // ===== Canvas Implementation =====
-impl<'a> Canvas<'a> {
+impl<'a> DrawingSurface<'a> {
 
     pub fn new(width: u32, height: u32) -> Self {
         Self {
@@ -144,7 +144,7 @@ impl<'a> Canvas<'a> {
     
 }
 
-impl<'a> Canvas<'a> {
+impl<'a> DrawingSurface<'a> {
     pub fn resize(&mut self, width: u32, height: u32) {
         let required = (width * height * 2) as usize;
         assert!(self._buf_mut().len() >= required, "Buffer too small for Rgb565");
@@ -313,7 +313,7 @@ fn intersects_or_touches(a: &Rect, b: &Rect) -> bool {
     !(ax1 <= bx0t || ax0 >= bx1t || ay1 <= by0t || ay0 >= by1t)
 }
 // ===== Rasterizer implementation =====
-impl Rasterizer for Canvas<'_> {
+impl Rasterizer for DrawingSurface<'_> {
     fn width(&self) -> u32 { self.width }
     fn height(&self) -> u32 { self.height }
     
