@@ -1,6 +1,7 @@
 use core::cmp::{max, min};
+use defmt::Format;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
@@ -15,7 +16,7 @@ impl Point {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 pub struct Size {
     pub width: u32,
     pub height: u32,
@@ -27,7 +28,7 @@ impl Size {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 pub struct Rect {
     pub top_left: Point,
     pub size: Size,

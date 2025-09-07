@@ -9,8 +9,7 @@ use embedded_hal::digital::OutputPin;
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error, debug};
-use embedded_graphics_core::prelude::{Point, Size};
-use embedded_graphics_core::primitives::Rectangle;
+use crate::libs::gfx::two_d::{Point, Size, Rect};
 use crate::system::hal::display::{AsyncDisplay, Orientation, DisplayPixelFormat};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
@@ -378,7 +377,7 @@ where
     }
 
 
-    async fn draw_region(&mut self, buffer: &[u8], region: Rectangle, scale: u32) {
+    async fn draw_region(&mut self, buffer: &[u8], region: Rect, scale: u32) {
         let frame_start = Instant::now();
 
         // Extract region parameters
@@ -489,7 +488,7 @@ where
     );
     }
     async fn draw(&mut self, buffer: &[u8], scale: u32) {
-        let full_region = Rectangle::new(Point::new(0, 0), Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT));
+        let full_region = Rect::new(Point::new(0, 0), Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT));
         self.draw_region(buffer, full_region, scale).await;
     }
 

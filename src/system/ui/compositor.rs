@@ -20,8 +20,6 @@ use alloc::vec::Vec as AllocVec;
 use defmt::{debug, info, warn, Format};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
-use embedded_graphics_core::primitives::Rectangle;
-use embedded_graphics_core::geometry::{Point as EgPoint, Size as EgSize};
 use heapless::Vec;
 use libm::sqrtf;
 // micromath::F32Ext not required; easing uses libm and core ops only

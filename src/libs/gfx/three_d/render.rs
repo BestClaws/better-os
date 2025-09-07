@@ -7,7 +7,6 @@ use crate::libs::gfx::two_d::draw::Draw as Draw2D;
 use crate::libs::gfx::Model;
 use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use core::cmp::Ordering;
-use embedded_graphics_core::prelude::RgbColor;
 use micromath::F32Ext;
 use defmt::debug;
 use embassy_time::Instant;

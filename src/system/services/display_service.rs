@@ -1,8 +1,6 @@
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embedded_graphics_core::primitives::Rectangle;
-use embedded_graphics_core::geometry::{Point as EgPoint, Size as EgSize};
 use defmt::info;
 
 use crate::system::hal::display::{AsyncDisplay, DisplayPixelFormat};
@@ -98,14 +96,7 @@ impl DisplayService {
 
     pub async fn draw_region(&self, buffer: &[u8], region: Rect) {
         let mut l = self.driver.lock().await;
-        l.draw_region(
-            buffer,
-            Rectangle::new(
-                EgPoint::new(region.top_left.x, region.top_left.y),
-                EgSize::new(region.size.width, region.size.height),
-            ),
-            self.scale,
-        ).await;
+        l.draw_region(buffer, region, self.scale).await;
     }
 }
 
