@@ -357,6 +357,17 @@ impl UICompositor {
     async fn apply_active_triplet(&mut self, wm: &mut WindowManager) {
         if let Some((cur, prev, next)) = self.current_prev_next() {
             wm.set_active_windows(&[prev, cur, next]).await;
+            // Propagate system pixel bytes to active windows' drawing surfaces
+            if let Some(service) = self.display_service {
+                let bpp = service.pixel_format().bytes_per_pixel();
+                for handle in [prev, cur, next] {
+                    if let Some(window) = wm.get_window_mut(handle) {
+                        if let Some(canvas) = window.canvas().as_mut() {
+                            canvas.set_pixel_bytes(bpp);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -415,13 +426,15 @@ impl UICompositor {
                     }
                     UpdateStrategy::Partial(regions) => {
                         debug!("Using partial update ({} regions)", regions.len());
+                        let bpp = service.pixel_format().bytes_per_pixel();
                         for region in regions.iter() {
                             // Extract region-sized buffer from composite canvas
                             let region_buffer = extract_region_buffer(
                                 composite_canvas.buffer(),
                                 region,
                                 FRAME_BUFFER_WIDTH,
-                                FRAME_BUFFER_HEIGHT
+                                FRAME_BUFFER_HEIGHT,
+                                bpp
                             );
                             service.draw_region(&region_buffer, *region).await;
                         }
@@ -435,8 +448,8 @@ impl UICompositor {
                 debug!("No dirty regions, skipping display update");
             }
         } else if let Some(display) = self.display_driver {
-            // Allocate working buffer for composition
-            let mut frame_buffer = [0u8; FRAME_BUFFER_SIZE];
+            // Allocate working buffer for composition (RGB565 legacy path)
+            let mut frame_buffer: AllocVec<u8> = vec![0u8; (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize];
             let mut composite_canvas = Canvas::new(
                 FRAME_BUFFER_WIDTH,
                 FRAME_BUFFER_HEIGHT
@@ -474,7 +487,8 @@ impl UICompositor {
                                 composite_canvas.buffer(),
                                 region,
                                 FRAME_BUFFER_WIDTH,
-                                FRAME_BUFFER_HEIGHT
+                                FRAME_BUFFER_HEIGHT,
+                                2
                             );
                             
                             display_lock.draw_region(
@@ -574,11 +588,13 @@ impl UICompositor {
                 canvas.clear_rgb(Rgb565::BLACK);
                 // Blit source window (contained within closure to keep borrows local)
                 let _ = wm.with_canvas(source_h, |src| {
-                    CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y, 2);
+                    let bpp = service.pixel_format().bytes_per_pixel();
+                    CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y, bpp);
                 });
                 // Blit target window
                 let _ = wm.with_canvas(target_h, |dst| {
-                    CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y, 2);
+                    let bpp = service.pixel_format().bytes_per_pixel();
+                    CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y, bpp);
                 });
 
                 // Display frame via service
@@ -591,7 +607,7 @@ impl UICompositor {
         }
 
         // Legacy driver path
-        let mut composition_buffer = [0u8; FRAME_BUFFER_SIZE];
+        let mut composition_buffer: AllocVec<u8> = vec![0u8; (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize];
         let mut canvas = Canvas::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
         canvas.set_resources(&mut composition_buffer);
 
@@ -683,7 +699,9 @@ impl UICompositor {
             if !regions.is_empty() {
                 for r in regions.iter() {
                     let _ = wm.with_canvas(cur, |canvas| {
-                        CanvasBlitter::copy_region(output_canvas, canvas, *r, 0, 0, 2);
+                        // When using service, prefer its bpp; else assume RGB565
+                        let bpp = self.display_service.map(|s| s.pixel_format().bytes_per_pixel()).unwrap_or(2);
+                        CanvasBlitter::copy_region(output_canvas, canvas, *r, 0, 0, bpp);
                     });
                 }
             }
@@ -837,13 +855,13 @@ fn extract_region_buffer(
     region: &Rect,
     full_width: u32,
     _full_height: u32,
+    bytes_per_pixel: usize,
 ) -> AllocVec<u8> {
     let region_x = region.top_left.x as u32;
     let region_y = region.top_left.y as u32;
     let region_width = region.size.width as u32;
     let region_height = region.size.height as u32;
     
-    let bytes_per_pixel = 2usize; // For now system uses RGB565; allow future generalization
     let region_size = (region_width * region_height * bytes_per_pixel as u32) as usize;
     let mut region_buffer = vec![0u8; region_size];
     

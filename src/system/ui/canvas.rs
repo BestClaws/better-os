@@ -22,6 +22,8 @@ pub struct DrawingSurface<'a> {
     buf: Option<&'a mut [u8]>,
     width: u32,
     height: u32,
+    /// Bytes per pixel for the underlying buffer (system-selected). Currently RGB565 => 2.
+    pixel_bytes: usize,
     /// Built-in dirty region tracking - always active and optimized
     dirty_regions: Vec<Rect, 8>,
     /// Current operation bounds for efficient region coalescing
@@ -36,6 +38,7 @@ impl<'a> DrawingSurface<'a> {
             buf: None,
             width,
             height,
+            pixel_bytes: 2,
             dirty_regions: {
                 let mut v: Vec<Rect, 8> = Vec::new();
                 v.push(Rect::new(Point::zero(), Size::new(width, height))).ok();
@@ -85,6 +88,12 @@ impl<'a> DrawingSurface<'a> {
     pub fn height(&self) -> u32 {
         self.height
     }
+
+    /// Bytes per pixel metadata (currently 2 for RGB565)
+    pub fn bytes_per_pixel(&self) -> usize { self.pixel_bytes }
+
+    /// Update pixel format byte size. Must be set before `set_resources` to affect checks.
+    pub fn set_pixel_bytes(&mut self, bytes: usize) { self.pixel_bytes = bytes; }
 
     /// Clears the dirty region, marking the canvas as fully flushed.
     pub fn flush(&mut self) {
@@ -146,16 +155,16 @@ impl<'a> DrawingSurface<'a> {
 
 impl<'a> DrawingSurface<'a> {
     pub fn resize(&mut self, width: u32, height: u32) {
-        let required = (width * height * 2) as usize;
-        assert!(self._buf_mut().len() >= required, "Buffer too small for Rgb565");
+        let required = (width as usize) * (height as usize) * self.pixel_bytes;
+        assert!(self._buf_mut().len() >= required, "Buffer too small for DrawingSurface");
 
         self.width = width;
         self.height = height;
     }
 
     pub(crate) fn set_resources(&mut self, buffer: &'a mut [u8]) {
-        let required = (self.width * self.height * 2) as usize;
-        assert!(buffer.len() >= required, "Buffer too small for Rgb565");
+        let required = (self.width as usize) * (self.height as usize) * self.pixel_bytes;
+        assert!(buffer.len() >= required, "Buffer too small for DrawingSurface");
         self.buf = Some(buffer);
     }
 

@@ -5,7 +5,7 @@ use embedded_graphics_core::primitives::Rectangle;
 use embedded_graphics_core::geometry::{Point as EgPoint, Size as EgSize};
 use defmt::info;
 
-use crate::system::hal::display::AsyncDisplay;
+use crate::system::hal::display::{AsyncDisplay, DisplayPixelFormat};
 use crate::libs::gfx::two_d::Rect;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, FRAME_SCALE_FACTOR};
 
@@ -17,6 +17,13 @@ pub enum PixelFormat {
 impl PixelFormat {
     pub const fn bytes_per_pixel(&self) -> usize {
         match self { PixelFormat::Rgb565 => 2 }
+    }
+
+    pub const fn from_display(fmt: DisplayPixelFormat) -> Self {
+        match fmt {
+            DisplayPixelFormat::Rgb565 => PixelFormat::Rgb565,
+            _ => PixelFormat::Rgb565,
+        }
     }
 }
 
