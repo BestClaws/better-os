@@ -493,6 +493,56 @@ pub fn draw_arc_aa(
     }
 }
 
+/// Anti-aliased arc drawing with RGBA color (alpha-aware).
+/// Uses sub-pixel coverage similar to draw_arc_aa and blends with provided alpha.
+pub fn draw_arc_rgba_aa(
+    rasterizer: &mut dyn Rasterizer,
+    center: Point,
+    radius: i32,
+    start_angle_rad: f32,
+    end_angle_rad: f32,
+    color: Rgba8888,
+) {
+    if radius <= 0 { return; }
+
+    let base = color.to_rgb565();
+    let base_alpha = (color.a as f32) / 255.0;
+
+    let angle_diff = (end_angle_rad - start_angle_rad).abs();
+    let steps = (radius as f32 * angle_diff * 2.0).max(32.0) as i32;
+
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let angle = start_angle_rad + (end_angle_rad - start_angle_rad) * t;
+        let x_f = center.x as f32 + radius as f32 * angle.cos();
+        let y_f = center.y as f32 + radius as f32 * angle.sin();
+
+        let x = x_f.floor() as i32;
+        let y = y_f.floor() as i32;
+        let fx = x_f - x as f32;
+        let fy = y_f - y as f32;
+
+        // Main pixel
+        let a0 = ((1.0 - fx) * (1.0 - fy)).clamp(0.0, 1.0) * base_alpha;
+        rasterizer.blend_pixel(x, y, base, (a0 * 255.0) as u8);
+        // Right neighbor
+        if fx > 0.0 {
+            let a1 = (fx * (1.0 - fy)).clamp(0.0, 1.0) * base_alpha;
+            rasterizer.blend_pixel(x + 1, y, base, (a1 * 255.0) as u8);
+        }
+        // Bottom neighbor
+        if fy > 0.0 {
+            let a2 = ((1.0 - fx) * fy).clamp(0.0, 1.0) * base_alpha;
+            rasterizer.blend_pixel(x, y + 1, base, (a2 * 255.0) as u8);
+        }
+        // Bottom-right
+        if fx > 0.0 && fy > 0.0 {
+            let a3 = (fx * fy).clamp(0.0, 1.0) * base_alpha;
+            rasterizer.blend_pixel(x + 1, y + 1, base, (a3 * 255.0) as u8);
+        }
+    }
+}
+
 /// High-performance arc drawing using optimized algorithms.
 /// 
 /// This function implements an optimized arc drawing algorithm that uses

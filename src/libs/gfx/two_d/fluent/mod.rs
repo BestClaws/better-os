@@ -182,20 +182,8 @@ impl Drawable for Arc {
     fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         let r = target.raster_mut();
         if let Some(rgba) = self.style.stroke_rgba {
-            // Approximate arc with short RGBA AA segments for uniform RGBA stroke handling
-            let steps = (self.radius as f32 * (self.end - self.start).abs() * 2.0).max(16.0) as i32;
-            for i in 0..steps {
-                let t0 = i as f32 / steps as f32;
-                let t1 = (i + 1) as f32 / steps as f32;
-                let a0 = self.start + (self.end - self.start) * t0;
-                let a1 = self.start + (self.end - self.start) * t1;
-                prim::draw_line_rgba_aa(
-                    r,
-                    Point::new(self.center.x + (self.radius as f32 * a0.cos()) as i32, self.center.y + (self.radius as f32 * a0.sin()) as i32),
-                    Point::new(self.center.x + (self.radius as f32 * a1.cos()) as i32, self.center.y + (self.radius as f32 * a1.sin()) as i32),
-                    rgba,
-                );
-            }
+            // Anti-aliased RGBA arc rendering
+            prim::draw_arc_rgba_aa(r, self.center, self.radius, self.start, self.end, rgba);
             return;
         }
         let color = self.style.stroke.map(|s| s.color).unwrap_or(Rgb565::WHITE);
