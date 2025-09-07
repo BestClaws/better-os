@@ -23,16 +23,28 @@ pub trait DrawTarget {
     fn raster_mut(&mut self) -> &mut dyn Rasterizer;
 }
 
-impl DrawTarget for crate::system::ui::canvas::Canvas<'_> {
+impl<T: Rasterizer> DrawTarget for T {
     fn size(&self) -> Size { Size::new(self.width(), self.height()) }
-    fn clear(&mut self, color: Rgb565) { self.clear_rgb(color) }
+    fn clear(&mut self, color: Rgb565) { Rasterizer::clear(self, color) }
+    fn raster_mut(&mut self) -> &mut dyn Rasterizer { self }
+}
+
+impl DrawTarget for &mut dyn Rasterizer {
+    fn size(&self) -> Size { Size::new((**self).width(), (**self).height()) }
+    fn clear(&mut self, color: Rgb565) { (**self).clear(color) }
+    fn raster_mut(&mut self) -> &mut dyn Rasterizer { *self }
+}
+
+impl DrawTarget for dyn Rasterizer {
+    fn size(&self) -> Size { Size::new(self.width(), self.height()) }
+    fn clear(&mut self, color: Rgb565) { Rasterizer::clear(self, color) }
     fn raster_mut(&mut self) -> &mut dyn Rasterizer { self }
 }
 
 // ===== Drawable trait =====
 
 pub trait Drawable {
-    fn draw<T: DrawTarget>(self, target: &mut T);
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T);
 }
 
 // ===== Primitive styles =====
@@ -104,7 +116,7 @@ impl Rectangle {
 }
 
 impl Drawable for Rectangle {
-    fn draw<T: DrawTarget>(self, target: &mut T) {
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         let rect = Rect::new(self.top_left, self.size);
         let mut d = FluentDraw::new(target.raster_mut());
         let mut b = d.rect(rect);
@@ -132,7 +144,7 @@ impl RoundedRectangle {
 }
 
 impl Drawable for RoundedRectangle {
-    fn draw<T: DrawTarget>(self, target: &mut T) {
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         let rect = Rect::new(self.top_left, self.size);
         let mut d = FluentDraw::new(target.raster_mut());
         let mut b = d.rect(rect).corner_radii(self.radii);
@@ -154,7 +166,7 @@ impl Line {
 }
 
 impl Drawable for Line {
-    fn draw<T: DrawTarget>(self, target: &mut T) {
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         // Prefer RGBA stroke if specified
         if let Some(rgba) = self.style.stroke_rgba {
             prim::draw_line_rgba_aa(target.raster_mut(), self.start, self.end, rgba);
@@ -186,7 +198,7 @@ impl Arc {
 }
 
 impl Drawable for Arc {
-    fn draw<T: DrawTarget>(self, target: &mut T) {
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         let mut d = FluentDraw::new(target.raster_mut());
         d.arc(self.center, self.radius, self.start, self.end).color(self.color).draw();
     }
@@ -213,7 +225,7 @@ impl<'a> Text<'a> {
 }
 
 impl<'a> Drawable for Text<'a> {
-    fn draw<T: DrawTarget>(self, target: &mut T) {
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         // Bridge to existing TextRenderer with FONT_8X8
         let renderer = crate::libs::gfx::two_d::text::TextRenderer::new(&crate::libs::gfx::two_d::fonts::FONT_8X8)
             .with_color(self.style.color);
@@ -268,7 +280,7 @@ impl Path {
 }
 
 impl Drawable for Path {
-    fn draw<T: DrawTarget>(self, target: &mut T) {
+    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
         let mut pen: Option<Point> = None;
         let mut start: Option<Point> = None;
         let r = target.raster_mut();

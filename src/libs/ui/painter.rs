@@ -1,4 +1,4 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, Draw, StrokeStyle};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, EgRectangle, EgPrimitiveStyleBuilder, EgDrawable, EgLine};
 
 use super::style::{Color, Fill, Stroke, CornerRadii};
 
@@ -20,21 +20,26 @@ impl<'a> Painter<'a> {
 
     pub fn fill_rect(&mut self, rect: Rect, fill: Fill, corner: CornerRadii) {
         let bg = Self::to_rgb565(fill.color);
-        let mut d = Draw::new(self.raster);
-        d.rect(rect)
-            .corner_radius(corner.uniform as i32)
-            .fill_color(bg)
-            .draw();
+        EgRectangle::new(rect.top_left, rect.size)
+            .into_styled(
+                EgPrimitiveStyleBuilder::new()
+                    .fill_color(bg)
+                    .build(),
+            )
+            .draw(&mut self.raster);
     }
 
     pub fn stroke_rect(&mut self, rect: Rect, stroke: Stroke, corner: CornerRadii) {
         if stroke.thickness == 0 { return; }
         let color = Self::to_rgb565(stroke.color);
-        let mut d = Draw::new(self.raster);
-        d.rect(rect)
-            .corner_radius(corner.uniform as i32)
-            .stroke(StrokeStyle::new(color, stroke.thickness as i32))
-            .draw();
+        EgRectangle::new(rect.top_left, rect.size)
+            .into_styled(
+                EgPrimitiveStyleBuilder::new()
+                    .stroke_width(stroke.thickness as i32)
+                    .stroke_color(color)
+                    .build(),
+            )
+            .draw(&mut self.raster);
     }
 
     pub fn rect(&mut self, rect: Rect, fill: Option<Fill>, stroke: Option<Stroke>, corner: CornerRadii) {
@@ -43,11 +48,14 @@ impl<'a> Painter<'a> {
     }
 
     pub fn line(&mut self, p0: Point, p1: Point, stroke: Stroke) {
-        let mut d = Draw::new(self.raster);
-        d.line(p0, p1)
-            .color(Self::to_rgb565(stroke.color))
-            .thickness(stroke.thickness as i32)
-            .draw();
+        EgLine::new(p0, p1)
+            .into_styled(
+                EgPrimitiveStyleBuilder::new()
+                    .stroke_width(stroke.thickness as i32)
+                    .stroke_color(Self::to_rgb565(stroke.color))
+                    .build(),
+            )
+            .draw(&mut self.raster);
     }
 }
 

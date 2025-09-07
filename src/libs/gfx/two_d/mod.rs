@@ -23,7 +23,7 @@ pub mod fluent; // Embedded-graphics style API
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgb565, Rgba8888};
 pub use raster::Rasterizer;
-pub use draw::{Draw, StrokeStyle, FillStyle, CornerRadii as CornerRadiiPx, gradient, gradient_vertical, gradient_angle, stroke, radial, LinearMode, GradientSpec, RadialSpec};
+pub use draw::{StrokeStyle, FillStyle, CornerRadii as CornerRadiiPx, gradient, gradient_vertical, gradient_angle, stroke, radial, LinearMode, GradientSpec, RadialSpec};
 
 // Optimized primitive drawing functions
 // Keep primitives internal to fluent layer; avoid re-exporting low-level draw_* APIs.
