@@ -429,11 +429,36 @@ fn inside_rounded_rect_nonuniform(x: i32, y: i32, rect: Rect, radii: CornerRadii
     let top = rect.top_left.y;
     let bottom = rect.bottom();
 
-    // Fast accept in central bands
-    if x >= left + radii.tl && x <= right - radii.tr { return y >= top && y <= bottom; }
-    if y >= top + radii.tl && y <= bottom - radii.bl { return x >= left && x <= right; }
+    // Core band extents using max radii per side
+    let core_left = radii.tl.max(radii.bl);
+    let core_right = radii.tr.max(radii.br);
+    let core_top = radii.tl.max(radii.tr);
+    let core_bottom = radii.bl.max(radii.br);
 
-    // Corners
+    // Center vertical band
+    if x >= left + core_left && x <= right - core_right { return y >= top && y <= bottom; }
+    // Center horizontal band
+    if y >= top + core_top && y <= bottom - core_bottom { return x >= left && x <= right; }
+
+    // Side rectangles between corner arcs
+    // Left side
+    if x >= left && x < left + core_left {
+        if y >= top + radii.tl && y <= bottom - radii.bl { return true; }
+    }
+    // Right side
+    if x > right - core_right && x <= right {
+        if y >= top + radii.tr && y <= bottom - radii.br { return true; }
+    }
+    // Top side
+    if y >= top && y < top + core_top {
+        if x >= left + radii.tl && x <= right - radii.tr { return true; }
+    }
+    // Bottom side
+    if y > bottom - core_bottom && y <= bottom {
+        if x >= left + radii.bl && x <= right - radii.br { return true; }
+    }
+
+    // Corner circular checks
     // TL
     if x < left + radii.tl && y < top + radii.tl {
         let cx = left + radii.tl; let cy = top + radii.tl;
