@@ -1,7 +1,6 @@
 #![no_std]
 
-use crate::libs::gfx::two_d::raster::Rasterizer;
-use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888, Size};
+use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Size};
 
 /// High-performance linear gradient with optimized sampling algorithms.
 /// 
@@ -400,106 +399,25 @@ impl RadialGradient {
 /// * `rasterizer` - The rasterizer to draw to
 /// * `rect` - Rectangle to fill with the gradient
 /// * `gradient` - Linear gradient to apply
-pub fn fill_rect_linear_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &LinearGradient) {
-    let clip = Rect::new(Point::zero(), Size::new(rasterizer.width(), rasterizer.height()));
-    let Some(clipped_rect) = rect.intersection(&clip) else { return; };
-    
-    // Detect gradient orientation for optimized rendering
-    let dx = gradient.end.x - gradient.start.x;
-    let dy = gradient.end.y - gradient.start.y;
-    
-    if dx == 0 {
-        // Vertical gradient - use optimized vertical sampling
-        fill_rect_vertical_gradient(rasterizer, clipped_rect, gradient);
-    } else if dy == 0 {
-        // Horizontal gradient - use optimized horizontal sampling
-        fill_rect_horizontal_gradient(rasterizer, clipped_rect, gradient);
-    } else {
-        // General case - use optimized general sampling
-        fill_rect_general_gradient(rasterizer, clipped_rect, gradient);
-    }
-}
+// Legacy rectangle fill helpers removed in favor of generic samplers in draw.rs
 
 /// Optimized horizontal gradient fill.
 /// 
 /// This function is specialized for horizontal gradients where the gradient
 /// vector is parallel to the x-axis, allowing for significant optimizations.
-fn fill_rect_horizontal_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &LinearGradient) {
-    let start_x = rect.top_left.x;
-    let end_x = rect.right();
-    let start_y = rect.top_left.y;
-    let end_y = rect.bottom();
-    
-    // Precompute gradient parameters for horizontal case
-    let dx = gradient.end.x - gradient.start.x;
-    if dx == 0 {
-        // Degenerate case - fill with start color
-        for y in start_y..=end_y {
-            for x in start_x..=end_x {
-                rasterizer.set_pixel(x, y, gradient.start_color);
-            }
-        }
-        return;
-    }
-    
-    // Use optimized horizontal sampling
-    for y in start_y..=end_y {
-        for x in start_x..=end_x {
-            let color = gradient.sample_horizontal(x, y);
-            rasterizer.set_pixel(x, y, color);
-        }
-    }
-}
+// fn fill_rect_horizontal_gradient(...) removed
 
 /// Optimized vertical gradient fill.
 /// 
 /// This function is specialized for vertical gradients where the gradient
 /// vector is parallel to the y-axis, allowing for significant optimizations.
-fn fill_rect_vertical_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &LinearGradient) {
-    let start_x = rect.top_left.x;
-    let end_x = rect.right();
-    let start_y = rect.top_left.y;
-    let end_y = rect.bottom();
-    
-    // Precompute gradient parameters for vertical case
-    let dy = gradient.end.y - gradient.start.y;
-    if dy == 0 {
-        // Degenerate case - fill with start color
-        for y in start_y..=end_y {
-            for x in start_x..=end_x {
-                rasterizer.set_pixel(x, y, gradient.start_color);
-            }
-        }
-        return;
-    }
-    
-    // Use optimized vertical sampling
-    for y in start_y..=end_y {
-        for x in start_x..=end_x {
-            let color = gradient.sample_vertical(x, y);
-            rasterizer.set_pixel(x, y, color);
-        }
-    }
-}
+// fn fill_rect_vertical_gradient(...) removed
 
 /// Optimized general gradient fill.
 /// 
 /// This function handles the general case where the gradient vector is not
 /// aligned with either axis, using the optimized general sampling method.
-fn fill_rect_general_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &LinearGradient) {
-    let start_x = rect.top_left.x;
-    let end_x = rect.right();
-    let start_y = rect.top_left.y;
-    let end_y = rect.bottom();
-    
-    // Use optimized general sampling
-    for y in start_y..=end_y {
-        for x in start_x..=end_x {
-            let color = gradient.sample(Point::new(x, y));
-            rasterizer.set_pixel(x, y, color);
-        }
-    }
-}
+// fn fill_rect_general_gradient(...) removed
 
 /// High-performance radial gradient rectangle fill with optimized rendering.
 /// 
@@ -511,55 +429,19 @@ fn fill_rect_general_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradi
 /// * `rasterizer` - The rasterizer to draw to
 /// * `rect` - Rectangle to fill with the gradient
 /// * `gradient` - Radial gradient to apply
-pub fn fill_rect_radial_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &RadialGradient) {
-    let clip = Rect::new(Point::zero(), Size::new(rasterizer.width(), rasterizer.height()));
-    let Some(clipped_rect) = rect.intersection(&clip) else { return; };
-    
-    // Detect if gradient is centered for optimized rendering
-    if gradient.center.x == 0 && gradient.center.y == 0 {
-        fill_rect_centered_radial_gradient(rasterizer, clipped_rect, gradient);
-    } else {
-        fill_rect_general_radial_gradient(rasterizer, clipped_rect, gradient);
-    }
-}
+// pub fn fill_rect_radial_gradient(...) removed
 
 /// Optimized centered radial gradient fill.
 /// 
 /// This function is specialized for radial gradients centered at the origin,
 /// allowing for significant optimizations by eliminating center offset calculations.
-fn fill_rect_centered_radial_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &RadialGradient) {
-    let start_x = rect.top_left.x;
-    let end_x = rect.right();
-    let start_y = rect.top_left.y;
-    let end_y = rect.bottom();
-    
-    // Use optimized centered sampling
-    for y in start_y..=end_y {
-        for x in start_x..=end_x {
-            let color = gradient.sample_centered(x, y);
-            rasterizer.set_pixel(x, y, color);
-        }
-    }
-}
+// fn fill_rect_centered_radial_gradient(...) removed
 
 /// Optimized general radial gradient fill.
 /// 
 /// This function handles the general case where the gradient center is not
 /// at the origin, using the optimized general sampling method.
-fn fill_rect_general_radial_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect, gradient: &RadialGradient) {
-    let start_x = rect.top_left.x;
-    let end_x = rect.right();
-    let start_y = rect.top_left.y;
-    let end_y = rect.bottom();
-    
-    // Use optimized general sampling
-    for y in start_y..=end_y {
-        for x in start_x..=end_x {
-            let color = gradient.sample(Point::new(x, y));
-            rasterizer.set_pixel(x, y, color);
-        }
-    }
-}
+// fn fill_rect_general_radial_gradient(...) removed
 
 /// High-performance RGBA rectangle fill with optimized alpha blending.
 /// 
@@ -570,34 +452,7 @@ fn fill_rect_general_radial_gradient(rasterizer: &mut dyn Rasterizer, rect: Rect
 /// * `rasterizer` - The rasterizer to draw to
 /// * `rect` - Rectangle to fill with the color
 /// * `color` - RGBA color to apply
-pub fn fill_rect_rgba(rasterizer: &mut dyn Rasterizer, rect: Rect, color: Rgba8888) {
-    let clip = Rect::new(Point::zero(), Size::new(rasterizer.width(), rasterizer.height()));
-    let Some(clipped_rect) = rect.intersection(&clip) else { return; };
-    
-    // Convert RGBA to RGB565 for efficient rendering
-    let rgb_color = color.to_rgb565();
-    let alpha = color.a;
-    
-    // Optimize for common alpha values
-    if alpha == 255 {
-        // Fully opaque - use direct pixel setting
-        for y in clipped_rect.top_left.y..=clipped_rect.bottom() {
-            for x in clipped_rect.top_left.x..=clipped_rect.right() {
-                rasterizer.set_pixel(x, y, rgb_color);
-            }
-        }
-    } else if alpha == 0 {
-        // Fully transparent - no operation needed
-        return;
-    } else {
-        // Partial transparency - use alpha blending
-        for y in clipped_rect.top_left.y..=clipped_rect.bottom() {
-            for x in clipped_rect.top_left.x..=clipped_rect.right() {
-                rasterizer.blend_pixel(x, y, rgb_color, alpha);
-            }
-        }
-    }
-}
+// pub fn fill_rect_rgba(...) removed in favor of PixelSampler in draw.rs
 
 /// Legacy compatibility function for backward compatibility.
 /// 

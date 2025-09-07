@@ -1,6 +1,7 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, LinearGradient, FillStyle, gradient, gradient_vertical, TextRenderer, FONT_8X8};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, LinearGradient, gradient, gradient_vertical, TextRenderer, FONT_8X8};
 use crate::libs::gfx::two_d::draw::Draw;
-use crate::libs::gfx::two_d::gradients::{fill_rect_rgba};
+use crate::libs::gfx::two_d::paint::Brush;
+// use crate::libs::gfx::two_d::gradients::{fill_rect_rgba};
 use crate::libs::gfx::two_d::primitives::{fill_rounded_rect_linear_gradient, draw_rounded_rect_shadow_layers};
 use super::style::{Fill, Stroke, CornerRadii, Color};
 use super::painter::Painter;
@@ -49,8 +50,14 @@ impl<'a> ImUi<'a> {
     pub fn clear_background_gradient_vertical(&mut self, top: Rgb565, bottom: Rgb565) {
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
         let mut d = Draw::new(self.raster);
+        let grad = LinearGradient::new(
+            Point::new(rect.top_left.x, rect.top_left.y),
+            Point::new(rect.top_left.x, rect.bottom()),
+            top,
+            bottom,
+        );
         d.rect(rect)
-            .fill(FillStyle::Linear(gradient_vertical(top, bottom)))
+            .fill(Brush::linear(grad))
             .draw();
     }
 
@@ -118,13 +125,20 @@ impl<'a> ImUi<'a> {
         };
         {
             let mut d = Draw::new(self.raster);
+            let grad = LinearGradient::new(
+                Point::new(rect.top_left.x, rect.top_left.y),
+                Point::new(rect.right(), rect.top_left.y),
+                left_color,
+                right_color,
+            );
             d.rect(rect)
-                .fill(FillStyle::Linear(gradient(left_color, right_color)))
+                .fill(Brush::linear(grad))
                 .draw();
         }
         if hovered && !pressed {
             // stronger highlight for visibility
-            fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 28));
+            let mut d = Draw::new(self.raster);
+            d.rect(rect).fill_rgba(Rgba8888::new(255, 255, 255, 28)).draw();
         }
         // border stroke in its own short scope to avoid overlapping borrows
         {

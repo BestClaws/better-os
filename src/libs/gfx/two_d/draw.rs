@@ -5,6 +5,8 @@ use micromath::F32Ext;
 use crate::libs::gfx::two_d::raster::Rasterizer;
 use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888};
 use crate::libs::gfx::two_d::primitives as prim;
+use crate::libs::gfx::two_d::Size;
+use crate::libs::gfx::two_d::paint::{PixelSampler, Brush};
 
 /// Fluent drawing entry-point that provides builder-pattern APIs for 2D primitives.
 ///
@@ -41,6 +43,41 @@ impl<'a> Draw<'a> {
     }
 }
 
+// ===== Generic paint sampling to avoid permutation explosion =====
+
+
+#[inline(always)]
+fn clip_rect_to_target(rect: Rect, target_size: Size) -> Option<Rect> {
+    let clip = Rect::new(Point::zero(), target_size);
+    rect.intersection(&clip)
+}
+
+#[inline(always)]
+fn fill_rect_with<P: PixelSampler>(r: &mut dyn Rasterizer, rect: Rect, paint: &P) {
+    let Some(rc) = clip_rect_to_target(rect, Size::new(r.width(), r.height())) else { return; };
+    for y in rc.top_left.y..=rc.bottom() {
+        for x in rc.top_left.x..=rc.right() {
+            let (c, a) = paint.sample(x, y);
+            if a == 255 { r.set_pixel(x, y, c); }
+            else if a != 0 { r.blend_pixel(x, y, c, a); }
+        }
+    }
+}
+
+#[inline(always)]
+fn fill_rect_masked_with<P: PixelSampler>(r: &mut dyn Rasterizer, rect: Rect, radii: CornerRadii, paint: &P) {
+    let Some(rc) = clip_rect_to_target(rect, Size::new(r.width(), r.height())) else { return; };
+    for y in rc.top_left.y..=rc.bottom() {
+        for x in rc.top_left.x..=rc.right() {
+            if inside_rounded_rect_nonuniform(x, y, rect, radii) {
+                let (c, a) = paint.sample(x, y);
+                if a == 255 { r.set_pixel(x, y, c); }
+                else if a != 0 { r.blend_pixel(x, y, c, a); }
+            }
+        }
+    }
+}
+
 /// Stroke style for outlines and paths.
 #[derive(Clone, Copy, Debug)]
 pub struct StrokeStyle {
@@ -56,12 +93,7 @@ impl StrokeStyle {
 
 /// Fill style for solid and RGBA fills.
 #[derive(Clone, Copy, Debug)]
-pub enum FillStyle {
-    Solid(Rgb565),
-    Rgba(Rgba8888),
-    Linear(GradientSpec),
-    Radial(RadialSpec),
-}
+pub enum FillStyle { Deprecated }
 
 /// Per-corner radii for rounded rectangles.
 #[derive(Clone, Copy, Debug, Default)]
@@ -82,7 +114,7 @@ pub struct RectBuilder<'a> {
     raster: &'a mut dyn Rasterizer,
     rect: Rect,
     stroke: Option<StrokeStyle>,
-    fill: Option<FillStyle>,
+    fill: Option<Brush>,
     radii: CornerRadii,
     outer_shadow: Option<OuterShadow>,
 }
@@ -100,13 +132,13 @@ impl<'a> RectBuilder<'a> {
     pub fn corner_radii(mut self, radii: CornerRadii) -> Self { self.radii = radii; self }
 
     /// Apply a solid fill color.
-    pub fn fill_color(mut self, color: Rgb565) -> Self { self.fill = Some(FillStyle::Solid(color)); self }
+    pub fn fill_color(mut self, color: Rgb565) -> Self { self.fill = Some(Brush::solid(color)); self }
 
     /// Apply an RGBA fill color (alpha-blended).
-    pub fn fill_rgba(mut self, color: Rgba8888) -> Self { self.fill = Some(FillStyle::Rgba(color)); self }
+    pub fn fill_rgba(mut self, color: Rgba8888) -> Self { self.fill = Some(Brush::rgba(color)); self }
 
     /// Apply a fill kind (solid, RGBA, gradient, etc.).
-    pub fn fill(mut self, kind: FillStyle) -> Self { self.fill = Some(kind); self }
+    pub fn fill(mut self, brush: Brush) -> Self { self.fill = Some(brush); self }
 
     /// Apply stroke style.
     pub fn stroke(mut self, style: StrokeStyle) -> Self { self.stroke = Some(style); self }
@@ -140,7 +172,7 @@ impl<'a> RectBuilder<'a> {
         // Fill
         if let Some(fill) = self.fill {
             match fill {
-                FillStyle::Solid(c) => {
+                Brush::Solid(c) => {
                     if self.radii.is_uniform() {
                         let r = self.radii.max_uniform();
                         if r > 0 { prim::fill_rounded_rect(self.raster, self.rect, r, c); }
@@ -149,60 +181,32 @@ impl<'a> RectBuilder<'a> {
                         fill_rect_nonuniform_solid(self.raster, self.rect, self.radii, c);
                     }
                 }
-                FillStyle::Rgba(c) => {
-                    if self.radii.is_uniform() {
-                        let r = self.radii.max_uniform();
-                        if r > 0 { prim::fill_rounded_rect_rgba(self.raster, self.rect, r, c); }
-                        else { crate::libs::gfx::two_d::gradients::fill_rect_rgba(self.raster, self.rect, c); }
+                Brush::Rgba(c) => {
+                    let r = self.radii.max_uniform();
+                    if self.radii.is_uniform() && r > 0 {
+                        // Keep optimized rounded RGBA for uniform radii
+                        prim::fill_rounded_rect_rgba(self.raster, self.rect, r, c);
+                    } else if self.radii.is_uniform() && r == 0 {
+                        fill_rect_with(self.raster, self.rect, &c);
                     } else {
-                        fill_rect_nonuniform_rgba(self.raster, self.rect, self.radii, c);
+                        fill_rect_masked_with(self.raster, self.rect, self.radii, &c);
                     }
                 }
-                FillStyle::Linear(spec) => {
-                    // Resolve to a concrete LinearGradient based on rect
-                    let grad = match spec.mode {
-                        LinearMode::Horizontal => LinearGradient::new(
-                            Point::new(self.rect.top_left.x, self.rect.top_left.y),
-                            Point::new(self.rect.right(), self.rect.top_left.y),
-                            spec.a, spec.b,
-                        ),
-                        LinearMode::Vertical => LinearGradient::new(
-                            Point::new(self.rect.top_left.x, self.rect.top_left.y),
-                            Point::new(self.rect.top_left.x, self.rect.bottom()),
-                            spec.a, spec.b,
-                        ),
-                        LinearMode::Angle(deg) => {
-                            let rad = deg.to_radians();
-                            let cx = self.rect.top_left.x + (self.rect.size.width as i32 / 2);
-                            let cy = self.rect.top_left.y + (self.rect.size.height as i32 / 2);
-                            let rx = (self.rect.size.width as f32 * 0.5) * rad.cos().abs();
-                            let ry = (self.rect.size.height as f32 * 0.5) * rad.sin().abs();
-                            let dx = (rad.cos() * rx) as i32;
-                            let dy = (rad.sin() * ry) as i32;
-                            LinearGradient::new(Point::new(cx - dx, cy - dy), Point::new(cx + dx, cy + dy), spec.a, spec.b)
-                        }
-                    };
-                    if self.radii.is_uniform() {
-                        let r = self.radii.max_uniform();
-                        if r > 0 { prim::fill_rounded_rect_linear_gradient(self.raster, self.rect, r, &grad); }
-                        else { crate::libs::gfx::two_d::gradients::fill_rect_linear_gradient(self.raster, self.rect, &grad); }
+                Brush::Linear(grad) => {
+                    // Use rect-resolved gradient spec
+                    // Expect a concrete LinearGradient was provided via Brush::Linear
+                    let grad = if let Some(Brush::Linear(g)) = self.fill { g } else { LinearGradient::new(self.rect.top_left, Point::new(self.rect.right(), self.rect.top_left.y), Rgb565::BLACK, Rgb565::WHITE) };
+                    let r = self.radii.max_uniform();
+                    if self.radii.is_uniform() && r == 0 {
+                        fill_rect_with(self.raster, self.rect, &grad);
                     } else {
-                        fill_rect_nonuniform_gradient(self.raster, self.rect, self.radii, &grad);
+                        fill_rect_masked_with(self.raster, self.rect, self.radii, &grad);
                     }
                 }
-                FillStyle::Radial(spec) => {
-                    let grad = RadialGradient::new(spec.center, spec.radius, spec.inner, spec.outer);
-                    if self.radii.is_uniform() {
-                        let r = self.radii.max_uniform();
-                        if r == 0 {
-                            crate::libs::gfx::two_d::gradients::fill_rect_radial_gradient(self.raster, self.rect, &grad);
-                        } else {
-                            // Masked rounded radial fill
-                            fill_rect_nonuniform_radial(self.raster, self.rect, self.radii, &grad);
-                        }
-                    } else {
-                        fill_rect_nonuniform_radial(self.raster, self.rect, self.radii, &grad);
-                    }
+                Brush::Radial(grad) => {
+                    let r = self.radii.max_uniform();
+                    if self.radii.is_uniform() && r == 0 { fill_rect_with(self.raster, self.rect, &grad); }
+                    else { fill_rect_masked_with(self.raster, self.rect, self.radii, &grad); }
                 }
             }
         }
@@ -244,15 +248,40 @@ impl<'a> LineBuilder<'a> {
     pub fn thickness(mut self, thickness: i32) -> Self { self.style.thickness = thickness; self }
     pub fn aa(mut self, aa: bool) -> Self { self.style.aa = aa; self }
     pub fn draw(self) {
+        // Unified line rendering path
         if let Some(rgba) = self.rgba {
-            prim::draw_line_rgba_aa(self.raster, self.from, self.to, rgba);
-        } else {
             if self.style.thickness <= 1 {
-                if self.style.aa { prim::draw_line_aa(self.raster, self.from, self.to, self.style.color); }
-                else { prim::draw_arc(self.raster, self.from, 0, 0.0, 0.0, self.style.color); }
+                prim::draw_line_rgba_aa(self.raster, self.from, self.to, rgba);
             } else {
-                prim::draw_line_thick_aa(self.raster, self.from, self.to, self.style.thickness, self.style.color);
+                // Approx thick RGBA by multiple AA passes
+                let dx = (self.to.x - self.from.x) as f32;
+                let dy = (self.to.y - self.from.y) as f32;
+                let len = (dx * dx + dy * dy).sqrt();
+                if len == 0.0 {
+                    let r = (self.style.thickness / 2).max(1);
+                    prim::fill_circle(self.raster, self.from, r, rgba.to_rgb565());
+                } else {
+                    let nx = -dy / len; let ny = dx / len;
+                    let half = (self.style.thickness as f32) / 2.0;
+                    let steps = self.style.thickness.max(1);
+                    for i in 0..steps {
+                        let t = (i as f32 + 0.5) - half;
+                        let off_x = (nx * t).round() as i32;
+                        let off_y = (ny * t).round() as i32;
+                        prim::draw_line_rgba_aa(
+                            self.raster,
+                            Point::new(self.from.x + off_x, self.from.y + off_y),
+                            Point::new(self.to.x + off_x, self.to.y + off_y),
+                            rgba,
+                        );
+                    }
+                }
             }
+        } else if self.style.thickness <= 1 {
+            if self.style.aa { prim::draw_line_aa(self.raster, self.from, self.to, self.style.color); }
+            else { prim::draw_arc(self.raster, self.from, 0, 0.0, 0.0, self.style.color); }
+        } else {
+            prim::draw_line_thick_aa(self.raster, self.from, self.to, self.style.thickness, self.style.color);
         }
     }
 }

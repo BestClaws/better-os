@@ -3,6 +3,7 @@
 use crate::libs::gfx::two_d::raster::Rasterizer;
 use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888, Size};
 use crate::libs::gfx::two_d::gradients::LinearGradient;
+use crate::libs::gfx::two_d::paint::PixelSampler;
 use micromath::F32Ext;
 
 /// High-performance rectangle filling with optimized algorithms.
@@ -114,6 +115,7 @@ pub fn draw_line_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, color
         intery += gradient;
     }
 }
+/// Generic anti-aliased line drawing that samples color/alpha via a PixelSampler.
 
 /// High-performance anti-aliased line drawing with RGBA color support.
 /// 
@@ -490,6 +492,31 @@ pub fn draw_arc_aa(
             let alpha = (fx * fy * 255.0) as u8;
             rasterizer.blend_pixel(x + 1, y + 1, color, alpha);
         }
+    }
+}
+/// Generic anti-aliased arc drawing that samples color/alpha via a PixelSampler.
+pub fn draw_arc_aa_with<P: PixelSampler>(
+    rasterizer: &mut dyn Rasterizer,
+    center: Point,
+    radius: i32,
+    start_angle_rad: f32,
+    end_angle_rad: f32,
+    paint: &P,
+) {
+    if radius <= 0 { return; }
+    let angle_diff = (end_angle_rad - start_angle_rad).abs();
+    let steps = (radius as f32 * angle_diff * 2.0).max(32.0) as i32;
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let angle = start_angle_rad + (end_angle_rad - start_angle_rad) * t;
+        let x_f = center.x as f32 + radius as f32 * angle.cos();
+        let y_f = center.y as f32 + radius as f32 * angle.sin();
+        let x = x_f.floor() as i32; let y = y_f.floor() as i32;
+        let fx = x_f - x as f32; let fy = y_f - y as f32;
+        plot_aa_with(rasterizer, false, x, y, paint, ((1.0 - fx) * (1.0 - fy)));
+        if fx > 0.0 { plot_aa_with(rasterizer, false, x + 1, y, paint, (fx * (1.0 - fy))); }
+        if fy > 0.0 { plot_aa_with(rasterizer, false, x, y + 1, paint, ((1.0 - fx) * fy)); }
+        if fx > 0.0 && fy > 0.0 { plot_aa_with(rasterizer, false, x + 1, y + 1, paint, (fx * fy)); }
     }
 }
 
@@ -1180,4 +1207,23 @@ fn fill_quarter_circle_aa(
             }
         }
     }
+}
+
+// Private helper to compose PixelSampler alpha with AA coverage
+fn plot_aa_with<P: crate::libs::gfx::two_d::paint::PixelSampler>(
+    rasterizer: &mut dyn Rasterizer,
+    steep: bool,
+    x: i32,
+    y: i32,
+    paint: &P,
+    coverage: f32,
+) {
+    let (px, py) = if steep { (y, x) } else { (x, y) };
+    let (c, a_paint) = paint.sample(px, py);
+    if a_paint == 0 { return; }
+    let cov = (coverage.clamp(0.0, 1.0) * 255.0) as u16;
+    let ap = a_paint as u16;
+    let a = ((cov * ap + 127) / 255) as u8;
+    if a == 255 { rasterizer.set_pixel(px, py, c); }
+    else if a != 0 { rasterizer.blend_pixel(px, py, c, a); }
 }

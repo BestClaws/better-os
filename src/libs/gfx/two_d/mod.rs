@@ -19,6 +19,7 @@ pub mod text;
 pub mod fonts;
 pub mod draw; // Fluent, builder-based API
 pub mod canvas2d;
+pub mod paint; // Generic paint samplers
 
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgb565, Rgba8888};
@@ -31,8 +32,7 @@ pub use draw::{StrokeStyle, FillStyle, CornerRadii as CornerRadiiPx, gradient, g
 
 // High-performance gradient rendering
 pub use gradients::{
-    LinearGradient, RadialGradient, 
-    fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba
+    LinearGradient, RadialGradient,
 };
 
 // Space-grade text rendering system

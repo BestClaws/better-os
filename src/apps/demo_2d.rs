@@ -4,8 +4,9 @@ use embassy_time::{Duration, Timer, Instant};
 use defmt::info;
 use crate::libs::gfx::two_d::{
     Point as GPoint, Size as GSize, Rect as GRect,
-    Rgba8888, FillStyle, Canvas2D,
+    Rgba8888, Canvas2D,
 };
+use crate::libs::gfx::two_d::paint::Brush;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::DrawingSurface as Canvas;
 use micromath::F32Ext;
@@ -68,7 +69,22 @@ pub async fn demo_2d_app(context: AppContext) {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
                         d.rect(ur)
                             .corner_radius(10)
-                            .fill(FillStyle::Linear(gr1))
+                            .fill(Brush::linear({
+                                // Convert spec to concrete gradient based on rect
+                                let rad = 30.0f32.to_radians();
+                                let cx = ur.top_left.x + (ur.size.width as i32 / 2);
+                                let cy = ur.top_left.y + (ur.size.height as i32 / 2);
+                                let rx = (ur.size.width as f32 * 0.5) * rad.cos().abs();
+                                let ry = (ur.size.height as f32 * 0.5) * rad.sin().abs();
+                                let dx = (rad.cos() * rx) as i32;
+                                let dy = (rad.sin() * ry) as i32;
+                                crate::libs::gfx::two_d::gradients::LinearGradient::new(
+                                    GPoint::new(cx - dx, cy - dy),
+                                    GPoint::new(cx + dx, cy + dy),
+                                    crate::libs::gfx::two_d::Rgb565::from_rgb(255, 80, 80),
+                                    crate::libs::gfx::two_d::Rgb565::from_rgb(60, 120, 255),
+                                )
+                            }))
                             .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 255, 255)))
                             .draw();
                     }
@@ -81,7 +97,14 @@ pub async fn demo_2d_app(context: AppContext) {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
                         d.rect(nr)
                             .corner_radii(radii)
-                            .fill(FillStyle::Linear(gr2))
+                            .fill(Brush::linear({
+                                crate::libs::gfx::two_d::gradients::LinearGradient::new(
+                                    GPoint::new(nr.top_left.x, nr.top_left.y),
+                                    GPoint::new(nr.top_left.x, nr.bottom()),
+                                    crate::libs::gfx::two_d::Rgb565::from_rgb(40, 200, 120),
+                                    crate::libs::gfx::two_d::Rgb565::from_rgb(10, 60, 40),
+                                )
+                            }))
                             .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 255, 255)))
                             .draw();
                     }
