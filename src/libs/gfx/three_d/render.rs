@@ -1,6 +1,6 @@
 #![no_std]
 
-use crate::libs::gfx::math::{Quaternion, Vec3};
+use crate::util::math::primitives::{Quaternion, Vec3};
 use crate::libs::gfx::two_d::types::{Point, Rgb565};
 use crate::libs::gfx::two_d::Rasterizer;
 use crate::libs::gfx::two_d::draw::Draw as Draw2D;

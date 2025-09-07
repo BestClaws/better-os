@@ -1,6 +1,6 @@
 // model.rs
 
-use crate::libs::gfx::Vec3;
+use crate::libs::gfx::three_d::Vec3;
 pub(crate) use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use defmt::{debug, error, info, Format};
 

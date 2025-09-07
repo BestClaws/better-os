@@ -1,7 +1,7 @@
 use defmt::Format;
 use micromath::F32Ext;
 
-#[derive(Copy, Clone, Format)]
+#[derive(Copy, Clone, Debug, Format)]
 pub struct Vec3(pub f32, pub f32, pub f32);
 
 impl Vec3 {
@@ -37,11 +37,16 @@ impl Vec3 {
             self
         }
     }
+
+    #[inline(always)]
+    pub fn length_squared(self) -> f32 {
+        self.0 * self.0 + self.1 * self.1 + self.2 * self.2
+    }
 }
 
 
 /// A quaternion representing rotation
-#[derive(Copy, Clone, Format)]
+#[derive(Copy, Clone, Debug, Format)]
 pub struct Quaternion {
     pub w: f32,
     pub x: f32,
