@@ -7,7 +7,7 @@ use crate::libs::gfx::{Model, Vec3};
 use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
 use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode};
 use crate::libs::gfx::two_d::{Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888,
-                              Draw, FillStyle, gradient, gradient_vertical, gradient_angle, radial,
+                              Draw, FillStyle, CornerRadiiPx, gradient, gradient_vertical, gradient_angle, radial,
                               TextRenderer, FONT_8X8};
 fn draw_3d_demo(canvas: &mut Canvas, t: f32, model: &Model) {
     let now = Instant::now();
@@ -70,10 +70,24 @@ const CANVAS_WIDTH: i32 = 320;
 const CANVAS_HEIGHT: i32 = 240;
 
 #[derive(Clone, Copy)]
-enum DemoScene { Rects, RoundedRects, Arcs, Lines, GradLinear, GradRadial, Alpha, ThreeD }
+enum DemoScene { Rects, RoundedRects, NonUniformCorners, Arcs, Lines, PolyLine, Beziers, GradLinear, GradRadial, Alpha, ThreeD }
 
 impl DemoScene {
-    fn next(self) -> Self { match self { DemoScene::Rects => DemoScene::RoundedRects, DemoScene::RoundedRects => DemoScene::Arcs, DemoScene::Arcs => DemoScene::Lines, DemoScene::Lines => DemoScene::GradLinear, DemoScene::GradLinear => DemoScene::GradRadial, DemoScene::GradRadial => DemoScene::Alpha, DemoScene::Alpha => DemoScene::ThreeD, DemoScene::ThreeD => DemoScene::Rects } }
+    fn next(self) -> Self {
+        match self {
+            DemoScene::Rects => DemoScene::RoundedRects,
+            DemoScene::RoundedRects => DemoScene::NonUniformCorners,
+            DemoScene::NonUniformCorners => DemoScene::Arcs,
+            DemoScene::Arcs => DemoScene::Lines,
+            DemoScene::Lines => DemoScene::PolyLine,
+            DemoScene::PolyLine => DemoScene::Beziers,
+            DemoScene::Beziers => DemoScene::GradLinear,
+            DemoScene::GradLinear => DemoScene::GradRadial,
+            DemoScene::GradRadial => DemoScene::Alpha,
+            DemoScene::Alpha => DemoScene::ThreeD,
+            DemoScene::ThreeD => DemoScene::Rects,
+        }
+    }
 }
 
 fn draw_rects(canvas: &mut Canvas, t: f32) {
@@ -126,6 +140,31 @@ fn draw_rounded_rects(canvas: &mut Canvas, t: f32) {
         .draw();
 }
 
+fn draw_non_uniform_corners(canvas: &mut Canvas, t: f32) {
+    canvas.clear_rgb(Rgb565::from_rgb(8, 10, 12));
+    let cw = canvas.width() as i32;
+    let ch = canvas.height() as i32;
+    let m = 12;
+    let w = (cw - 2 * m).max(40);
+    let h = (ch - 2 * m).max(40);
+    let rect = GRect::new(GPoint::new(m, m), GSize::new(w as u32, h as u32));
+    let r_t = (12.0 + 8.0 * (t * 1.3).sin()).abs() as i32;
+    let r_r = (18.0 + 10.0 * (t * 0.9).cos()).abs() as i32;
+    let r_b = (8.0 + 6.0 * (t * 1.7).sin()).abs() as i32;
+    let r_l = (20.0 + 12.0 * (t * 1.1).cos()).abs() as i32;
+    let radii = CornerRadiiPx { tl: r_t, tr: r_r, br: r_b, bl: r_l };
+    Draw::new(canvas)
+        .rect(rect)
+        .corner_radii(radii)
+        .fill(FillStyle::Linear(gradient_vertical(Rgb565::from_rgb(30, 60, 180), Rgb565::from_rgb(10, 20, 80))))
+        .draw();
+    Draw::new(canvas)
+        .rect(rect)
+        .corner_radii(radii)
+        .stroke(crate::libs::gfx::two_d::stroke(2, Rgb565::WHITE))
+        .draw();
+}
+
 fn draw_arcs(canvas: &mut Canvas, t: f32) {
     canvas.clear_rgb(Rgb565::from_rgb(0, 0, 0));
     let cw = canvas.width() as i32;
@@ -160,6 +199,53 @@ fn draw_lines(canvas: &mut Canvas, t: f32) {
     let y1 = (ch as f32 * (0.8 + 0.05 * (t * 1.1).sin())) as i32;
     let y2 = (ch as f32 * (0.9 + 0.05 * (t * 1.1).cos())) as i32;
     Draw::new(canvas).line(GPoint::new(10, y1), GPoint::new(cw - 10, y2)).color_rgba(Rgba8888::new(255, 0, 0, 140)).draw();
+}
+
+fn draw_polyline(canvas: &mut Canvas, t: f32) {
+    canvas.clear_rgb(Rgb565::from_rgb(6, 6, 8));
+    let cw = canvas.width() as i32;
+    let ch = canvas.height() as i32;
+    let cx = cw / 2;
+    let cy = ch / 2;
+    let r = (ch.min(cw) as f32 * (0.3 + 0.05 * (t * 0.7).sin())) as i32;
+    let n = 8;
+    let mut d = Draw::new(canvas);
+    let mut path = d.path().stroke(crate::libs::gfx::two_d::stroke(2, Rgb565::from_rgb(220, 220, 240)));
+    for i in 0..n {
+        let ang = (i as f32 / n as f32) * core::f32::consts::TAU + t * 0.4;
+        let px = cx + (r as f32 * ang.cos()) as i32;
+        let py = cy + (r as f32 * ang.sin()) as i32;
+        if i == 0 { path = path.move_to(GPoint::new(px, py)); }
+        else { path = path.line_to(GPoint::new(px, py)); }
+    }
+    path.close().finish();
+}
+
+fn draw_beziers(canvas: &mut Canvas, t: f32) {
+    canvas.clear_rgb(Rgb565::from_rgb(4, 6, 10));
+    let cw = canvas.width() as i32;
+    let ch = canvas.height() as i32;
+    let p0 = GPoint::new(cw / 6, ch / 2);
+    let p1 = GPoint::new(cw * 5 / 6, ch / 2);
+    let c = GPoint::new(cw / 2, (ch as f32 * (0.3 + 0.15 * (t * 1.1).sin())) as i32);
+    let c1 = GPoint::new((cw as f32 * (0.3 + 0.1 * (t * 0.8).cos())) as i32, ch / 3);
+    let c2 = GPoint::new((cw as f32 * (0.7 + 0.1 * (t * 0.8).sin())) as i32, ch * 2 / 3);
+
+    // Quadratic Bezier
+    Draw::new(canvas)
+        .path()
+        .stroke(crate::libs::gfx::two_d::stroke(2, Rgb565::from_rgb(255, 120, 80)))
+        .move_to(p0)
+        .quadratic_to(c, p1)
+        .finish();
+
+    // Cubic Bezier
+    Draw::new(canvas)
+        .path()
+        .stroke(crate::libs::gfx::two_d::stroke(2, Rgb565::from_rgb(80, 220, 255)))
+        .move_to(p0)
+        .cubic_to(c1, c2, p1)
+        .finish();
 }
 
 fn draw_grad_linear(canvas: &mut Canvas, t: f32) {
@@ -234,8 +320,11 @@ pub async fn battery_app(context: AppContext) {
             match scene {
                 DemoScene::Rects => draw_rects(canvas, t),
                 DemoScene::RoundedRects => draw_rounded_rects(canvas, t),
+                DemoScene::NonUniformCorners => draw_non_uniform_corners(canvas, t),
                 DemoScene::Arcs => draw_arcs(canvas, t),
                 DemoScene::Lines => draw_lines(canvas, t),
+                DemoScene::PolyLine => draw_polyline(canvas, t),
+                DemoScene::Beziers => draw_beziers(canvas, t),
                 DemoScene::GradLinear => draw_grad_linear(canvas, t),
                 DemoScene::GradRadial => draw_grad_radial(canvas, t),
                 DemoScene::Alpha => draw_alpha(canvas, t),
