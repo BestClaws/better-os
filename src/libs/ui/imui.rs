@@ -1,5 +1,5 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888};
-use crate::libs::gfx::two_d::{TextRenderer, FONT_8X8, LinearGradient, fill_rect_linear_gradient, fill_rect_rgba};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, Draw, StrokeStyle, LinearGradient, FillStyle, gradient, gradient_vertical, stroke, TextRenderer, FONT_8X8};
+use crate::libs::gfx::two_d::gradients::{fill_rect_rgba};
 use crate::libs::gfx::two_d::primitives::{fill_rounded_rect_linear_gradient, draw_rounded_rect_shadow_layers};
 use super::style::{Fill, Stroke, CornerRadii, Color};
 use super::painter::Painter;
@@ -47,8 +47,8 @@ impl<'a> ImUi<'a> {
     /// Clear with a vertical linear gradient background.
     pub fn clear_background_gradient_vertical(&mut self, top: Rgb565, bottom: Rgb565) {
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
-        let grad = LinearGradient::new(Point::new(0, 0), Point::new(0, self.raster.height() as i32 - 1), top, bottom);
-        fill_rect_linear_gradient(self.raster, rect, &grad);
+        let mut d = Draw::new(self.raster);
+        d.rect(rect).fill(FillStyle::Linear(gradient_vertical(top, bottom))).draw();
     }
 
     fn next_rect(&mut self, size: Size) -> Rect {
@@ -113,23 +113,22 @@ impl<'a> ImUi<'a> {
         } else {
             (Rgb565::from_rgb(50, 230, 80), Rgb565::from_rgb(30, 140, 240))
         };
-        let grad = LinearGradient::new(
-            Point::new(rect.top_left.x, rect.top_left.y),
-            Point::new(rect.right(), rect.top_left.y),
-            left_color,
-            right_color,
-        );
-        fill_rounded_rect_linear_gradient(self.raster, rect, corner.uniform as i32, &grad);
+        let mut d = Draw::new(self.raster);
+        d.rect(rect)
+            .corner_radius(corner.uniform as i32)
+            .fill(FillStyle::Linear(gradient(left_color, right_color)))
+            .draw();
         if hovered && !pressed {
             // stronger highlight for visibility
             fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 28));
         }
         // border stroke in its own short scope to avoid overlapping borrows
         {
-            let mut painter = Painter::new(self.raster);
-            // Restore white rounded border
-            let white_border = Stroke { color: Color::WHITE, thickness: 1 };
-            painter.stroke_rect(rect, white_border, corner);
+            let mut d = Draw::new(self.raster);
+            d.rect(rect)
+                .corner_radius(corner.uniform as i32)
+                .stroke(stroke(1, Rgb565::from_rgb(255, 255, 255)))
+                .draw();
         }
 
         let text_pos = Point::new(

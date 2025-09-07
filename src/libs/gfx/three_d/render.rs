@@ -2,7 +2,7 @@
 
 use crate::libs::gfx::math::{Quaternion, Vec3};
 use crate::libs::gfx::two_d::types::{Point, Rgb565};
-use crate::libs::gfx::two_d::{draw_line_aa, Rasterizer};
+use crate::libs::gfx::two_d::{Rasterizer, Draw};
 use crate::libs::gfx::Model;
 use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use core::cmp::Ordering;
@@ -714,9 +714,14 @@ fn render_triangles_optimized<R: Rasterizer>(
         }
         
         if matches!(options.view_mode, ViewMode::Wireframe | ViewMode::FillAndWireframe) {
-            draw_line_aa(raster, p0, p1, Rgb565::from_rgb(0, 255, 0));
-            draw_line_aa(raster, p1, p2, Rgb565::from_rgb(0, 255, 0));
-            draw_line_aa(raster, p2, p0, Rgb565::from_rgb(0, 255, 0));
+            {
+                let mut d = Draw::new(raster);
+                d.line(p0, p1).color(Rgb565::from_rgb(0, 255, 0)).draw();
+                let mut d2 = Draw::new(raster);
+                d2.line(p1, p2).color(Rgb565::from_rgb(0, 255, 0)).draw();
+                let mut d3 = Draw::new(raster);
+                d3.line(p2, p0).color(Rgb565::from_rgb(0, 255, 0)).draw();
+            }
             stats.edges_drawn += 3;
         }
         

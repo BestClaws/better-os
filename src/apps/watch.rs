@@ -8,10 +8,8 @@ use crate::libs::gfx::{Model, Vec3};
 use crate::libs::gfx::three_d::model::{parse_binary_stl_into, MAX_VERTICES};
 use crate::libs::gfx::three_d::render::{draw_model, RenderOptions, ShadingMode, AntiAliasing, ViewMode, LightingMode};
 use crate::libs::gfx::two_d::{
-    Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888, LinearGradient, RadialGradient,
-    draw_line_aa, draw_line_rgba_aa, draw_arc_aa, fill_rect, draw_rect_outline_aa, fill_rounded_rect,
-    fill_rect_linear_gradient, fill_rect_radial_gradient, fill_rect_rgba,
-    TextRenderer, FONT_8X8,
+    Point as GPoint, Size as GSize, Rect as GRect, Rgb565, Rgba8888,
+    Draw, FillStyle, gradient_angle, radial, TextRenderer, FONT_8X8,
 };
 
 use crate::system::app::app_context::AppContext;
@@ -247,22 +245,16 @@ fn draw_background(canvas: &mut Canvas, t: f32) {
     // Radial center gradient (soft glow center -> darker edges)
     let center = GPoint::new(w / 2, h / 2);
     let radius = (w.max(h) / 2) as u32;
-    let grad = RadialGradient::new(
-        center,
-        radius,
-        rgb(MID_GRAY),
-        rgb(BASE_DARK),
-    );
-    fill_rect_radial_gradient(canvas, GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)), &grad);
+    Draw::new(canvas)
+        .rect(GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)))
+        .fill(FillStyle::Radial(radial(center, radius, rgb(MID_GRAY), rgb(BASE_DARK))))
+        .draw();
 
     // Subtle long linear wash (a faint diagonal color wash derived from cyan/steel)
-    let grad2 = LinearGradient::new(
-        GPoint::new(0, 0),
-        GPoint::new(w, h),
-        rgb((20, 24, 30)),
-        rgb((40, 36, 44)),
-    );
-    fill_rect_linear_gradient(canvas, GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)), &grad2);
+    Draw::new(canvas)
+        .rect(GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)))
+        .fill(FillStyle::Linear(gradient_angle(45.0, rgb((20, 24, 30)), rgb((40, 36, 44)))))
+        .draw();
 
     // Very faint gridlines for HUD aesthetic (draw a few thin lines)
     let grid_color = Rgb565::from_rgb(24, 24, 26);
@@ -270,11 +262,11 @@ fn draw_background(canvas: &mut Canvas, t: f32) {
     let spacing_y = (h as f32 * 0.25) as i32;
     for gx in 1..4 {
         let x = gx * spacing_x;
-        draw_line_aa(canvas, GPoint::new(x, 0), GPoint::new(x, h), grid_color);
+        Draw::new(canvas).line(GPoint::new(x, 0), GPoint::new(x, h)).color(grid_color).draw();
     }
     for gy in 1..4 {
         let y = gy * spacing_y;
-        draw_line_aa(canvas, GPoint::new(0, y), GPoint::new(w, y), grid_color);
+        Draw::new(canvas).line(GPoint::new(0, y), GPoint::new(w, y)).color(grid_color).draw();
     }
 
     // drifting particles / dust (subtle)
@@ -284,7 +276,11 @@ fn draw_background(canvas: &mut Canvas, t: f32) {
         let py = (center.y as f32 + (h as f32 * 0.35) * (t * 0.017 + phase * 0.7).sin()) as i32;
         let s = (1.0 + ((t * 0.7 + phase).sin().abs() * 2.0)) as u32;
 
-        fill_rounded_rect(canvas, GRect::new(GPoint::new(px - (s as i32 / 2), py - (s as i32 / 2)), GSize::new(s, s)), (s / 2) as i32, rgb((50, 50, 60)));
+        Draw::new(canvas)
+            .rect(GRect::new(GPoint::new(px - (s as i32 / 2), py - (s as i32 / 2)), GSize::new(s, s)))
+            .corner_radius((s / 2) as i32)
+            .fill_color(rgb((50, 50, 60)))
+            .draw();
     }
     
     let perf_time = perf_start.elapsed();
@@ -307,7 +303,7 @@ fn draw_outer_ring(canvas: &mut Canvas, t: f32) {
         let end = phi + len * 0.5;
         // alternate between steel and highlight
         let color = if i % 4 == 0 { rgb(STEEL_HIGHLIGHT) } else { rgb(STEEL) };
-        draw_arc_aa(canvas, c, radius, start, end, color);
+        Draw::new(canvas).arc(c, radius, start, end).color(color).draw();
     }
 
     // small triangular markers at 12/3/6/9 - faint white
@@ -318,7 +314,7 @@ fn draw_outer_ring(canvas: &mut Canvas, t: f32) {
         let r2 = radius - 18;
         let p1 = GPoint::new(c.x + (r1 as f32 * angle.cos()) as i32, c.y + (r1 as f32 * angle.sin()) as i32);
         let p2 = GPoint::new(c.x + (r2 as f32 * angle.cos()) as i32, c.y + (r2 as f32 * angle.sin()) as i32);
-        draw_line_aa(canvas, p1, p2, marker_color);
+        Draw::new(canvas).line(p1, p2).color(marker_color).draw();
     }
     
     let perf_time = perf_start.elapsed();
@@ -339,7 +335,10 @@ fn draw_hour_markers(canvas: &mut Canvas, t: f32) {
         // small yellow square / block as in ref (pulses slightly)
         let pulse = 1.0 + 0.08 * (t * 1.8 + i as f32).sin();
         let size = (6.0 * pulse).max(3.0) as u32;
-        fill_rect(canvas, GRect::new(GPoint::new(x - size as i32 / 2, y - size as i32 / 2), GSize::new(size, size)), rgb(YELLOW_ACCENT));
+        Draw::new(canvas)
+            .rect(GRect::new(GPoint::new(x - size as i32 / 2, y - size as i32 / 2), GSize::new(size, size)))
+            .fill_color(rgb(YELLOW_ACCENT))
+            .draw();
     }
 
     // faint minute ticks (very subtle)
@@ -350,7 +349,7 @@ fn draw_hour_markers(canvas: &mut Canvas, t: f32) {
         let r2 = radius - 12;
         let p1 = GPoint::new(c.x + (r1 as f32 * angle.cos()) as i32, c.y + (r1 as f32 * angle.sin()) as i32);
         let p2 = GPoint::new(c.x + (r2 as f32 * angle.cos()) as i32, c.y + (r2 as f32 * angle.sin()) as i32);
-        draw_line_aa(canvas, p1, p2, rgb((40, 40, 46)));
+        Draw::new(canvas).line(p1, p2).color(rgb((40, 40, 46))).draw();
     }
     
     let perf_time = perf_start.elapsed();
@@ -372,21 +371,15 @@ fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut Wat
         GSize::new((orb_r * 2 + 20) as u32, (orb_r * 2 + 20) as u32)
     ));
 
-    // Optimized radial gradient disc for orb
-    let orb_grad = RadialGradient::new(
-        c,
-        orb_r * 2,
-        rgb((68, 72, 80)),
-        rgb(BASE_DARK),
-    );
-    fill_rect_radial_gradient(canvas, GRect::new(
-        GPoint::new(c.x - orb_r as i32, c.y - orb_r as i32), 
-        GSize::new((orb_r * 2) as u32, (orb_r * 2) as u32)
-    ), &orb_grad);
+    // Optimized radial gradient disc for orb (fluent)
+    Draw::new(canvas)
+        .rect(GRect::new(GPoint::new(c.x - orb_r as i32, c.y - orb_r as i32), GSize::new((orb_r * 2) as u32, (orb_r * 2) as u32)))
+        .fill(FillStyle::Radial(radial(c, orb_r * 2, rgb((68, 72, 80)), rgb(BASE_DARK))))
+        .draw();
 
     // Optimized ring outlines around orb
-    draw_arc_aa(canvas, c, (orb_r as i32 + 8) as i32, 0.0, TAU, rgb(STEEL_HIGHLIGHT));
-    draw_arc_aa(canvas, c, (orb_r as i32 + 6) as i32, 0.0, TAU, rgb(STEEL));
+    Draw::new(canvas).arc(c, (orb_r as i32 + 8) as i32, 0.0, TAU).color(rgb(STEEL_HIGHLIGHT)).draw();
+    Draw::new(canvas).arc(c, (orb_r as i32 + 6) as i32, 0.0, TAU).color(rgb(STEEL)).draw();
 
     // Update render options with cached values
     context.render_options.light_dir = context.animation_cache.light_direction;
@@ -408,7 +401,7 @@ fn draw_center_orb_and_hologram_optimized(canvas: &mut Canvas, context: &mut Wat
         let angle = (context.animation_cache.animation_time * 0.6 + i as f32 * 0.4) * 57.2957795; // Convert to degrees
         let offset = context.animation_cache.sin_deg(angle) * (orb_r as f32 * 0.5);
         let y = c.y + offset as i32 - (orb_r as i32 / 2);
-        draw_line_aa(canvas, GPoint::new(c.x - orb_r as i32, y), GPoint::new(c.x + orb_r as i32, y), rgb((28, 30, 36)));
+        Draw::new(canvas).line(GPoint::new(c.x - orb_r as i32, y), GPoint::new(c.x + orb_r as i32, y)).color(rgb((28, 30, 36))).draw();
     }
     
     // End batched drawing operation
@@ -443,8 +436,8 @@ fn draw_hands(canvas: &mut Canvas, t: f32) {
     );
     for offset in -1..=1 {
         let off_c = GPoint::new(c.x + offset, c.y + offset);
-        draw_line_rgba_aa(canvas, off_c, hour_end, rgba(STEEL.0, STEEL.1, STEEL.2, 255));
-        draw_line_rgba_aa(canvas, off_c, hour_end, rgba(ORANGE_ACCENT.0, ORANGE_ACCENT.1, ORANGE_ACCENT.2, 255));
+        Draw::new(canvas).line(off_c, hour_end).color_rgba(rgba(STEEL.0, STEEL.1, STEEL.2, 255)).draw();
+        Draw::new(canvas).line(off_c, hour_end).color_rgba(rgba(ORANGE_ACCENT.0, ORANGE_ACCENT.1, ORANGE_ACCENT.2, 255)).draw();
     }
 
     // minute hand (long sleek steel with cyan highlight)
@@ -455,15 +448,13 @@ fn draw_hands(canvas: &mut Canvas, t: f32) {
     );
     for offset in -1..=1 {
         let off_c = GPoint::new(c.x + offset, c.y + offset);
-        draw_line_rgba_aa(canvas, off_c, minute_end, rgba(STEEL_HIGHLIGHT.0, STEEL_HIGHLIGHT.1, STEEL_HIGHLIGHT.2, 255));
+        Draw::new(canvas).line(off_c, minute_end).color_rgba(rgba(STEEL_HIGHLIGHT.0, STEEL_HIGHLIGHT.1, STEEL_HIGHLIGHT.2, 255)).draw();
     }
     let cyan_off = 2;
-    draw_line_rgba_aa(
-        canvas,
-        GPoint::new(c.x + cyan_off, c.y + cyan_off),
-        GPoint::new(minute_end.x + cyan_off, minute_end.y + cyan_off),
-        rgba(CYAN_ACCENT.0, CYAN_ACCENT.1, CYAN_ACCENT.2, 220),
-    );
+    Draw::new(canvas)
+        .line(GPoint::new(c.x + cyan_off, c.y + cyan_off), GPoint::new(minute_end.x + cyan_off, minute_end.y + cyan_off))
+        .color_rgba(rgba(CYAN_ACCENT.0, CYAN_ACCENT.1, CYAN_ACCENT.2, 220))
+        .draw();
 
     // second hand with ghost trail
     let second_len = (radius as f32 * 0.95) as i32;
@@ -481,16 +472,15 @@ fn draw_hands(canvas: &mut Canvas, t: f32) {
             c.x + (seg_len as f32 * seg_angle.cos()) as i32,
             c.y + (seg_len as f32 * seg_angle.sin()) as i32,
         );
-        draw_line_rgba_aa(canvas, c, seg_end, rgba(CHARTREUSE.0, CHARTREUSE.1, CHARTREUSE.2, alpha));
+        Draw::new(canvas).line(c, seg_end).color_rgba(rgba(CHARTREUSE.0, CHARTREUSE.1, CHARTREUSE.2, alpha)).draw();
     }
 
     // center pin (larger metallic dot)
-    fill_rounded_rect(
-        canvas,
-        GRect::new(GPoint::new(c.x - 6, c.y - 6), GSize::new(12, 12)),
-        6,
-        rgb(STEEL_HIGHLIGHT),
-    );
+    Draw::new(canvas)
+        .rect(GRect::new(GPoint::new(c.x - 6, c.y - 6), GSize::new(12, 12)))
+        .corner_radius(6)
+        .fill_color(rgb(STEEL_HIGHLIGHT))
+        .draw();
     
     let perf_time = perf_start.elapsed();
     info!("Hands: hour={}ms, minute={}ms, second_trail={}ms, center_pin={}ms", 
@@ -508,8 +498,8 @@ fn draw_overlays(canvas: &mut Canvas, t: f32) {
     // rotating decorative arc (sparse)
     let arc_radius = (h.min(w) / 2) - 24;
     let phase = t * 0.15;
-    draw_arc_aa(canvas, c, arc_radius - 18, phase, phase + 0.9, rgb(CYAN_ACCENT));
-    draw_arc_aa(canvas, c, arc_radius - 30, -phase * 0.8, -phase * 0.8 + 0.6, rgb((220, 220, 220)));
+    Draw::new(canvas).arc(c, arc_radius - 18, phase, phase + 0.9).color(rgb(CYAN_ACCENT)).draw();
+    Draw::new(canvas).arc(c, arc_radius - 30, -phase * 0.8, -phase * 0.8 + 0.6).color(rgb((220, 220, 220))).draw();
 
     // small HUD squares that blink (yellow)
     for i in 0..3 {
@@ -518,7 +508,10 @@ fn draw_overlays(canvas: &mut Canvas, t: f32) {
         let p = GPoint::new(c.x + (rad as f32 * angle.cos()) as i32, c.y + (rad as f32 * angle.sin()) as i32);
         let blink = ((t * 1.8 + i as f32).sin() * 0.5 + 0.5) * 0.6 + 0.4;
         let size = (3.0 + 3.0 * blink) as u32;
-        fill_rect(canvas, GRect::new(GPoint::new(p.x - (size as i32 / 2), p.y - (size as i32 / 2)), GSize::new(size, size)), rgb(YELLOW_ACCENT));
+        Draw::new(canvas)
+            .rect(GRect::new(GPoint::new(p.x - (size as i32 / 2), p.y - (size as i32 / 2)), GSize::new(size, size)))
+            .fill_color(rgb(YELLOW_ACCENT))
+            .draw();
     }
 
     // Render "ARKNIGHTS:" label using real text rendering

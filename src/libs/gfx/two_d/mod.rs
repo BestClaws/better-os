@@ -17,17 +17,16 @@ pub mod primitives;
 pub mod gradients;
 pub mod text;
 pub mod fonts;
+pub mod draw; // Fluent, builder-based API
 
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgb565, Rgba8888};
 pub use raster::Rasterizer;
+pub use draw::{Draw, StrokeStyle, FillStyle, CornerRadii as CornerRadiiPx, gradient, gradient_vertical, gradient_angle, stroke, radial, LinearMode, GradientSpec, RadialSpec};
 
 // Optimized primitive drawing functions
-pub use primitives::{
-    draw_line_aa, draw_line_rgba_aa, draw_arc_aa, draw_arc, 
-    draw_rect_outline_aa, fill_rounded_rect, fill_circle, fill_rect,
-    draw_line_thick_aa, draw_rounded_rect_outline_aa, fill_rect_styled
-};
+// Keep primitives internal to fluent layer; avoid re-exporting low-level draw_* APIs.
+// Existing internal modules rely on them via fully qualified paths.
 
 // High-performance gradient rendering
 pub use gradients::{

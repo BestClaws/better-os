@@ -1,7 +1,5 @@
 #![allow(unused)]
-use crate::libs::gfx::two_d::{
-    draw_rect_outline_aa, fill_rect, Point as GPoint, Rect as GRect, Rgb565, Size as GSize,
-};
+use crate::libs::gfx::two_d::{Draw, Point as GPoint, Rect as GRect, Rgb565, Size as GSize};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::canvas::Canvas;
 use embassy_time::{Duration, Timer};
@@ -11,11 +9,10 @@ fn draw_rects(canvas: &mut Canvas) {
     // canvas.clear_rgb(Rgb565::from_rgb(15, 15, 20));
 
 
-    fill_rect(
-        canvas,
-        GRect::new(GPoint::new(25, 25), GSize::new(25 as u32, 25 as u32)),
-        Rgb565::from_rgb(200, 60, 60),
-    );
+    let mut d = Draw::new(canvas);
+    d.rect(GRect::new(GPoint::new(25, 25), GSize::new(25 as u32, 25 as u32)))
+        .fill_color(Rgb565::from_rgb(200, 60, 60))
+        .draw();
 
 }
 
