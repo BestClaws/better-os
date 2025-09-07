@@ -59,8 +59,12 @@ pub async fn demo_2d_app(context: AppContext) {
             // Arcs clock-like motion
             let c = GPoint::new(w / 2, h / 2);
             let r1 = (h.min(w) / 3) as i32;
-            EgArc::new(c, r1, t * 1.2, t * 1.2 + 1.9).stroke_color(crate::libs::gfx::two_d::Rgb565::from_rgb(255, 220, 80)).draw(&mut c2d);
-            EgArc::new(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).stroke_color(crate::libs::gfx::two_d::Rgb565::from_rgb(80, 255, 200)).draw(&mut c2d);
+            EgArc::new(c, r1, t * 1.2, t * 1.2 + 1.9)
+                .into_styled(EgPrimitiveStyleBuilder::new().stroke_rgba(Rgba8888::new(255, 220, 80, 255)).build())
+                .draw(&mut c2d);
+            EgArc::new(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2)
+                .into_styled(EgPrimitiveStyleBuilder::new().stroke_rgba(Rgba8888::new(80, 255, 200, 255)).build())
+                .draw(&mut c2d);
 
             // Lines crossfade
             let lx = (w as f32 * (0.5 + 0.4 * (t * 0.8).sin())) as i32;

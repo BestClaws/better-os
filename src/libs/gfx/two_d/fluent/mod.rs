@@ -73,7 +73,6 @@ impl PrimitiveStyleBuilder {
         self
     }
     pub fn stroke_rgba(mut self, color: Rgba8888) -> Self {
-        // Ensure there is a stroke style for thickness/aa management
         if self.style.stroke.is_none() {
             self.style.stroke = Some(StrokeStyle { color: Rgb565::WHITE, thickness: 1, aa: true });
         }
@@ -109,9 +108,7 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
-    pub fn new(top_left: Point, size: Size) -> Self {
-        Self { top_left, size, style: PrimitiveStyle::default() }
-    }
+    pub fn new(top_left: Point, size: Size) -> Self { Self { top_left, size, style: PrimitiveStyle::default() } }
     pub fn into_styled(mut self, style: PrimitiveStyle) -> Self { self.style = style; self }
 }
 
@@ -134,12 +131,8 @@ pub struct RoundedRectangle {
 }
 
 impl RoundedRectangle {
-    pub fn with_equal_corners(rect: Rect, r: i32) -> Self {
-        Self { top_left: rect.top_left, size: rect.size, radii: CornerRadii::uniform(r), style: PrimitiveStyle::default() }
-    }
-    pub fn with_corners(rect: Rect, radii: CornerRadii) -> Self {
-        Self { top_left: rect.top_left, size: rect.size, radii, style: PrimitiveStyle::default() }
-    }
+    pub fn with_equal_corners(rect: Rect, r: i32) -> Self { Self { top_left: rect.top_left, size: rect.size, radii: CornerRadii::uniform(r), style: PrimitiveStyle::default() } }
+    pub fn with_corners(rect: Rect, radii: CornerRadii) -> Self { Self { top_left: rect.top_left, size: rect.size, radii, style: PrimitiveStyle::default() } }
     pub fn into_styled(mut self, style: PrimitiveStyle) -> Self { self.style = style; self }
 }
 
@@ -160,27 +153,15 @@ pub struct Line {
     pub style: PrimitiveStyle,
 }
 
-impl Line {
-    pub fn new(start: Point, end: Point) -> Self { Self { start, end, style: PrimitiveStyle::default() } }
-    pub fn into_styled(mut self, style: PrimitiveStyle) -> Self { self.style = style; self }
-}
+impl Line { pub fn new(start: Point, end: Point) -> Self { Self { start, end, style: PrimitiveStyle::default() } } pub fn into_styled(mut self, style: PrimitiveStyle) -> Self { self.style = style; self } }
 
 impl Drawable for Line {
     fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
-        // Prefer RGBA stroke if specified
-        if let Some(rgba) = self.style.stroke_rgba {
-            prim::draw_line_rgba_aa(target.raster_mut(), self.start, self.end, rgba);
-            return;
-        }
+        if let Some(rgba) = self.style.stroke_rgba { prim::draw_line_rgba_aa(target.raster_mut(), self.start, self.end, rgba); return; }
         if let Some(stroke) = self.style.stroke {
-            if stroke.thickness > 1 {
-                prim::draw_line_thick_aa(target.raster_mut(), self.start, self.end, stroke.thickness, stroke.color);
-            } else {
-                prim::draw_line_aa(target.raster_mut(), self.start, self.end, stroke.color);
-            }
-        } else {
-            prim::draw_line_aa(target.raster_mut(), self.start, self.end, Rgb565::WHITE);
-        }
+            if stroke.thickness > 1 { prim::draw_line_thick_aa(target.raster_mut(), self.start, self.end, stroke.thickness, stroke.color); }
+            else { prim::draw_line_aa(target.raster_mut(), self.start, self.end, stroke.color); }
+        } else { prim::draw_line_aa(target.raster_mut(), self.start, self.end, Rgb565::WHITE); }
     }
 }
 
@@ -189,49 +170,47 @@ pub struct Arc {
     pub radius: i32,
     pub start: f32,
     pub end: f32,
-    pub color: Rgb565,
+    pub style: PrimitiveStyle,
 }
 
 impl Arc {
-    pub fn new(center: Point, radius: i32, start: f32, end: f32) -> Self { Self { center, radius, start, end, color: Rgb565::WHITE } }
-    pub fn stroke_color(mut self, color: Rgb565) -> Self { self.color = color; self }
+    pub fn new(center: Point, radius: i32, start: f32, end: f32) -> Self { Self { center, radius, start, end, style: PrimitiveStyle::default() } }
+    pub fn into_styled(mut self, style: PrimitiveStyle) -> Self { self.style = style; self }
 }
 
 impl Drawable for Arc {
     fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
-        let mut d = FluentDraw::new(target.raster_mut());
-        d.arc(self.center, self.radius, self.start, self.end).color(self.color).draw();
+        let r = target.raster_mut();
+        if let Some(rgba) = self.style.stroke_rgba {
+            // Approximate arc with short RGBA AA segments for uniform RGBA stroke handling
+            let steps = (self.radius as f32 * (self.end - self.start).abs() * 2.0).max(16.0) as i32;
+            for i in 0..steps {
+                let t0 = i as f32 / steps as f32;
+                let t1 = (i + 1) as f32 / steps as f32;
+                let a0 = self.start + (self.end - self.start) * t0;
+                let a1 = self.start + (self.end - self.start) * t1;
+                prim::draw_line_rgba_aa(
+                    r,
+                    Point::new(self.center.x + (self.radius as f32 * a0.cos()) as i32, self.center.y + (self.radius as f32 * a0.sin()) as i32),
+                    Point::new(self.center.x + (self.radius as f32 * a1.cos()) as i32, self.center.y + (self.radius as f32 * a1.sin()) as i32),
+                    rgba,
+                );
+            }
+            return;
+        }
+        let color = self.style.stroke.map(|s| s.color).unwrap_or(Rgb565::WHITE);
+        prim::draw_arc_aa(r, self.center, self.radius, self.start, self.end, color);
     }
 }
 
 // ===== Text bridge =====
 
-pub struct MonoTextStyle {
-    pub color: Rgb565,
-}
+pub struct MonoTextStyle { pub color: Rgb565 }
+impl MonoTextStyle { pub fn new(color: Rgb565) -> Self { Self { color } } }
 
-impl MonoTextStyle {
-    pub fn new(color: Rgb565) -> Self { Self { color } }
-}
-
-pub struct Text<'a> {
-    pub position: Point,
-    pub text: &'a str,
-    pub style: MonoTextStyle,
-}
-
-impl<'a> Text<'a> {
-    pub fn new(text: &'a str, position: Point, style: MonoTextStyle) -> Self { Self { position, text, style } }
-}
-
-impl<'a> Drawable for Text<'a> {
-    fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) {
-        // Bridge to existing TextRenderer with FONT_8X8
-        let renderer = crate::libs::gfx::two_d::text::TextRenderer::new(&crate::libs::gfx::two_d::fonts::FONT_8X8)
-            .with_color(self.style.color);
-        renderer.draw_text(target.raster_mut(), self.position, self.text);
-    }
-}
+pub struct Text<'a> { pub position: Point, pub text: &'a str, pub style: MonoTextStyle }
+impl<'a> Text<'a> { pub fn new(text: &'a str, position: Point, style: MonoTextStyle) -> Self { Self { position, text, style } } }
+impl<'a> Drawable for Text<'a> { fn draw<T: DrawTarget + ?Sized>(self, target: &mut T) { let renderer = crate::libs::gfx::two_d::text::TextRenderer::new(&crate::libs::gfx::two_d::fonts::FONT_8X8).with_color(self.style.color); renderer.draw_text(target.raster_mut(), self.position, self.text); } }
 
 // ===== Path (polyline and Bezier) =====
 
