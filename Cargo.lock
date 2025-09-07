@@ -58,8 +58,6 @@ dependencies = [
  "embassy-futures",
  "embassy-sync 0.7.2",
  "embassy-time",
- "embedded-graphics",
- "embedded-graphics-core",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "esp-alloc",
@@ -69,7 +67,6 @@ dependencies = [
  "esp-radio",
  "esp-radio-preempt-baremetal",
  "heapless",
- "kolibri-embedded-gui",
  "libm",
  "log",
  "micromath",
@@ -80,12 +77,6 @@ dependencies = [
  "tinybmp",
  "trouble-host",
 ]
-
-[[package]]
-name = "bit_field"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
 
 [[package]]
 name = "bitfield"
@@ -457,7 +448,6 @@ checksum = "0649998afacf6d575d126d83e68b78c0ab0e00ca2ac7e9b3db11b4cbe8274ef0"
 dependencies = [
  "az",
  "byteorder",
- "defmt 0.3.100",
  "embedded-graphics-core",
  "float-cmp",
  "micromath",
@@ -471,7 +461,6 @@ checksum = "ba9ecd261f991856250d2207f6d8376946cd9f412a2165d3b75bc87a0bc7a044"
 dependencies = [
  "az",
  "byteorder",
- "defmt 0.3.100",
 ]
 
 [[package]]
@@ -501,18 +490,6 @@ checksum = "0c4c685bbef7fe13c3c6dd4da26841ed3980ef33e841cddfa15ce8a8fb3f1884"
 dependencies = [
  "defmt 0.3.100",
  "embedded-hal 1.0.0",
-]
-
-[[package]]
-name = "embedded-iconoir"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c52b9899b636b56d4e66834f7a90766d0bc6600c0f067d91ed0711b11fa3f5c8"
-dependencies = [
- "bit_field",
- "embedded-graphics",
- "paste",
- "static_assertions",
 ]
 
 [[package]]
@@ -887,12 +864,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "foldhash"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
-
-[[package]]
 name = "fugit"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1012,7 +983,6 @@ checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
 dependencies = [
  "defmt 0.3.100",
  "hash32",
- "serde",
  "stable_deref_trait",
 ]
 
@@ -1096,16 +1066,6 @@ checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "kolibri-embedded-gui"
-version = "0.1.0"
-dependencies = [
- "embedded-graphics",
- "embedded-iconoir",
- "foldhash",
- "heapless",
 ]
 
 [[package]]
@@ -1465,12 +1425,6 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "static_cell"
