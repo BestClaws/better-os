@@ -5,5 +5,3 @@ pub(crate) mod window;
 pub(crate) mod window_manager;
 // pub(crate) mod types; // replaced by system::input::types
 
-// Transitional alias during refactor
-pub use canvas::DrawingSurface as Canvas;

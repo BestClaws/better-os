@@ -280,8 +280,6 @@ pub struct UICompositor {
     windows_order: heapless::Vec<WindowHandle, MAX_WINDOWS>,
     /// Index of currently focused window within `windows_order`
     current_index: usize,
-    /// Display hardware interface (legacy)
-    display_driver: Option<&'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>>,
     /// Display service (preferred)
     display_service: Option<&'static DisplayService>,
     /// Pending redraw requests for dirty windows
@@ -297,20 +295,10 @@ impl UICompositor {
         Self {
             windows_order: heapless::Vec::new(),
             current_index: 0,
-            display_driver: None,
             display_service: None,
             pending_redraws: heapless::Vec::new(),
             animation_config: AnimationConfig::default(),
         }
-    }
-
-    /// Attach hardware display driver
-    pub fn attach_display(
-        &mut self,
-        display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
-    ) {
-        self.display_driver = Some(display);
-        debug!("Display driver attached");
     }
 
     /// Attach DisplayService abstraction
@@ -452,68 +440,6 @@ impl UICompositor {
                 // No dirty regions - no display update needed
                 debug!("No dirty regions, skipping display update");
             }
-        } else if let Some(display) = self.display_driver {
-            // Allocate working buffer for composition (RGB565 legacy path)
-            let mut frame_buffer: AllocVec<u8> = vec![0u8; (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize];
-            let mut composite_canvas = Canvas::new(
-                FRAME_BUFFER_WIDTH,
-                FRAME_BUFFER_HEIGHT
-            );
-            composite_canvas.set_resources(&mut frame_buffer);
-
-            let dirty_regions = if let Some((cur, _prev, _next)) = self.current_prev_next() {
-                self.collect_dirty_regions(wm, cur)
-            } else { heapless::Vec::new() };
-            debug!("Dirty regions count: {}", dirty_regions.len());
-
-            // Update display efficiently
-            let mut display_lock = display.lock().await;
-            if !dirty_regions.is_empty() {
-                // Compose final frame only when there are dirty regions
-                self.compose_frame_optimized(wm, &mut composite_canvas).await;
-                
-                // Optimized decision logic for partial vs full updates
-                let update_strategy = self.determine_update_strategy(&dirty_regions);
-                
-                match update_strategy {
-                    UpdateStrategy::FullScreen => {
-                        debug!("Using full screen update ({} regions, {} area)", 
-                               dirty_regions.len(), self.calculate_total_dirty_area(&dirty_regions));
-                        display_lock.draw(
-                            composite_canvas.buffer(),
-                            FRAME_SCALE_FACTOR
-                        ).await;
-                    }
-                    UpdateStrategy::Partial(regions) => {
-                        debug!("Using partial update ({} regions)", regions.len());
-                        for region in regions.iter() {
-                            // Extract region-sized buffer from composite canvas
-                            let region_buffer = extract_region_buffer(
-                                composite_canvas.buffer(),
-                                region,
-                                FRAME_BUFFER_WIDTH,
-                                FRAME_BUFFER_HEIGHT,
-                                2
-                            );
-                            
-                            display_lock.draw_region(
-                                &region_buffer,
-                                Rectangle::new(
-                                    EgPoint::new(region.top_left.x, region.top_left.y),
-                                    EgSize::new(region.size.width, region.size.height),
-                                ),
-                                FRAME_SCALE_FACTOR,
-                            ).await;
-                        }
-                    }
-                }
-                if let Some((cur, _p, _n)) = self.current_prev_next() {
-                    self.clear_window_dirty_regions(wm, cur);
-                }
-            } else {
-                // No dirty regions - no display update needed
-                debug!("No dirty regions, skipping display update");
-            }
         }
 
         self.pending_redraws.clear();
@@ -609,47 +535,6 @@ impl UICompositor {
                 Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
             }
             return;
-        }
-
-        // Legacy driver path
-        let mut composition_buffer: AllocVec<u8> = vec![0u8; (FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT * 2) as usize];
-        let mut canvas = Canvas::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
-        canvas.set_resources(&mut composition_buffer);
-
-        let (cur, prev, next) = self.current_prev_next().unwrap();
-        // Determine source and target by direction
-        let (source_h, target_h) = match direction {
-            TransitionDirection::Previous => (next, cur),
-            TransitionDirection::Next => (prev, cur),
-        };
-
-        // Animate through all steps
-        for step in 0..=self.animation_config.steps {
-            let frame_timer = Instant::now();
-            let progress = step as f32 / self.animation_config.steps as f32;
-            let eased_progress = (self.animation_config.easing_fn)(progress);
-
-            let frame = animation.animate_frame(eased_progress, direction);
-
-            // Clear and compose frame
-            canvas.clear_rgb(Rgb565::BLACK);
-            // Blit source window (contained within closure to keep borrows local)
-            let _ = wm.with_canvas(source_h, |src| {
-                CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y, 2);
-            });
-            // Blit target window
-            let _ = wm.with_canvas(target_h, |dst| {
-                CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y, 2);
-            });
-
-            // Display frame
-            if let Some(display) = self.display_driver {
-                let mut display_lock = display.lock().await;
-                display_lock.draw(canvas.buffer(), FRAME_SCALE_FACTOR).await;
-            }
-
-            debug!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
-            Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
         }
     }
 
