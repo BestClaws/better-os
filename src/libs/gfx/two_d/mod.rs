@@ -18,6 +18,7 @@ pub mod gradients;
 pub mod text;
 pub mod fonts;
 pub mod draw; // Fluent, builder-based API
+pub mod fluent; // Embedded-graphics style API
 
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgb565, Rgba8888};
@@ -37,4 +38,19 @@ pub use gradients::{
 // Space-grade text rendering system
 pub use text::{TextRenderer, TextOptions};
 pub use fonts::{FONT_8X8};
+
+// Embedded-graphics style API re-exports
+pub use fluent::{
+    prelude as eg_prelude,
+    Drawable as EgDrawable,
+    DrawTarget as EgDrawTarget,
+    PrimitiveStyle as EgPrimitiveStyle,
+    PrimitiveStyleBuilder as EgPrimitiveStyleBuilder,
+    Rectangle as EgRectangle,
+    RoundedRectangle as EgRoundedRectangle,
+    Line as EgLine,
+    Arc as EgArc,
+    Text as EgText,
+    MonoTextStyle as EgMonoTextStyle,
+};
 
