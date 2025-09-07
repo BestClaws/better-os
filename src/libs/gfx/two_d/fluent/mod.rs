@@ -10,6 +10,7 @@ pub mod prelude {
 }
 
 use crate::libs::gfx::two_d::{Rasterizer, Point, Rect, Size, Rgb565, Rgba8888};
+use crate::libs::gfx::two_d::types::CanvasColor;
 use crate::libs::gfx::two_d::draw::{StrokeStyle, FillStyle, CornerRadii, Draw as FluentDraw};
 use crate::libs::gfx::two_d::primitives as prim;
 use heapless::Vec;
@@ -62,6 +63,13 @@ pub struct PrimitiveStyleBuilder {
 
 impl PrimitiveStyleBuilder {
     pub fn new() -> Self { Self { style: PrimitiveStyle::default() } }
+    pub fn stroke<C: CanvasColor>(mut self, color: C) -> Self {
+        let thickness = self.style.stroke.map(|s| s.thickness).unwrap_or(1);
+        self.style.stroke = Some(StrokeStyle { color: color.to_rgb565(), thickness, aa: true });
+        let a = color.alpha_u8();
+        self.style.stroke_rgba = if a < 255 { Some(Rgba8888::new(0, 0, 0, a)) } else { None };
+        self
+    }
     pub fn stroke_width(mut self, width: i32) -> Self {
         let color = self.style.stroke.map(|s| s.color).unwrap_or(Rgb565::WHITE);
         self.style.stroke = Some(StrokeStyle { color, thickness: width, aa: true });
@@ -70,13 +78,7 @@ impl PrimitiveStyleBuilder {
     pub fn stroke_color(mut self, color: Rgb565) -> Self {
         let thickness = self.style.stroke.map(|s| s.thickness).unwrap_or(1);
         self.style.stroke = Some(StrokeStyle { color, thickness, aa: true });
-        self
-    }
-    pub fn stroke_rgba(mut self, color: Rgba8888) -> Self {
-        if self.style.stroke.is_none() {
-            self.style.stroke = Some(StrokeStyle { color: Rgb565::WHITE, thickness: 1, aa: true });
-        }
-        self.style.stroke_rgba = Some(color);
+        self.style.stroke_rgba = None;
         self
     }
     pub fn aa(mut self, aa: bool) -> Self {

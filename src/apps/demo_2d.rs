@@ -46,7 +46,7 @@ pub async fn demo_2d_app(context: AppContext) {
             let x = (w - rect_w as i32) / 2 + (w as f32 * 0.15 * (t * 0.7).sin()) as i32;
             let y = (h - rect_h as i32) / 2 + (h as f32 * 0.10 * (t * 0.9).cos()) as i32;
             EgRoundedRectangle::with_equal_corners(GRect::new(GPoint::new(x, y), GSize::new(rect_w, rect_h)), (8.0 + 6.0 * (t * 1.7).sin().abs()) as i32)
-                .into_styled(EgPrimitiveStyleBuilder::new().fill_rgba(Rgba8888::new(80, 180, 240, 255)).stroke_width(1).stroke_rgba(Rgba8888::new(255, 255, 255, 255)).build())
+                .into_styled(EgPrimitiveStyleBuilder::new().fill_rgba(Rgba8888::new(80, 180, 240, 255)).stroke_width(1).stroke(Rgba8888::new(255, 255, 255, 255)).build())
                 .draw(&mut c2d);
 
             // RGBA overlay pulse
@@ -60,16 +60,16 @@ pub async fn demo_2d_app(context: AppContext) {
             let c = GPoint::new(w / 2, h / 2);
             let r1 = (h.min(w) / 3) as i32;
             EgArc::new(c, r1, t * 1.2, t * 1.2 + 1.9)
-                .into_styled(EgPrimitiveStyleBuilder::new().stroke_rgba(Rgba8888::new(255, 220, 80, 255)).build())
+                .into_styled(EgPrimitiveStyleBuilder::new().stroke(Rgba8888::new(255, 220, 80, 255)).build())
                 .draw(&mut c2d);
             EgArc::new(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2)
-                .into_styled(EgPrimitiveStyleBuilder::new().stroke_rgba(Rgba8888::new(80, 255, 200, 255)).build())
+                .into_styled(EgPrimitiveStyleBuilder::new().stroke(Rgba8888::new(80, 255, 200, 255)).build())
                 .draw(&mut c2d);
 
             // Lines crossfade
             let lx = (w as f32 * (0.5 + 0.4 * (t * 0.8).sin())) as i32;
             EgLine::new(GPoint::new(12, 12), GPoint::new(lx, h - 12))
-                .into_styled(EgPrimitiveStyleBuilder::new().stroke_rgba(Rgba8888::new(240, 240, 240, 255)).build())
+                .into_styled(EgPrimitiveStyleBuilder::new().stroke(Rgba8888::new(240, 240, 240, 255)).build())
                 .draw(&mut c2d);
 
             // Moving translucent overlay highlight
