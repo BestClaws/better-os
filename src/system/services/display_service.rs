@@ -12,17 +12,22 @@ use crate::system::kernel::config::resources::{FRAME_BUFFER_WIDTH, FRAME_BUFFER_
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PixelFormat {
     Rgb565,
+    Rgb888,
+    Rgb666,
+    Gray8,
 }
 
 impl PixelFormat {
     pub const fn bytes_per_pixel(&self) -> usize {
-        match self { PixelFormat::Rgb565 => 2 }
+        match self { PixelFormat::Rgb565 => 2, PixelFormat::Rgb888 => 3, PixelFormat::Rgb666 => 3, PixelFormat::Gray8 => 1 }
     }
 
     pub const fn from_display(fmt: DisplayPixelFormat) -> Self {
         match fmt {
             DisplayPixelFormat::Rgb565 => PixelFormat::Rgb565,
-            _ => PixelFormat::Rgb565,
+            DisplayPixelFormat::Rgb888 => PixelFormat::Rgb888,
+            DisplayPixelFormat::Rgb666 => PixelFormat::Rgb666,
+            DisplayPixelFormat::Gray8 => PixelFormat::Gray8,
         }
     }
 }
@@ -59,7 +64,12 @@ impl DisplayService {
 
         let chosen = boot_mode.unwrap_or(caps.preferred_format);
         // Avoid requiring defmt::Format on PixelFormat by logging as integer
-        let mode_u8 = match chosen { PixelFormat::Rgb565 => 1 };
+        let mode_u8 = match chosen {
+            PixelFormat::Rgb565 => 1,
+            PixelFormat::Rgb888 => 2,
+            PixelFormat::Rgb666 => 3,
+            PixelFormat::Gray8 => 4,
+        };
         info!("DisplayService init: mode={} scale={} size={}x{}", mode_u8, scale, width, height);
 
         Self { driver, mode: chosen, scale, width, height }

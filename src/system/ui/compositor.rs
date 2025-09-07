@@ -345,22 +345,14 @@ impl UICompositor {
     async fn apply_active_triplet(&mut self, wm: &mut WindowManager) {
         if let Some((cur, prev, next)) = self.current_prev_next() {
             if let Some(service) = self.display_service {
-                let bpp = service.pixel_format().bytes_per_pixel();
-                wm.set_active_windows_with_bpp(&[prev, cur, next], bpp).await;
+                let fmt = service.pixel_format();
+                // Map DisplayService PixelFormat to SurfaceFormat (currently only Rgb565)
+                let sfmt = crate::system::ui::canvas::SurfaceFormat::Rgb565;
+                wm.set_active_windows_with_format(&[prev, cur, next], sfmt).await;
             } else {
                 wm.set_active_windows(&[prev, cur, next]).await;
             }
-            // Propagate system pixel bytes to active windows' drawing surfaces
-            if let Some(service) = self.display_service {
-                let bpp = service.pixel_format().bytes_per_pixel();
-                for handle in [prev, cur, next] {
-                    if let Some(window) = wm.get_window_mut(handle) {
-                        if let Some(canvas) = window.canvas().as_mut() {
-                            canvas.set_pixel_bytes(bpp);
-                        }
-                    }
-                }
-            }
+            // Already set by set_active_windows_with_format
         }
     }
 

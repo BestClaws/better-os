@@ -2,6 +2,7 @@ use defmt::{debug, warn};
 
 use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::canvas::SurfaceFormat;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;
@@ -63,6 +64,7 @@ impl WindowManager {
 
     /// Set active windows and propagate pixel size for drawing surfaces.
     pub async fn set_active_windows_with_bpp(&mut self, active: &[WindowHandle], pixel_bytes: usize) {
+        // Deprecated: prefer set_active_windows_with_format
         // Reclaim resources from windows not in the active set
         for window in self.windows.iter_mut() {
             let is_active = active.iter().any(|h| h == &window.handle());
@@ -85,6 +87,48 @@ impl WindowManager {
                                     // Ensure canvas uses system pixel size before setting buffer
                                     if let Some(canvas) = window.canvas().as_mut() {
                                         canvas.set_pixel_bytes(pixel_bytes);
+                                    }
+                                    window.set_resources(fb, ic).await;
+                                }
+                                None => {
+                                    warn!("Input channel allocation failed for window {:?}", handle);
+                                    FRAMEBUFFER_POOL.release(&fb);
+                                }
+                            }
+                        }
+                        None => {
+                            warn!("Framebuffer allocation failed for window {:?}", handle);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set active windows and propagate pixel format for drawing surfaces.
+    pub async fn set_active_windows_with_format(&mut self, active: &[WindowHandle], format: SurfaceFormat) {
+        // Reuse the bpp path but set format explicitly
+        // Reclaim resources from windows not in the active set
+        for window in self.windows.iter_mut() {
+            let is_active = active.iter().any(|h| h == &window.handle());
+            if !is_active && window.framebuffer_id().is_some() {
+                debug!("Releasing resources for inactive window {:?}", window.handle());
+                window.relax();
+            }
+        }
+
+        // Allocate resources for active windows
+        for handle in active.iter() {
+            if let Some(idx) = self.index_of(*handle) {
+                let window = &mut self.windows[idx];
+                if window.framebuffer_id().is_none() {
+                    debug!("Allocating resources for active window {:?}", handle);
+                    match FRAMEBUFFER_POOL.allocate().await {
+                        Some(fb) => {
+                            match INPUT_CHANNEL_POOL.allocate().await {
+                                Some(ic) => {
+                                    if let Some(canvas) = window.canvas().as_mut() {
+                                        canvas.set_pixel_format(format);
                                     }
                                     window.set_resources(fb, ic).await;
                                 }
@@ -141,7 +185,6 @@ impl WindowManager {
         }
     }
 
-    // No dirty-region helpers here; Canvas owns dirty tracking.
 
     // --- Internal helpers ---
     fn index_of(&self, handle: WindowHandle) -> Option<usize> {
