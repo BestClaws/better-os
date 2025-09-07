@@ -1,4 +1,5 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, LinearGradient, FillStyle, gradient, gradient_vertical, TextRenderer, FONT_8X8, EgRectangle, EgPrimitiveStyleBuilder, EgDrawable};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, LinearGradient, FillStyle, gradient, gradient_vertical, TextRenderer, FONT_8X8};
+use crate::libs::gfx::two_d::draw::Draw;
 use crate::libs::gfx::two_d::gradients::{fill_rect_rgba};
 use crate::libs::gfx::two_d::primitives::{fill_rounded_rect_linear_gradient, draw_rounded_rect_shadow_layers};
 use super::style::{Fill, Stroke, CornerRadii, Color};
@@ -47,13 +48,10 @@ impl<'a> ImUi<'a> {
     /// Clear with a vertical linear gradient background.
     pub fn clear_background_gradient_vertical(&mut self, top: Rgb565, bottom: Rgb565) {
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
-        EgRectangle::new(rect.top_left, rect.size)
-            .into_styled(
-                EgPrimitiveStyleBuilder::new()
-                    .fill(FillStyle::Linear(gradient_vertical(top, bottom)))
-                    .build(),
-            )
-            .draw(&mut self.raster);
+        let mut d = Draw::new(self.raster);
+        d.rect(rect)
+            .fill(FillStyle::Linear(gradient_vertical(top, bottom)))
+            .draw();
     }
 
     fn next_rect(&mut self, size: Size) -> Rect {
@@ -118,26 +116,23 @@ impl<'a> ImUi<'a> {
         } else {
             (Rgb565::from_rgb(50, 230, 80), Rgb565::from_rgb(30, 140, 240))
         };
-        EgRectangle::new(rect.top_left, rect.size)
-            .into_styled(
-                EgPrimitiveStyleBuilder::new()
-                    .fill(FillStyle::Linear(gradient(left_color, right_color)))
-                    .build(),
-            )
-            .draw(&mut self.raster);
+        {
+            let mut d = Draw::new(self.raster);
+            d.rect(rect)
+                .fill(FillStyle::Linear(gradient(left_color, right_color)))
+                .draw();
+        }
         if hovered && !pressed {
             // stronger highlight for visibility
             fill_rect_rgba(self.raster, rect, Rgba8888::new(255, 255, 255, 28));
         }
         // border stroke in its own short scope to avoid overlapping borrows
-        EgRectangle::new(rect.top_left, rect.size)
-            .into_styled(
-                EgPrimitiveStyleBuilder::new()
-                    .stroke_width(1)
-                    .stroke_color(Rgb565::from_rgb(255, 255, 255))
-                    .build(),
-            )
-            .draw(&mut self.raster);
+        {
+            let mut d = Draw::new(self.raster);
+            d.rect(rect)
+                .stroke(crate::libs::gfx::two_d::draw::stroke(1, Rgb565::from_rgb(255, 255, 255)))
+                .draw();
+        }
 
         let text_pos = Point::new(
             rect.top_left.x + pad as i32,

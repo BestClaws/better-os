@@ -18,7 +18,6 @@ pub mod gradients;
 pub mod text;
 pub mod fonts;
 pub mod draw; // Fluent, builder-based API
-pub mod fluent; // Embedded-graphics style API
 pub mod canvas2d;
 
 // Core types and traits
@@ -40,19 +39,4 @@ pub use gradients::{
 pub use text::{TextRenderer, TextOptions};
 pub use fonts::{FONT_8X8};
 pub use canvas2d::Canvas2D;
-
-// Embedded-graphics style API re-exports
-pub use fluent::{
-    prelude as eg_prelude,
-    Drawable as EgDrawable,
-    DrawTarget as EgDrawTarget,
-    PrimitiveStyle as EgPrimitiveStyle,
-    PrimitiveStyleBuilder as EgPrimitiveStyleBuilder,
-    Rectangle as EgRectangle,
-    RoundedRectangle as EgRoundedRectangle,
-    Line as EgLine,
-    Arc as EgArc,
-    Text as EgText,
-    MonoTextStyle as EgMonoTextStyle,
-};
 

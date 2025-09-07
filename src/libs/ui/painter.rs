@@ -1,4 +1,5 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, EgRectangle, EgPrimitiveStyleBuilder, EgDrawable, EgLine};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888};
+use crate::libs::gfx::two_d::draw::Draw;
 
 use super::style::{Color, Fill, Stroke, CornerRadii};
 
@@ -20,26 +21,19 @@ impl<'a> Painter<'a> {
 
     pub fn fill_rect(&mut self, rect: Rect, fill: Fill, corner: CornerRadii) {
         let bg = Self::to_rgb565(fill.color);
-        EgRectangle::new(rect.top_left, rect.size)
-            .into_styled(
-                EgPrimitiveStyleBuilder::new()
-                    .fill_color(bg)
-                    .build(),
-            )
-            .draw(&mut self.raster);
+        let mut d = Draw::new(self.raster);
+        d.rect(rect)
+            .fill_color(bg)
+            .draw();
     }
 
     pub fn stroke_rect(&mut self, rect: Rect, stroke: Stroke, corner: CornerRadii) {
         if stroke.thickness == 0 { return; }
         let color = Self::to_rgb565(stroke.color);
-        EgRectangle::new(rect.top_left, rect.size)
-            .into_styled(
-                EgPrimitiveStyleBuilder::new()
-                    .stroke_width(stroke.thickness as i32)
-                    .stroke_color(color)
-                    .build(),
-            )
-            .draw(&mut self.raster);
+        let mut d = Draw::new(self.raster);
+        d.rect(rect)
+            .stroke(crate::libs::gfx::two_d::draw::stroke(stroke.thickness as i32, color))
+            .draw();
     }
 
     pub fn rect(&mut self, rect: Rect, fill: Option<Fill>, stroke: Option<Stroke>, corner: CornerRadii) {
@@ -48,14 +42,11 @@ impl<'a> Painter<'a> {
     }
 
     pub fn line(&mut self, p0: Point, p1: Point, stroke: Stroke) {
-        EgLine::new(p0, p1)
-            .into_styled(
-                EgPrimitiveStyleBuilder::new()
-                    .stroke_width(stroke.thickness as i32)
-                    .stroke_color(Self::to_rgb565(stroke.color))
-                    .build(),
-            )
-            .draw(&mut self.raster);
+        let mut d = Draw::new(self.raster);
+        d.line(p0, p1)
+            .thickness(stroke.thickness as i32)
+            .color(Self::to_rgb565(stroke.color))
+            .draw();
     }
 }
 

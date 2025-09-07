@@ -1,6 +1,5 @@
 use super::{Rasterizer, Rgb565, Rgba8888};
 use super::types::CanvasColor;
-use crate::libs::gfx::two_d::fluent::DrawTarget;
 
 /// Canvas2D shim that accepts RGBA colors and forwards to an underlying Rasterizer.
 /// No backing buffer; conversions happen on write to the target rasterizer.
@@ -52,11 +51,3 @@ impl<'a, C: CanvasColor> Canvas2D<'a, C> {
         }
     }
 }
-
-impl<C: CanvasColor> DrawTarget for Canvas2D<'_, C> {
-    fn size(&self) -> super::Size { super::Size::new(self.raster.width(), self.raster.height()) }
-    fn clear(&mut self, color: Rgb565) { self.raster.clear(color) }
-    fn raster_mut(&mut self) -> &mut dyn Rasterizer { self.raster }
-}
-
-

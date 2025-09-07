@@ -3,8 +3,7 @@
 use crate::libs::gfx::math::{Quaternion, Vec3};
 use crate::libs::gfx::two_d::types::{Point, Rgb565};
 use crate::libs::gfx::two_d::Rasterizer;
-use crate::libs::gfx::two_d::fluent::Line as EgLine;
-use crate::libs::gfx::two_d::{EgDrawable, EgPrimitiveStyleBuilder};
+use crate::libs::gfx::two_d::draw::Draw as Draw2D;
 use crate::libs::gfx::Model;
 use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use core::cmp::Ordering;
@@ -716,9 +715,18 @@ fn render_triangles_optimized<R: Rasterizer>(
         }
         
         if matches!(options.view_mode, ViewMode::Wireframe | ViewMode::FillAndWireframe) {
-            EgLine::new(p0, p1).into_styled(EgPrimitiveStyleBuilder::new().stroke_color(Rgb565::from_rgb(0, 255, 0)).build()).draw(raster);
-            EgLine::new(p1, p2).into_styled(EgPrimitiveStyleBuilder::new().stroke_color(Rgb565::from_rgb(0, 255, 0)).build()).draw(raster);
-            EgLine::new(p2, p0).into_styled(EgPrimitiveStyleBuilder::new().stroke_color(Rgb565::from_rgb(0, 255, 0)).build()).draw(raster);
+            {
+                let mut d2 = Draw2D::new(raster);
+                d2.line(p0, p1).color(Rgb565::from_rgb(0, 255, 0)).draw();
+            }
+            {
+                let mut d2 = Draw2D::new(raster);
+                d2.line(p1, p2).color(Rgb565::from_rgb(0, 255, 0)).draw();
+            }
+            {
+                let mut d2 = Draw2D::new(raster);
+                d2.line(p2, p0).color(Rgb565::from_rgb(0, 255, 0)).draw();
+            }
             stats.edges_drawn += 3;
         }
         
