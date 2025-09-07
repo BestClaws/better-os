@@ -250,3 +250,18 @@ impl Rgba8888 {
         Rgb565::from_rgb(self.r, self.g, self.b)
     }
 }
+
+/// Generic color conversion interface for Canvas2D generics
+pub trait CanvasColor {
+    fn to_rgb565(&self) -> Rgb565;
+    fn alpha_u8(&self) -> u8 { 255 }
+}
+
+impl CanvasColor for Rgba8888 {
+    fn to_rgb565(&self) -> Rgb565 { Rgba8888::to_rgb565(*self) }
+    fn alpha_u8(&self) -> u8 { self.a }
+}
+
+impl CanvasColor for Rgb565 {
+    fn to_rgb565(&self) -> Rgb565 { *self }
+}

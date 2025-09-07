@@ -26,7 +26,7 @@ pub async fn demo_2d_app(context: AppContext) {
 
         context.draw(|canvas: &mut Canvas| {
             let w = canvas.width() as i32; let h = canvas.height() as i32;
-            let mut c2d = Canvas2D::new(canvas as &mut dyn crate::libs::gfx::two_d::Rasterizer);
+            let mut c2d: Canvas2D<crate::libs::gfx::two_d::Rgba8888> = Canvas2D::new(canvas as &mut dyn crate::libs::gfx::two_d::Rasterizer);
 
             // Background color sweep (RGBA)
             let sweep = ((t * 0.2).sin() * 0.5 + 0.5) as f32;
