@@ -356,7 +356,12 @@ impl UICompositor {
     /// Apply active triplet to WindowManager (allocate resources accordingly).
     async fn apply_active_triplet(&mut self, wm: &mut WindowManager) {
         if let Some((cur, prev, next)) = self.current_prev_next() {
-            wm.set_active_windows(&[prev, cur, next]).await;
+            if let Some(service) = self.display_service {
+                let bpp = service.pixel_format().bytes_per_pixel();
+                wm.set_active_windows_with_bpp(&[prev, cur, next], bpp).await;
+            } else {
+                wm.set_active_windows(&[prev, cur, next]).await;
+            }
             // Propagate system pixel bytes to active windows' drawing surfaces
             if let Some(service) = self.display_service {
                 let bpp = service.pixel_format().bytes_per_pixel();

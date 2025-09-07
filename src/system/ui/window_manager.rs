@@ -58,6 +58,11 @@ impl WindowManager {
     /// Set the active windows. Active windows have framebuffer and input-channel resources.
     /// All windows not in the set will have their resources reclaimed.
     pub async fn set_active_windows(&mut self, active: &[WindowHandle]) {
+        self.set_active_windows_with_bpp(active, 2).await;
+    }
+
+    /// Set active windows and propagate pixel size for drawing surfaces.
+    pub async fn set_active_windows_with_bpp(&mut self, active: &[WindowHandle], pixel_bytes: usize) {
         // Reclaim resources from windows not in the active set
         for window in self.windows.iter_mut() {
             let is_active = active.iter().any(|h| h == &window.handle());
@@ -77,6 +82,10 @@ impl WindowManager {
                         Some(fb) => {
                             match INPUT_CHANNEL_POOL.allocate().await {
                                 Some(ic) => {
+                                    // Ensure canvas uses system pixel size before setting buffer
+                                    if let Some(canvas) = window.canvas().as_mut() {
+                                        canvas.set_pixel_bytes(pixel_bytes);
+                                    }
                                     window.set_resources(fb, ic).await;
                                 }
                                 None => {

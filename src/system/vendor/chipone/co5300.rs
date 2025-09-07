@@ -11,7 +11,7 @@ use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error, debug};
 use embedded_graphics_core::prelude::{Point, Size};
 use embedded_graphics_core::primitives::Rectangle;
-use crate::system::hal::display::{AsyncDisplay, Orientation};
+use crate::system::hal::display::{AsyncDisplay, Orientation, DisplayPixelFormat};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
 /// SH8601 Command Set
@@ -503,5 +503,9 @@ where
 
     fn get_height(&self) -> u32 {
         self.height as u32
+    }
+
+    fn native_pixel_format(&self) -> DisplayPixelFormat {
+        DisplayPixelFormat::Rgb565
     }
 }
