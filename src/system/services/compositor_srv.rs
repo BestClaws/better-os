@@ -1,19 +1,19 @@
 use alloc::boxed::Box;
-use defmt::{debug, info, warn};
+use defmt::{debug, info};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::ui::compositor::input::system_ui_consume_events;
-use crate::system::ui::compositor::{animation::{AnimationConfig, TransitionDirection, ease_in_out_cubic, ease_in_out_circular, ease_out_bounce}, core::UICompositor, input::SUI_COMMAND_CH};
+use crate::system::ui::compositor::{animation::{AnimationConfig, TransitionDirection, ease_in_out_cubic, ease_in_out_circular, ease_out_bounce}, core::UICompositor};
+use crate::system::services::input_srv::{SUI_EVENT_CH, SUI_ACK_CH};
+// CriticalSectionRawMutex already imported above
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::display::Display;
-use crate::system::hal::display::PixelFormat;
+// PixelFormat is determined via Display facade; no direct use here
 
 /// Service loop timing constants
 const MIN_FRAME_TIME_MS: u64 = 16; // ~60 FPS max
-const INPUT_POLL_TIMEOUT_MS: u64 = 1;
 
 /// Compositor service task - handles UI rendering, input events, and animations
 ///
@@ -24,7 +24,7 @@ const INPUT_POLL_TIMEOUT_MS: u64 = 1;
 /// - Provides idle refresh for dynamic content (clocks, sensors, etc.)
 /// - Maintains consistent frame timing for smooth operation
 #[embassy_executor::task]
-pub async fn compositor_service(
+pub async fn ui_compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
@@ -41,14 +41,14 @@ pub async fn compositor_service(
 
     // Attach display to compositor and configure animations
     {
-        let mut compositor_lock = compositor.lock().await;
-        static mut DISPLAY: Option<Display> = None;
-        let d = unsafe { DISPLAY.get_or_insert(Display::init(display).await) };
-        compositor_lock.attach_display_service(unsafe { DISPLAY.as_ref().unwrap() });
+        let mut compositor_mut = compositor.lock().await;
+        let display_facade: Display = Display::init(display).await;
+        let negotiated_pixel_format = display_facade.pixel_format();
+        compositor_mut.attach_display_service(display_facade);
         // Align WindowManager default format with negotiated Display format
         {
-            let mut wm = window_manager.lock().await;
-            wm.set_default_pixel_format(d.pixel_format());
+            let mut wm_mut = window_manager.lock().await;
+            wm_mut.set_default_pixel_format(negotiated_pixel_format);
         }
 
         // Configure smooth animations with cubic easing
@@ -57,56 +57,156 @@ pub async fn compositor_service(
             frame_delay_ms: 16,
             easing_fn: ease_in_out_cubic,
         };
-        compositor_lock.set_animation_config(animation_config);
+        compositor_mut.set_animation_config(animation_config);
 
         info!("Compositor initialized with smooth animations");
     }
 
-    // SUI consumer is spawned from start.rs
+    // System UI gesture consumption is integrated below.
 
     // Main service loop
+    let mut edge_swipe = EdgeSwipeRecognizer::new();
     loop {
-        let loop_start = Instant::now();
+        let frame_start = Instant::now();
 
-        // React to SUI swipe decisions if any
-        if let Ok(dir) = SUI_COMMAND_CH.try_receive() {
-            match dir {
-                TransitionDirection::Next => {
-                    let mut compositor_lock = compositor.lock().await;
-                    let mut wm_lock = window_manager.lock().await;
-                    compositor_lock.animate_to_next_window(&mut wm_lock).await;
-                    request_focused_window_redraw(&mut compositor_lock).await;
-                    compositor_lock.process_redraws(&mut wm_lock).await;
-                }
-                TransitionDirection::Previous => {
-                    let mut compositor_lock = compositor.lock().await;
-                    let mut wm_lock = window_manager.lock().await;
-                    compositor_lock.animate_to_previous_window(&mut wm_lock).await;
-                    request_focused_window_redraw(&mut compositor_lock).await;
-                    compositor_lock.process_redraws(&mut wm_lock).await;
-                }
-            }
-        } else {
+        // Process System UI events with a short idle to keep frames flowing
+        let handled_sui_events = handle_system_ui_events(compositor, window_manager, &mut edge_swipe).await;
+        if !handled_sui_events {
             // Idle refresh for dynamic content updates
             Timer::after(Duration::from_millis(0)).await;
-            let mut compositor_lock = compositor.lock().await;
-            if let Some(focused_handle) = compositor_lock.focused_window_handle() {
-                compositor_lock.request_redraw(focused_handle);
+            let mut compositor_mut = compositor.lock().await;
+            if let Some(focused_handle) = compositor_mut.focused_window_handle() {
+                compositor_mut.request_redraw(focused_handle);
             }
-            let mut wm_lock = window_manager.lock().await;
-            compositor_lock.process_redraws(&mut wm_lock).await;
+            let mut wm_mut = window_manager.lock().await;
+            compositor_mut.process_redraws(&mut wm_mut).await;
         }
 
         // Maintain consistent frame timing
-        maintain_frame_timing(loop_start).await;
+        maintain_frame_timing(frame_start).await;
     }
 }
 
 /// Request redraw for currently focused window
-async fn request_focused_window_redraw(compositor: &mut UICompositor) {
+async fn request_redraw_focused_window(compositor: &mut UICompositor) {
     if let Some(focused_handle) = compositor.focused_window_handle() {
         compositor.request_redraw(focused_handle);
     }
+}
+
+/// Recognizes edge swipe gestures for System UI window transitions.
+struct EdgeSwipeRecognizer {
+    tracking: bool,
+    start_x: i32,
+    start_y: i32,
+    from_left: bool,
+    from_right: bool,
+    fired: bool,
+}
+
+impl EdgeSwipeRecognizer {
+    const EDGE_THRESHOLD: i32 = 24;
+    const MIN_SWIPE_DISTANCE: i32 = 60;
+    const MIN_SWIPE_ANGLE_TOLERANCE: i32 = 20;
+
+    fn new() -> Self {
+        Self { tracking: false, start_x: 0, start_y: 0, from_left: false, from_right: false, fired: false }
+    }
+
+    fn reset(&mut self) {
+        self.tracking = false;
+        self.fired = false;
+    }
+
+    /// Process a motion sample; returns (consumed, optional transition)
+    fn process_motion(&mut self, x: i32, y: i32, action: crate::system::input::types::TouchAction, frame_w: i32) -> (bool, Option<TransitionDirection>) {
+        use crate::system::input::types::TouchAction;
+        match action {
+            TouchAction::Down => {
+                self.reset();
+                self.from_left = x <= Self::EDGE_THRESHOLD;
+                self.from_right = x >= (frame_w - Self::EDGE_THRESHOLD);
+                if self.from_left || self.from_right {
+                    self.tracking = true;
+                    self.start_x = x;
+                    self.start_y = y;
+                }
+                (false, None)
+            }
+            TouchAction::Move => {
+                if self.tracking && !self.fired {
+                    let dx = x - self.start_x;
+                    let dy = (y - self.start_y).abs();
+                    if dy <= Self::MIN_SWIPE_ANGLE_TOLERANCE {
+                        if self.from_left && dx > Self::MIN_SWIPE_DISTANCE {
+                            self.fired = true;
+                            return (true, Some(TransitionDirection::Next));
+                        } else if self.from_right && (-dx) > Self::MIN_SWIPE_DISTANCE {
+                            self.fired = true;
+                            return (true, Some(TransitionDirection::Previous));
+                        }
+                    }
+                }
+                (false, None)
+            }
+            TouchAction::Up => {
+                self.reset();
+                (false, None)
+            }
+        }
+    }
+}
+
+/// Consume System UI events (gestures) and drive window transitions.
+/// Returns true if any SUI event was processed.
+/// Process System UI input stream and drive transitions. Returns true if any SUI event was handled.
+async fn handle_system_ui_events(
+    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
+    recognizer: &mut EdgeSwipeRecognizer,
+) -> bool {
+    use crate::system::input::types::{HighLevelEvent, MotionEvent};
+
+    let mut processed_any = false;
+
+    // Try non-blocking receive on SUI_EVENT_CH to keep frame cadence
+    while let Ok(ev) = SUI_EVENT_CH.try_receive() {
+        let mut consumed = false;
+        if let HighLevelEvent::Motion(MotionEvent { action, pointers, .. }) = ev {
+            if let Some(p) = pointers[0] {
+                let frame_w = {
+                    let comp = compositor.lock().await; // brief lock to read dimensions
+                    comp.display_dimensions().map(|(w, _)| w as i32).unwrap_or(0)
+                };
+                let (was_consumed, transition) = recognizer.process_motion(p.x, p.y, action, frame_w);
+                consumed = was_consumed;
+
+                if let Some(dir) = transition {
+                    processed_any = true;
+                    match dir {
+                        TransitionDirection::Next => {
+                            let mut comp = compositor.lock().await;
+                            let mut wm = window_manager.lock().await;
+                            comp.animate_to_next_window(&mut wm).await;
+                            request_redraw_focused_window(&mut comp).await;
+                            comp.process_redraws(&mut wm).await;
+                        }
+                        TransitionDirection::Previous => {
+                            let mut comp = compositor.lock().await;
+                            let mut wm = window_manager.lock().await;
+                            comp.animate_to_previous_window(&mut wm).await;
+                            request_redraw_focused_window(&mut comp).await;
+                            comp.process_redraws(&mut wm).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        SUI_ACK_CH.send(consumed).await;
+    }
+
+    processed_any
 }
 
 /// Maintain consistent frame timing to prevent system overload

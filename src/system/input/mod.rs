@@ -1,4 +1,3 @@
 pub(crate) mod types;
-pub(crate) mod reader;
-pub(crate) mod dispatcher;
+// legacy modules removed; input flows now live under services::input_srv
 

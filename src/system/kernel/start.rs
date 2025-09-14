@@ -7,11 +7,10 @@ use embassy_time::Instant;
 use crate::system::kernel::platforms;
 use crate::system::services::ambient_srv::ambient_sensor_service;
 use crate::system::services::battery_srv::battery_service;
-use crate::system::services::compositor_srv::compositor_service;
+use crate::system::services::compositor_srv::ui_compositor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
 use crate::system::services::vibrator_srv;
-use crate::system::input::reader;
-use crate::system::input::dispatcher;
+use crate::system::services::input_srv;
 use crate::system::ui::compositor::core::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::hal::display::PixelFormat;
@@ -35,19 +34,18 @@ pub(crate) fn start(spawner: Spawner) {
 	let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
 	let window_manager_ref = WINDOW_MANAGER.init(Mutex::new(WindowManager::new(PixelFormat::Rgb565)));
 
-	// Spawn input reader + dispatcher
-	info!("[{}s] spawned input reader/dispatcher", Instant::now().as_millis() as f32 / 1000f32);
+	// Spawn input service tasks (readers + dispatcher)
+	info!("[{}s] spawned input service", Instant::now().as_millis() as f32 / 1000f32);
 	// Note: current PlatformDevice has no encoder field
-	if let Some(button) = device.button { spawner.spawn(reader::read_button(button)).unwrap(); }
-	if let Some(touch) = device.touch { spawner.spawn(reader::read_touch(touch)).unwrap(); }
-	spawner.spawn(dispatcher::input_dispatcher(compositor_ref, window_manager_ref)).unwrap();
+	if let Some(button) = device.button { spawner.spawn(input_srv::button_reader_task(button)).unwrap(); }
+	if let Some(touch) = device.touch { spawner.spawn(input_srv::touch_reader_task(touch)).unwrap(); }
+	spawner.spawn(input_srv::input_dispatcher_task(compositor_ref, window_manager_ref)).unwrap();
 
 	// Spawn compositor service
 	info!("[{}s] spawned compositor service", Instant::now().as_millis() as f32 / 1000f32);
-	spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref, window_manager_ref)).unwrap();
+	spawner.spawn(ui_compositor_service(device.display.unwrap(), compositor_ref, window_manager_ref)).unwrap();
 
-	// Spawn System UI consumer for gestures
-	spawner.spawn(crate::system::ui::compositor::input::system_ui_consume_events()).unwrap();
+	// System UI gesture consumer integrated into compositor service.
 
 	// Spawn accel service
 	info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);

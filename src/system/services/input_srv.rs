@@ -1,23 +1,42 @@
 use alloc::boxed::Box;
-use defmt::{debug, info, warn};
+use defmt::{debug, warn};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     channel::Channel,
     mutex::Mutex,
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, WithTimeout};
 
 use crate::system::hal::button::{AsyncButton, ButtonState};
 use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::input::types::{HighLevelEvent, KeyAction, KeyCode, KeyEvent, MotionEvent, PointerSample, TouchAction};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, FRAME_SCALE_FACTOR};
+use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::compositor::UICompositor;
 
-/// IR -> ID queue of high-level events (debounced/fused)
+/// Consolidated input service.
+///
+/// Responsibilities:
+/// - Read raw inputs (button, encoder, touch) and publish debounced/high-level events
+/// - Route events to System UI first; if rejected, forward to focused app
+///
+/// Channels:
+/// - INPUT_EVENTS_CH: Raw input readers → dispatcher (high-level events)
+/// - SUI_EVENT_CH: Dispatcher → System UI consumer (events for gesture/UI handling)
+/// - SUI_ACK_CH: System UI → dispatcher (per-event consumed acknowledgement)
 pub static INPUT_EVENTS_CH: Channel<CriticalSectionRawMutex, HighLevelEvent, 64> = Channel::new();
+pub static SUI_EVENT_CH: Channel<CriticalSectionRawMutex, HighLevelEvent, 64> = Channel::new();
+pub static SUI_ACK_CH: Channel<CriticalSectionRawMutex, bool, 64> = Channel::new();
+
+// Timing and thresholds
+const ENCODER_COOLDOWN_MS: u64 = 200;
+const TOUCH_POLL_MS: u64 = 10;
+const TOUCH_COALESCE_TAXICAB_THRESHOLD: i32 = 1; // dx+dy >= 1 pixel
+const DISPATCH_ACK_TIMEOUT_MS: u64 = 100;
 
 #[embassy_executor::task]
-pub async fn read_button(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>) {
+pub async fn button_reader_task(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>) {
     loop {
         let state = {
             let mut b = button.lock().await;
@@ -35,7 +54,7 @@ pub async fn read_button(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn
 }
 
 #[embassy_executor::task]
-pub async fn read_encoder(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {
+pub async fn encoder_reader_task(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {
     loop {
         let Ok(state) = ({
             let mut e = encoder.lock().await;
@@ -51,13 +70,13 @@ pub async fn read_encoder(encoder: &'static Mutex<CriticalSectionRawMutex, Box<d
             EncoderState::Cw => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Down }),
         };
         INPUT_EVENTS_CH.send(event).await;
-        Timer::after(Duration::from_millis(200)).await; // cooldown
+        Timer::after(Duration::from_millis(ENCODER_COOLDOWN_MS)).await; // cooldown
     }
 }
 
-/// Simple touch fuser: converts raw xyz polling into MotionEvent DOWN/MOVE/UP
+/// Converts raw xyz polling into MotionEvent DOWN/MOVE/UP with bounds/clamping and coalescing.
 #[embassy_executor::task]
-pub async fn read_touch(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>) {
+pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>) {
     let mut was_pressed = false;
     let mut last_x: i32 = 0;
     let mut last_y: i32 = 0;
@@ -69,27 +88,25 @@ pub async fn read_touch(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn A
         };
 
         let pressed = z != 0;
-        // Normalize raw touch to framebuffer coordinates to match SUI edge thresholds
+
         let mut xi = (x as u32 / FRAME_SCALE_FACTOR) as i32;
         let mut yi = (y as u32 / FRAME_SCALE_FACTOR) as i32;
-        // Clamp within framebuffer bounds
+
         if xi < 0 { xi = 0; }
         if yi < 0 { yi = 0; }
         if xi >= FRAME_BUFFER_WIDTH as i32 { xi = FRAME_BUFFER_WIDTH as i32 - 1; }
         if yi >= FRAME_BUFFER_HEIGHT as i32 { yi = FRAME_BUFFER_HEIGHT as i32 - 1; }
 
         let hle = if pressed && !was_pressed {
-            // DOWN
             Some(HighLevelEvent::Motion(MotionEvent {
                 action: TouchAction::Down,
                 primary_pointer_id: 0,
                 pointers: [Some(PointerSample { id: 0, x: xi, y: yi }), None],
             }))
         } else if pressed && was_pressed {
-            // MOVEs - coalesce by distance to reduce spam
             let dx = (xi - last_x).abs();
             let dy = (yi - last_y).abs();
-            if dx + dy >= 1 {
+            if dx + dy >= TOUCH_COALESCE_TAXICAB_THRESHOLD {
                 Some(HighLevelEvent::Motion(MotionEvent {
                     action: TouchAction::Move,
                     primary_pointer_id: 0,
@@ -97,7 +114,6 @@ pub async fn read_touch(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn A
                 }))
             } else { None }
         } else if !pressed && was_pressed {
-            // UP
             Some(HighLevelEvent::Motion(MotionEvent {
                 action: TouchAction::Up,
                 primary_pointer_id: 0,
@@ -114,7 +130,45 @@ pub async fn read_touch(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn A
         was_pressed = pressed;
         if pressed { last_x = xi; last_y = yi; }
 
-        Timer::after(Duration::from_millis(10)).await;
+        Timer::after(Duration::from_millis(TOUCH_POLL_MS)).await;
+    }
+}
+
+/// Routes events to System UI first; if unconsumed, forwards to focused window.
+#[embassy_executor::task]
+pub async fn input_dispatcher_task(
+    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
+) {
+    loop {
+        let event = INPUT_EVENTS_CH.receive().await;
+
+        // Send to System UI
+        SUI_EVENT_CH.send(event).await;
+
+        // Wait for ACK with timeout
+        let consumed = match SUI_ACK_CH
+            .receive()
+            .with_timeout(Duration::from_millis(DISPATCH_ACK_TIMEOUT_MS))
+            .await {
+            Ok(val) => val,
+            Err(_) => false,
+        };
+
+        if consumed {
+            debug!("SUI consumed event");
+            continue;
+        }
+
+        // Forward to focused app
+        let mut comp = compositor.lock().await;
+        let mut wm = window_manager.lock().await;
+        if let Some(handle) = comp.focused_window_handle() {
+            let _ = wm.try_send_input(handle, event).await;
+            comp.request_redraw(handle);
+        } else {
+            warn!("No focused window to receive input");
+        }
     }
 }
 

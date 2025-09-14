@@ -37,7 +37,7 @@ const MAX_REDRAW_REQUESTS: usize = 4;
 pub struct UICompositor {
     windows_order: heapless::Vec<WindowHandle, MAX_WINDOWS>,
     current_index: usize,
-    display_service: Option<&'static Display>,
+    display_service: Option<Display>,
     pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
     animation_config: AnimationConfig,
 }
@@ -55,7 +55,7 @@ impl UICompositor {
     }
 
     /// Attach negotiated display facade for sizing and presentation.
-    pub fn attach_display_service(&mut self, service: &'static Display) {
+    pub fn attach_display_service(&mut self, service: Display) {
         self.display_service = Some(service);
     }
 
@@ -98,30 +98,41 @@ impl UICompositor {
         if self.pending_redraws.is_empty() { return; }
         let render_start = Instant::now();
 
-        if let Some(service) = self.display_service {
-            let width = service.width();
-            let height = service.height();
-            let fb_size = service.framebuffer_size(width, height);
+        if self.display_service.is_some() {
+            // Snapshot immutable display properties, then release the borrow
+            let (width, height, pixfmt) = {
+                let s = self.display_service.as_ref().unwrap();
+                (s.width(), s.height(), s.pixel_format())
+            };
+
+            let fb_size = (width as usize) * (height as usize) * pixfmt.bytes_per_pixel();
             let mut frame_buffer = vec![0u8; fb_size];
-            let mut composite_surface = DrawingSurface::new_unattached(width, height, service.pixel_format());
+            let mut composite_surface = DrawingSurface::new_unattached(width, height, pixfmt);
             composite_surface.attach_buffer(&mut frame_buffer);
 
-            let dirty_regions = if let Some((cur, _prev, _next)) = self.current_prev_next() {
-                self.collect_dirty_regions(wm, cur)
-            } else { heapless::Vec::new() };
+            // Compute before any mutable borrows
+            let frame_area = width * height;
+            let (has_dirty, dirty_regions) = if let Some((cur, _prev, _next)) = self.current_prev_next() {
+                let regs = self.collect_dirty_regions(wm, cur);
+                (!regs.is_empty(), regs)
+            } else { (false, heapless::Vec::new()) };
 
-            if !dirty_regions.is_empty() {
+            if has_dirty {
                 self.compose_frame_optimized(wm, &mut composite_surface).await;
 
-                match super::strategy::determine_update_strategy(self.display_service, &dirty_regions) {
-                    UpdateStrategy::FullScreen => {
-                        service.draw_full(composite_surface.buffer()).await;
-                    }
-                    UpdateStrategy::Partial(regions) => {
-                        for region in regions.iter() {
-                            let region_buffer = extract_region_buffer(
-                                composite_surface.buffer(), region, width, height, composite_surface.bytes_per_pixel());
-                            service.draw_region(&region_buffer, *region).await;
+                {
+                    // Re-borrow display immutably only for drawing
+                    let service = self.display_service.as_ref().unwrap();
+                    match super::strategy::determine_update_strategy(frame_area, &dirty_regions) {
+                        UpdateStrategy::FullScreen => {
+                            service.draw_full(composite_surface.buffer()).await;
+                        }
+                        UpdateStrategy::Partial(regions) => {
+                            for region in regions.iter() {
+                                let region_buffer = extract_region_buffer(
+                                    composite_surface.buffer(), region, width, height, composite_surface.bytes_per_pixel());
+                                service.draw_region(&region_buffer, *region).await;
+                            }
                         }
                     }
                 }
@@ -135,6 +146,11 @@ impl UICompositor {
 
     pub fn focused_window_handle(&self) -> Option<WindowHandle> { self.current_prev_next().map(|(c,_,_)| c) }
     pub fn is_window_focused(&self, handle: WindowHandle) -> bool { self.focused_window_handle().map(|h| h == handle).unwrap_or(false) }
+
+    /// Returns display width/height if a display is attached.
+    pub fn display_dimensions(&self) -> Option<(u32, u32)> {
+        self.display_service.as_ref().map(|d| (d.width(), d.height()))
+    }
 
     pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) { self.animate_window_transition(wm, TransitionDirection::Next).await; }
     pub async fn animate_to_previous_window(&mut self, wm: &mut WindowManager) { self.animate_window_transition(wm, TransitionDirection::Previous).await; }
@@ -154,7 +170,7 @@ impl UICompositor {
         animation: &dyn WindowAnimation,
         direction: TransitionDirection,
     ) {
-        if let Some(service) = self.display_service {
+        if let Some(service) = self.display_service.as_ref() {
             let width = service.width();
             let height = service.height();
             let fb_size = service.framebuffer_size(width, height);

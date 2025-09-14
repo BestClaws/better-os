@@ -7,3 +7,4 @@ pub(crate) mod compositor_srv;
 pub(crate) mod radio_service;
 pub(crate) mod vibrator_srv;
 // display_service replaced by system::ui::display facade
+pub(crate) mod input_srv;

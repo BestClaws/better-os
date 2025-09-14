@@ -12,13 +12,11 @@ pub mod core;
 pub mod blitter;
 pub mod strategy;
 pub mod animation;
-pub mod input;
 pub mod region;
 
 pub use core::UICompositor;
 pub use animation::TransitionDirection;
 pub use blitter::SurfaceBlitter;
-pub use input::{SUI_COMMAND_CH, system_ui_consume_events};
 pub use animation::{AnimationConfig, WindowAnimation, SlideZoomAnimation, FadeAnimation,
     ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
 
