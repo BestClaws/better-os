@@ -1,7 +1,7 @@
 use defmt::{debug, warn};
 
 use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::hal::display::PixelFormat;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
@@ -85,8 +85,8 @@ impl WindowManager {
                             match INPUT_CHANNEL_POOL.allocate().await {
                                 Some(ic) => {
                                     // Ensure canvas uses system pixel size before setting buffer
-                                    if let Some(canvas) = window.canvas().as_mut() {
-                                        canvas.set_pixel_bytes(pixel_bytes);
+                                    if let Some(surface) = window.surface().as_mut() {
+                                        surface.set_pixel_bytes(pixel_bytes);
                                     }
                                     window.set_resources(fb, ic).await;
                                 }
@@ -127,8 +127,8 @@ impl WindowManager {
                         Some(fb) => {
                             match INPUT_CHANNEL_POOL.allocate().await {
                                 Some(ic) => {
-                                    if let Some(canvas) = window.canvas().as_mut() {
-                                        canvas.set_pixel_format(format);
+                                    if let Some(surface) = window.surface().as_mut() {
+                                        surface.set_pixel_format(format);
                                     }
                                     window.set_resources(fb, ic).await;
                                 }
@@ -154,12 +154,12 @@ impl WindowManager {
             .unwrap_or(false)
     }
 
-    /// Provide mutable access to a window's canvas for drawing.
-    pub fn with_canvas<R>(&mut self, handle: WindowHandle, f: impl FnOnce(&mut Canvas) -> R) -> Option<R> {
+    /// Provide mutable access to a window's drawing surface for rendering.
+    pub fn with_surface<R>(&mut self, handle: WindowHandle, f: impl FnOnce(&mut DrawingSurface) -> R) -> Option<R> {
         let window = self.get_window_mut(handle)?;
-        let canvas_opt = window.canvas();
-        if let Some(canvas) = canvas_opt.as_mut() {
-            Some(f(canvas))
+        let surface_opt = window.surface();
+        if let Some(surface) = surface_opt.as_mut() {
+            Some(f(surface))
         } else {
             None
         }

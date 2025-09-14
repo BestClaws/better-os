@@ -1,6 +1,6 @@
 
 use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::window_manager::WindowManager;
@@ -50,16 +50,16 @@ impl AppContext {
         comp.request_redraw(self.handle);
     }
 
-    pub async fn draw(&self, f: impl FnOnce(&mut Canvas) + Send) {
+    pub async fn draw(&self, f: impl FnOnce(&mut DrawingSurface) + Send) {
         let mut wm = self.window_manager.lock().await;
-        let _ = wm.with_canvas(self.handle, f);
+        let _ = wm.with_surface(self.handle, f);
     }
 
     // Note: To use RGBA drawing, construct Canvas2D within the draw() closure:
     // context.draw(|canvas| { let mut c2d = Canvas2D::new(canvas); /* use fluent .draw(&mut c2d) */ });
 
     /// Gather pending input events and provide an `ImInput` snapshot, then draw.
-    pub async fn draw_immediate(&self, f: impl FnOnce(&mut Canvas, ImInput) + Send) {
+    pub async fn draw_immediate(&self, f: impl FnOnce(&mut DrawingSurface, ImInput) + Send) {
         // Collect input events into a single snapshot for this frame
         let mut wm = self.window_manager.lock().await;
         let mut input = ImInput::default();
@@ -81,6 +81,6 @@ impl AppContext {
             } else { break; }
         }
 
-        let _ = wm.with_canvas(self.handle, |canvas| f(canvas, input));
+        let _ = wm.with_surface(self.handle, |surface| f(surface, input));
     }
 }

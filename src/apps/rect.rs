@@ -1,7 +1,7 @@
 #![allow(unused)]
 use crate::libs::gfx::two_d::{Point as GPoint, Rect as GRect, Rgb565, Size as GSize, Canvas2D};
 use crate::system::app::app_context::AppContext;
-use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use embassy_time::{Duration, Timer};
 use micromath::F32Ext;
 
@@ -19,9 +19,9 @@ pub async fn rect_app(context: AppContext) {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
-        context.draw(|canvas: &mut Canvas| {
+        context.draw(|surface: &mut DrawingSurface| {
             // Use Canvas2D fluent drawing over the DrawingSurface
-            let mut c2d = Canvas2D::new(canvas as &mut dyn crate::libs::gfx::two_d::Rasterizer);
+            let mut c2d = Canvas2D::new(surface as &mut dyn crate::libs::gfx::two_d::Rasterizer);
             draw_rects(&mut c2d);
         }).await;
 

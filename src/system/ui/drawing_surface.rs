@@ -3,18 +3,18 @@ use heapless::Vec;
 use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 use crate::system::hal::display::PixelFormat;
 
-/// Space-grade canvas implementation with LVGL-inspired dirty region tracking.
+/// Space-grade surface implementation with LVGL-inspired dirty region tracking.
 /// 
-/// This canvas provides high-performance 2D rendering with built-in dirty region management:
+/// This surface provides high-performance 2D rendering with built-in dirty region management:
 /// - Automatic dirty region tracking for all pixel operations
 /// - Intelligent region coalescing to minimize fragmentation
 /// - Optimized pixel operations with minimal overhead
 /// - Efficient memory layout for cache-friendly access
 /// - No performance penalty for dirty tracking - it's built into the design
 
-/// A statically-safe, framebuffer-backed drawing canvas with built-in dirty region tracking.
+/// A statically-safe, framebuffer-backed drawing surface with built-in dirty region tracking.
 ///
-/// This canvas automatically tracks all pixel modifications and maintains an efficient
+/// This surface automatically tracks all pixel modifications and maintains an efficient
 /// list of dirty regions that need to be redrawn. The dirty region tracking is
 /// always enabled and optimized for performance - there's no overhead from enabling/disabling.
 ///
@@ -34,7 +34,7 @@ pub struct DrawingSurface<'a> {
     current_operation_bounds: Option<Rect>,
 }
 
-// ===== Canvas Implementation =====
+// ===== Surface Implementation =====
 impl<'a> DrawingSurface<'a> {
 
     pub fn new(width: u32, height: u32) -> Self {

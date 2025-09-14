@@ -2,7 +2,7 @@ use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
@@ -19,7 +19,7 @@ pub struct Window {
     width: u32,
     height: u32,
     id: usize,
-    canvas: Option<Canvas<'static>>,
+    surface: Option<DrawingSurface<'static>>,
 }
 
 impl Window {
@@ -31,22 +31,22 @@ impl Window {
             width,
             height,
             id,
-            canvas: Some(Canvas::new(width, height)),
+            surface: Some(DrawingSurface::new(width, height)),
         }
     }
 
     /// Set resources for the window.
     pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
-        if let Some(canvas) = self.canvas.as_mut() {
-            canvas.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
+        if let Some(surface) = self.surface.as_mut() {
+            surface.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
         }
         self.fb = Some(fb);
         self.input_channel = Some(ic);
     }
 
-    /// Return a mutable reference to the canvas option.
-    pub fn canvas(&mut self) -> &mut Option<Canvas<'static>> {
-        &mut self.canvas
+    /// Return a mutable reference to the drawing surface option.
+    pub fn surface(&mut self) -> &mut Option<DrawingSurface<'static>> {
+        &mut self.surface
     }
 
     /// Return this window’s handle.
@@ -84,8 +84,8 @@ impl Window {
         assert!(self.fb.is_some());
         assert!(self.input_channel.is_some());
 
-        if let Some(canvas) = self.canvas.as_mut() {
-            canvas.relinquish();
+        if let Some(surface) = self.surface.as_mut() {
+            surface.relinquish();
         }
         FRAMEBUFFER_POOL.release(self.fb.as_mut().unwrap());
         INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());

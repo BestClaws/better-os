@@ -8,7 +8,7 @@ use crate::libs::gfx::two_d::{
 };
 use crate::libs::gfx::two_d::paint::Brush;
 use crate::system::app::app_context::AppContext;
-use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use micromath::F32Ext;
 
 #[embassy_executor::task]
@@ -24,9 +24,9 @@ pub async fn demo_2d_app(context: AppContext) {
         let t = start.elapsed().as_micros() as f32 / 1_000_000.0; // seconds
         let scene = ((t as u32) / 5) % 3; // switch every 5 seconds
 
-        context.draw(|canvas: &mut Canvas| {
-            let w = canvas.width() as i32; let h = canvas.height() as i32;
-            let mut c2d: Canvas2D<crate::libs::gfx::two_d::Rgba8888> = Canvas2D::new(canvas as &mut dyn crate::libs::gfx::two_d::Rasterizer);
+        context.draw(|surface: &mut DrawingSurface| {
+            let w = surface.width() as i32; let h = surface.height() as i32;
+            let mut c2d: Canvas2D<crate::libs::gfx::two_d::Rgba8888> = Canvas2D::new(surface as &mut dyn crate::libs::gfx::two_d::Rasterizer);
 
             // Background base per scene
             let sweep = ((t * 0.2).sin() * 0.5 + 0.5) as f32;

@@ -1,6 +1,6 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::WindowHandle;
-use crate::system::ui::canvas::DrawingSurface as Canvas;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::libs::gfx::two_d::{Rect, Rgb565};
 use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR
@@ -156,21 +156,21 @@ impl WindowAnimation for FadeAnimation {
 
 // Note: legacy PixelColor-based blitting removed. We operate directly on Rgb565 buffers.
 
-/// High-performance canvas blitting operations optimized for embedded systems.
+/// High-performance surface blitting operations optimized for embedded systems.
 /// 
 /// This blitter provides space-grade performance with:
 /// - Row-based clipped copies with minimal overhead
 /// - Pre-computed bounds checking to avoid per-pixel validation
 /// - Optimized memory copy operations using memcpy where possible
 /// - Efficient dirty region management for partial updates
-pub struct CanvasBlitter;
+pub struct SurfaceBlitter;
 
-impl CanvasBlitter {
-    /// Copy entire source canvas to destination with offset.
+impl SurfaceBlitter {
+    /// Copy entire source surface to destination with offset.
     /// Internally performs row-based memcpy with precomputed clipping.
     pub fn copy_full<'d, 's>(
-        dest: &mut Canvas<'d>,
-        source: &Canvas<'s>,
+        dest: &mut DrawingSurface<'d>,
+        source: &DrawingSurface<'s>,
         offset_x: i32,
         offset_y: i32,
         bytes_per_pixel: usize,
@@ -190,10 +190,10 @@ impl CanvasBlitter {
         debug!("Full blit: {} μs", timer.elapsed().as_micros());
     }
 
-    /// Copy specific region of source canvas to destination
+    /// Copy specific region of source surface to destination
     pub fn copy_region<'d, 's>(
-        dest: &mut Canvas<'d>,
-        source: &Canvas<'s>,
+        dest: &mut DrawingSurface<'d>,
+        source: &DrawingSurface<'s>,
         region: Rect,
         offset_x: i32,
         offset_y: i32,
@@ -227,8 +227,8 @@ impl CanvasBlitter {
 
     /// Internal: fast row-based copy with clipping computed once per row.
     fn copy_rows_clipped<'d, 's>(
-        dest: &mut Canvas<'d>,
-        source: &Canvas<'s>,
+        dest: &mut DrawingSurface<'d>,
+        source: &DrawingSurface<'s>,
         src_x0: u32, src_y0: u32, src_x1: u32, src_y1: u32,
         offset_x: i32, offset_y: i32,
         dest_w: u32, dest_h: u32,
@@ -384,11 +384,11 @@ impl UICompositor {
             let height = service.height();
             let fb_size = service.framebuffer_size(width, height);
             let mut frame_buffer = vec![0u8; fb_size];
-            let mut composite_canvas = Canvas::new(
+            let mut composite_surface = DrawingSurface::new(
                 width,
                 height
             );
-            composite_canvas.set_resources(&mut frame_buffer);
+            composite_surface.set_resources(&mut frame_buffer);
 
             let dirty_regions = if let Some((cur, _prev, _next)) = self.current_prev_next() {
                 self.collect_dirty_regions(wm, cur)
@@ -397,7 +397,7 @@ impl UICompositor {
 
             if !dirty_regions.is_empty() {
                 // Compose final frame only when there are dirty regions
-                self.compose_frame_optimized(wm, &mut composite_canvas).await;
+                self.compose_frame_optimized(wm, &mut composite_surface).await;
 
                 // Optimized decision logic for partial vs full updates
                 let update_strategy = self.determine_update_strategy(&dirty_regions);
@@ -406,15 +406,15 @@ impl UICompositor {
                     UpdateStrategy::FullScreen => {
                         debug!("Using full screen update ({} regions, {} area)", 
                                dirty_regions.len(), self.calculate_total_dirty_area(&dirty_regions));
-                        service.draw_full(composite_canvas.buffer()).await;
+                        service.draw_full(composite_surface.buffer()).await;
                     }
                     UpdateStrategy::Partial(regions) => {
                         debug!("Using partial update ({} regions)", regions.len());
                         let bpp = service.pixel_format().bytes_per_pixel();
                         for region in regions.iter() {
-                            // Extract region-sized buffer from composite canvas
+                            // Extract region-sized buffer from composite surface
                             let region_buffer = extract_region_buffer(
-                                composite_canvas.buffer(),
+                                composite_surface.buffer(),
                                 region,
                                 width,
                                 height,
@@ -490,8 +490,8 @@ impl UICompositor {
             let height = service.height();
             let fb_size = service.framebuffer_size(width, height);
             let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
-            let mut canvas = Canvas::new(width, height);
-            canvas.set_resources(&mut composition_buffer);
+            let mut surface = DrawingSurface::new(width, height);
+            surface.set_resources(&mut composition_buffer);
 
             let (cur, prev, next) = self.current_prev_next().unwrap();
             // Determine source and target by direction
@@ -509,20 +509,20 @@ impl UICompositor {
                 let frame = animation.animate_frame(eased_progress, direction, width);
 
                 // Clear and compose frame
-                canvas.clear_rgb(Rgb565::BLACK);
+                surface.clear_rgb(Rgb565::BLACK);
                 // Blit source window (contained within closure to keep borrows local)
-                let _ = wm.with_canvas(source_h, |src| {
+                let _ = wm.with_surface(source_h, |src| {
                     let bpp = service.pixel_format().bytes_per_pixel();
-                    CanvasBlitter::copy_full(&mut canvas, src, frame.source_x, frame.source_y, bpp);
+                    SurfaceBlitter::copy_full(&mut surface, src, frame.source_x, frame.source_y, bpp);
                 });
                 // Blit target window
-                let _ = wm.with_canvas(target_h, |dst| {
+                let _ = wm.with_surface(target_h, |dst| {
                     let bpp = service.pixel_format().bytes_per_pixel();
-                    CanvasBlitter::copy_full(&mut canvas, dst, frame.target_x, frame.target_y, bpp);
+                    SurfaceBlitter::copy_full(&mut surface, dst, frame.target_x, frame.target_y, bpp);
                 });
 
                 // Display frame via service
-                service.draw_full(canvas.buffer()).await;
+                service.draw_full(surface.buffer()).await;
 
                 debug!("Animation step {}: {} μs", step, frame_timer.elapsed().as_micros());
                 Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
@@ -546,8 +546,8 @@ impl UICompositor {
 
     fn collect_dirty_regions(&mut self, wm: &mut WindowManager, handle: WindowHandle) -> heapless::Vec<Rect, 8> {
         let mut out = heapless::Vec::new();
-        let _ = wm.with_canvas(handle, |canvas| {
-            for r in canvas.dirty_regions() {
+        let _ = wm.with_surface(handle, |surface| {
+            for r in surface.dirty_regions() {
                 debug!("Dirty region: {:?}", r);
                 out.push(*r).ok();
             }
@@ -556,8 +556,8 @@ impl UICompositor {
     }
 
     fn clear_window_dirty_regions(&mut self, wm: &mut WindowManager, handle: WindowHandle) {
-        let _ = wm.with_canvas(handle, |canvas| {
-            canvas.flush();
+        let _ = wm.with_surface(handle, |surface| {
+            surface.flush();
         });
     }
     
@@ -568,9 +568,9 @@ impl UICompositor {
     }
     
     /// Optimized frame composition with performance improvements
-    async fn compose_frame_optimized<'a>(&mut self, wm: &mut WindowManager, output_canvas: &mut Canvas<'a>) {
+    async fn compose_frame_optimized<'a>(&mut self, wm: &mut WindowManager, output_surface: &mut DrawingSurface<'a>) {
         // Clear to black background
-        output_canvas.clear_rgb(Rgb565::BLACK);
+        output_surface.clear_rgb(Rgb565::BLACK);
 
         if self.windows_order.is_empty() {
             return;
@@ -581,10 +581,10 @@ impl UICompositor {
             let regions = self.collect_dirty_regions(wm, cur);
             if !regions.is_empty() {
                 for r in regions.iter() {
-                    let _ = wm.with_canvas(cur, |canvas| {
+                    let _ = wm.with_surface(cur, |surface| {
                         // When using service, prefer its bpp; else assume RGB565
                         let bpp = self.display_service.map(|s| s.pixel_format().bytes_per_pixel()).unwrap_or(2);
-                        CanvasBlitter::copy_region(output_canvas, canvas, *r, 0, 0, bpp);
+                        SurfaceBlitter::copy_region(output_surface, surface, *r, 0, 0, bpp);
                     });
                 }
             }
@@ -612,9 +612,7 @@ impl UICompositor {
             UpdateStrategy::FullScreen
         } else {
             let mut regions = heapless::Vec::new();
-            for region in dirty_regions.iter() {
-                regions.push(*region).ok();
-            }
+            for region in dirty_regions.iter() { regions.push(*region).ok(); }
             UpdateStrategy::Partial(regions)
         }
     }
