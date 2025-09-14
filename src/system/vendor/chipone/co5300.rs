@@ -10,7 +10,7 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error, debug};
 use crate::libs::gfx::two_d::{Point, Size, Rect};
-use crate::system::hal::display::{AsyncDisplay, Orientation, PixelFormat};
+use crate::system::hal::display::{AsyncDisplay, Orientation, PixelFormat, DisplayCapabilities, DisplayResolution, DisplaySize};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
 /// SH8601 Command Set
@@ -93,6 +93,8 @@ pub struct Co5300<RST> {
     x_gap: u16,
     y_gap: u16,
     pixel_format: PixelFormat,
+    /// Active logical resolution/scale (logical against physical panel).
+    active_resolution: DisplayResolution,
 }
 
 impl<RST> Co5300<RST>
@@ -107,6 +109,9 @@ where
         pixel_format: PixelFormat,
     ) -> Self {
         info!("Creating Co5300 driver");
+        let physical = DisplaySize { width: width as u32, height: height as u32 };
+        let logical = DisplaySize { width: (width as u32) / FRAME_SCALE_FACTOR, height: (height as u32) / FRAME_SCALE_FACTOR };
+        let active_resolution = DisplayResolution { logical, physical, scale: FRAME_SCALE_FACTOR };
         Self {
             qspi,
             reset_pin,
@@ -115,6 +120,7 @@ where
             x_gap: 6, // Default gap from original code
             y_gap: 0,
             pixel_format,
+            active_resolution,
         }
     }
 
@@ -344,10 +350,6 @@ where
         );
     }
 
-
-
-
-
         async fn set_brightness(&mut self, value: u8) {
         info!("Setting brightness to {}", value);
 
@@ -356,8 +358,7 @@ where
         }
     }
 
-
-    async fn draw_region(&mut self, buffer: &[u8], region: Rect, scale: u32) {
+    async fn draw_region(&mut self, buffer: &[u8], region: Rect) {
         let frame_start = Instant::now();
 
         // Extract region parameters
@@ -367,109 +368,125 @@ where
         let region_height = region.size.height as u16;
 
         // Calculate display coordinates (scaled)
-        let display_x = region_x * scale as u16;
-        let display_y = region_y * scale as u16;
-        let display_width = region.size.width * scale;
-        let display_height = region.size.height * scale;
+        let scale = self.active_resolution.scale as u16;
+        let display_x = region_x * scale;
+        let display_y = region_y * scale;
+        let display_width = region.size.width * (scale as u32);
+        let display_height = region.size.height * (scale as u32);
 
         const CHUNK_HEIGHT: u16 = 50;
-
-        // Pre-allocate buffers
-        let scaled_width = region_width * scale as u16;
-        // For scale=4 fast path, each source pixel expands to 4 pixels (8 bytes) -> 1 u64.
-        // Use u64-aligned buffers to enable wide copies without misalignment UB.
-        let row_u64s: usize = (scaled_width as usize) / 4; // equals region_width as usize when scale==4
-        let mut chunk_buffer: Vec<u64> = vec![0u64; row_u64s * (CHUNK_HEIGHT as usize)];
-        let mut scaled_row_buffer: Vec<u64> = vec![0u64; row_u64s];
 
         let mut total_scaling = 0u64;
         let mut total_transfer = 0u64;
 
-        // Process in chunks to avoid huge memory allocation
-        for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
-            let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
+        if scale == 4 {
+            // Optimized scale=4 path using u64 packing
+            let scaled_width = region_width * scale as u16;
+            let row_u64s: usize = (scaled_width as usize) / 4; // equals region_width as usize when scale==4
+            let mut chunk_buffer: Vec<u64> = vec![0u64; row_u64s * (CHUNK_HEIGHT as usize)];
+            let mut scaled_row_buffer: Vec<u64> = vec![0u64; row_u64s];
 
-            if let Err(_) = self.set_window(
-                display_x,
-                display_y + y_chunk_start,
-                display_x + display_width as u16,
-                display_y + y_chunk_start + chunk_height
-            ).await {
-                return;
+            for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
+                let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
+
+                if let Err(_) = self.set_window(
+                    display_x,
+                    display_y + y_chunk_start,
+                    display_x + display_width as u16,
+                    display_y + y_chunk_start + chunk_height
+                ).await { return; }
+
+                let scale_start = Instant::now();
+                unsafe {
+                    let src_ptr = buffer.as_ptr();
+                    let mut dst_offset_u64: usize = 0;
+                    let mut current_src_row = usize::MAX;
+                    let bytes_per_src_row = region_width as usize * 2; // 2 bytes per pixel (RGB565)
+
+                    for row in 0..chunk_height as usize {
+                        let src_row = (row + y_chunk_start as usize) / scale as usize;
+                        if src_row != current_src_row {
+                            current_src_row = src_row;
+                            let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
+                            for src_col in 0..(region_width as usize) {
+                                let pixel: u16 = core::ptr::read_unaligned(src_row_ptr.add(src_col * 2) as *const u16);
+                                let pixel_u64 = (pixel as u64)
+                                    | ((pixel as u64) << 16)
+                                    | ((pixel as u64) << 32)
+                                    | ((pixel as u64) << 48);
+                                scaled_row_buffer[src_col] = pixel_u64;
+                            }
+                        }
+                        let dst_row_ptr = chunk_buffer.as_mut_ptr().add(dst_offset_u64);
+                        core::ptr::copy_nonoverlapping(
+                            scaled_row_buffer.as_ptr(),
+                            dst_row_ptr,
+                            row_u64s,
+                        );
+                        dst_offset_u64 += row_u64s;
+                    }
+                }
+                total_scaling += scale_start.elapsed().as_micros();
+
+                let transfer_start = Instant::now();
+                let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
+                let chunk_bytes: &[u8] = unsafe {
+                    core::slice::from_raw_parts(
+                        chunk_buffer.as_ptr() as *const u8,
+                        chunk_bytes_len,
+                    )
+                };
+                if let Err(_) = self.send_pixels(chunk_bytes).await { error!("Failed to send pixels for draw_region chunk"); return; }
+                total_transfer += transfer_start.elapsed().as_micros();
             }
+        } else {
+            // Generic scaling path for scale=1 or 2
+            let scaled_width = (region_width as u32 * scale as u32) as u16;
+            for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
+                let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
 
-            let scale_start = Instant::now();
+                if let Err(_) = self.set_window(
+                    display_x,
+                    display_y + y_chunk_start,
+                    display_x + display_width as u16,
+                    display_y + y_chunk_start + chunk_height
+                ).await { return; }
 
-            unsafe {
-                let src_ptr = buffer.as_ptr();
-                let mut dst_offset_u64: usize = 0;
+                let mut chunk_buffer: Vec<u8> = vec![0u8; (scaled_width as usize) * (chunk_height as usize) * 2];
 
-                // Optimized scaling for scale=4
-                let mut current_src_row = usize::MAX;
-                let bytes_per_src_row = region_width as usize * 2; // 2 bytes per pixel (RGB565)
-
+                let scale_start = Instant::now();
                 for row in 0..chunk_height as usize {
                     let src_row = (row + y_chunk_start as usize) / scale as usize;
-
-                    // Regenerate scaled row only when source row advances
-                    if src_row != current_src_row {
-                        current_src_row = src_row;
-                        let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
-
-                        // ULTRA-fast row scaling optimized for scale=4
-                        for src_col in 0..(region_width as usize) {
-                            let pixel: u16 = core::ptr::read_unaligned(src_row_ptr.add(src_col * 2) as *const u16);
-                            // Pack 4 copies of the RGB565 pixel into one u64
-                            let pixel_u64 = (pixel as u64)
-                                | ((pixel as u64) << 16)
-                                | ((pixel as u64) << 32)
-                                | ((pixel as u64) << 48);
-                            // Each entry represents 4 horizontally replicated pixels
-                            scaled_row_buffer[src_col] = pixel_u64;
-                        }
+                    for col in 0..(scaled_width as usize) {
+                        let src_col = col / scale as usize;
+                        let src_index = ((src_row * region_width as usize) + src_col) * 2;
+                        let dst_index = ((row * scaled_width as usize) + col) * 2;
+                        chunk_buffer[dst_index] = buffer[src_index];
+                        chunk_buffer[dst_index + 1] = buffer[src_index + 1];
                     }
-
-                    // Copy one scaled row into chunk buffer using wide copy
-                    let dst_row_ptr = chunk_buffer.as_mut_ptr().add(dst_offset_u64);
-                    core::ptr::copy_nonoverlapping(
-                        scaled_row_buffer.as_ptr(),
-                        dst_row_ptr,
-                        row_u64s,
-                    );
-                    dst_offset_u64 += row_u64s;
                 }
+                total_scaling += scale_start.elapsed().as_micros();
+
+                let transfer_start = Instant::now();
+                if let Err(_) = self.send_pixels(&chunk_buffer).await { error!("Failed to send pixels for draw_region chunk"); return; }
+                total_transfer += transfer_start.elapsed().as_micros();
             }
-
-            total_scaling += scale_start.elapsed().as_micros();
-            let transfer_start = Instant::now();
-
-            let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
-            let chunk_bytes: &[u8] = unsafe {
-                core::slice::from_raw_parts(
-                    chunk_buffer.as_ptr() as *const u8,
-                    chunk_bytes_len,
-                )
-            };
-            if let Err(_) = self.send_pixels(chunk_bytes).await {
-                error!("Failed to send pixels for draw_region chunk");
-                return;
-            }
-
-            total_transfer += transfer_start.elapsed().as_micros();
         }
 
         let frame_time = frame_start.elapsed().as_micros();
         info!(
-        "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
+            "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
             region,
-        total_scaling as f64 / 1000.0,
-        total_transfer as f64 / 1000.0,
-        frame_time as f64 / 1000.0
-    );
+            total_scaling as f64 / 1000.0,
+            total_transfer as f64 / 1000.0,
+            frame_time as f64 / 1000.0
+        );
     }
-    async fn draw(&mut self, buffer: &[u8], scale: u32) {
-        let full_region = Rect::new(Point::new(0, 0), Size::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT));
-        self.draw_region(buffer, full_region, scale).await;
+    async fn draw(&mut self, buffer: &[u8]) {
+        let lw = self.active_resolution.logical.width;
+        let lh = self.active_resolution.logical.height;
+        let full_region = Rect::new(Point::new(0, 0), Size::new(lw, lh));
+        self.draw_region(buffer, full_region).await;
     }
 
     async fn set_orientation(&mut self, _orientation: Orientation) {
@@ -477,14 +494,45 @@ where
     }
 
     fn get_width(&self) -> u32 {
-        self.width as u32
+        self.active_resolution.logical.width
     }
 
     fn get_height(&self) -> u32 {
-        self.height as u32
+        self.active_resolution.logical.height
     }
 
     fn native_pixel_format(&self) -> PixelFormat {
         PixelFormat::Rgb565
+    }
+
+    fn capabilities(&self) -> DisplayCapabilities {
+        // Provide common modes: 466x466 (1x), 233x233 (2x), 116x116 (4x)
+        // Physical is fixed: panel size.
+        const PHYS_W: u32 = 466;
+        const PHYS_H: u32 = 466;
+        const SUPPORTED: &[DisplayResolution] = &[
+            DisplayResolution { logical: DisplaySize { width: 466, height: 466 }, physical: DisplaySize { width: PHYS_W, height: PHYS_H }, scale: 1 },
+            DisplayResolution { logical: DisplaySize { width: 233, height: 233 }, physical: DisplaySize { width: PHYS_W, height: PHYS_H }, scale: 2 },
+            DisplayResolution { logical: DisplaySize { width: 116, height: 116 }, physical: DisplaySize { width: PHYS_W, height: PHYS_H }, scale: 4 },
+        ];
+        DisplayCapabilities {
+            supported_formats: &[PixelFormat::Rgb565],
+            preferred_format: PixelFormat::Rgb565,
+            supported_resolutions: SUPPORTED,
+            preferred_resolution: SUPPORTED[2], // default to 116x116 @ 4x
+        }
+    }
+
+    fn set_resolution(&mut self, resolution: DisplayResolution) {
+        // Accept only supported scales: 1,2,4. Fallback to nearest.
+        let scale = match resolution.scale {
+            1 | 2 | 4 => resolution.scale,
+            s if s < 2 => 1,
+            s if s < 4 => 2,
+            _ => 4,
+        };
+        let physical = DisplaySize { width: self.width as u32, height: self.height as u32 };
+        let logical = DisplaySize { width: physical.width / scale, height: physical.height / scale };
+        self.active_resolution = DisplayResolution { logical, physical, scale };
     }
 }

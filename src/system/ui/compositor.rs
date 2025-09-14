@@ -379,11 +379,13 @@ impl UICompositor {
 
         if let Some(service) = self.display_service {
             // Allocate working buffer for composition using service parameters
-            let fb_size = service.framebuffer_size(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let width = service.width();
+            let height = service.height();
+            let fb_size = service.framebuffer_size(width, height);
             let mut frame_buffer = vec![0u8; fb_size];
             let mut composite_canvas = Canvas::new(
-                FRAME_BUFFER_WIDTH,
-                FRAME_BUFFER_HEIGHT
+                width,
+                height
             );
             composite_canvas.set_resources(&mut frame_buffer);
 
@@ -413,8 +415,8 @@ impl UICompositor {
                             let region_buffer = extract_region_buffer(
                                 composite_canvas.buffer(),
                                 region,
-                                FRAME_BUFFER_WIDTH,
-                                FRAME_BUFFER_HEIGHT,
+                                width,
+                                height,
                                 bpp
                             );
                             service.draw_region(&region_buffer, *region).await;
@@ -483,9 +485,11 @@ impl UICompositor {
     ) {
         // Prefer DisplayService for dynamic buffer sizing
         if let Some(service) = self.display_service {
-            let fb_size = service.framebuffer_size(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let width = service.width();
+            let height = service.height();
+            let fb_size = service.framebuffer_size(width, height);
             let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
-            let mut canvas = Canvas::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT);
+            let mut canvas = Canvas::new(width, height);
             canvas.set_resources(&mut composition_buffer);
 
             let (cur, prev, next) = self.current_prev_next().unwrap();
@@ -592,8 +596,12 @@ impl UICompositor {
             return UpdateStrategy::FullScreen;
         }
         
+        let full_area = if let Some(service) = self.display_service {
+            service.width() * service.height()
+        } else {
+            FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT
+        };
         let total_area = self.calculate_total_dirty_area(dirty_regions);
-        let full_area = FRAME_BUFFER_WIDTH * FRAME_BUFFER_HEIGHT;
         
         // Heuristics for update strategy:
         // - If too many regions (>6), prefer full screen
