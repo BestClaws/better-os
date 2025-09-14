@@ -12,8 +12,9 @@ use crate::system::services::app_spawner_srv::app_spawner_service;
 use crate::system::services::vibrator_srv;
 use crate::system::input::reader;
 use crate::system::input::dispatcher;
-use crate::system::ui::compositor::UICompositor;
+use crate::system::ui::compositor::core::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
+use crate::system::hal::display::PixelFormat;
 
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -32,7 +33,7 @@ pub(crate) fn start(spawner: Spawner) {
 
 	// Initialize the global compositor and window manager early
 	let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
-	let window_manager_ref = WINDOW_MANAGER.init(Mutex::new(WindowManager::new()));
+	let window_manager_ref = WINDOW_MANAGER.init(Mutex::new(WindowManager::new(PixelFormat::Rgb565)));
 
 	// Spawn input reader + dispatcher
 	info!("[{}s] spawned input reader/dispatcher", Instant::now().as_millis() as f32 / 1000f32);
@@ -46,7 +47,7 @@ pub(crate) fn start(spawner: Spawner) {
 	spawner.spawn(compositor_service(device.display.unwrap(), compositor_ref, window_manager_ref)).unwrap();
 
 	// Spawn System UI consumer for gestures
-	spawner.spawn(crate::system::ui::compositor::system_ui_consume_events()).unwrap();
+	spawner.spawn(crate::system::ui::compositor::input::system_ui_consume_events()).unwrap();
 
 	// Spawn accel service
 	info!("[{}s] spawned accel service", Instant::now().as_millis() as f32 / 1000f32);

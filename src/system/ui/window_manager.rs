@@ -19,12 +19,19 @@ const MAX_WINDOWS: usize = 8;
 /// - Track one-shot initial paint requests for pre-active (next/previous) windows
 pub struct WindowManager {
     windows: heapless::Vec<Window, MAX_WINDOWS>,
+    default_format: PixelFormat,
 }
 
 impl WindowManager {
-    /// Create a new empty window manager.
-    pub fn new() -> Self {
-        Self { windows: heapless::Vec::new() }
+    /// Create a new empty window manager with a default PixelFormat.
+    pub fn new(default_format: PixelFormat) -> Self {
+        Self { windows: heapless::Vec::new(), default_format }
+    }
+
+    /// Update the default PixelFormat. Existing active windows are unaffected until
+    /// the next activation cycle.
+    pub fn set_default_pixel_format(&mut self, format: PixelFormat) {
+        self.default_format = format;
     }
 
     /// Create a new window and add it to the manager.
@@ -34,7 +41,7 @@ impl WindowManager {
             return None;
         }
 
-        let window = Window::new(width, height, id).await;
+        let window = Window::new(width, height, id, self.default_format).await;
         let handle = window.handle();
         self.windows.push(window).ok()?;
         debug!("Window created: id={}, size={}x{}", id, width, height);
@@ -59,12 +66,6 @@ impl WindowManager {
     /// Set the active windows. Active windows have framebuffer and input-channel resources.
     /// All windows not in the set will have their resources reclaimed.
     pub async fn set_active_windows(&mut self, active: &[WindowHandle]) {
-        // Default to Rgb565 path using explicit format.
-        self.set_active_windows_with_format(active, crate::system::hal::display::PixelFormat::Rgb565).await;
-    }
-
-    /// Set active windows and propagate pixel format for drawing surfaces.
-    pub async fn set_active_windows_with_format(&mut self, active: &[WindowHandle], format: PixelFormat) {
         // Reclaim resources from windows not in the active set
         for window in self.windows.iter_mut() {
             let is_active = active.iter().any(|h| h == &window.handle());
@@ -90,10 +91,10 @@ impl WindowManager {
                                     let s_ref = window.surface();
                                     match s_ref {
                                         slot @ None => {
-                                            *slot = Some(crate::system::ui::drawing_surface::DrawingSurface::new_unattached(w, h, format));
+                                            *slot = Some(crate::system::ui::drawing_surface::DrawingSurface::new_unattached(w, h, self.default_format));
                                         }
                                         Some(surface) => {
-                                            surface.reconfigure(w, h, format);
+                                            surface.reconfigure(w, h, self.default_format);
                                         }
                                     }
                                     window.set_resources(fb, ic).await;

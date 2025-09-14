@@ -24,14 +24,14 @@ pub struct Window {
 
 impl Window {
     /// Create a new Window.
-    pub async fn new(width: u32, height: u32, id: usize) -> Self {
+    pub async fn new(width: u32, height: u32, id: usize, format: crate::system::hal::display::PixelFormat) -> Self {
         Self {
             fb: None,
             input_channel: None,
             width,
             height,
             id,
-            surface: Some(DrawingSurface::new_unattached(width, height, crate::system::hal::display::PixelFormat::Rgb565)),
+            surface: Some(DrawingSurface::new_unattached(width, height, format)),
         }
     }
 
