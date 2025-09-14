@@ -6,4 +6,4 @@ pub(crate) mod gyro_accel_srv;
 pub(crate) mod compositor_srv;
 pub(crate) mod radio_service;
 pub(crate) mod vibrator_srv;
-pub(crate) mod display_service;
+// display_service replaced by system::ui::display facade

@@ -38,7 +38,6 @@ impl Window {
     /// Set resources for the window.
     pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
         if let Some(canvas) = self.canvas.as_mut() {
-            // Keep default pixel_bytes=2 for now; in future pass from DisplayService
             canvas.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
         }
         self.fb = Some(fb);

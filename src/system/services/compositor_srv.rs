@@ -9,7 +9,7 @@ use crate::system::ui::compositor::system_ui_consume_events;
 use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UICompositor, SUI_COMMAND_CH};
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::compositor::{ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
-use crate::system::services::display_service::DisplayService;
+use crate::system::ui::display::Display;
 
 /// Service loop timing constants
 const MIN_FRAME_TIME_MS: u64 = 16; // ~60 FPS max
@@ -39,14 +39,12 @@ pub async fn compositor_service(
         info!("Display initialized: brightness=100%");
     }
 
-    // Attach display service to compositor and configure animations
+    // Attach display to compositor and configure animations
     {
         let mut compositor_lock = compositor.lock().await;
-        static mut DISPLAY_SERVICE: Option<DisplayService> = None;
-        let service = unsafe {
-            DISPLAY_SERVICE.get_or_insert(DisplayService::init(display).await)
-        };
-        compositor_lock.attach_display_service(unsafe { DISPLAY_SERVICE.as_ref().unwrap() });
+        static mut DISPLAY: Option<Display> = None;
+        let d = unsafe { DISPLAY.get_or_insert(Display::init(display).await) };
+        compositor_lock.attach_display_service(unsafe { DISPLAY.as_ref().unwrap() });
 
         // Configure smooth animations with cubic easing
         let animation_config = AnimationConfig {

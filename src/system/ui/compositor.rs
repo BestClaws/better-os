@@ -6,7 +6,7 @@ use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR
 };
 use crate::system::ui::window_manager::WindowManager;
-use crate::system::services::display_service::DisplayService;
+use crate::system::ui::display::Display;
 use crate::system::input::dispatcher::{SUI_ACK_CH, SUI_EVENT_CH};
 use crate::system::input::types::{HighLevelEvent, MotionEvent, TouchAction};
 use embassy_sync::{
@@ -279,8 +279,8 @@ pub struct UICompositor {
     windows_order: heapless::Vec<WindowHandle, MAX_WINDOWS>,
     /// Index of currently focused window within `windows_order`
     current_index: usize,
-    /// Display service (preferred)
-    display_service: Option<&'static DisplayService>,
+    /// Display facade (preferred)
+    display_service: Option<&'static Display>,
     /// Pending redraw requests for dirty windows
     pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
     /// Animation configuration
@@ -300,8 +300,8 @@ impl UICompositor {
         }
     }
 
-    /// Attach DisplayService abstraction
-    pub fn attach_display_service(&mut self, service: &'static DisplayService) {
+    /// Attach Display abstraction
+    pub fn attach_display_service(&mut self, service: &'static Display) {
         self.display_service = Some(service);
         debug!("Display service attached");
     }
@@ -484,7 +484,7 @@ impl UICompositor {
         animation: &dyn WindowAnimation,
         direction: TransitionDirection,
     ) {
-        // Prefer DisplayService for dynamic buffer sizing
+        // Prefer Display for dynamic buffer sizing
         if let Some(service) = self.display_service {
             let width = service.width();
             let height = service.height();
