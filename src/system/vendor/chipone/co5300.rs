@@ -234,10 +234,23 @@ where
             region_y + region_height
         ).await { return; }
 
+        let t0 = Instant::now();
+        // No scaling work in scale=1 path
+        let scaling_us = 0u64;
+        let t_transfer = Instant::now();
         if let Err(_) = self.send_pixels(buffer).await {
             error!("Failed to send pixels for scale=1 draw_region");
             return;
         }
+        let transfer_us = t_transfer.elapsed().as_micros() as u64;
+        let total_us = t0.elapsed().as_micros() as u64;
+        info!(
+            "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
+            region,
+            (scaling_us as f64) / 1000.0,
+            (transfer_us as f64) / 1000.0,
+            (total_us as f64) / 1000.0
+        );
     }
 
     /// Draw region with generic integer scale (e.g., 2).
@@ -255,6 +268,10 @@ where
         const CHUNK_HEIGHT: u16 = 50;
         let scaled_width = (region_width as u32 * scale as u32) as u16;
 
+        let t0 = Instant::now();
+        let mut scaling_us: u64 = 0;
+        let mut transfer_us: u64 = 0;
+
         for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
             let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
 
@@ -267,6 +284,7 @@ where
 
             let mut chunk_buffer: Vec<u8> = vec![0u8; (scaled_width as usize) * (chunk_height as usize) * 2];
 
+            let t_scale = Instant::now();
             for row in 0..chunk_height as usize {
                 let src_row = (row + y_chunk_start as usize) / scale as usize;
                 for col in 0..(scaled_width as usize) {
@@ -277,9 +295,21 @@ where
                     chunk_buffer[dst_index + 1] = buffer[src_index + 1];
                 }
             }
+            scaling_us += t_scale.elapsed().as_micros() as u64;
 
+            let t_tx = Instant::now();
             if let Err(_) = self.send_pixels(&chunk_buffer).await { error!("Failed to send pixels for draw_region chunk (generic)"); return; }
+            transfer_us += t_tx.elapsed().as_micros() as u64;
         }
+
+        let total_us = t0.elapsed().as_micros() as u64;
+        info!(
+            "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
+            region,
+            (scaling_us as f64) / 1000.0,
+            (transfer_us as f64) / 1000.0,
+            (total_us as f64) / 1000.0
+        );
     }
 
     /// Draw region with optimized scale=4 path.
@@ -302,6 +332,10 @@ where
         let mut chunk_buffer: Vec<u64> = vec![0u64; row_u64s * (CHUNK_HEIGHT as usize)];
         let mut scaled_row_buffer: Vec<u64> = vec![0u64; row_u64s];
 
+        let t0 = Instant::now();
+        let mut scaling_us: u64 = 0;
+        let mut transfer_us: u64 = 0;
+
         for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
             let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
 
@@ -312,6 +346,7 @@ where
                 display_y + y_chunk_start + chunk_height
             ).await { return; }
 
+            let t_scale = Instant::now();
             unsafe {
                 let src_ptr = buffer.as_ptr();
                 let mut dst_offset_u64: usize = 0;
@@ -341,7 +376,9 @@ where
                     dst_offset_u64 += row_u64s;
                 }
             }
+            scaling_us += t_scale.elapsed().as_micros() as u64;
 
+            let t_tx = Instant::now();
             let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
             let chunk_bytes: &[u8] = unsafe {
                 core::slice::from_raw_parts(
@@ -350,7 +387,17 @@ where
                 )
             };
             if let Err(_) = self.send_pixels(chunk_bytes).await { error!("Failed to send pixels for draw_region chunk (scale4)"); return; }
+            transfer_us += t_tx.elapsed().as_micros() as u64;
         }
+
+        let total_us = t0.elapsed().as_micros() as u64;
+        info!(
+            "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
+            region,
+            (scaling_us as f64) / 1000.0,
+            (transfer_us as f64) / 1000.0,
+            (total_us as f64) / 1000.0
+        );
     }
 }
 
