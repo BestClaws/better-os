@@ -11,7 +11,6 @@ use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error, debug};
 use crate::libs::gfx::two_d::{Point, Size, Rect};
 use crate::system::hal::display::{AsyncDisplay, Orientation, PixelFormat, DisplayCapabilities, DisplayResolution, DisplaySize};
-use crate::system::kernel::config::resources::{FRAME_BUFFER_SIZE};
 
 /// SH8601 Command Set
 pub mod commands {
