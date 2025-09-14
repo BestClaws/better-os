@@ -1,9 +1,9 @@
 use alloc::vec::Vec;
 
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888};
+use crate::libs::gfx::two_d::{Point, Rasterizer, Rect, Rgba8888, Size};
 use crate::system::hal::display::PixelFormat;
 
-use super::util::{clip_rect, union_rect, intersects_or_touches};
+use super::util::{clip_rect, intersects_or_touches, union_rect};
 
 /// Pixel operation function pointers cached per format for hot paths.
 pub struct PixelOps {
@@ -52,7 +52,8 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 let r = ((c.r as u16 * a as u16 + br as u16 * ia + 127) / 255) as u8;
                 let g = ((c.g as u16 * a as u16 + gg as u16 * ia + 127) / 255) as u8;
                 let b = ((c.b as u16 * a as u16 + bb as u16 * ia + 127) / 255) as u8;
-                let raw: u16 = (((r as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | (((b as u16) >> 3));
+                let raw: u16 =
+                    (((r as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | ((b as u16) >> 3);
                 buf[idx] = (raw >> 8) as u8;
                 buf[idx + 1] = raw as u8;
             }
@@ -64,20 +65,35 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 let hi = (raw >> 8) as u8;
                 let lo = raw as u8;
                 for chunk in dst.chunks_mut(2) {
-                    if chunk.len() == 2 { chunk[0] = hi; chunk[1] = lo; }
+                    if chunk.len() == 2 {
+                        chunk[0] = hi;
+                        chunk[1] = lo;
+                    }
                 }
             }
-            PixelOps { bpp: 2, set_pixel: set, blend_pixel: blend, get_pixel: get, encode_row }
+            PixelOps {
+                bpp: 2,
+                set_pixel: set,
+                blend_pixel: blend,
+                get_pixel: get,
+                encode_row,
+            }
         }
         _ => {
-            // Future formats will be added here; default to panic in debug, safe no-op in release.
             debug_assert!(false, "Unsupported PixelFormat not implemented in PixelOps");
-            // Fallback to minimal ops with bpp=1 to keep indexing safe on early returns
             fn noop_set(_: &mut [u8], _: usize, _: Rgba8888) {}
             fn noop_blend(_: &mut [u8], _: usize, _: Rgba8888, _: u8) {}
-            fn noop_get(_: &[u8], _: usize) -> Rgba8888 { Rgba8888::opaque(0,0,0) }
+            fn noop_get(_: &[u8], _: usize) -> Rgba8888 {
+                Rgba8888::opaque(0, 0, 0)
+            }
             fn noop_row(_: &mut [u8], _: Rgba8888) {}
-            PixelOps { bpp: 1, set_pixel: noop_set, blend_pixel: noop_blend, get_pixel: noop_get, encode_row: noop_row }
+            PixelOps {
+                bpp: 1,
+                set_pixel: noop_set,
+                blend_pixel: noop_blend,
+                get_pixel: noop_get,
+                encode_row: noop_row,
+            }
         }
     }
 }
@@ -95,10 +111,6 @@ pub struct DrawingSurface<'a> {
 }
 
 impl<'a> DrawingSurface<'a> {
-    /// Backwards-compatible constructor: unattached, default Rgb565 format.
-    pub fn new(width: u32, height: u32) -> Self {
-        Self::new_unattached(width, height, PixelFormat::Rgb565)
-    }
     /// Create a new unattached surface. Attach buffer later via `attach_buffer`.
     pub fn new_unattached(width: u32, height: u32, format: PixelFormat) -> Self {
         let ops = ops_for_format(format);
@@ -119,41 +131,30 @@ impl<'a> DrawingSurface<'a> {
     }
 
     /// Create a surface and attach the provided buffer immediately.
-    pub fn new_with_buffer(width: u32, height: u32, format: PixelFormat, buffer: &'a mut [u8]) -> Self {
+    pub fn new_with_buffer(
+        width: u32,
+        height: u32,
+        format: PixelFormat,
+        buffer: &'a mut [u8],
+    ) -> Self {
         let mut s = Self::new_unattached(width, height, format);
         s.attach_buffer(buffer);
         s
     }
 
+    /// Attach a framebuffer. Must satisfy capacity: `width * height * bpp`.
     pub fn attach_buffer(&mut self, buffer: &'a mut [u8]) {
         let required = (self.width as usize) * (self.height as usize) * self.ops.bpp;
-        assert!(buffer.len() >= required, "Buffer too small for DrawingSurface");
+        assert!(
+            buffer.len() >= required,
+            "Buffer too small for DrawingSurface"
+        );
         self.buf = Some(buffer);
     }
 
-    pub fn detach_buffer(&mut self) { self.buf = None; }
-
-    /// Backwards-compatible alias for buffer attachment used by window manager.
-    pub(crate) fn set_resources(&mut self, buffer: &'a mut [u8]) { self.attach_buffer(buffer); }
-    /// Backwards-compatible alias used by window relax.
-    pub(crate) fn relinquish(&mut self) { self.detach_buffer(); }
-
-    /// Backwards-compatible setter used by older window manager path.
-    pub fn set_pixel_bytes(&mut self, bytes: usize) {
-        // Only Rgb565 (2 bytes) is supported today. If requested bytes match current, do nothing.
-        if bytes == self.ops.bpp { return; }
-        if bytes == 2 {
-            self.pixel_format = PixelFormat::Rgb565;
-            self.ops = ops_for_format(self.pixel_format);
-        } else {
-            debug_assert!(false, "Unsupported bytes_per_pixel requested");
-        }
-    }
-
-    /// Backwards-compatible setter used by newer window manager path.
-    pub fn set_pixel_format(&mut self, fmt: PixelFormat) {
-        self.pixel_format = fmt;
-        self.ops = ops_for_format(fmt);
+    /// Detach the framebuffer.
+    pub fn detach_buffer(&mut self) {
+        self.buf = None;
     }
 
     pub fn reconfigure(&mut self, width: u32, height: u32, format: PixelFormat) {
@@ -161,51 +162,92 @@ impl<'a> DrawingSurface<'a> {
         self.height = height;
         self.pixel_format = format;
         self.ops = ops_for_format(format);
-        // Buffer size is validated on next attach or operations.
     }
 
-    pub fn set_max_dirty_regions(&mut self, max: usize) { self.max_dirty_regions = max.max(1); }
+    /// Set maximum number of dirty regions to retain before falling back
+    /// to full-surface dirty. Default: 8.
+    pub fn set_max_dirty_regions(&mut self, max: usize) {
+        self.max_dirty_regions = max.max(1);
+    }
 
     #[inline(always)]
-    fn buf(&self) -> &[u8] { self.buf.as_ref().map(|r| &**r).expect("Buffer not initialized") }
+    fn buf(&self) -> &[u8] {
+        self.buf
+            .as_ref()
+            .map(|r| &**r)
+            .expect("Buffer not initialized")
+    }
     #[inline(always)]
-    fn buf_mut(&mut self) -> &mut [u8] { self.buf.as_mut().map(|r| &mut **r).expect("Buffer not initialized") }
+    fn buf_mut(&mut self) -> &mut [u8] {
+        self.buf
+            .as_mut()
+            .map(|r| &mut **r)
+            .expect("Buffer not initialized")
+    }
 
-    pub fn buffer(&self) -> &[u8] { self.buf() }
-    pub fn buffer_mut(&mut self) -> &mut [u8] { self.buf_mut() }
-    pub fn width(&self) -> u32 { self.width }
-    pub fn height(&self) -> u32 { self.height }
-    pub fn bytes_per_pixel(&self) -> usize { self.ops.bpp }
-    pub fn pixel_format(&self) -> PixelFormat { self.pixel_format }
+    /// Immutable access to raw buffer.
+    pub fn buffer(&self) -> &[u8] {
+        self.buf()
+    }
+    /// Mutable access to raw buffer.
+    pub fn buffer_mut(&mut self) -> &mut [u8] {
+        self.buf_mut()
+    }
+    /// Surface width in pixels.
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+    /// Surface height in pixels.
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+    /// Bytes per pixel of the attached format.
+    pub fn bytes_per_pixel(&self) -> usize {
+        self.ops.bpp
+    }
+    /// Current pixel format.
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.pixel_format
+    }
 
-    pub fn flush(&mut self) { self.dirty_regions.clear(); }
-    pub fn dirty_regions(&self) -> &[Rect] { &self.dirty_regions }
+    pub fn flush(&mut self) {
+        self.dirty_regions.clear();
+    }
+    pub fn dirty_regions(&self) -> &[Rect] {
+        &self.dirty_regions
+    }
 
-    pub fn begin_drawing_batch(&mut self, bounds: Rect) { self.batched_dirty_bounds = Some(bounds); }
+    /// Start a batched operation to accumulate dirty bounds.
+    pub fn begin_drawing_batch(&mut self, bounds: Rect) {
+        self.batched_dirty_bounds = Some(bounds);
+    }
     pub fn end_drawing_batch(&mut self) {
-        if let Some(bounds) = self.batched_dirty_bounds.take() { self.mark_region_dirty(bounds); }
+        if let Some(bounds) = self.batched_dirty_bounds.take() {
+            self.mark_region_dirty(bounds);
+        }
     }
 
-    pub fn mark_dirty(&mut self, area: Rect) { self.mark_region_dirty(area); }
+    pub fn mark_dirty(&mut self, area: Rect) {
+        self.mark_region_dirty(area);
+    }
 
     fn mark_region_dirty(&mut self, mut new_region: Rect) {
-        // Clip to canvas bounds first
         let (x0, y0, x1, y1) = clip_rect(&new_region, self.width, self.height);
-        if x0 >= x1 || y0 >= y1 { return; }
-        new_region = Rect::new(Point::new(x0 as i32, y0 as i32), Size::new(x1 - x0, y1 - y0));
-
-        // If we're in the middle of a batched operation, accumulate the bounds
+        if x0 >= x1 || y0 >= y1 {
+            return;
+        }
+        new_region = Rect::new(
+            Point::new(x0 as i32, y0 as i32),
+            Size::new(x1 - x0, y1 - y0),
+        );
         if let Some(ref mut bounds) = self.batched_dirty_bounds {
             *bounds = union_rect(*bounds, new_region);
             return;
         }
-
-        // Try to merge with any overlapping or touching regions
         let mut i = 0;
         while i < self.dirty_regions.len() {
             let current = self.dirty_regions[i];
             if intersects_or_touches(&current, &new_region) {
-                // Merge and restart scan to catch transitive merges
                 new_region = union_rect(current, new_region);
                 self.dirty_regions.swap_remove(i);
                 i = 0;
@@ -213,13 +255,11 @@ impl<'a> DrawingSurface<'a> {
             }
             i += 1;
         }
-
-        // Add the merged region
         self.dirty_regions.push(new_region);
         if self.dirty_regions.len() > self.max_dirty_regions {
-            // Fallback: mark full-screen dirty when exceeding capacity
             self.dirty_regions.clear();
-            self.dirty_regions.push(Rect::new(Point::zero(), Size::new(self.width, self.height)));
+            self.dirty_regions
+                .push(Rect::new(Point::zero(), Size::new(self.width, self.height)));
         }
     }
 
@@ -231,18 +271,21 @@ impl<'a> DrawingSurface<'a> {
         self.mark_region_dirty(Rect::new(Point::zero(), Size::new(self.width, self.height)));
     }
 
-    /// Backwards-compatible name used in compositor animations.
-    pub fn clear_rgb(&mut self, color: Rgba8888) { self.clear(color); }
-
     #[inline(always)]
-    fn pixel_byte_index(&self, x: u32, y: u32) -> usize { ((x + y * self.width) as usize) * self.ops.bpp }
+    fn pixel_byte_index(&self, x: u32, y: u32) -> usize {
+        ((x + y * self.width) as usize) * self.ops.bpp
+    }
 
     // Internal hot paths used by Rasterizer impl
     #[inline(always)]
     pub(crate) fn set_pixel_internal(&mut self, x: i32, y: i32, color: Rgba8888) {
-        if x < 0 || y < 0 { return; }
+        if x < 0 || y < 0 {
+            return;
+        }
         let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return; }
+        if x >= self.width || y >= self.height {
+            return;
+        }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.set_pixel)(self.buf_mut(), idx, color);
         if self.batched_dirty_bounds.is_none() {
@@ -252,9 +295,13 @@ impl<'a> DrawingSurface<'a> {
 
     #[inline(always)]
     pub(crate) fn blend_pixel_internal(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
-        if x < 0 || y < 0 { return; }
+        if x < 0 || y < 0 {
+            return;
+        }
         let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return; }
+        if x >= self.width || y >= self.height {
+            return;
+        }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.blend_pixel)(self.buf_mut(), idx, color, coverage);
         if self.batched_dirty_bounds.is_none() {
@@ -264,24 +311,39 @@ impl<'a> DrawingSurface<'a> {
 
     #[inline(always)]
     pub(crate) fn get_pixel_internal(&self, x: i32, y: i32) -> Rgba8888 {
-        if x < 0 || y < 0 { return Rgba8888::opaque(0,0,0); }
+        if x < 0 || y < 0 {
+            return Rgba8888::opaque(0, 0, 0);
+        }
         let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return Rgba8888::opaque(0,0,0); }
+        if x >= self.width || y >= self.height {
+            return Rgba8888::opaque(0, 0, 0);
+        }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.get_pixel)(self.buf(), idx)
     }
 
-    pub(crate) fn set_pixels_horizontal_internal(&mut self, x: i32, y: i32, width: u32, color: Rgba8888) {
-        if y < 0 || y >= self.height as i32 { return; }
-        if x < 0 || x + width as i32 > self.width as i32 { return; }
+    pub(crate) fn set_pixels_horizontal_internal(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: u32,
+        color: Rgba8888,
+    ) {
+        if y < 0 || y >= self.height as i32 {
+            return;
+        }
+        if x < 0 || x + width as i32 > self.width as i32 {
+            return;
+        }
         let start_x = x.max(0) as u32;
         let end_x = (x + width as i32).min(self.width as i32) as u32;
         let actual_width = end_x - start_x;
-        if actual_width == 0 { return; }
+        if actual_width == 0 {
+            return;
+        }
         let bpp = self.ops.bpp;
         let y_offset = y as u32 * self.width;
         let start_idx = ((start_x + y_offset) as usize) * bpp;
-        // Encode one pixel and then write row by stepping by bpp
         let mut tmp = [0u8; 2];
         let setp = self.ops.set_pixel;
         setp(&mut tmp, 0, color);
@@ -289,20 +351,37 @@ impl<'a> DrawingSurface<'a> {
         for i in 0..actual_width as usize {
             let idx = start_idx + i * bpp;
             buf[idx] = tmp[0];
-            if bpp > 1 { buf[idx + 1] = tmp[1]; }
+            if bpp > 1 {
+                buf[idx + 1] = tmp[1];
+            }
         }
         if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(Rect::new(Point::new(start_x as i32, y), Size::new(actual_width, 1)));
+            self.mark_region_dirty(Rect::new(
+                Point::new(start_x as i32, y),
+                Size::new(actual_width, 1),
+            ));
         }
     }
 
-    pub(crate) fn set_pixels_vertical_internal(&mut self, x: i32, y: i32, height: u32, color: Rgba8888) {
-        if x < 0 || x >= self.width as i32 { return; }
-        if y < 0 || y + height as i32 > self.height as i32 { return; }
+    pub(crate) fn set_pixels_vertical_internal(
+        &mut self,
+        x: i32,
+        y: i32,
+        height: u32,
+        color: Rgba8888,
+    ) {
+        if x < 0 || x >= self.width as i32 {
+            return;
+        }
+        if y < 0 || y + height as i32 > self.height as i32 {
+            return;
+        }
         let start_y = y.max(0) as u32;
         let end_y = (y + height as i32).min(self.height as i32) as u32;
         let actual_height = end_y - start_y;
-        if actual_height == 0 { return; }
+        if actual_height == 0 {
+            return;
+        }
         let bpp = self.ops.bpp;
         let mut tmp = [0u8; 2];
         let setp = self.ops.set_pixel;
@@ -312,17 +391,26 @@ impl<'a> DrawingSurface<'a> {
         for i in 0..actual_height as usize {
             let idx = ((x as u32 + (start_y + i as u32) * width) as usize) * bpp;
             buf[idx] = tmp[0];
-            if bpp > 1 { buf[idx + 1] = tmp[1]; }
+            if bpp > 1 {
+                buf[idx + 1] = tmp[1];
+            }
         }
         if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(Rect::new(Point::new(x, start_y as i32), Size::new(1, actual_height)));
+            self.mark_region_dirty(Rect::new(
+                Point::new(x, start_y as i32),
+                Size::new(1, actual_height),
+            ));
         }
     }
 
     pub(crate) fn set_pixels_rect_internal(&mut self, rect: Rect, color: Rgba8888) {
-        if rect.size.width == 0 || rect.size.height == 0 { return; }
+        if rect.size.width == 0 || rect.size.height == 0 {
+            return;
+        }
         let clip = Rect::new(Point::zero(), Size::new(self.width, self.height));
-        let Some(clipped_rect) = rect.intersection(&clip) else { return; };
+        let Some(clipped_rect) = rect.intersection(&clip) else {
+            return;
+        };
         let bpp = self.ops.bpp;
         let width = self.width;
         let mut tmp = [0u8; 2];
@@ -334,7 +422,9 @@ impl<'a> DrawingSurface<'a> {
             for x in clipped_rect.top_left.x..=clipped_rect.right() {
                 let idx = ((x as u32 + y_offset) as usize) * bpp;
                 buf[idx] = tmp[0];
-                if bpp > 1 { buf[idx + 1] = tmp[1]; }
+                if bpp > 1 {
+                    buf[idx + 1] = tmp[1];
+                }
             }
         }
         if self.batched_dirty_bounds.is_none() {
@@ -342,5 +432,3 @@ impl<'a> DrawingSurface<'a> {
         }
     }
 }
-
-

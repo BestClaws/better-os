@@ -384,11 +384,8 @@ impl UICompositor {
             let height = service.height();
             let fb_size = service.framebuffer_size(width, height);
             let mut frame_buffer = vec![0u8; fb_size];
-            let mut composite_surface = DrawingSurface::new(
-                width,
-                height
-            );
-            composite_surface.set_resources(&mut frame_buffer);
+            let mut composite_surface = DrawingSurface::new_unattached(width, height, service.pixel_format());
+            composite_surface.attach_buffer(&mut frame_buffer);
 
             let dirty_regions = if let Some((cur, _prev, _next)) = self.current_prev_next() {
                 self.collect_dirty_regions(wm, cur)
@@ -490,8 +487,8 @@ impl UICompositor {
             let height = service.height();
             let fb_size = service.framebuffer_size(width, height);
             let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
-            let mut surface = DrawingSurface::new(width, height);
-            surface.set_resources(&mut composition_buffer);
+            let mut surface = DrawingSurface::new_unattached(width, height, service.pixel_format());
+            surface.attach_buffer(&mut composition_buffer);
 
             let (cur, prev, next) = self.current_prev_next().unwrap();
             // Determine source and target by direction
@@ -509,7 +506,7 @@ impl UICompositor {
                 let frame = animation.animate_frame(eased_progress, direction, width);
 
                 // Clear and compose frame
-                surface.clear_rgb(Rgba8888::opaque(0,0,0));
+                surface.clear(Rgba8888::opaque(0,0,0));
                 // Blit source window (contained within closure to keep borrows local)
                 let _ = wm.with_surface(source_h, |src| {
                     let bpp = service.pixel_format().bytes_per_pixel();
@@ -570,7 +567,7 @@ impl UICompositor {
     /// Optimized frame composition with performance improvements
     async fn compose_frame_optimized<'a>(&mut self, wm: &mut WindowManager, output_surface: &mut DrawingSurface<'a>) {
         // Clear to black background
-        output_surface.clear_rgb(Rgba8888::opaque(0,0,0));
+        output_surface.clear(Rgba8888::opaque(0,0,0));
 
         if self.windows_order.is_empty() {
             return;
@@ -582,8 +579,8 @@ impl UICompositor {
             if !regions.is_empty() {
                 for r in regions.iter() {
                     let _ = wm.with_surface(cur, |surface| {
-                        // When using service, prefer its bpp; else assume RGB565
-                        let bpp = self.display_service.map(|s| s.pixel_format().bytes_per_pixel()).unwrap_or(2);
+                        // When using service, prefer its bpp; else fallback to surface bpp
+                        let bpp = self.display_service.map(|s| s.pixel_format().bytes_per_pixel()).unwrap_or(output_surface.bytes_per_pixel());
                         SurfaceBlitter::copy_region(output_surface, surface, *r, 0, 0, bpp);
                     });
                 }

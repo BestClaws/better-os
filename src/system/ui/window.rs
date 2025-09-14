@@ -31,14 +31,14 @@ impl Window {
             width,
             height,
             id,
-            surface: Some(DrawingSurface::new(width, height)),
+            surface: Some(DrawingSurface::new_unattached(width, height, crate::system::hal::display::PixelFormat::Rgb565)),
         }
     }
 
     /// Set resources for the window.
     pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
         if let Some(surface) = self.surface.as_mut() {
-            surface.set_resources(FRAMEBUFFER_POOL.get_mut(&fb));
+            surface.attach_buffer(FRAMEBUFFER_POOL.get_mut(&fb));
         }
         self.fb = Some(fb);
         self.input_channel = Some(ic);
@@ -85,7 +85,7 @@ impl Window {
         assert!(self.input_channel.is_some());
 
         if let Some(surface) = self.surface.as_mut() {
-            surface.relinquish();
+            surface.detach_buffer();
         }
         FRAMEBUFFER_POOL.release(self.fb.as_mut().unwrap());
         INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());
