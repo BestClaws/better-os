@@ -87,7 +87,8 @@ pub struct AnimationFrame {
 /// Trait for different animation types
 pub trait WindowAnimation {
     /// Generate animation frame for given progress (0.0 to 1.0)
-    fn animate_frame(&self, progress: f32, direction: TransitionDirection) -> AnimationFrame;
+    /// screen_width is the logical framebuffer width for positioning.
+    fn animate_frame(&self, progress: f32, direction: TransitionDirection, screen_width: u32) -> AnimationFrame;
 
     /// Animation display name for debugging
     fn name(&self) -> &'static str;
@@ -98,8 +99,8 @@ pub trait WindowAnimation {
 pub struct SlideZoomAnimation;
 
 impl WindowAnimation for SlideZoomAnimation {
-    fn animate_frame(&self, progress: f32, direction: TransitionDirection) -> AnimationFrame {
-        let width = FRAME_BUFFER_WIDTH as i32;
+    fn animate_frame(&self, progress: f32, direction: TransitionDirection, screen_width: u32) -> AnimationFrame {
+        let width = screen_width as i32;
         let offset = (progress * width as f32) as i32;
 
         // Add subtle zoom out at mid-transition for depth effect
@@ -137,7 +138,7 @@ impl WindowAnimation for SlideZoomAnimation {
 pub struct FadeAnimation;
 
 impl WindowAnimation for FadeAnimation {
-    fn animate_frame(&self, _progress: f32, _direction: TransitionDirection) -> AnimationFrame {
+    fn animate_frame(&self, _progress: f32, _direction: TransitionDirection, _screen_width: u32) -> AnimationFrame {
         // For fade, both windows occupy same position, alpha handled elsewhere
         AnimationFrame {
             source_x: 0,
@@ -505,7 +506,7 @@ impl UICompositor {
                 let progress = step as f32 / self.animation_config.steps as f32;
                 let eased_progress = (self.animation_config.easing_fn)(progress);
 
-                let frame = animation.animate_frame(eased_progress, direction);
+                let frame = animation.animate_frame(eased_progress, direction, width);
 
                 // Clear and compose frame
                 canvas.clear_rgb(Rgb565::BLACK);

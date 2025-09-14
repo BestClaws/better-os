@@ -11,7 +11,7 @@ use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error, debug};
 use crate::libs::gfx::two_d::{Point, Size, Rect};
 use crate::system::hal::display::{AsyncDisplay, Orientation, PixelFormat, DisplayCapabilities, DisplayResolution, DisplaySize};
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
+use crate::system::kernel::config::resources::{FRAME_BUFFER_SIZE};
 
 /// SH8601 Command Set
 pub mod commands {
@@ -110,8 +110,13 @@ where
     ) -> Self {
         info!("Creating Co5300 driver");
         let physical = DisplaySize { width: width as u32, height: height as u32 };
-        let logical = DisplaySize { width: (width as u32) / FRAME_SCALE_FACTOR, height: (height as u32) / FRAME_SCALE_FACTOR };
-        let active_resolution = DisplayResolution { logical, physical, scale: FRAME_SCALE_FACTOR };
+        // Default logical to 116x116 with scale=4 if panel dimensions fit; else fall back to 1x
+        let (logical, scale) = if (width as u32) >= 116 * 4 && (height as u32) >= 116 * 4 {
+            (DisplaySize { width: 116, height: 116 }, 4u32)
+        } else {
+            (DisplaySize { width: width as u32, height: height as u32 }, 1u32)
+        };
+        let active_resolution = DisplayResolution { logical, physical, scale };
         Self {
             qspi,
             reset_pin,
@@ -532,7 +537,7 @@ where
             _ => 4,
         };
         let physical = DisplaySize { width: self.width as u32, height: self.height as u32 };
-        let logical = DisplaySize { width: physical.width / scale, height: physical.height / scale };
+        let logical = if scale == 1 { physical } else { DisplaySize { width: physical.width / scale, height: physical.height / scale } };
         self.active_resolution = DisplayResolution { logical, physical, scale };
     }
 }

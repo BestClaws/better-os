@@ -3,19 +3,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use defmt::info;
 
-use crate::system::hal::display::{AsyncDisplay, PixelFormat, DisplayResolution, DisplayCapabilities, DisplaySize};
+use crate::system::hal::display::{AsyncDisplay, PixelFormat, DisplayResolution, DisplayCapabilities};
 use crate::libs::gfx::two_d::Rect;
-use crate::system::kernel::config::resources::{FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, FRAME_SCALE_FACTOR};
-
-// Default static capabilities used until drivers expose their own.
-static DEFAULT_SUPPORTED_FORMATS: &[PixelFormat] = &[PixelFormat::Rgb565];
-static DEFAULT_SUPPORTED_RESOLUTIONS: &[DisplayResolution] = &[
-    DisplayResolution {
-        logical: DisplaySize { width: FRAME_BUFFER_WIDTH, height: FRAME_BUFFER_HEIGHT },
-        physical: DisplaySize { width: FRAME_BUFFER_WIDTH * FRAME_SCALE_FACTOR, height: FRAME_BUFFER_HEIGHT * FRAME_SCALE_FACTOR },
-        scale: FRAME_SCALE_FACTOR,
-    }
-];
 
 /// High-level display service that abstracts display driver details
 /// and exposes unified parameters for the compositor and apps.
@@ -26,44 +15,38 @@ pub struct DisplayService {
 }
 
 impl DisplayService {
-    /// Create a new DisplayService.
-    ///
-    /// - `driver`: Concrete async display driver instance
-    /// - `boot_format`: Optional override of pixel format (defaults to preferred)
-    /// - `override_resolution`: Optional resolution override at boot
-    pub fn new(
+    /// Initialize DisplayService by negotiating pixel format and resolution with the driver.
+    pub async fn init(
         driver: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
-        boot_format: Option<PixelFormat>,
-        override_resolution: Option<DisplayResolution>,
     ) -> Self {
-        // Temporary default based on compile-time geometry while callers migrate.
-        let default_resolution = DisplayResolution {
-            logical: DisplaySize::new(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT),
-            physical: DisplaySize::new(FRAME_BUFFER_WIDTH * FRAME_SCALE_FACTOR, FRAME_BUFFER_HEIGHT * FRAME_SCALE_FACTOR),
-            scale: FRAME_SCALE_FACTOR,
+        // Query capabilities and choose preferred/defaults from driver
+        let (caps, mut chosen_format, mut chosen_resolution) = {
+            let mut l = driver.lock().await;
+            let caps = l.capabilities();
+            let fmt = caps.preferred_format;
+            let res = caps.preferred_resolution;
+            // Ensure driver is configured to the chosen resolution
+            l.set_resolution(res);
+            (caps, fmt, res)
         };
 
-        // NOTE: Extend when additional formats are supported end-to-end
-        let chosen_format = boot_format.unwrap_or(PixelFormat::Rgb565);
-        let resolution = override_resolution.unwrap_or(default_resolution);
+        info!(
+            "DisplayService negotiated: format={:?} scale={} logical={}x{} physical={}x{}",
+            chosen_format,
+            chosen_resolution.scale,
+            chosen_resolution.logical.width,
+            chosen_resolution.logical.height,
+            chosen_resolution.physical.width,
+            chosen_resolution.physical.height
+        );
 
-        info!("DisplayService init: format={:?} scale={} logical={}x{} physical={}x{}",
-              chosen_format,
-              resolution.scale,
-              resolution.logical.width, resolution.logical.height,
-              resolution.physical.width, resolution.physical.height);
-
-        Self { driver, pixel_format: chosen_format, resolution }
+        Self { driver, pixel_format: chosen_format, resolution: chosen_resolution }
     }
 
-    /// Returns the display capabilities (conservative defaults until drivers expose real caps).
-    pub fn capabilities(&self) -> DisplayCapabilities {
-        DisplayCapabilities {
-            supported_formats: DEFAULT_SUPPORTED_FORMATS,
-            preferred_format: PixelFormat::Rgb565,
-            supported_resolutions: DEFAULT_SUPPORTED_RESOLUTIONS,
-            preferred_resolution: DEFAULT_SUPPORTED_RESOLUTIONS[0],
-        }
+    /// Query capabilities from the underlying driver.
+    pub async fn driver_capabilities(&self) -> DisplayCapabilities {
+        let mut l = self.driver.lock().await;
+        l.capabilities()
     }
 
     /// Native pixel format used by the display pipeline.
@@ -75,7 +58,7 @@ impl DisplayService {
     /// Active resolution
     pub fn resolution(&self) -> DisplayResolution { self.resolution }
 
-    /// Change active resolution. This will request the driver to switch modes.
+    /// Change active resolution. Driver mode switch should be performed by caller.
     pub fn set_resolution(&mut self, resolution: DisplayResolution) {
         self.resolution = resolution;
     }

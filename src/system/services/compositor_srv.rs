@@ -10,7 +10,6 @@ use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UIComp
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::compositor::{ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
 use crate::system::services::display_service::DisplayService;
-use crate::system::hal::display::{PixelFormat, DisplayResolution, DisplaySize};
 
 /// Service loop timing constants
 const MIN_FRAME_TIME_MS: u64 = 16; // ~60 FPS max
@@ -43,18 +42,9 @@ pub async fn compositor_service(
     // Attach display service to compositor and configure animations
     {
         let mut compositor_lock = compositor.lock().await;
-        // Initialize DisplayService at boot with preferred mode (scale=4, 116x116 logical)
         static mut DISPLAY_SERVICE: Option<DisplayService> = None;
         let service = unsafe {
-            DISPLAY_SERVICE.get_or_insert_with(|| {
-                // Default to 116x116 logical, 466x466 physical, scale=4
-                let default_resolution = DisplayResolution {
-                    logical: DisplaySize { width: 116, height: 116 },
-                    physical: DisplaySize { width: 466, height: 466 },
-                    scale: 4,
-                };
-                DisplayService::new(display, Some(PixelFormat::Rgb565), Some(default_resolution))
-            })
+            DISPLAY_SERVICE.get_or_insert(DisplayService::init(display).await)
         };
         compositor_lock.attach_display_service(unsafe { DISPLAY_SERVICE.as_ref().unwrap() });
 
