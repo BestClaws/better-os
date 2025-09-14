@@ -219,6 +219,139 @@ where
 
         Ok(())
     }
+
+    /// Draw region with scale=1 (no scaling). Sends the buffer directly.
+    async fn draw_region_scale1(&mut self, buffer: &[u8], region: Rect) {
+        let region_x = region.top_left.x as u16;
+        let region_y = region.top_left.y as u16;
+        let region_width = region.size.width as u16;
+        let region_height = region.size.height as u16;
+
+        if let Err(_) = self.set_window(
+            region_x,
+            region_y,
+            region_x + region_width,
+            region_y + region_height
+        ).await { return; }
+
+        if let Err(_) = self.send_pixels(buffer).await {
+            error!("Failed to send pixels for scale=1 draw_region");
+            return;
+        }
+    }
+
+    /// Draw region with generic integer scale (e.g., 2).
+    async fn draw_region_scale_generic(&mut self, buffer: &[u8], region: Rect, scale: u16) {
+        let region_x = region.top_left.x as u16;
+        let region_y = region.top_left.y as u16;
+        let region_width = region.size.width as u16;
+        let region_height = region.size.height as u16;
+
+        let display_x = region_x * scale;
+        let display_y = region_y * scale;
+        let display_width = region.size.width * (scale as u32);
+        let display_height = region.size.height * (scale as u32);
+
+        const CHUNK_HEIGHT: u16 = 50;
+        let scaled_width = (region_width as u32 * scale as u32) as u16;
+
+        for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
+            let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
+
+            if let Err(_) = self.set_window(
+                display_x,
+                display_y + y_chunk_start,
+                display_x + display_width as u16,
+                display_y + y_chunk_start + chunk_height
+            ).await { return; }
+
+            let mut chunk_buffer: Vec<u8> = vec![0u8; (scaled_width as usize) * (chunk_height as usize) * 2];
+
+            for row in 0..chunk_height as usize {
+                let src_row = (row + y_chunk_start as usize) / scale as usize;
+                for col in 0..(scaled_width as usize) {
+                    let src_col = col / scale as usize;
+                    let src_index = ((src_row * region_width as usize) + src_col) * 2;
+                    let dst_index = ((row * scaled_width as usize) + col) * 2;
+                    chunk_buffer[dst_index] = buffer[src_index];
+                    chunk_buffer[dst_index + 1] = buffer[src_index + 1];
+                }
+            }
+
+            if let Err(_) = self.send_pixels(&chunk_buffer).await { error!("Failed to send pixels for draw_region chunk (generic)"); return; }
+        }
+    }
+
+    /// Draw region with optimized scale=4 path.
+    async fn draw_region_scale4(&mut self, buffer: &[u8], region: Rect) {
+        let region_x = region.top_left.x as u16;
+        let region_y = region.top_left.y as u16;
+        let region_width = region.size.width as u16;
+        let region_height = region.size.height as u16;
+
+        let scale: u16 = 4;
+        let display_x = region_x * scale;
+        let display_y = region_y * scale;
+        let display_width = region.size.width * (scale as u32);
+        let display_height = region.size.height * (scale as u32);
+
+        const CHUNK_HEIGHT: u16 = 50;
+
+        let scaled_width = region_width * scale as u16;
+        let row_u64s: usize = (scaled_width as usize) / 4; // equals region_width as usize when scale==4
+        let mut chunk_buffer: Vec<u64> = vec![0u64; row_u64s * (CHUNK_HEIGHT as usize)];
+        let mut scaled_row_buffer: Vec<u64> = vec![0u64; row_u64s];
+
+        for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
+            let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
+
+            if let Err(_) = self.set_window(
+                display_x,
+                display_y + y_chunk_start,
+                display_x + display_width as u16,
+                display_y + y_chunk_start + chunk_height
+            ).await { return; }
+
+            unsafe {
+                let src_ptr = buffer.as_ptr();
+                let mut dst_offset_u64: usize = 0;
+                let mut current_src_row = usize::MAX;
+                let bytes_per_src_row = region_width as usize * 2; // 2 bytes per pixel (RGB565)
+
+                for row in 0..chunk_height as usize {
+                    let src_row = (row + y_chunk_start as usize) / scale as usize;
+                    if src_row != current_src_row {
+                        current_src_row = src_row;
+                        let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
+                        for src_col in 0..(region_width as usize) {
+                            let pixel: u16 = core::ptr::read_unaligned(src_row_ptr.add(src_col * 2) as *const u16);
+                            let pixel_u64 = (pixel as u64)
+                                | ((pixel as u64) << 16)
+                                | ((pixel as u64) << 32)
+                                | ((pixel as u64) << 48);
+                            scaled_row_buffer[src_col] = pixel_u64;
+                        }
+                    }
+                    let dst_row_ptr = chunk_buffer.as_mut_ptr().add(dst_offset_u64);
+                    core::ptr::copy_nonoverlapping(
+                        scaled_row_buffer.as_ptr(),
+                        dst_row_ptr,
+                        row_u64s,
+                    );
+                    dst_offset_u64 += row_u64s;
+                }
+            }
+
+            let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
+            let chunk_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    chunk_buffer.as_ptr() as *const u8,
+                    chunk_bytes_len,
+                )
+            };
+            if let Err(_) = self.send_pixels(chunk_bytes).await { error!("Failed to send pixels for draw_region chunk (scale4)"); return; }
+        }
+    }
 }
 
 #[async_trait(?Send)]
@@ -364,128 +497,13 @@ where
     }
 
     async fn draw_region(&mut self, buffer: &[u8], region: Rect) {
-        let frame_start = Instant::now();
-
-        // Extract region parameters
-        let region_x = region.top_left.x as u16;
-        let region_y = region.top_left.y as u16;
-        let region_width = region.size.width as u16;
-        let region_height = region.size.height as u16;
-
-        // Calculate display coordinates (scaled)
         let scale = self.active_resolution.scale as u16;
-        let display_x = region_x * scale;
-        let display_y = region_y * scale;
-        let display_width = region.size.width * (scale as u32);
-        let display_height = region.size.height * (scale as u32);
-
-        const CHUNK_HEIGHT: u16 = 50;
-
-        let mut total_scaling = 0u64;
-        let mut total_transfer = 0u64;
-
-        if scale == 4 {
-            // Optimized scale=4 path using u64 packing
-            let scaled_width = region_width * scale as u16;
-            let row_u64s: usize = (scaled_width as usize) / 4; // equals region_width as usize when scale==4
-            let mut chunk_buffer: Vec<u64> = vec![0u64; row_u64s * (CHUNK_HEIGHT as usize)];
-            let mut scaled_row_buffer: Vec<u64> = vec![0u64; row_u64s];
-
-            for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
-                let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
-
-                if let Err(_) = self.set_window(
-                    display_x,
-                    display_y + y_chunk_start,
-                    display_x + display_width as u16,
-                    display_y + y_chunk_start + chunk_height
-                ).await { return; }
-
-                let scale_start = Instant::now();
-                unsafe {
-                    let src_ptr = buffer.as_ptr();
-                    let mut dst_offset_u64: usize = 0;
-                    let mut current_src_row = usize::MAX;
-                    let bytes_per_src_row = region_width as usize * 2; // 2 bytes per pixel (RGB565)
-
-                    for row in 0..chunk_height as usize {
-                        let src_row = (row + y_chunk_start as usize) / scale as usize;
-                        if src_row != current_src_row {
-                            current_src_row = src_row;
-                            let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
-                            for src_col in 0..(region_width as usize) {
-                                let pixel: u16 = core::ptr::read_unaligned(src_row_ptr.add(src_col * 2) as *const u16);
-                                let pixel_u64 = (pixel as u64)
-                                    | ((pixel as u64) << 16)
-                                    | ((pixel as u64) << 32)
-                                    | ((pixel as u64) << 48);
-                                scaled_row_buffer[src_col] = pixel_u64;
-                            }
-                        }
-                        let dst_row_ptr = chunk_buffer.as_mut_ptr().add(dst_offset_u64);
-                        core::ptr::copy_nonoverlapping(
-                            scaled_row_buffer.as_ptr(),
-                            dst_row_ptr,
-                            row_u64s,
-                        );
-                        dst_offset_u64 += row_u64s;
-                    }
-                }
-                total_scaling += scale_start.elapsed().as_micros();
-
-                let transfer_start = Instant::now();
-                let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
-                let chunk_bytes: &[u8] = unsafe {
-                    core::slice::from_raw_parts(
-                        chunk_buffer.as_ptr() as *const u8,
-                        chunk_bytes_len,
-                    )
-                };
-                if let Err(_) = self.send_pixels(chunk_bytes).await { error!("Failed to send pixels for draw_region chunk"); return; }
-                total_transfer += transfer_start.elapsed().as_micros();
-            }
-        } else {
-            // Generic scaling path for scale=1 or 2
-            let scaled_width = (region_width as u32 * scale as u32) as u16;
-            for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
-                let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
-
-                if let Err(_) = self.set_window(
-                    display_x,
-                    display_y + y_chunk_start,
-                    display_x + display_width as u16,
-                    display_y + y_chunk_start + chunk_height
-                ).await { return; }
-
-                let mut chunk_buffer: Vec<u8> = vec![0u8; (scaled_width as usize) * (chunk_height as usize) * 2];
-
-                let scale_start = Instant::now();
-                for row in 0..chunk_height as usize {
-                    let src_row = (row + y_chunk_start as usize) / scale as usize;
-                    for col in 0..(scaled_width as usize) {
-                        let src_col = col / scale as usize;
-                        let src_index = ((src_row * region_width as usize) + src_col) * 2;
-                        let dst_index = ((row * scaled_width as usize) + col) * 2;
-                        chunk_buffer[dst_index] = buffer[src_index];
-                        chunk_buffer[dst_index + 1] = buffer[src_index + 1];
-                    }
-                }
-                total_scaling += scale_start.elapsed().as_micros();
-
-                let transfer_start = Instant::now();
-                if let Err(_) = self.send_pixels(&chunk_buffer).await { error!("Failed to send pixels for draw_region chunk"); return; }
-                total_transfer += transfer_start.elapsed().as_micros();
-            }
+        match scale {
+            1 => self.draw_region_scale1(buffer, region).await,
+            2 => self.draw_region_scale_generic(buffer, region, 2).await,
+            4 => self.draw_region_scale4(buffer, region).await,
+            s => self.draw_region_scale_generic(buffer, region, s).await,
         }
-
-        let frame_time = frame_start.elapsed().as_micros();
-        info!(
-            "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
-            region,
-            total_scaling as f64 / 1000.0,
-            total_transfer as f64 / 1000.0,
-            frame_time as f64 / 1000.0
-        );
     }
     async fn draw(&mut self, buffer: &[u8]) {
         let lw = self.active_resolution.logical.width;
