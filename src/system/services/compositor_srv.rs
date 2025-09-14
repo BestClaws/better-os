@@ -9,7 +9,8 @@ use crate::system::ui::compositor::system_ui_consume_events;
 use crate::system::ui::compositor::{AnimationConfig, TransitionDirection, UICompositor, SUI_COMMAND_CH};
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::compositor::{ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
-use crate::system::services::display_service::{DisplayService, PixelFormat};
+use crate::system::services::display_service::DisplayService;
+use crate::system::hal::display::PixelFormat;
 
 /// Service loop timing constants
 const MIN_FRAME_TIME_MS: u64 = 16; // ~60 FPS max

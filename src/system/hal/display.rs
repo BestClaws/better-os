@@ -3,21 +3,21 @@ use async_trait::async_trait;
 use defmt::Format;
 use crate::libs::gfx::two_d::Rect;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DisplayPixelFormat {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
+pub enum PixelFormat {
     Rgb565,
     Rgb888,
     Rgb666,
     Gray8,
 }
 
-impl DisplayPixelFormat {
+impl PixelFormat {
     pub const fn bytes_per_pixel(&self) -> usize {
         match self {
-            DisplayPixelFormat::Rgb565 => 2,
-            DisplayPixelFormat::Rgb888 => 3,
-            DisplayPixelFormat::Rgb666 => 3,
-            DisplayPixelFormat::Gray8 => 1,
+            PixelFormat::Rgb565 => 2,
+            PixelFormat::Rgb888 => 3,
+            PixelFormat::Rgb666 => 3,
+            PixelFormat::Gray8 => 1,
         }
     }
 }
@@ -41,7 +41,7 @@ pub trait AsyncDisplay {
     fn get_height(&self) -> u32;
 
     /// Report native pixel format of the driver output buffer
-    fn native_pixel_format(&self) -> DisplayPixelFormat { DisplayPixelFormat::Rgb565 }
+    fn native_pixel_format(&self) -> PixelFormat { PixelFormat::Rgb565 }
 
 
 }

@@ -44,7 +44,8 @@ use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
 use esp_hal::peripherals::ADC1;
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
 use crate::system::vendor::boby::drivers::qmi8658c::Qmi8658C;
-use crate::system::vendor::chipone::co5300::{Co5300, ColorMode};
+use crate::system::vendor::chipone::co5300::Co5300;
+use crate::system::hal::display::PixelFormat;
 
 static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c<Async>>> = StaticCell::new();
@@ -59,10 +60,8 @@ pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn Asy
     StaticCell::new();
 pub(crate) static TOUCH: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>> =
     StaticCell::new();
-pub(crate) static BATTERY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>> =
-    StaticCell::new();
-pub(crate) static AMBIENT_SENSOR: StaticCell<
-    Mutex<CriticalSectionRawMutex, Box<dyn AsyncAmbientSensor>>,
+pub(crate) static BATTERY: StaticCell<
+    Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>,
 > = StaticCell::new();
 pub(crate) static GYRO_ACCELEROMETER: StaticCell<
     Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>,
@@ -128,7 +127,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         reset_pin,
         466,
         466,
-        ColorMode::Rgb565,
+        PixelFormat::Rgb565,
     );
 
 

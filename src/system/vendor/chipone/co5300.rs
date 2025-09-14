@@ -10,7 +10,7 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{info, error, debug};
 use crate::libs::gfx::two_d::{Point, Size, Rect};
-use crate::system::hal::display::{AsyncDisplay, Orientation, DisplayPixelFormat};
+use crate::system::hal::display::{AsyncDisplay, Orientation, PixelFormat};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR};
 
 /// SH8601 Command Set
@@ -37,32 +37,13 @@ pub mod commands {
     pub const C63: u8 = 0x63;
 }
 
-/// Supported color modes
-#[derive(Debug, Clone, Copy)]
-pub enum ColorMode {
-    Rgb565,
-    Rgb888,
-    Rgb666,
-    Gray8,
-}
-
-impl ColorMode {
-    pub const fn bytes_per_pixel(&self) -> usize {
-        match self {
-            ColorMode::Rgb565 => 2,
-            ColorMode::Rgb888 => 3,
-            ColorMode::Rgb666 => 3,
-            ColorMode::Gray8 => 1,
-        }
-    }
-
-    pub const fn colmod_value(&self) -> u8 {
-        match self {
-            ColorMode::Rgb565 => 0x55,
-            ColorMode::Rgb888 => 0x77,
-            ColorMode::Rgb666 => 0x66,
-            ColorMode::Gray8 => 0x11,
-        }
+/// Map unified PixelFormat to Chipone COLMOD register value
+fn chipone_colmod_value(fmt: PixelFormat) -> u8 {
+    match fmt {
+        PixelFormat::Rgb565 => 0x55,
+        PixelFormat::Rgb888 => 0x77,
+        PixelFormat::Rgb666 => 0x66,
+        PixelFormat::Gray8 => 0x11,
     }
 }
 
@@ -111,7 +92,7 @@ pub struct Co5300<RST> {
     height: u16,
     x_gap: u16,
     y_gap: u16,
-    color_mode: ColorMode,
+    pixel_format: PixelFormat,
 }
 
 impl<RST> Co5300<RST>
@@ -123,7 +104,7 @@ where
         reset_pin: RST,
         width: u16,
         height: u16,
-        color_mode: ColorMode,
+        pixel_format: PixelFormat,
     ) -> Self {
         info!("Creating Co5300 driver");
         Self {
@@ -133,7 +114,7 @@ where
             height,
             x_gap: 6, // Default gap from original code
             y_gap: 0,
-            color_mode,
+            pixel_format,
         }
     }
 
@@ -270,7 +251,7 @@ where
 
             // Set pixel format and MADCTL
             self.send_command_with_data(commands::MADCTL, &[0x00]).await?;
-            self.send_command_with_data(commands::COLMOD, &[self.color_mode.colmod_value()]).await?;
+            self.send_command_with_data(commands::COLMOD, &[chipone_colmod_value(self.pixel_format)]).await?;
 
             self.send_command(commands::DISPON).await?;
 
@@ -362,7 +343,6 @@ where
             total_transfer as f64 / 1000.0
         );
     }
-
 
 
 
@@ -504,7 +484,7 @@ where
         self.height as u32
     }
 
-    fn native_pixel_format(&self) -> DisplayPixelFormat {
-        DisplayPixelFormat::Rgb565
+    fn native_pixel_format(&self) -> PixelFormat {
+        PixelFormat::Rgb565
     }
 }

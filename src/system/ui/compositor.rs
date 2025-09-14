@@ -344,7 +344,7 @@ impl UICompositor {
         if let Some((cur, prev, next)) = self.current_prev_next() {
             if let Some(service) = self.display_service {
                 let fmt = service.pixel_format();
-                // Map DisplayService PixelFormat to SurfaceFormat (currently only Rgb565)
+                // Map unified PixelFormat to SurfaceFormat (currently only Rgb565)
                 let sfmt = crate::system::ui::canvas::SurfaceFormat::Rgb565;
                 wm.set_active_windows_with_format(&[prev, cur, next], sfmt).await;
             } else {
