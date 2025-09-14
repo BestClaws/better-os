@@ -2,7 +2,7 @@ use defmt::{debug, warn};
 
 use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::canvas::DrawingSurface as Canvas;
-use crate::system::ui::canvas::SurfaceFormat;
+use crate::system::hal::display::PixelFormat;
 use crate::system::ui::window::{Window, WindowHandle};
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;
@@ -106,7 +106,7 @@ impl WindowManager {
     }
 
     /// Set active windows and propagate pixel format for drawing surfaces.
-    pub async fn set_active_windows_with_format(&mut self, active: &[WindowHandle], format: SurfaceFormat) {
+    pub async fn set_active_windows_with_format(&mut self, active: &[WindowHandle], format: PixelFormat) {
         // Reuse the bpp path but set format explicitly
         // Reclaim resources from windows not in the active set
         for window in self.windows.iter_mut() {

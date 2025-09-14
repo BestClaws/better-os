@@ -1,6 +1,7 @@
 use core::marker::PhantomData;
 use heapless::Vec;
 use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
+use crate::system::hal::display::PixelFormat;
 
 /// Space-grade canvas implementation with LVGL-inspired dirty region tracking.
 /// 
@@ -17,11 +18,7 @@ use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
 /// list of dirty regions that need to be redrawn. The dirty region tracking is
 /// always enabled and optimized for performance - there's no overhead from enabling/disabling.
 ///
-/// Supported color format: `Rgb565`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SurfaceFormat { Rgb565 }
-
-impl SurfaceFormat { pub const fn bytes_per_pixel(&self) -> usize { match self { SurfaceFormat::Rgb565 => 2 } } }
+/// Supported pixel format: `PixelFormat::Rgb565` (other formats reserved for future use).
 
 pub struct DrawingSurface<'a> {
     buf: Option<&'a mut [u8]>,
@@ -30,7 +27,7 @@ pub struct DrawingSurface<'a> {
     /// Bytes per pixel for the underlying buffer (system-selected). Currently RGB565 => 2.
     pixel_bytes: usize,
     /// Logical pixel format carried by the surface
-    pixel_format: SurfaceFormat,
+    pixel_format: PixelFormat,
     /// Built-in dirty region tracking - always active and optimized
     dirty_regions: Vec<Rect, 8>,
     /// Current operation bounds for efficient region coalescing
@@ -46,7 +43,7 @@ impl<'a> DrawingSurface<'a> {
             width,
             height,
             pixel_bytes: 2,
-            pixel_format: SurfaceFormat::Rgb565,
+            pixel_format: PixelFormat::Rgb565,
             dirty_regions: {
                 let mut v: Vec<Rect, 8> = Vec::new();
                 v.push(Rect::new(Point::zero(), Size::new(width, height))).ok();
@@ -104,8 +101,8 @@ impl<'a> DrawingSurface<'a> {
     pub fn set_pixel_bytes(&mut self, bytes: usize) { self.pixel_bytes = bytes; }
 
     /// Set logical pixel format (updates bytes per pixel accordingly)
-    pub fn set_pixel_format(&mut self, fmt: SurfaceFormat) { self.pixel_format = fmt; self.pixel_bytes = fmt.bytes_per_pixel(); }
-    pub fn pixel_format(&self) -> SurfaceFormat { self.pixel_format }
+    pub fn set_pixel_format(&mut self, fmt: PixelFormat) { self.pixel_format = fmt; self.pixel_bytes = fmt.bytes_per_pixel(); }
+    pub fn pixel_format(&self) -> PixelFormat { self.pixel_format }
 
     /// Clears the dirty region, marking the canvas as fully flushed.
     pub fn flush(&mut self) {
@@ -289,6 +286,7 @@ impl<'a> DrawingSurface<'a> {
         }
     }
 }
+
 
 
 
@@ -480,6 +478,7 @@ impl Rasterizer for DrawingSurface<'_> {
         Rgb565((hi << 8) | lo)
     }
 }
+
 
 
 
