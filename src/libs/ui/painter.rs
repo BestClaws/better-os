@@ -1,4 +1,4 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888};
 use crate::libs::gfx::two_d::draw::Draw;
 
 use super::style::{Color, Fill, Stroke, CornerRadii};
@@ -15,12 +15,12 @@ impl<'a> Painter<'a> {
     }
 
     #[inline(always)]
-    fn to_rgb565(color: Color) -> Rgb565 {
-        Rgb565::from_rgb(color.r, color.g, color.b)
+    fn to_rgba(color: Color) -> Rgba8888 {
+        Rgba8888::opaque(color.r, color.g, color.b)
     }
 
     pub fn fill_rect(&mut self, rect: Rect, fill: Fill, corner: CornerRadii) {
-        let bg = Self::to_rgb565(fill.color);
+        let bg = Self::to_rgba(fill.color);
         let mut d = Draw::new(self.raster);
         d.rect(rect)
             .fill_color(bg)
@@ -29,7 +29,7 @@ impl<'a> Painter<'a> {
 
     pub fn stroke_rect(&mut self, rect: Rect, stroke: Stroke, corner: CornerRadii) {
         if stroke.thickness == 0 { return; }
-        let color = Self::to_rgb565(stroke.color);
+        let color = Self::to_rgba(stroke.color);
         let mut d = Draw::new(self.raster);
         d.rect(rect)
             .stroke(crate::libs::gfx::two_d::draw::stroke(stroke.thickness as i32, color))
@@ -45,7 +45,7 @@ impl<'a> Painter<'a> {
         let mut d = Draw::new(self.raster);
         d.line(p0, p1)
             .thickness(stroke.thickness as i32)
-            .color(Self::to_rgb565(stroke.color))
+            .color(Self::to_rgba(stroke.color))
             .draw();
     }
 }

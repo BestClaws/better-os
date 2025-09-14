@@ -1,7 +1,7 @@
 #![no_std]
 
 use crate::libs::gfx::two_d::raster::Rasterizer;
-use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888, Size};
+use crate::libs::gfx::two_d::types::{Point, Rect, Rgba8888, Size};
 
 /// High-performance bitmap font system for space-grade embedded applications.
 /// 
@@ -68,10 +68,10 @@ pub struct BitmapFont {
 /// Text rendering options for customization.
 #[derive(Clone, Copy, Debug)]
 pub struct TextOptions {
-    /// Text color
-    pub color: Rgb565,
+    /// Text color (premultiplied via stroke paths)
+    pub color: Rgba8888,
     /// Background color (for opaque rendering)
-    pub background_color: Option<Rgb565>,
+    pub background_color: Option<Rgba8888>,
     /// Enable anti-aliasing
     pub anti_alias: bool,
     /// Character spacing in pixels
@@ -83,7 +83,7 @@ pub struct TextOptions {
 impl Default for TextOptions {
     fn default() -> Self {
         Self {
-            color: Rgb565::WHITE,
+            color: Rgba8888::opaque(255,255,255),
             background_color: None,
             anti_alias: true,
             char_spacing: 0,
@@ -138,7 +138,7 @@ impl TextRenderer {
     /// 
     /// # Returns
     /// Self for method chaining
-    pub fn with_color(mut self, color: Rgb565) -> Self {
+    pub fn with_color(mut self, color: Rgba8888) -> Self {
         self.options.color = color;
         self
     }
@@ -150,7 +150,7 @@ impl TextRenderer {
     /// 
     /// # Returns
     /// Self for method chaining
-    pub fn with_background(mut self, background_color: Option<Rgb565>) -> Self {
+    pub fn with_background(mut self, background_color: Option<Rgba8888>) -> Self {
         self.options.background_color = background_color;
         self
     }
@@ -363,14 +363,8 @@ impl TextRenderer {
                 
                 if let Some(alpha) = self.get_atlas_pixel(atlas_px, atlas_py) {
                     if alpha > 0 {
-                        if let Some(bg_color) = self.options.background_color {
-                            // Opaque rendering
-                            let blended_color = self.options.color.blend_over_fast(bg_color, alpha);
-                            rasterizer.set_pixel(pixel_x, pixel_y, blended_color);
-                        } else {
-                            // Transparent rendering
-                            rasterizer.blend_pixel(pixel_x, pixel_y, self.options.color, alpha);
-                        }
+                        // Transparent rendering over whatever is present
+                        rasterizer.blend_pixel(pixel_x, pixel_y, self.options.color.with_alpha(alpha), 255);
                     }
                 }
             }
@@ -432,7 +426,7 @@ impl TextRenderer {
     /// * `pos` - Position to render the text
     /// * `text` - Text to render
     /// * `color` - Text color
-    pub fn draw_text_simple(rasterizer: &mut dyn Rasterizer, font: &'static BitmapFont, pos: Point, text: &str, color: Rgb565) {
+    pub fn draw_text_simple(rasterizer: &mut dyn Rasterizer, font: &'static BitmapFont, pos: Point, text: &str, color: Rgba8888) {
         let renderer = TextRenderer::new(font).with_color(color);
         renderer.draw_text(rasterizer, pos, text);
     }
@@ -450,8 +444,8 @@ impl TextRenderer {
         font: &'static BitmapFont,
         pos: Point,
         text: &str,
-        color: Rgb565,
-        background_color: Rgb565,
+        color: Rgba8888,
+        background_color: Rgba8888,
     ) {
         let renderer = TextRenderer::new(font)
             .with_color(color)
@@ -471,7 +465,7 @@ impl TextRenderer {
         font: &'static BitmapFont,
         rect: Rect,
         text: &str,
-        color: Rgb565,
+        color: Rgba8888,
     ) {
         let renderer = TextRenderer::new(font).with_color(color);
         let text_width = renderer.measure_text(text);

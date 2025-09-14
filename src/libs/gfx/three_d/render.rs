@@ -1,7 +1,7 @@
 #![no_std]
 
 use crate::util::math::primitives::{Quaternion, Vec3};
-use crate::libs::gfx::two_d::types::{Point, Rgb565};
+use crate::libs::gfx::two_d::types::{Point, Rgba8888};
 use crate::libs::gfx::two_d::Rasterizer;
 use crate::libs::gfx::two_d::draw::Draw as Draw2D;
 use crate::libs::gfx::Model;
@@ -69,12 +69,12 @@ pub struct RenderOptions {
     /// Blends subpixel coverage on scanline edges (slower; reduces jaggies and seam visibility).
     pub aa_mode: AntiAliasing,
     /// Ambient light color (per-channel 5/6/5 expanded to 8-bit internally).
-    pub ambient_color: Rgb565,
+    pub ambient_color: Rgba8888,
     /// Directional light color (per-channel 5/6/5 expanded to 8-bit internally).
-    pub directional_color: Rgb565,
+    pub directional_color: Rgba8888,
     /// Base model color (per-channel 5/6/5 expanded to 8-bit internally).
     /// Final color is: model × (ambient + lambert × directional).
-    pub model_color: Rgb565,
+    pub model_color: Rgba8888,
 }
 
 /// Pre-computed projection matrix for efficient perspective projection.
@@ -145,7 +145,7 @@ pub struct OptimizedTriangle {
     /// Triangle depth for sorting
     pub depth: f32,
     /// Triangle color
-    pub color: Rgb565,
+    pub color: Rgba8888,
 }
 
 /// High-performance rendering context that caches expensive calculations.
@@ -227,28 +227,22 @@ pub struct RenderStats {
 }
 
 #[inline(always)]
-fn grayscale(intensity: f32) -> Rgb565 {
+fn grayscale(intensity: f32) -> Rgba8888 {
     let clamped = intensity.clamp(0.0, 1.0);
     let v8 = (clamped * 255.0).round() as u8;
-    Rgb565::from_rgb(v8, v8, v8)
+    Rgba8888::opaque(v8, v8, v8)
 }
 
 #[inline(always)]
-fn rgb565_to_rgb8(c: Rgb565) -> (u8, u8, u8) {
-    let r5 = ((c.0 >> 11) & 0x1F) as u8;
-    let g6 = ((c.0 >> 5) & 0x3F) as u8;
-    let b5 = (c.0 & 0x1F) as u8;
-    let r = ((r5 as u16 * 527 + 23) >> 6) as u8;
-    let g = ((g6 as u16 * 259 + 33) >> 6) as u8;
-    let b = ((b5 as u16 * 527 + 23) >> 6) as u8;
-    (r, g, b)
+fn rgba_to_rgb8(c: Rgba8888) -> (u8, u8, u8) {
+    (c.r, c.g, c.b)
 }
 
 #[inline(always)]
-fn modulate_lit_color(model: Rgb565, ambient: Rgb565, directional: Rgb565, lambert: f32) -> Rgb565 {
-    let (mr, mg, mb) = rgb565_to_rgb8(model);
-    let (ar, ag, ab) = rgb565_to_rgb8(ambient);
-    let (dr, dg, db) = rgb565_to_rgb8(directional);
+fn modulate_lit_color(model: Rgba8888, ambient: Rgba8888, directional: Rgba8888, lambert: f32) -> Rgba8888 {
+    let (mr, mg, mb) = rgba_to_rgb8(model);
+    let (ar, ag, ab) = rgba_to_rgb8(ambient);
+    let (dr, dg, db) = rgba_to_rgb8(directional);
     let i = lambert.clamp(0.0, 1.0);
     let fr = (ar as f32 / 255.0) + (dr as f32 / 255.0) * i;
     let fg = (ag as f32 / 255.0) + (dg as f32 / 255.0) * i;
@@ -256,7 +250,7 @@ fn modulate_lit_color(model: Rgb565, ambient: Rgb565, directional: Rgb565, lambe
     let rr = ((mr as f32) * fr).clamp(0.0, 255.0) as u8;
     let rg = ((mg as f32) * fg).clamp(0.0, 255.0) as u8;
     let rb = ((mb as f32) * fb).clamp(0.0, 255.0) as u8;
-    Rgb565::from_rgb(rr, rg, rb)
+    Rgba8888::opaque(rr, rg, rb)
 }
 
 /// Perspective projection from camera space (camera at origin looking +Z).
@@ -283,7 +277,7 @@ fn project_perspective(v: Vec3, fov_deg: f32, w: u32, h: u32, near_z: f32, clip_
 }
 
 #[derive(Clone, Copy)]
-struct FlatTriangle { p0: Point, p1: Point, p2: Point, color: Rgb565 }
+struct FlatTriangle { p0: Point, p1: Point, p2: Point, color: Rgba8888 }
 
 #[derive(Clone, Copy)]
 struct GouraudTriangle { p0: Point, p1: Point, p2: Point, i0: f32, i1: f32, i2: f32 }
@@ -380,7 +374,7 @@ fn fill_triangle<R: Rasterizer>(r: &mut R, tri: &FlatTriangle, aa: bool) {
 }
 
 /// Gouraud scanline fill (interpolate intensity along edges and across span).
-fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgb565, ambient: Rgb565, directional: Rgb565, aa: bool) {
+fn fill_triangle_gouraud<R: Rasterizer>(r: &mut R, tri: &GouraudTriangle, range: (f32, f32), model: Rgba8888, ambient: Rgba8888, directional: Rgba8888, aa: bool) {
     let mut pts = [(tri.p0, tri.i0), (tri.p1, tri.i1), (tri.p2, tri.i2)];
     pts.sort_by_key(|p| p.0.y);
     let (top, mid, bot) = (pts[0], pts[1], pts[2]);
@@ -701,7 +695,7 @@ fn render_triangles_optimized<R: Rasterizer>(
             };
             
             let lambert_eff = if dir_on { intensity } else { 0.0 };
-            let amb = if amb_on { options.ambient_color } else { Rgb565::from_rgb(0, 0, 0) };
+            let amb = if amb_on { options.ambient_color } else { Rgba8888::opaque(0, 0, 0) };
             modulate_lit_color(options.model_color, amb, options.directional_color, lambert_eff)
         } else {
             options.model_color
@@ -716,15 +710,15 @@ fn render_triangles_optimized<R: Rasterizer>(
         if matches!(options.view_mode, ViewMode::Wireframe | ViewMode::FillAndWireframe) {
             {
                 let mut d2 = Draw2D::new(raster);
-                d2.line(p0, p1).color(Rgb565::from_rgb(0, 255, 0)).draw();
+                d2.line(p0, p1).color(Rgba8888::opaque(0, 255, 0)).draw();
             }
             {
                 let mut d2 = Draw2D::new(raster);
-                d2.line(p1, p2).color(Rgb565::from_rgb(0, 255, 0)).draw();
+                d2.line(p1, p2).color(Rgba8888::opaque(0, 255, 0)).draw();
             }
             {
                 let mut d2 = Draw2D::new(raster);
-                d2.line(p2, p0).color(Rgb565::from_rgb(0, 255, 0)).draw();
+                d2.line(p2, p0).color(Rgba8888::opaque(0, 255, 0)).draw();
             }
             stats.edges_drawn += 3;
         }

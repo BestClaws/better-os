@@ -1,7 +1,7 @@
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use crate::libs::gfx::two_d::{Rect, Rgb565};
+use crate::libs::gfx::two_d::{Rect, Rgba8888};
 use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_SIZE, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR
 };
@@ -509,7 +509,7 @@ impl UICompositor {
                 let frame = animation.animate_frame(eased_progress, direction, width);
 
                 // Clear and compose frame
-                surface.clear_rgb(Rgb565::BLACK);
+                surface.clear_rgb(Rgba8888::opaque(0,0,0));
                 // Blit source window (contained within closure to keep borrows local)
                 let _ = wm.with_surface(source_h, |src| {
                     let bpp = service.pixel_format().bytes_per_pixel();
@@ -570,7 +570,7 @@ impl UICompositor {
     /// Optimized frame composition with performance improvements
     async fn compose_frame_optimized<'a>(&mut self, wm: &mut WindowManager, output_surface: &mut DrawingSurface<'a>) {
         // Clear to black background
-        output_surface.clear_rgb(Rgb565::BLACK);
+        output_surface.clear_rgb(Rgba8888::opaque(0,0,0));
 
         if self.windows_order.is_empty() {
             return;

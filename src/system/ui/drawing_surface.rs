@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 use heapless::Vec;
-use crate::libs::gfx::two_d::{Rasterizer, Rgb565, Rect, Point, Size};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888};
 use crate::system::hal::display::PixelFormat;
 
 /// Space-grade surface implementation with LVGL-inspired dirty region tracking.
@@ -177,10 +177,15 @@ impl<'a> DrawingSurface<'a> {
         self.buf = Some(buffer);
     }
 
-    pub fn clear_rgb(&mut self, color: Rgb565) {
-        let raw = color.into_storage();
-        let hi = (raw >> 8) as u8;
-        let lo = raw as u8;
+    pub fn clear_rgb(&mut self, color: Rgba8888) {
+        // Convert RGBA8888 to surface format (currently RGB565) when writing buffer directly
+        // Keep logic here to avoid coupling two_d with surface formats
+        let r5: u16 = ((color.r as u16) >> 3) & 0x1F;
+        let g6: u16 = ((color.g as u16) >> 2) & 0x3F;
+        let b5: u16 = ((color.b as u16) >> 3) & 0x1F;
+        let packed: u16 = (r5 << 11) | (g6 << 5) | b5;
+        let hi = (packed >> 8) as u8;
+        let lo = packed as u8;
         for chunk in self._buf_mut().chunks_mut(2) {
             if chunk.len() == 2 {
                 chunk[0] = hi;
@@ -232,7 +237,7 @@ impl<'a> DrawingSurface<'a> {
     /// - Efficient dirty region tracking
     /// - Minimal branching for better performance
     #[inline(always)]
-    fn set_pixel_internal(&mut self, x: i32, y: i32, color: Rgb565) {
+    fn set_pixel_internal(&mut self, x: i32, y: i32, color: Rgba8888) {
         // Fast bounds checking with early exit
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
@@ -240,7 +245,10 @@ impl<'a> DrawingSurface<'a> {
         
         // Optimized pixel setting using direct memory access
         let idx = ((x + y * self.width) * 2) as usize;
-        let raw = color.into_storage();
+        let r5: u16 = ((color.r as u16) >> 3) & 0x1F;
+        let g6: u16 = ((color.g as u16) >> 2) & 0x3F;
+        let b5: u16 = ((color.b as u16) >> 3) & 0x1F;
+        let raw: u16 = (r5 << 11) | (g6 << 5) | b5;
         let buf = self._buf_mut();
         buf[idx] = (raw >> 8) as u8;
         buf[idx + 1] = raw as u8;
@@ -263,7 +271,7 @@ impl<'a> DrawingSurface<'a> {
     /// - Efficient memory access patterns
     /// - Minimal branching for better performance
     #[inline(always)]
-    fn blend_pixel_internal(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
+    fn blend_pixel_internal(&mut self, x: i32, y: i32, color: Rgba8888, alpha: u8) {
         // Fast bounds checking with early exit
         if x < 0 || y < 0 { return; }
         let (x, y) = (x as u32, y as u32);
@@ -274,9 +282,24 @@ impl<'a> DrawingSurface<'a> {
         let buf = self._buf_mut();
         let hi = buf[idx] as u16;
         let lo = buf[idx + 1] as u16;
-        let bg = Rgb565((hi << 8) | lo);
-        let out = color.blend_over_fast(bg, alpha);
-        let raw = out.into_storage();
+        let bg_raw = (hi << 8) | lo;
+        // Expand RGB565 to 8-bit channels
+        let br = (((bg_raw >> 11) & 0x1F) as u16 * 527 + 23) >> 6;
+        let bg8 = br as u8;
+        let gg = (((bg_raw >> 5) & 0x3F) as u16 * 259 + 33) >> 6;
+        let gg8 = gg as u8;
+        let bb = ((bg_raw & 0x1F) as u16 * 527 + 23) >> 6;
+        let bb8 = bb as u8;
+        // Compose incoming alpha with coverage
+        let cov = alpha as u32;
+        let a_src = color.a as u32;
+        let a = ((cov * a_src + 127) / 255) as u8;
+        // Blend in 8-bit, then quantize back to 565
+        let ia = 255 - a as u16;
+        let r = ((color.r as u16 * a as u16 + bg8 as u16 * ia + 127) / 255) as u8;
+        let g = ((color.g as u16 * a as u16 + gg8 as u16 * ia + 127) / 255) as u8;
+        let b = ((color.b as u16 * a as u16 + bb8 as u16 * ia + 127) / 255) as u8;
+        let raw: u16 = (((r as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | (((b as u16) >> 3));
         buf[idx] = (raw >> 8) as u8;
         buf[idx + 1] = raw as u8;
         
@@ -340,7 +363,7 @@ impl Rasterizer for DrawingSurface<'_> {
     /// 
     /// This method always tracks dirty regions efficiently. During batched
     /// operations, dirty region updates are deferred for maximum performance.
-    fn set_pixel(&mut self, x: i32, y: i32, color: Rgb565) {
+    fn set_pixel(&mut self, x: i32, y: i32, color: Rgba8888) {
         self.set_pixel_internal(x, y, color);
     }
     
@@ -348,15 +371,15 @@ impl Rasterizer for DrawingSurface<'_> {
     /// 
     /// This method always tracks dirty regions efficiently. During batched
     /// operations, dirty region updates are deferred for maximum performance.
-    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgb565, alpha: u8) {
-        self.blend_pixel_internal(x, y, color, alpha);
+    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
+        self.blend_pixel_internal(x, y, color, coverage);
     }
     
     /// Optimized horizontal pixel setting with bulk operations.
     /// 
     /// This method provides an optimized path for setting multiple pixels
     /// in a horizontal line, which is common in many rendering operations.
-    fn set_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: Rgb565) {
+    fn set_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: Rgba8888) {
         // Fast bounds checking
         if y < 0 || y >= self.height as i32 { return; }
         if x < 0 || x + width as i32 > self.width as i32 { return; }
@@ -370,7 +393,10 @@ impl Rasterizer for DrawingSurface<'_> {
         // Use optimized bulk memory operations
         let y_offset = y as u32 * self.width;
         let start_idx = ((start_x + y_offset) * 2) as usize;
-        let raw = color.into_storage();
+        let r5: u16 = ((color.r as u16) >> 3) & 0x1F;
+        let g6: u16 = ((color.g as u16) >> 2) & 0x3F;
+        let b5: u16 = ((color.b as u16) >> 3) & 0x1F;
+        let raw: u16 = (r5 << 11) | (g6 << 5) | b5;
         let hi_byte = (raw >> 8) as u8;
         let lo_byte = raw as u8;
         
@@ -394,7 +420,7 @@ impl Rasterizer for DrawingSurface<'_> {
     /// 
     /// This method provides an optimized path for setting multiple pixels
     /// in a vertical line, which is common in many rendering operations.
-    fn set_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: Rgb565) {
+    fn set_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: Rgba8888) {
         // Fast bounds checking
         if x < 0 || x >= self.width as i32 { return; }
         if y < 0 || y + height as i32 > self.height as i32 { return; }
@@ -406,7 +432,10 @@ impl Rasterizer for DrawingSurface<'_> {
         if actual_height == 0 { return; }
         
         // Use optimized bulk memory operations
-        let raw = color.into_storage();
+        let r5: u16 = ((color.r as u16) >> 3) & 0x1F;
+        let g6: u16 = ((color.g as u16) >> 2) & 0x3F;
+        let b5: u16 = ((color.b as u16) >> 3) & 0x1F;
+        let raw: u16 = (r5 << 11) | (g6 << 5) | b5;
         let hi_byte = (raw >> 8) as u8;
         let lo_byte = raw as u8;
         
@@ -431,7 +460,7 @@ impl Rasterizer for DrawingSurface<'_> {
     /// 
     /// This method provides an optimized path for setting multiple pixels
     /// in a rectangular region, which is common in many rendering operations.
-    fn set_pixels_rect(&mut self, rect: Rect, color: Rgb565) {
+    fn set_pixels_rect(&mut self, rect: Rect, color: Rgba8888) {
         // Fast bounds checking
         if rect.size.width == 0 || rect.size.height == 0 { return; }
         
@@ -439,7 +468,10 @@ impl Rasterizer for DrawingSurface<'_> {
         let Some(clipped_rect) = rect.intersection(&clip) else { return; };
         
         // Use optimized bulk memory operations
-        let raw = color.into_storage();
+        let r5: u16 = ((color.r as u16) >> 3) & 0x1F;
+        let g6: u16 = ((color.g as u16) >> 2) & 0x3F;
+        let b5: u16 = ((color.b as u16) >> 3) & 0x1F;
+        let raw: u16 = (r5 << 11) | (g6 << 5) | b5;
         let hi_byte = (raw >> 8) as u8;
         let lo_byte = raw as u8;
         
@@ -464,18 +496,22 @@ impl Rasterizer for DrawingSurface<'_> {
     /// 
     /// This method provides pixel read-back functionality for advanced
     /// blending algorithms and effects.
-    fn get_pixel(&self, x: i32, y: i32) -> Rgb565 {
+    fn get_pixel(&self, x: i32, y: i32) -> Rgba8888 {
         // Fast bounds checking
-        if x < 0 || y < 0 { return Rgb565::BLACK; }
+        if x < 0 || y < 0 { return Rgba8888::opaque(0,0,0); }
         let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return Rgb565::BLACK; }
+        if x >= self.width || y >= self.height { return Rgba8888::opaque(0,0,0); }
         
         // Read pixel data
         let idx = ((x + y * self.width) * 2) as usize;
         let buf = self._buf();
         let hi = buf[idx] as u16;
         let lo = buf[idx + 1] as u16;
-        Rgb565((hi << 8) | lo)
+        let raw = (hi << 8) | lo;
+        let r = (((raw >> 11) & 0x1F) as u16 * 527 + 23) >> 6;
+        let g = (((raw >> 5) & 0x3F) as u16 * 259 + 33) >> 6;
+        let b = ((raw & 0x1F) as u16 * 527 + 23) >> 6;
+        Rgba8888::opaque(r as u8, g as u8, b as u8)
     }
 }
 

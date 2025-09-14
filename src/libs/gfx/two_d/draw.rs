@@ -3,7 +3,7 @@
 use crate::libs::gfx::two_d::gradients::{LinearGradient, RadialGradient};
 use micromath::F32Ext;
 use crate::libs::gfx::two_d::raster::Rasterizer;
-use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888};
+use crate::libs::gfx::two_d::types::{Point, Rect, Rgba8888};
 use crate::libs::gfx::two_d::primitives as prim;
 use crate::libs::gfx::two_d::Size;
 use crate::libs::gfx::two_d::paint::{PixelSampler, Brush};
@@ -57,9 +57,9 @@ fn fill_rect_with<P: PixelSampler>(r: &mut dyn Rasterizer, rect: Rect, paint: &P
     let Some(rc) = clip_rect_to_target(rect, Size::new(r.width(), r.height())) else { return; };
     for y in rc.top_left.y..=rc.bottom() {
         for x in rc.top_left.x..=rc.right() {
-            let (c, a) = paint.sample(x, y);
-            if a == 255 { r.set_pixel(x, y, c); }
-            else if a != 0 { r.blend_pixel(x, y, c, a); }
+            let c = paint.sample(x, y);
+            if c.a == 255 { r.set_pixel(x, y, c); }
+            else if c.a != 0 { r.blend_pixel(x, y, c, 255); }
         }
     }
 }
@@ -70,9 +70,9 @@ fn fill_rect_masked_with<P: PixelSampler>(r: &mut dyn Rasterizer, rect: Rect, ra
     for y in rc.top_left.y..=rc.bottom() {
         for x in rc.top_left.x..=rc.right() {
             if inside_rounded_rect_nonuniform(x, y, rect, radii) {
-                let (c, a) = paint.sample(x, y);
-                if a == 255 { r.set_pixel(x, y, c); }
-                else if a != 0 { r.blend_pixel(x, y, c, a); }
+                let c = paint.sample(x, y);
+                if c.a == 255 { r.set_pixel(x, y, c); }
+                else if c.a != 0 { r.blend_pixel(x, y, c, 255); }
             }
         }
     }
@@ -81,13 +81,13 @@ fn fill_rect_masked_with<P: PixelSampler>(r: &mut dyn Rasterizer, rect: Rect, ra
 /// Stroke style for outlines and paths.
 #[derive(Clone, Copy, Debug)]
 pub struct StrokeStyle {
-    pub color: Rgb565,
+    pub color: Rgba8888,
     pub thickness: i32,
     pub aa: bool,
 }
 
 impl StrokeStyle {
-    pub const fn new(color: Rgb565, thickness: i32) -> Self { Self { color, thickness, aa: true } }
+    pub const fn new(color: Rgba8888, thickness: i32) -> Self { Self { color, thickness, aa: true } }
     pub const fn with_aa(mut self, aa: bool) -> Self { self.aa = aa; self }
 }
 
@@ -107,7 +107,7 @@ impl CornerRadii {
 
 /// Optional outer shadow spec for rounded rectangles.
 #[derive(Clone, Copy, Debug)]
-pub struct OuterShadow { pub blur_radius: i32, pub color: Rgb565, pub max_alpha: u8 }
+pub struct OuterShadow { pub blur_radius: i32, pub color: Rgba8888, pub max_alpha: u8 }
 
 /// Rectangle builder supporting stroke, fill, radii and gradient.
 pub struct RectBuilder<'a> {
@@ -132,7 +132,7 @@ impl<'a> RectBuilder<'a> {
     pub fn corner_radii(mut self, radii: CornerRadii) -> Self { self.radii = radii; self }
 
     /// Apply a solid fill color.
-    pub fn fill_color(mut self, color: Rgb565) -> Self { self.fill = Some(Brush::solid(color)); self }
+    pub fn fill_color(mut self, color: Rgba8888) -> Self { self.fill = Some(Brush::solid(color)); self }
 
     /// Apply an RGBA fill color (alpha-blended).
     pub fn fill_rgba(mut self, color: Rgba8888) -> Self { self.fill = Some(Brush::rgba(color)); self }
@@ -144,16 +144,16 @@ impl<'a> RectBuilder<'a> {
     pub fn stroke(mut self, style: StrokeStyle) -> Self { self.stroke = Some(style); self }
 
     /// Convenience: set stroke color and thickness.
-    pub fn stroke_color(mut self, color: Rgb565) -> Self { self.stroke = Some(StrokeStyle { color, thickness: 1, aa: true }); self }
+    pub fn stroke_color(mut self, color: Rgba8888) -> Self { self.stroke = Some(StrokeStyle { color, thickness: 1, aa: true }); self }
 
     /// Convenience: set stroke thickness.
     pub fn stroke_width(mut self, thickness: i32) -> Self {
-        if let Some(mut s) = self.stroke { s.thickness = thickness; self.stroke = Some(s); } else { self.stroke = Some(StrokeStyle { color: Rgb565::WHITE, thickness, aa: true }); }
+        if let Some(mut s) = self.stroke { s.thickness = thickness; self.stroke = Some(s); } else { self.stroke = Some(StrokeStyle { color: Rgba8888::opaque(255,255,255), thickness, aa: true }); }
         self
     }
 
     /// Add an outer rounded-rect shadow drawn before fill and stroke.
-    pub fn outer_shadow(mut self, blur_radius: i32, color: Rgb565, max_alpha: u8) -> Self {
+    pub fn outer_shadow(mut self, blur_radius: i32, color: Rgba8888, max_alpha: u8) -> Self {
         self.outer_shadow = Some(OuterShadow { blur_radius, color, max_alpha });
         self
     }
@@ -195,7 +195,7 @@ impl<'a> RectBuilder<'a> {
                 Brush::Linear(grad) => {
                     // Use rect-resolved gradient spec
                     // Expect a concrete LinearGradient was provided via Brush::Linear
-                    let grad = if let Some(Brush::Linear(g)) = self.fill { g } else { LinearGradient::new(self.rect.top_left, Point::new(self.rect.right(), self.rect.top_left.y), Rgb565::BLACK, Rgb565::WHITE) };
+                    let grad = if let Some(Brush::Linear(g)) = self.fill { g } else { LinearGradient::new(self.rect.top_left, Point::new(self.rect.right(), self.rect.top_left.y), Rgba8888::opaque(0,0,0), Rgba8888::opaque(255,255,255)) };
                     let r = self.radii.max_uniform();
                     if self.radii.is_uniform() && r == 0 {
                         fill_rect_with(self.raster, self.rect, &grad);
@@ -241,9 +241,9 @@ pub struct LineBuilder<'a> {
 impl<'a> LineBuilder<'a> {
     #[inline(always)]
     fn new(raster: &'a mut dyn Rasterizer, from: Point, to: Point) -> Self {
-        Self { raster, from, to, style: StrokeStyle { color: Rgb565::WHITE, thickness: 1, aa: true }, rgba: None }
+        Self { raster, from, to, style: StrokeStyle { color: Rgba8888::opaque(255,255,255), thickness: 1, aa: true }, rgba: None }
     }
-    pub fn color(mut self, color: Rgb565) -> Self { self.style.color = color; self }
+    pub fn color(mut self, color: Rgba8888) -> Self { self.style.color = color; self }
     pub fn color_rgba(mut self, color: Rgba8888) -> Self { self.rgba = Some(color); self }
     pub fn thickness(mut self, thickness: i32) -> Self { self.style.thickness = thickness; self }
     pub fn aa(mut self, aa: bool) -> Self { self.style.aa = aa; self }
@@ -259,7 +259,7 @@ impl<'a> LineBuilder<'a> {
                 let len = (dx * dx + dy * dy).sqrt();
                 if len == 0.0 {
                     let r = (self.style.thickness / 2).max(1);
-                    prim::fill_circle(self.raster, self.from, r, rgba.to_rgb565());
+                    prim::fill_circle(self.raster, self.from, r, rgba);
                 } else {
                     let nx = -dy / len; let ny = dx / len;
                     let half = (self.style.thickness as f32) / 2.0;
@@ -297,10 +297,10 @@ pub struct PathBuilder<'a> {
 impl<'a> PathBuilder<'a> {
     #[inline(always)]
     fn new(raster: &'a mut dyn Rasterizer) -> Self {
-        Self { raster, pen: None, start: None, style: StrokeStyle { color: Rgb565::WHITE, thickness: 1, aa: true } }
+        Self { raster, pen: None, start: None, style: StrokeStyle { color: Rgba8888::opaque(255,255,255), thickness: 1, aa: true } }
     }
     pub fn stroke(mut self, style: StrokeStyle) -> Self { self.style = style; self }
-    pub fn color(mut self, color: Rgb565) -> Self { self.style.color = color; self }
+    pub fn color(mut self, color: Rgba8888) -> Self { self.style.color = color; self }
     pub fn thickness(mut self, thickness: i32) -> Self { self.style.thickness = thickness; self }
     pub fn aa(mut self, aa: bool) -> Self { self.style.aa = aa; self }
 
@@ -402,25 +402,25 @@ fn approximate_cubic(r: &mut dyn Rasterizer, p0: Point, c1: Point, c2: Point, p1
 pub enum LinearMode { Horizontal, Vertical, Angle(f32) }
 
 #[derive(Clone, Copy, Debug)]
-pub struct GradientSpec { pub mode: LinearMode, pub a: Rgb565, pub b: Rgb565 }
+pub struct GradientSpec { pub mode: LinearMode, pub a: Rgba8888, pub b: Rgba8888 }
 
 #[inline(always)]
-pub fn gradient(a: Rgb565, b: Rgb565) -> GradientSpec { GradientSpec { mode: LinearMode::Horizontal, a, b } }
+pub fn gradient(a: Rgba8888, b: Rgba8888) -> GradientSpec { GradientSpec { mode: LinearMode::Horizontal, a, b } }
 
 #[inline(always)]
-pub fn gradient_vertical(a: Rgb565, b: Rgb565) -> GradientSpec { GradientSpec { mode: LinearMode::Vertical, a, b } }
+pub fn gradient_vertical(a: Rgba8888, b: Rgba8888) -> GradientSpec { GradientSpec { mode: LinearMode::Vertical, a, b } }
 
 #[inline(always)]
-pub fn gradient_angle(deg: f32, a: Rgb565, b: Rgb565) -> GradientSpec { GradientSpec { mode: LinearMode::Angle(deg), a, b } }
+pub fn gradient_angle(deg: f32, a: Rgba8888, b: Rgba8888) -> GradientSpec { GradientSpec { mode: LinearMode::Angle(deg), a, b } }
 
 #[inline(always)]
-pub fn stroke(thickness: i32, color: Rgb565) -> StrokeStyle { StrokeStyle { color, thickness, aa: true } }
+pub fn stroke(thickness: i32, color: Rgba8888) -> StrokeStyle { StrokeStyle { color, thickness, aa: true } }
 
 #[derive(Clone, Copy, Debug)]
-pub struct RadialSpec { pub center: Point, pub radius: u32, pub inner: Rgb565, pub outer: Rgb565 }
+pub struct RadialSpec { pub center: Point, pub radius: u32, pub inner: Rgba8888, pub outer: Rgba8888 }
 
 #[inline(always)]
-pub fn radial(center: Point, radius: u32, inner: Rgb565, outer: Rgb565) -> RadialSpec { RadialSpec { center, radius, inner, outer } }
+pub fn radial(center: Point, radius: u32, inner: Rgba8888, outer: Rgba8888) -> RadialSpec { RadialSpec { center, radius, inner, outer } }
 
 // ===== Arc builder =====
 
@@ -430,15 +430,15 @@ pub struct ArcBuilder<'a> {
     radius: i32,
     start: f32,
     end: f32,
-    color: Rgb565,
+    color: Rgba8888,
 }
 
 impl<'a> ArcBuilder<'a> {
     #[inline(always)]
     fn new(raster: &'a mut dyn Rasterizer, center: Point, radius: i32, start: f32, end: f32) -> Self {
-        Self { raster, center, radius, start, end, color: Rgb565::WHITE }
+        Self { raster, center, radius, start, end, color: Rgba8888::opaque(255,255,255) }
     }
-    pub fn color(mut self, color: Rgb565) -> Self { self.color = color; self }
+    pub fn color(mut self, color: Rgba8888) -> Self { self.color = color; self }
     pub fn draw(self) { prim::draw_arc_aa(self.raster, self.center, self.radius, self.start, self.end, self.color); }
 }
 
@@ -511,7 +511,7 @@ fn inside_rounded_rect_nonuniform(x: i32, y: i32, rect: Rect, radii: CornerRadii
     false
 }
 
-fn fill_rect_nonuniform_solid(r: &mut dyn Rasterizer, rect: Rect, radii: CornerRadii, color: Rgb565) {
+fn fill_rect_nonuniform_solid(r: &mut dyn Rasterizer, rect: Rect, radii: CornerRadii, color: Rgba8888) {
     for y in rect.top_left.y..=rect.bottom() {
         for x in rect.top_left.x..=rect.right() {
             if inside_rounded_rect_nonuniform(x, y, rect, radii) { r.set_pixel(x, y, color); }
@@ -520,16 +520,15 @@ fn fill_rect_nonuniform_solid(r: &mut dyn Rasterizer, rect: Rect, radii: CornerR
 }
 
 fn fill_rect_nonuniform_rgba(r: &mut dyn Rasterizer, rect: Rect, radii: CornerRadii, color: Rgba8888) {
-    let rgb = color.to_rgb565();
     let alpha = color.a;
     if alpha == 0 { return; }
     if alpha == 255 {
-        fill_rect_nonuniform_solid(r, rect, radii, rgb);
+        fill_rect_nonuniform_solid(r, rect, radii, color);
         return;
     }
     for y in rect.top_left.y..=rect.bottom() {
         for x in rect.top_left.x..=rect.right() {
-            if inside_rounded_rect_nonuniform(x, y, rect, radii) { r.blend_pixel(x, y, rgb, alpha); }
+            if inside_rounded_rect_nonuniform(x, y, rect, radii) { r.blend_pixel(x, y, color, alpha); }
         }
     }
 }

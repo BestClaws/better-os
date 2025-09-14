@@ -1,6 +1,6 @@
 #![no_std]
 
-use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Size};
+use crate::libs::gfx::two_d::types::{Point, Rect, Rgba8888, Size};
 
 /// High-performance linear gradient with optimized sampling algorithms.
 /// 
@@ -19,18 +19,19 @@ pub struct LinearGradient {
     /// End point of the gradient
     pub end: Point,
     /// Start color (t=0.0)
-    pub start_color: Rgb565,
+    pub start_color: Rgba8888,
     /// End color (t=1.0)
-    pub end_color: Rgb565,
+    pub end_color: Rgba8888,
     /// Precomputed gradient vector components (16.16 fixed point)
     gradient_dx: i32,
     gradient_dy: i32,
     /// Precomputed gradient length squared (16.16 fixed point)
     gradient_length_squared: i32,
-    /// Precomputed color deltas for fast interpolation
+    /// Precomputed color deltas for fast interpolation (including alpha)
     color_delta_r: i16,
     color_delta_g: i16,
     color_delta_b: i16,
+    color_delta_a: i16,
 }
 
 /// High-performance radial gradient with optimized distance calculations.
@@ -50,20 +51,21 @@ pub struct RadialGradient {
     /// Maximum radius of the gradient
     pub radius: u32,
     /// Inner color (distance = 0)
-    pub inner_color: Rgb565,
+    pub inner_color: Rgba8888,
     /// Outer color (distance = radius)
-    pub outer_color: Rgb565,
+    pub outer_color: Rgba8888,
     /// Precomputed radius squared (16.16 fixed point)
     radius_squared: i32,
-    /// Precomputed color deltas for fast interpolation
+    /// Precomputed color deltas for fast interpolation (including alpha)
     color_delta_r: i16,
     color_delta_g: i16,
     color_delta_b: i16,
+    color_delta_a: i16,
 }
 
 /// Fast color interpolation using fixed-point arithmetic.
 /// 
-/// This function performs linear interpolation between two RGB565 colors
+/// This function performs linear interpolation between two RGBA8888 colors
 /// using 16.16 fixed-point arithmetic for maximum performance.
 /// 
 /// # Arguments
@@ -72,29 +74,15 @@ pub struct RadialGradient {
 /// * `t_fixed` - Interpolation parameter in 16.16 fixed point format
 /// 
 /// # Returns
-/// Interpolated RGB565 color
+/// Interpolated RGBA8888 color
 #[inline(always)]
-fn interpolate_rgb565_fixed(start: Rgb565, end: Rgb565, t_fixed: i32) -> Rgb565 {
-    // Extract color components with 8-bit precision for interpolation
-    let start_r = ((start.0 >> 11) & 0x1F) as i32;
-    let start_g = ((start.0 >> 5) & 0x3F) as i32;
-    let start_b = (start.0 & 0x1F) as i32;
-    
-    let end_r = ((end.0 >> 11) & 0x1F) as i32;
-    let end_g = ((end.0 >> 5) & 0x3F) as i32;
-    let end_b = (end.0 & 0x1F) as i32;
-    
+fn interpolate_rgba8888_fixed(start: Rgba8888, end: Rgba8888, t_fixed: i32) -> Rgba8888 {
     // Interpolate using fixed-point arithmetic (t_fixed is 16.16 format)
-    let result_r = start_r + (((end_r - start_r) * t_fixed) >> 16);
-    let result_g = start_g + (((end_g - start_g) * t_fixed) >> 16);
-    let result_b = start_b + (((end_b - start_b) * t_fixed) >> 16);
-    
-    // Clamp to valid ranges and pack back into RGB565
-    let r = (result_r.clamp(0, 31) as u16) << 11;
-    let g = (result_g.clamp(0, 63) as u16) << 5;
-    let b = (result_b.clamp(0, 31) as u16);
-    
-    Rgb565(r | g | b)
+    let ir = start.r as i32 + (((end.r as i32 - start.r as i32) * t_fixed) >> 16);
+    let ig = start.g as i32 + (((end.g as i32 - start.g as i32) * t_fixed) >> 16);
+    let ib = start.b as i32 + (((end.b as i32 - start.b as i32) * t_fixed) >> 16);
+    let ia = start.a as i32 + (((end.a as i32 - start.a as i32) * t_fixed) >> 16);
+    Rgba8888 { r: ir as u8, g: ig as u8, b: ib as u8, a: ia as u8 }
 }
 
 /// Fast color interpolation using precomputed deltas.
@@ -108,25 +96,20 @@ fn interpolate_rgb565_fixed(start: Rgb565, end: Rgb565, t_fixed: i32) -> Rgb565 
 /// * `t_fixed` - Interpolation parameter in 16.16 fixed point format
 /// 
 /// # Returns
-/// Interpolated RGB565 color
+/// Interpolated RGBA8888 color
 #[inline(always)]
-fn interpolate_rgb565_delta(start: Rgb565, delta_r: i16, delta_g: i16, delta_b: i16, t_fixed: i32) -> Rgb565 {
-    // Extract starting color components
-    let start_r = ((start.0 >> 11) & 0x1F) as i32;
-    let start_g = ((start.0 >> 5) & 0x3F) as i32;
-    let start_b = (start.0 & 0x1F) as i32;
-    
+fn interpolate_rgba8888_delta(start: Rgba8888, delta_r: i16, delta_g: i16, delta_b: i16, delta_a: i16, t_fixed: i32) -> Rgba8888 {
     // Apply deltas using fixed-point arithmetic
-    let result_r = start_r + ((delta_r as i32 * t_fixed) >> 16);
-    let result_g = start_g + ((delta_g as i32 * t_fixed) >> 16);
-    let result_b = start_b + ((delta_b as i32 * t_fixed) >> 16);
-    
-    // Clamp to valid ranges and pack back into RGB565
-    let r = (result_r.clamp(0, 31) as u16) << 11;
-    let g = (result_g.clamp(0, 63) as u16) << 5;
-    let b = (result_b.clamp(0, 31) as u16);
-    
-    Rgb565(r | g | b)
+    let result_r = start.r as i32 + ((delta_r as i32 * t_fixed) >> 16);
+    let result_g = start.g as i32 + ((delta_g as i32 * t_fixed) >> 16);
+    let result_b = start.b as i32 + ((delta_b as i32 * t_fixed) >> 16);
+    let result_a = start.a as i32 + ((delta_a as i32 * t_fixed) >> 16);
+    Rgba8888 {
+        r: result_r.clamp(0, 255) as u8,
+        g: result_g.clamp(0, 255) as u8,
+        b: result_b.clamp(0, 255) as u8,
+        a: result_a.clamp(0, 255) as u8,
+    }
 }
 
 impl LinearGradient {
@@ -143,20 +126,21 @@ impl LinearGradient {
     /// 
     /// # Returns
     /// Optimized LinearGradient ready for high-performance rendering
-    pub fn new(start: Point, end: Point, start_color: Rgb565, end_color: Rgb565) -> Self {
+    pub fn new(start: Point, end: Point, start_color: Rgba8888, end_color: Rgba8888) -> Self {
         // Calculate gradient vector in 16.16 fixed point format
         let dx = (end.x - start.x) as i32;
         let dy = (end.y - start.y) as i32;
         let length_squared = dx * dx + dy * dy;
         
         // Precompute color deltas for fast interpolation
-        let start_r = ((start_color.0 >> 11) & 0x1F) as i16;
-        let start_g = ((start_color.0 >> 5) & 0x3F) as i16;
-        let start_b = (start_color.0 & 0x1F) as i16;
-        
-        let end_r = ((end_color.0 >> 11) & 0x1F) as i16;
-        let end_g = ((end_color.0 >> 5) & 0x3F) as i16;
-        let end_b = (end_color.0 & 0x1F) as i16;
+        let start_r = start_color.r as i16;
+        let start_g = start_color.g as i16;
+        let start_b = start_color.b as i16;
+        let start_a = start_color.a as i16;
+        let end_r = end_color.r as i16;
+        let end_g = end_color.g as i16;
+        let end_b = end_color.b as i16;
+        let end_a = end_color.a as i16;
         
         Self {
             start,
@@ -169,6 +153,7 @@ impl LinearGradient {
             color_delta_r: end_r - start_r,
             color_delta_g: end_g - start_g,
             color_delta_b: end_b - start_b,
+            color_delta_a: end_a - start_a,
         }
     }
     
@@ -183,7 +168,7 @@ impl LinearGradient {
     /// # Returns
     /// Interpolated color at the given point
     #[inline(always)]
-    pub fn sample(&self, p: Point) -> Rgb565 {
+    pub fn sample(&self, p: Point) -> Rgba8888 {
         // Calculate dot product in 16.16 fixed point format
         let dx = (p.x - self.start.x) as i32;
         let dy = (p.y - self.start.y) as i32;
@@ -200,12 +185,13 @@ impl LinearGradient {
         };
         
         // Use precomputed deltas for fast interpolation
-        interpolate_rgb565_delta(
+        interpolate_rgba8888_delta(
             self.start_color,
             self.color_delta_r,
             self.color_delta_g,
             self.color_delta_b,
-            t_fixed
+            self.color_delta_a,
+            t_fixed,
         )
     }
     
@@ -222,7 +208,7 @@ impl LinearGradient {
     /// # Returns
     /// Interpolated color at the given x coordinate
     #[inline(always)]
-    pub fn sample_horizontal(&self, x: i32, _y: i32) -> Rgb565 {
+    pub fn sample_horizontal(&self, x: i32, _y: i32) -> Rgba8888 {
         let dx = self.end.x - self.start.x;
         if dx == 0 {
             return self.start_color;
@@ -231,12 +217,13 @@ impl LinearGradient {
         let t = ((x - self.start.x) << 16) / dx;
         let t_clamped = t.clamp(0, 1 << 16);
         
-        interpolate_rgb565_delta(
+        interpolate_rgba8888_delta(
             self.start_color,
             self.color_delta_r,
             self.color_delta_g,
             self.color_delta_b,
-            t_clamped
+            self.color_delta_a,
+            t_clamped,
         )
     }
     
@@ -253,7 +240,7 @@ impl LinearGradient {
     /// # Returns
     /// Interpolated color at the given y coordinate
     #[inline(always)]
-    pub fn sample_vertical(&self, _x: i32, y: i32) -> Rgb565 {
+    pub fn sample_vertical(&self, _x: i32, y: i32) -> Rgba8888 {
         let dy = self.end.y - self.start.y;
         if dy == 0 {
             return self.start_color;
@@ -262,12 +249,13 @@ impl LinearGradient {
         let t = ((y - self.start.y) << 16) / dy;
         let t_clamped = t.clamp(0, 1 << 16);
         
-        interpolate_rgb565_delta(
+        interpolate_rgba8888_delta(
             self.start_color,
             self.color_delta_r,
             self.color_delta_g,
             self.color_delta_b,
-            t_clamped
+            self.color_delta_a,
+            t_clamped,
         )
     }
 }
@@ -286,18 +274,19 @@ impl RadialGradient {
     /// 
     /// # Returns
     /// Optimized RadialGradient ready for high-performance rendering
-    pub fn new(center: Point, radius: u32, inner_color: Rgb565, outer_color: Rgb565) -> Self {
+    pub fn new(center: Point, radius: u32, inner_color: Rgba8888, outer_color: Rgba8888) -> Self {
         // Precompute radius squared in 16.16 fixed point format
         let radius_squared = (radius * radius) as i32;
         
         // Precompute color deltas for fast interpolation
-        let inner_r = ((inner_color.0 >> 11) & 0x1F) as i16;
-        let inner_g = ((inner_color.0 >> 5) & 0x3F) as i16;
-        let inner_b = (inner_color.0 & 0x1F) as i16;
-        
-        let outer_r = ((outer_color.0 >> 11) & 0x1F) as i16;
-        let outer_g = ((outer_color.0 >> 5) & 0x3F) as i16;
-        let outer_b = (outer_color.0 & 0x1F) as i16;
+        let inner_r = inner_color.r as i16;
+        let inner_g = inner_color.g as i16;
+        let inner_b = inner_color.b as i16;
+        let inner_a = inner_color.a as i16;
+        let outer_r = outer_color.r as i16;
+        let outer_g = outer_color.g as i16;
+        let outer_b = outer_color.b as i16;
+        let outer_a = outer_color.a as i16;
         
         Self {
             center,
@@ -308,6 +297,7 @@ impl RadialGradient {
             color_delta_r: outer_r - inner_r,
             color_delta_g: outer_g - inner_g,
             color_delta_b: outer_b - inner_b,
+            color_delta_a: outer_a - inner_a,
         }
     }
     
@@ -322,7 +312,7 @@ impl RadialGradient {
     /// # Returns
     /// Interpolated color at the given point
     #[inline(always)]
-    pub fn sample(&self, p: Point) -> Rgb565 {
+    pub fn sample(&self, p: Point) -> Rgba8888 {
         // Calculate squared distance in 16.16 fixed point format
         let dx = (p.x - self.center.x) as i32;
         let dy = (p.y - self.center.y) as i32;
@@ -341,12 +331,13 @@ impl RadialGradient {
         };
         
         // Use precomputed deltas for fast interpolation
-        interpolate_rgb565_delta(
+        interpolate_rgba8888_delta(
             self.inner_color,
             self.color_delta_r,
             self.color_delta_g,
             self.color_delta_b,
-            t_fixed
+            self.color_delta_a,
+            t_fixed,
         )
     }
     
@@ -362,7 +353,7 @@ impl RadialGradient {
     /// # Returns
     /// Interpolated color at the given coordinates
     #[inline(always)]
-    pub fn sample_centered(&self, x: i32, y: i32) -> Rgb565 {
+    pub fn sample_centered(&self, x: i32, y: i32) -> Rgba8888 {
         // Calculate squared distance
         let distance_squared = x * x + y * y;
         
@@ -379,12 +370,13 @@ impl RadialGradient {
         };
         
         // Use precomputed deltas for fast interpolation
-        interpolate_rgb565_delta(
+        interpolate_rgba8888_delta(
             self.inner_color,
             self.color_delta_r,
             self.color_delta_g,
             self.color_delta_b,
-            t_fixed
+            self.color_delta_a,
+            t_fixed,
         )
     }
 }
@@ -459,7 +451,7 @@ impl RadialGradient {
 /// This function provides the old interface for gradient sampling but uses
 /// the new optimized implementation internally.
 #[deprecated(note = "Use LinearGradient::new() and LinearGradient::sample() instead")]
-pub fn lerp_rgb565(a: Rgb565, b: Rgb565, t: f32) -> Rgb565 {
+pub fn lerp_rgb565(a: Rgba8888, b: Rgba8888, t: f32) -> Rgba8888 {
     let t_fixed = (t.clamp(0.0, 1.0) * 65536.0) as i32;
-    interpolate_rgb565_fixed(a, b, t_fixed)
+    interpolate_rgba8888_fixed(a, b, t_fixed)
 }

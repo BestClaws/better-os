@@ -26,7 +26,7 @@ pub async fn demo_2d_app(context: AppContext) {
 
         context.draw(|surface: &mut DrawingSurface| {
             let w = surface.width() as i32; let h = surface.height() as i32;
-            let mut c2d: Canvas2D<crate::libs::gfx::two_d::Rgba8888> = Canvas2D::new(surface as &mut dyn crate::libs::gfx::two_d::Rasterizer);
+            let mut c2d: Canvas2D = Canvas2D::new(surface as &mut dyn crate::libs::gfx::two_d::Rasterizer);
 
             // Background base per scene
             let sweep = ((t * 0.2).sin() * 0.5 + 0.5) as f32;
@@ -55,7 +55,7 @@ pub async fn demo_2d_app(context: AppContext) {
                         d.rect(GRect::new(GPoint::new(x, y), GSize::new(rect_w, rect_h)))
                             .corner_radius((8.0 + 6.0 * (t * 1.7).sin().abs()) as i32)
                             .fill_rgba(Rgba8888::new(80, 180, 240, 255))
-                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 255, 255)))
+                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
                             .draw();
                     }
                 }
@@ -63,7 +63,7 @@ pub async fn demo_2d_app(context: AppContext) {
                     // Gradient fills in rounded rectangles
                     use crate::libs::gfx::two_d::{gradient_vertical, gradient_angle};
                     // Uniform rounded rect with angle gradient
-                    let gr1 = gradient_angle(30.0, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 80, 80), crate::libs::gfx::two_d::Rgb565::from_rgb(60, 120, 255));
+                    let gr1 = gradient_angle(30.0, crate::libs::gfx::two_d::Rgba8888::opaque(255, 80, 80), crate::libs::gfx::two_d::Rgba8888::opaque(60, 120, 255));
                     let ur = GRect::new(GPoint::new(w / 4, h / 6), GSize::new((w / 2) as u32, (h / 5) as u32));
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
@@ -81,17 +81,17 @@ pub async fn demo_2d_app(context: AppContext) {
                                 crate::libs::gfx::two_d::gradients::LinearGradient::new(
                                     GPoint::new(cx - dx, cy - dy),
                                     GPoint::new(cx + dx, cy + dy),
-                                    crate::libs::gfx::two_d::Rgb565::from_rgb(255, 80, 80),
-                                    crate::libs::gfx::two_d::Rgb565::from_rgb(60, 120, 255),
+                                    crate::libs::gfx::two_d::Rgba8888::opaque(255, 80, 80),
+                                    crate::libs::gfx::two_d::Rgba8888::opaque(60, 120, 255),
                                 )
                             }))
-                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 255, 255)))
+                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
                             .draw();
                     }
 
                     // Non-uniform rounded rect with vertical gradient
                     let radii = crate::libs::gfx::two_d::CornerRadiiPx { tl: 6, tr: 14, br: 10, bl: 4 };
-                    let gr2 = gradient_vertical(crate::libs::gfx::two_d::Rgb565::from_rgb(40, 200, 120), crate::libs::gfx::two_d::Rgb565::from_rgb(10, 60, 40));
+                    let gr2 = gradient_vertical(crate::libs::gfx::two_d::Rgba8888::opaque(40, 200, 120), crate::libs::gfx::two_d::Rgba8888::opaque(10, 60, 40));
                     let nr = GRect::new(GPoint::new(w / 6, h / 2), GSize::new((w * 2 / 3) as u32, (h / 3) as u32));
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
@@ -101,11 +101,11 @@ pub async fn demo_2d_app(context: AppContext) {
                                 crate::libs::gfx::two_d::gradients::LinearGradient::new(
                                     GPoint::new(nr.top_left.x, nr.top_left.y),
                                     GPoint::new(nr.top_left.x, nr.bottom()),
-                                    crate::libs::gfx::two_d::Rgb565::from_rgb(40, 200, 120),
-                                    crate::libs::gfx::two_d::Rgb565::from_rgb(10, 60, 40),
+                                    crate::libs::gfx::two_d::Rgba8888::opaque(40, 200, 120),
+                                    crate::libs::gfx::two_d::Rgba8888::opaque(10, 60, 40),
                                 )
                             }))
-                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 255, 255)))
+                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
                             .draw();
                     }
                 }
@@ -115,18 +115,18 @@ pub async fn demo_2d_app(context: AppContext) {
                     let r1 = (h.min(w) / 3) as i32;
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.arc(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgb565::from_rgb(255, 220, 80)).draw();
+                        d.arc(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgba8888::opaque(255, 220, 80)).draw();
                     }
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.arc(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgb565::from_rgb(80, 255, 200)).draw();
+                        d.arc(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgba8888::opaque(80, 255, 200)).draw();
                     }
 
                     let lx = (w as f32 * (0.5 + 0.4 * (t * 0.8).sin())) as i32;
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
                         d.line(GPoint::new(12, 12), GPoint::new(lx, h - 12))
-                            .color(crate::libs::gfx::two_d::Rgb565::from_rgb(240, 240, 240))
+                            .color(crate::libs::gfx::two_d::Rgba8888::opaque(240, 240, 240))
                             .draw();
                     }
                 }
@@ -147,7 +147,7 @@ pub async fn demo_2d_app(context: AppContext) {
                 d.rect(GRect::new(GPoint::new(nu_x, nu_y), GSize::new(nu_rect_w, nu_rect_h)))
                     .corner_radii(radii)
                     .fill_rgba(Rgba8888::new(60, 120, 220, 210))
-                    .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgb565::from_rgb(255, 255, 255)))
+                    .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
                     .draw();
             }
 
@@ -166,11 +166,11 @@ pub async fn demo_2d_app(context: AppContext) {
             let r1 = (h.min(w) / 3) as i32;
             {
                 let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.arc(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgb565::from_rgb(255, 220, 80)).draw();
+                d.arc(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgba8888::opaque(255, 220, 80)).draw();
             }
             {
                 let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.arc(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgb565::from_rgb(80, 255, 200)).draw();
+                d.arc(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgba8888::opaque(80, 255, 200)).draw();
             }
 
             // Lines crossfade
@@ -178,7 +178,7 @@ pub async fn demo_2d_app(context: AppContext) {
             {
                 let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
                 d.line(GPoint::new(12, 12), GPoint::new(lx, h - 12))
-                    .color(crate::libs::gfx::two_d::Rgb565::from_rgb(240, 240, 240))
+                    .color(crate::libs::gfx::two_d::Rgba8888::opaque(240, 240, 240))
                     .draw();
             }
 

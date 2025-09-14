@@ -1,7 +1,7 @@
 #![no_std]
 
 use crate::libs::gfx::two_d::raster::Rasterizer;
-use crate::libs::gfx::two_d::types::{Point, Rect, Rgb565, Rgba8888, Size};
+use crate::libs::gfx::two_d::types::{Point, Rect, Rgba8888, Size};
 use crate::libs::gfx::two_d::gradients::LinearGradient;
 use crate::libs::gfx::two_d::paint::PixelSampler;
 use micromath::F32Ext;
@@ -21,7 +21,7 @@ use micromath::F32Ext;
 /// * `rasterizer` - The rasterizer to draw to
 /// * `rect` - Rectangle to fill
 /// * `color` - Color to fill with
-pub fn fill_rect(rasterizer: &mut dyn Rasterizer, rect: Rect, color: Rgb565) {
+pub fn fill_rect(rasterizer: &mut dyn Rasterizer, rect: Rect, color: Rgba8888) {
     // Early exit for degenerate cases
     if rect.size.width == 0 || rect.size.height == 0 {
         return;
@@ -52,7 +52,7 @@ pub fn fill_rect(rasterizer: &mut dyn Rasterizer, rect: Rect, color: Rgb565) {
 /// * `p0` - Starting point of the line
 /// * `p1` - Ending point of the line
 /// * `color` - Color to draw the line with
-pub fn draw_line_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, color: Rgb565) {
+pub fn draw_line_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, color: Rgba8888) {
     // Early exit for degenerate cases
     if p0 == p1 {
         rasterizer.set_pixel(p0.x, p0.y, color);
@@ -131,13 +131,10 @@ pub fn draw_line_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, color
 pub fn draw_line_rgba_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, color: Rgba8888) {
     // Early exit for degenerate cases
     if p0 == p1 {
-        let rgb_color = color.to_rgb565();
-        rasterizer.blend_pixel(p0.x, p0.y, rgb_color, color.a);
+        rasterizer.blend_pixel(p0.x, p0.y, color, 255);
         return;
     }
     
-    // Convert RGBA to RGB565 for base color
-    let base_color = color.to_rgb565();
     let base_alpha = color.a as f32 / 255.0;
     
     // Convert to floating point for calculations
@@ -174,8 +171,8 @@ pub fn draw_line_rgba_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, 
     let ypxl1 = ipart(yend);
     
     // Plot first endpoint
-    plot_rgba_aa(rasterizer, steep, xpxl1, ypxl1, base_color, rfpart(yend) * xgap * base_alpha);
-    plot_rgba_aa(rasterizer, steep, xpxl1, ypxl1 + 1, base_color, fpart(yend) * xgap * base_alpha);
+    plot_rgba_aa(rasterizer, steep, xpxl1, ypxl1, color, rfpart(yend) * xgap * base_alpha);
+    plot_rgba_aa(rasterizer, steep, xpxl1, ypxl1 + 1, color, fpart(yend) * xgap * base_alpha);
     
     // Calculate second endpoint
     let mut intery = yend + gradient;
@@ -186,13 +183,13 @@ pub fn draw_line_rgba_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, 
     let ypxl2 = ipart(yend2);
     
     // Plot second endpoint
-    plot_rgba_aa(rasterizer, steep, xpxl2, ypxl2, base_color, rfpart(yend2) * xgap2 * base_alpha);
-    plot_rgba_aa(rasterizer, steep, xpxl2, ypxl2 + 1, base_color, fpart(yend2) * xgap2 * base_alpha);
+    plot_rgba_aa(rasterizer, steep, xpxl2, ypxl2, color, rfpart(yend2) * xgap2 * base_alpha);
+    plot_rgba_aa(rasterizer, steep, xpxl2, ypxl2 + 1, color, fpart(yend2) * xgap2 * base_alpha);
     
     // Draw the main part of the line
     for x in (xpxl1 + 1)..xpxl2 {
-        plot_rgba_aa(rasterizer, steep, x, ipart(intery), base_color, rfpart(intery) * base_alpha);
-        plot_rgba_aa(rasterizer, steep, x, ipart(intery) + 1, base_color, fpart(intery) * base_alpha);
+        plot_rgba_aa(rasterizer, steep, x, ipart(intery), color, rfpart(intery) * base_alpha);
+        plot_rgba_aa(rasterizer, steep, x, ipart(intery) + 1, color, fpart(intery) * base_alpha);
         intery += gradient;
     }
 }
@@ -214,7 +211,7 @@ pub fn draw_line_rgba_aa(rasterizer: &mut dyn Rasterizer, p0: Point, p1: Point, 
 /// * `center` - Center point of the circle
 /// * `radius` - Radius of the circle
 /// * `color` - Color to draw the circle with
-pub fn draw_circle_aa(rasterizer: &mut dyn Rasterizer, center: Point, radius: i32, color: Rgb565) {
+pub fn draw_circle_aa(rasterizer: &mut dyn Rasterizer, center: Point, radius: i32, color: Rgba8888) {
     // Early exit for degenerate cases
     if radius <= 0 {
         return;
@@ -256,7 +253,7 @@ pub fn draw_circle_aa(rasterizer: &mut dyn Rasterizer, center: Point, radius: i3
 /// * `center` - Center point of the circle
 /// * `radius` - Radius of the circle
 /// * `color` - Color to fill the circle with
-pub fn fill_circle(rasterizer: &mut dyn Rasterizer, center: Point, radius: i32, color: Rgb565) {
+pub fn fill_circle(rasterizer: &mut dyn Rasterizer, center: Point, radius: i32, color: Rgba8888) {
     // Early exit for degenerate cases
     if radius <= 0 {
         return;
@@ -299,7 +296,7 @@ pub fn fill_circle(rasterizer: &mut dyn Rasterizer, center: Point, radius: i32, 
 /// * `rect` - Rectangle to draw the outline of
 /// * `thickness` - Thickness of the outline
 /// * `color` - Color to draw the outline with
-pub fn draw_rect_outline_aa(rasterizer: &mut dyn Rasterizer, rect: Rect, thickness: i32, color: Rgb565) {
+pub fn draw_rect_outline_aa(rasterizer: &mut dyn Rasterizer, rect: Rect, thickness: i32, color: Rgba8888) {
     // Early exit for degenerate cases
     if thickness <= 0 || rect.size.width == 0 || rect.size.height == 0 {
         return;
@@ -357,7 +354,7 @@ pub fn draw_rect_outline_aa(rasterizer: &mut dyn Rasterizer, rect: Rect, thickne
 /// * `rect` - Rectangle to fill
 /// * `radius` - Corner radius
 /// * `color` - Color to fill with
-pub fn fill_rounded_rect(rasterizer: &mut dyn Rasterizer, rect: Rect, radius: i32, color: Rgb565) {
+pub fn fill_rounded_rect(rasterizer: &mut dyn Rasterizer, rect: Rect, radius: i32, color: Rgba8888) {
     // Early exit for degenerate cases
     if rect.size.width == 0 || rect.size.height == 0 {
         return;
@@ -451,7 +448,7 @@ pub fn draw_arc_aa(
     radius: i32,
     start_angle_rad: f32,
     end_angle_rad: f32,
-    color: Rgb565,
+    color: Rgba8888,
 ) {
     // Early exit for degenerate cases
     if radius <= 0 {
@@ -532,7 +529,6 @@ pub fn draw_arc_rgba_aa(
 ) {
     if radius <= 0 { return; }
 
-    let base = color.to_rgb565();
     let base_alpha = (color.a as f32) / 255.0;
 
     let angle_diff = (end_angle_rad - start_angle_rad).abs();
@@ -551,21 +547,21 @@ pub fn draw_arc_rgba_aa(
 
         // Main pixel
         let a0 = ((1.0 - fx) * (1.0 - fy)).clamp(0.0, 1.0) * base_alpha;
-        rasterizer.blend_pixel(x, y, base, (a0 * 255.0) as u8);
+        rasterizer.blend_pixel(x, y, color, (a0 * 255.0) as u8);
         // Right neighbor
         if fx > 0.0 {
             let a1 = (fx * (1.0 - fy)).clamp(0.0, 1.0) * base_alpha;
-            rasterizer.blend_pixel(x + 1, y, base, (a1 * 255.0) as u8);
+            rasterizer.blend_pixel(x + 1, y, color, (a1 * 255.0) as u8);
         }
         // Bottom neighbor
         if fy > 0.0 {
             let a2 = ((1.0 - fx) * fy).clamp(0.0, 1.0) * base_alpha;
-            rasterizer.blend_pixel(x, y + 1, base, (a2 * 255.0) as u8);
+            rasterizer.blend_pixel(x, y + 1, color, (a2 * 255.0) as u8);
         }
         // Bottom-right
         if fx > 0.0 && fy > 0.0 {
             let a3 = (fx * fy).clamp(0.0, 1.0) * base_alpha;
-            rasterizer.blend_pixel(x + 1, y + 1, base, (a3 * 255.0) as u8);
+            rasterizer.blend_pixel(x + 1, y + 1, color, (a3 * 255.0) as u8);
         }
     }
 }
@@ -589,7 +585,7 @@ pub fn draw_arc(
     radius: i32,
     start_angle_rad: f32,
     end_angle_rad: f32,
-    color: Rgb565,
+    color: Rgba8888,
 ) {
     // Early exit for degenerate cases
     if radius <= 0 {
@@ -619,7 +615,7 @@ pub fn draw_line_thick_aa(
     p0: Point,
     p1: Point,
     thickness: i32,
-    color: Rgb565,
+    color: Rgba8888,
 ) {
     // Guard conditions
     if thickness <= 1 {
@@ -666,7 +662,7 @@ pub fn draw_rounded_rect_outline_aa(
     rect: Rect,
     radius: i32,
     thickness: i32,
-    color: Rgb565,
+    color: Rgba8888,
 ) {
     if rect.size.width == 0 || rect.size.height == 0 || thickness <= 0 {
         return;
@@ -841,8 +837,8 @@ pub fn fill_rect_styled(
     rasterizer: &mut dyn Rasterizer,
     rect: Rect,
     corner_radius: i32,
-    background: Rgb565,
-    border_color: Option<Rgb565>,
+    background: Rgba8888,
+    border_color: Option<Rgba8888>,
     border_thickness: i32,
 ) {
     if corner_radius > 0 {
@@ -866,7 +862,7 @@ pub fn fill_rounded_rect_linear_gradient(
     rasterizer: &mut dyn Rasterizer,
     rect: Rect,
     radius: i32,
-    gradient: &LinearGradient,
+    gradient: &crate::libs::gfx::two_d::gradients::LinearGradient,
 ) {
     if rect.size.width == 0 || rect.size.height == 0 { return; }
     let r = radius.max(0).min(rect.size.width as i32 / 2).min(rect.size.height as i32 / 2);
@@ -933,7 +929,7 @@ pub fn draw_rounded_rect_shadow(
     rect: Rect,
     radius: i32,
     blur_radius: i32,
-    color: Rgb565,
+    color: Rgba8888,
     max_alpha: u8,
 ) {
     if blur_radius <= 0 { return; }
@@ -1009,7 +1005,7 @@ pub fn draw_rounded_rect_shadow_layers(
     rect: Rect,
     radius: i32,
     blur_radius: i32,
-    color: Rgb565,
+    color: Rgba8888,
     max_alpha: u8,
 ) {
     if blur_radius <= 0 { return; }
@@ -1029,13 +1025,7 @@ pub fn draw_rounded_rect_shadow_layers(
         let n = (blur_radius - o + 1) as i32;
         let num = n * n * (max_alpha as i32);
         alpha = (num / denom_sq).clamp(0, max_alpha as i32);
-        let rgba = Rgba8888::new(
-            // Use the provided shadow color's RGB565 expanded approximately to 8-bit
-            (((color.0 >> 11) & 0x1F) as u8) << 3,
-            (((color.0 >> 5) & 0x3F) as u8) << 2,
-            ((color.0 & 0x1F) as u8) << 3,
-            alpha as u8,
-        );
+        let rgba = color.with_alpha(alpha as u8);
         draw_rounded_rect_outline_rgba_aa(
             rasterizer,
             expanded,
@@ -1059,7 +1049,6 @@ pub fn fill_rounded_rect_rgba(
     let right = rect.right();
     let top = rect.top_left.y;
     let bottom = rect.bottom();
-    let rgb = color.to_rgb565();
     let alpha = color.a;
 
     for y in top..=bottom {
@@ -1093,7 +1082,7 @@ pub fn fill_rounded_rect_rgba(
                 ok
             };
             if inside {
-                rasterizer.blend_pixel(x, y, rgb, alpha);
+                rasterizer.blend_pixel(x, y, color, alpha);
             }
         }
     }
@@ -1127,7 +1116,7 @@ fn rfpart(x: f32) -> f32 {
 
 /// Optimized pixel plotting for anti-aliased lines.
 #[inline(always)]
-fn plot_aa(rasterizer: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: Rgb565, alpha: f32) {
+fn plot_aa(rasterizer: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: Rgba8888, alpha: f32) {
     let alpha_u8 = (alpha.clamp(0.0, 1.0) * 255.0) as u8;
     if steep {
         rasterizer.blend_pixel(y, x, color, alpha_u8);
@@ -1138,7 +1127,7 @@ fn plot_aa(rasterizer: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: 
 
 /// Optimized pixel plotting for anti-aliased RGBA lines.
 #[inline(always)]
-fn plot_rgba_aa(rasterizer: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: Rgb565, alpha: f32) {
+fn plot_rgba_aa(rasterizer: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, color: Rgba8888, alpha: f32) {
     let alpha_u8 = (alpha.clamp(0.0, 1.0) * 255.0) as u8;
     if steep {
         rasterizer.blend_pixel(y, x, color, alpha_u8);
@@ -1148,7 +1137,7 @@ fn plot_rgba_aa(rasterizer: &mut dyn Rasterizer, steep: bool, x: i32, y: i32, co
 }
 
 /// Optimized circle point drawing for anti-aliased circles.
-fn draw_circle_points_aa(rasterizer: &mut dyn Rasterizer, center: Point, x: i32, y: i32, color: Rgb565) {
+fn draw_circle_points_aa(rasterizer: &mut dyn Rasterizer, center: Point, x: i32, y: i32, color: Rgba8888) {
     // Draw 8 symmetric points with anti-aliasing
     let points = [
         (center.x + x, center.y + y),
@@ -1171,7 +1160,7 @@ fn fill_quarter_circle_aa(
     rasterizer: &mut dyn Rasterizer,
     center: Point,
     radius: i32,
-    color: Rgb565,
+    color: Rgba8888,
     quadrant: u8,
 ) {
     // Early exit for degenerate cases
@@ -1219,11 +1208,11 @@ fn plot_aa_with<P: crate::libs::gfx::two_d::paint::PixelSampler>(
     coverage: f32,
 ) {
     let (px, py) = if steep { (y, x) } else { (x, y) };
-    let (c, a_paint) = paint.sample(px, py);
-    if a_paint == 0 { return; }
+    let c = paint.sample(px, py);
+    if c.a == 0 { return; }
     let cov = (coverage.clamp(0.0, 1.0) * 255.0) as u16;
-    let ap = a_paint as u16;
+    let ap = c.a as u16;
     let a = ((cov * ap + 127) / 255) as u8;
-    if a == 255 { rasterizer.set_pixel(px, py, c); }
+    if a == 255 { rasterizer.set_pixel(px, py, c.with_alpha(255)); }
     else if a != 0 { rasterizer.blend_pixel(px, py, c, a); }
 }

@@ -1,4 +1,4 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgb565, Rgba8888, LinearGradient, gradient, gradient_vertical, TextRenderer, FONT_8X8};
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888, LinearGradient, gradient, gradient_vertical, TextRenderer, FONT_8X8};
 use crate::libs::gfx::two_d::draw::Draw;
 use crate::libs::gfx::two_d::paint::Brush;
 // use crate::libs::gfx::two_d::gradients::{fill_rect_rgba};
@@ -23,7 +23,7 @@ pub struct ImUi<'a> {
     cursor: Point,
     line_height: i32,
     max_width: u32,
-    theme_bg: Rgb565,
+    theme_bg: Rgba8888,
 }
 
 impl<'a> ImUi<'a> {
@@ -35,11 +35,11 @@ impl<'a> ImUi<'a> {
             cursor: Point::new(12, 12),
             line_height: 0,
             max_width,
-            theme_bg: Rgb565::from_rgb(0, 0, 0),
+            theme_bg: Rgba8888::opaque(0, 0, 0),
         }
     }
 
-    pub fn clear_background(&mut self, color: Rgb565) {
+    pub fn clear_background(&mut self, color: Rgba8888) {
         use crate::libs::gfx::two_d::primitives::fill_rect;
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
         fill_rect(self.raster, rect, color);
@@ -47,7 +47,7 @@ impl<'a> ImUi<'a> {
     }
 
     /// Clear with a vertical linear gradient background.
-    pub fn clear_background_gradient_vertical(&mut self, top: Rgb565, bottom: Rgb565) {
+    pub fn clear_background_gradient_vertical(&mut self, top: Rgba8888, bottom: Rgba8888) {
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
         let mut d = Draw::new(self.raster);
         let grad = LinearGradient::new(
@@ -81,7 +81,7 @@ impl<'a> ImUi<'a> {
         let width = (text.len() as u32) * 8;
         let height = 8u32;
         let rect = self.next_rect(Size::new(width, height));
-        let mut tr = TextRenderer::new(&FONT_8X8).with_color(Rgb565::from_rgb(255, 255, 255)).with_anti_alias(true);
+        let mut tr = TextRenderer::new(&FONT_8X8).with_color(Rgba8888::opaque(255, 255, 255)).with_anti_alias(true);
         tr.draw_text(self.raster, rect.top_left, text);
     }
 
@@ -111,17 +111,17 @@ impl<'a> ImUi<'a> {
             rect,
             corner.uniform as i32,
             if pressed { 3 } else { 5 },
-            Rgb565::from_rgb(32, 32, 32),
+            Rgba8888::opaque(32, 32, 32),
             if hovered { 120 } else { 90 },
         );
         // gradient fill for depth (direct raster access)
         // High-contrast green->blue gradient (horizontal)
         let (left_color, right_color) = if pressed {
-            (Rgb565::from_rgb(40, 200, 60), Rgb565::from_rgb(20, 110, 220))
+            (Rgba8888::opaque(40, 200, 60), Rgba8888::opaque(20, 110, 220))
         } else if hovered {
-            (Rgb565::from_rgb(70, 255, 100), Rgb565::from_rgb(40, 160, 255))
+            (Rgba8888::opaque(70, 255, 100), Rgba8888::opaque(40, 160, 255))
         } else {
-            (Rgb565::from_rgb(50, 230, 80), Rgb565::from_rgb(30, 140, 240))
+            (Rgba8888::opaque(50, 230, 80), Rgba8888::opaque(30, 140, 240))
         };
         {
             let mut d = Draw::new(self.raster);
@@ -144,7 +144,7 @@ impl<'a> ImUi<'a> {
         {
             let mut d = Draw::new(self.raster);
             d.rect(rect)
-                .stroke(crate::libs::gfx::two_d::draw::stroke(1, Rgb565::from_rgb(255, 255, 255)))
+                .stroke(crate::libs::gfx::two_d::draw::stroke(1, Rgba8888::opaque(255, 255, 255)))
                 .draw();
         }
 
@@ -153,7 +153,7 @@ impl<'a> ImUi<'a> {
             rect.top_left.y + pad as i32 + if pressed { 1 } else { 0 },
         );
         let mut tr = TextRenderer::new(&FONT_8X8)
-            .with_color(Rgb565::from_rgb(255, 255, 255))
+            .with_color(Rgba8888::opaque(255, 255, 255))
             .with_anti_alias(true);
         tr.draw_text(self.raster, text_pos, text);
 
@@ -186,7 +186,7 @@ impl<'a> ImUi<'a> {
                 if d <= radius {
                     let alpha = (((radius - d) * opacity as i32) / radius).clamp(0, 255) as u8;
                     // dark gray shadow
-                    self.raster.blend_pixel(x, y, Rgb565::from_rgb(32, 32, 32), alpha);
+                    self.raster.blend_pixel(x, y, Rgba8888::opaque(32, 32, 32), alpha);
                 }
             }
         }
