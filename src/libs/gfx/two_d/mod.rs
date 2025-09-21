@@ -17,14 +17,17 @@ pub mod primitives;
 pub mod gradients;
 pub mod text;
 pub mod fonts;
-pub mod draw; // Fluent, builder-based API
+pub mod fluent; // New fluent API - primitives work directly with Canvas2D
+// pub mod draw; // OLD - removed
 pub mod canvas2d;
 pub mod paint; // Generic paint samplers
 
 // Core types and traits
 pub use types::{Point, Size, Rect, Rgba8888};
 pub use raster::Rasterizer;
-pub use draw::{StrokeStyle, FillStyle, CornerRadii as CornerRadiiPx, gradient, gradient_vertical, gradient_angle, stroke, radial, LinearMode, GradientSpec, RadialSpec};
+
+// New fluent API - clean, direct, fast
+pub use fluent::{Paint, Stroke, Rect as FluentRect, Circle, Line, Arc};
 
 // Optimized primitive drawing functions
 // Keep primitives internal to fluent layer; avoid re-exporting low-level draw_* APIs.

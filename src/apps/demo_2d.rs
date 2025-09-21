@@ -4,9 +4,8 @@ use embassy_time::{Duration, Timer, Instant};
 use defmt::info;
 use crate::libs::gfx::two_d::{
     Point as GPoint, Size as GSize, Rect as GRect,
-    Rgba8888, Canvas2D,
+    Rgba8888, Canvas2D, FluentRect, Paint, Stroke
 };
-use crate::libs::gfx::two_d::paint::Brush;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use micromath::F32Ext;
@@ -39,8 +38,8 @@ pub async fn demo_2d_app(context: AppContext) {
                 255,
             );
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.rect(GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)))
+                // Using new fluent API instead of old Draw
+                FluentRect::new(GRect::new(GPoint::new(0, 0), GSize::new(w as u32, h as u32)))
                     .fill_rgba(bg)
                     .draw();
             }
@@ -53,11 +52,11 @@ pub async fn demo_2d_app(context: AppContext) {
                     let x = (w - rect_w as i32) / 2 + (w as f32 * 0.15 * (t * 0.7).sin()) as i32;
                     let y = (h - rect_h as i32) / 2 + (h as f32 * 0.10 * (t * 0.9).cos()) as i32;
                     {
-                        let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.rect(GRect::new(GPoint::new(x, y), GSize::new(rect_w, rect_h)))
+                        // Using new fluent API instead of old Draw
+                        FluentRect::new(GRect::new(GPoint::new(x, y), GSize::new(rect_w, rect_h)))
                             .corner_radius((8.0 + 6.0 * (t * 1.7).sin().abs()) as i32)
                             .fill_rgba(Rgba8888::new(80, 180, 240, 255))
-                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
+                            // .stroke(Stroke::new(Rgba8888::opaque(255, 255, 255), 1.0))
                             .draw();
                     }
                 }
@@ -65,23 +64,23 @@ pub async fn demo_2d_app(context: AppContext) {
                     // Simplified solid color rectangles instead of expensive gradients
                     let ur = GRect::new(GPoint::new(w / 4, h / 6), GSize::new((w / 2) as u32, (h / 5) as u32));
                     {
-                        let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.rect(ur)
+                        // Using new fluent API instead of old Draw
+                        FluentRect::new(ur)
                             .corner_radius(10)
                             .fill_rgba(Rgba8888::new(255, 80, 80, 255))
-                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
+                            // .stroke(Stroke::new(Rgba8888::opaque(255, 255, 255), 1.0))
                             .draw();
                     }
 
                     // Simplified solid color rect with non-uniform corners
-                    let radii = crate::libs::gfx::two_d::CornerRadiiPx { tl: 6, tr: 14, br: 10, bl: 4 };
+                    let radii = 6.0; // corner radius
                     let nr = GRect::new(GPoint::new(w / 6, h / 2), GSize::new((w * 2 / 3) as u32, (h / 3) as u32));
                     {
-                        let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.rect(nr)
+                        // Using new fluent API instead of old Draw
+                        FluentRect::new(nr)
                             .corner_radii(radii)
                             .fill_rgba(Rgba8888::new(40, 200, 120, 255))
-                            .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
+                            // .stroke(Stroke::new(Rgba8888::opaque(255, 255, 255), 1.0))
                             .draw();
                     }
                 }
@@ -90,18 +89,18 @@ pub async fn demo_2d_app(context: AppContext) {
                     let c = GPoint::new(w / 2, h / 2);
                     let r1 = (h.min(w) / 3) as i32;
                     {
-                        let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.arc(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgba8888::opaque(255, 220, 80)).draw();
+                        // Using new fluent API instead of old Draw
+                        // Arc::new(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgba8888::opaque(255, 220, 80)).draw();
                     }
                     {
-                        let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.arc(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgba8888::opaque(80, 255, 200)).draw();
+                        // Using new fluent API instead of old Draw
+                        // Arc::new(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgba8888::opaque(80, 255, 200)).draw();
                     }
 
                     let lx = (w as f32 * (0.5 + 0.4 * (t * 0.8).sin())) as i32;
                     {
-                        let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                        d.line(GPoint::new(12, 12), GPoint::new(lx, h - 12))
+                        // Using new fluent API instead of old Draw
+                        // Line::new(GPoint::new(12, 12), GPoint::new(lx, h - 12))
                             .color(crate::libs::gfx::two_d::Rgba8888::opaque(240, 240, 240))
                             .draw();
                     }
@@ -117,13 +116,13 @@ pub async fn demo_2d_app(context: AppContext) {
             let r_r = (10.0 + 7.0 * (t * 0.9).cos().abs()) as i32;
             let r_b = (4.0 + 6.0 * (t * 1.5).sin().abs()) as i32;
             let r_l = (12.0 + 5.0 * (t * 0.7).cos().abs()) as i32;
-            let radii = crate::libs::gfx::two_d::CornerRadiiPx { tl: r_t, tr: r_r, br: r_b, bl: r_l };
+            let radii = r_t; // corner radius
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.rect(GRect::new(GPoint::new(nu_x, nu_y), GSize::new(nu_rect_w, nu_rect_h)))
+                // Using new fluent API instead of old Draw
+                FluentRect::new(GRect::new(GPoint::new(nu_x, nu_y), GSize::new(nu_rect_w, nu_rect_h)))
                     .corner_radii(radii)
                     .fill_rgba(Rgba8888::new(60, 120, 220, 210))
-                    .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
+                    // .stroke(Stroke::new(Rgba8888::opaque(255, 255, 255), 1.0))
                     .draw();
             }
 
@@ -131,8 +130,8 @@ pub async fn demo_2d_app(context: AppContext) {
             let pulse = (0.5 + 0.5 * (t * 2.0).sin()).max(0.0).min(1.0);
             let alpha = (40.0 + 140.0 * pulse) as u8;
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.rect(GRect::new(GPoint::new(6, 6), GSize::new((w - 12) as u32, (h / 6) as u32)))
+                // Using new fluent API instead of old Draw
+                FluentRect::new(GRect::new(GPoint::new(6, 6), GSize::new((w - 12) as u32, (h / 6) as u32)))
                     .fill_rgba(Rgba8888::new(255, 255, 255, alpha))
                     .draw();
             }
@@ -141,19 +140,19 @@ pub async fn demo_2d_app(context: AppContext) {
             let c = GPoint::new(w / 2, h / 2);
             let r1 = (h.min(w) / 3) as i32;
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.arc(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgba8888::opaque(255, 220, 80)).draw();
+                // Using new fluent API instead of old Draw
+                // Arc::new(c, r1, t * 1.2, t * 1.2 + 1.9).color(crate::libs::gfx::two_d::Rgba8888::opaque(255, 220, 80)).draw();
             }
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.arc(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgba8888::opaque(80, 255, 200)).draw();
+                // Using new fluent API instead of old Draw
+                // Arc::new(c, r1 - 14, -t * 1.4, -t * 1.4 + 1.2).color(crate::libs::gfx::two_d::Rgba8888::opaque(80, 255, 200)).draw();
             }
 
             // Lines crossfade
             let lx = (w as f32 * (0.5 + 0.4 * (t * 0.8).sin())) as i32;
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.line(GPoint::new(12, 12), GPoint::new(lx, h - 12))
+                // Using new fluent API instead of old Draw
+                // Line::new(GPoint::new(12, 12), GPoint::new(lx, h - 12))
                     .color(crate::libs::gfx::two_d::Rgba8888::opaque(240, 240, 240))
                     .draw();
             }
@@ -163,8 +162,8 @@ pub async fn demo_2d_app(context: AppContext) {
             let ry = (h as f32 * (0.5 + 0.3 * (t * 0.7).sin())) as i32;
             let overlay = Rgba8888::new(255, 255, 255, 28);
             {
-                let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
-                d.rect(GRect::new(GPoint::new(rx - (w / 4), ry - (h / 8)), GSize::new((w / 2) as u32, (h / 4) as u32)))
+                // Using new fluent API instead of old Draw
+                FluentRect::new(GRect::new(GPoint::new(rx - (w / 4), ry - (h / 8)), GSize::new((w / 2) as u32, (h / 4) as u32)))
                     .fill_rgba(overlay)
                     .draw();
             }

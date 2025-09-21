@@ -9,7 +9,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use defmt::{debug, error, info, warn, Format};
 use crate::apps::rect::rect_app;
-use crate::apps::demo_2d::demo_2d_app;
+use crate::apps::demo_fluent::demo_fluent_app;
 
 /// Application registry for system apps
 ///
@@ -23,9 +23,9 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         spawn_fn: spawn_rect_app,
     },
     AppDescriptor {
-        name: "2D Demo",
+        name: "Fluent GFX Demo",
         id: 5,
-        spawn_fn: spawn_demo_2d_app,
+        spawn_fn: spawn_demo_fluent_app,
     },
 
 ];
@@ -159,8 +159,8 @@ pub enum AppSpawnError {
 fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(rect_app(context))
 }
-fn spawn_demo_2d_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(demo_2d_app(context))
+fn spawn_demo_fluent_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(demo_fluent_app(context))
 }
 // Other app spawners removed for simplicity
 

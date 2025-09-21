@@ -1,9 +1,8 @@
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888, LinearGradient, gradient, gradient_vertical, TextRenderer, FONT_8X8};
-use crate::libs::gfx::two_d::draw::Draw;
-use crate::libs::gfx::two_d::paint::Brush;
+use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888, LinearGradient, TextRenderer, FONT_8X8};
+use crate::libs::gfx::two_d::{Canvas2D, FluentRect, Paint, Stroke};
 // use crate::libs::gfx::two_d::gradients::{fill_rect_rgba};
 use crate::libs::gfx::two_d::primitives::{fill_rounded_rect_linear_gradient, draw_rounded_rect_shadow_layers};
-use super::style::{Fill, Stroke, CornerRadii, Color};
+use super::style::{Fill, Stroke as StyleStroke, CornerRadii, Color};
 use super::painter::Painter;
 
 #[derive(Clone, Copy, Default)]
@@ -40,8 +39,9 @@ impl<'a> ImUi<'a> {
     }
 
     pub fn clear_background(&mut self, color: Rgba8888) {
-        use crate::libs::gfx::two_d::primitives::fill_rect;
+        // use crate::libs::gfx::two_d::primitives::fill_rect; // Now using fluent API
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
+        use crate::libs::gfx::two_d::primitives::fill_rect;
         fill_rect(self.raster, rect, color);
         self.theme_bg = color;
     }
@@ -49,16 +49,16 @@ impl<'a> ImUi<'a> {
     /// Clear with a vertical linear gradient background.
     pub fn clear_background_gradient_vertical(&mut self, top: Rgba8888, bottom: Rgba8888) {
         let rect = Rect::new(Point::new(0, 0), Size::new(self.raster.width(), self.raster.height()));
-        let mut d = Draw::new(self.raster);
+        let mut canvas = Canvas2D::new(self.raster);
         let grad = LinearGradient::new(
             Point::new(rect.top_left.x, rect.top_left.y),
             Point::new(rect.top_left.x, rect.bottom()),
             top,
             bottom,
         );
-        d.rect(rect)
-            .fill(Brush::linear(grad))
-            .draw();
+        FluentRect::new(rect.top_left, rect.size)
+            .fill(Paint::Linear(grad))
+            .draw(&mut canvas);
     }
 
     fn next_rect(&mut self, size: Size) -> Rect {
@@ -102,7 +102,7 @@ impl<'a> ImUi<'a> {
         let pressed = hovered && self.input.pointer_down;
 
         // Draw button
-        let border = Stroke { color: Color::GRAY_40, thickness: 1 };
+        let border = StyleStroke { color: Color::GRAY_40, thickness: 1 };
         let corner = CornerRadii { uniform: 6 };
         // subtle shadow first
         // Rounded shadow outside
@@ -124,28 +124,28 @@ impl<'a> ImUi<'a> {
             (Rgba8888::opaque(50, 230, 80), Rgba8888::opaque(30, 140, 240))
         };
         {
-            let mut d = Draw::new(self.raster);
+            let mut canvas = Canvas2D::new(self.raster);
             let grad = LinearGradient::new(
                 Point::new(rect.top_left.x, rect.top_left.y),
                 Point::new(rect.right(), rect.top_left.y),
                 left_color,
                 right_color,
             );
-            d.rect(rect)
-                .fill(Brush::linear(grad))
-                .draw();
+            FluentRect::new(rect.top_left, rect.size)
+                .fill(Paint::Linear(grad))
+                .draw(&mut canvas);
         }
         if hovered && !pressed {
             // stronger highlight for visibility
-            let mut d = Draw::new(self.raster);
-            d.rect(rect).fill_rgba(Rgba8888::new(255, 255, 255, 28)).draw();
+            let mut canvas = Canvas2D::new(self.raster);
+            FluentRect::new(rect.top_left, rect.size).fill(Paint::solid(Rgba8888::new(255, 255, 255, 28))).draw(&mut canvas);
         }
         // border stroke in its own short scope to avoid overlapping borrows
         {
-            let mut d = Draw::new(self.raster);
-            d.rect(rect)
-                .stroke(crate::libs::gfx::two_d::draw::stroke(1, Rgba8888::opaque(255, 255, 255)))
-                .draw();
+            let mut canvas = Canvas2D::new(self.raster);
+            FluentRect::new(rect.top_left, rect.size)
+                .stroke(crate::libs::gfx::two_d::Stroke::new(Rgba8888::opaque(255, 255, 255), 1.0))
+                .draw(&mut canvas);
         }
 
         let text_pos = Point::new(

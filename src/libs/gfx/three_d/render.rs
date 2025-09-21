@@ -3,7 +3,7 @@
 use crate::util::math::primitives::{Quaternion, Vec3};
 use crate::libs::gfx::two_d::types::{Point, Rgba8888};
 use crate::libs::gfx::two_d::Rasterizer;
-use crate::libs::gfx::two_d::draw::Draw as Draw2D;
+use crate::libs::gfx::two_d::{Canvas2D, FluentRect, Paint, Line, Stroke};
 use crate::libs::gfx::Model;
 use crate::system::kernel::config::resources::{MAX_TRIANGLES, MAX_VERTICES};
 use core::cmp::Ordering;
@@ -709,16 +709,16 @@ fn render_triangles_optimized<R: Rasterizer>(
         
         if matches!(options.view_mode, ViewMode::Wireframe | ViewMode::FillAndWireframe) {
             {
-                let mut d2 = Draw2D::new(raster);
-                d2.line(p0, p1).color(Rgba8888::opaque(0, 255, 0)).draw();
+                let mut canvas = Canvas2D::new(raster);
+                Line::new(p0, p1).stroke(Stroke::new(Rgba8888::opaque(0, 255, 0), 1.0)).draw(&mut canvas);
             }
             {
-                let mut d2 = Draw2D::new(raster);
-                d2.line(p1, p2).color(Rgba8888::opaque(0, 255, 0)).draw();
+                let mut canvas = Canvas2D::new(raster);
+                Line::new(p1, p2).stroke(Stroke::new(Rgba8888::opaque(0, 255, 0), 1.0)).draw(&mut canvas);
             }
             {
-                let mut d2 = Draw2D::new(raster);
-                d2.line(p2, p0).color(Rgba8888::opaque(0, 255, 0)).draw();
+                let mut canvas = Canvas2D::new(raster);
+                Line::new(p2, p0).stroke(Stroke::new(Rgba8888::opaque(0, 255, 0), 1.0)).draw(&mut canvas);
             }
             stats.edges_drawn += 3;
         }
