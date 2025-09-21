@@ -1,37 +1,11 @@
-/// Space-Grade 2D Graphics Primitives
-///
-/// This module provides mission-critical 2D rendering primitives designed for embedded systems
-/// where performance, reliability, and memory efficiency are paramount. All algorithms are
-/// optimized for real-time rendering while maintaining mathematical precision.
-///
-/// # Architecture Overview
-///
-/// The graphics system uses a layered approach:
-/// 1. **Geometric Primitives**: Mathematical representations of shapes
-/// 2. **Rendering Pipeline**: Optimized rasterization algorithms  
-/// 3. **Performance Layer**: Fast paths for common operations
-/// 4. **Quality Control**: Anti-aliasing and precision management
-///
-/// # Performance Characteristics
-///
-/// - **Rectangle fills**: O(1) using direct rasterizer calls
-/// - **Rounded rectangles**: O(height) using scanline algorithms
-/// - **Gradients**: Adaptive sampling based on area size
-/// - **Strokes**: Geometric boundary calculation, not pixel iteration
-///
-/// # Memory Safety
-///
-/// All operations use saturating arithmetic and bounds checking to prevent:
-/// - Integer overflow in coordinate calculations
-/// - Buffer overruns in rasterization
-/// - Invalid memory access patterns
-///
-/// # Real-Time Guarantees
-///
-/// Rendering times are predictable and bounded:
-/// - Simple shapes: <5ms on target hardware
-/// - Complex rounded shapes: <20ms worst case
-/// - Gradient fills: Adaptive quality scaling
+/// Comprehensive 2D primitives with fluent API and anti-aliased rendering
+/// 
+/// This module provides all fundamental 2D shapes with:
+/// - Fluent API for chainable method calls
+/// - Anti-aliased rendering for smooth edges
+/// - Gradient and solid color fills
+/// - Advanced stroke options
+/// - Optimized rasterization algorithms
 
 use super::types::{Point, Size, Rect as RectGeometry, CornerRadii, Rgba8888, AntiAliasing};
 use fixed::{FixedI32, types::extra::U16};
@@ -40,135 +14,24 @@ use super::stroke::{Stroke, StrokeRasterizer};
 use super::canvas2d::Canvas2D;
 use micromath::F32Ext;
 
-// =============================================================================
-// CORE TRAITS AND INTERFACES
-// =============================================================================
-
-/// Universal drawing interface for all 2D primitives
-///
-/// This trait provides a consistent interface for rendering any geometric shape
-/// to a canvas. All primitives implement this trait, enabling polymorphic
-/// rendering and composition of complex scenes.
-///
-/// # Design Rationale
-///
-/// Using a single `draw` method (rather than separate fill/stroke methods)
-/// allows primitives to optimize their rendering internally. For example,
-/// a rectangle with both fill and stroke can render both in a single pass.
-///
-/// # Performance Contract
-///
-/// Implementations must guarantee:
-/// - **Bounded execution time**: No unbounded loops or recursion
-/// - **Memory safety**: No buffer overruns or invalid memory access
-/// - **Deterministic behavior**: Same input always produces same output
-/// - **Error resilience**: Graceful handling of invalid parameters
+/// Drawable trait for all primitives
 pub trait Drawable {
-    /// Render this primitive to the specified canvas
-    ///
-    /// # Performance Notes
-    ///
-    /// Implementations should:
-    /// - Use fast paths for simple cases (solid colors, no anti-aliasing)
-    /// - Batch operations when possible (scanline rendering)
-    /// - Minimize memory allocations during rendering
-    /// - Prefer integer arithmetic over floating-point when possible
-    ///
-    /// # Error Handling Philosophy
-    ///
-    /// This method is infallible by design. Invalid coordinates or parameters
-    /// are handled gracefully through clipping and saturation rather than
-    /// panicking or returning errors. This ensures system stability in
-    /// mission-critical applications.
+    /// Draw the primitive to a canvas
     fn draw(self, canvas: &mut Canvas2D);
 }
 
-// =============================================================================
-// RECTANGLE PRIMITIVE
-// =============================================================================
-
-/// High-performance rectangle primitive with advanced rendering features
-///
-/// Rectangles are the most common primitive in UI rendering, so they receive
-/// extensive optimization. This implementation provides:
-///
-/// - **Fast paths**: Direct rasterizer calls for simple solid rectangles
-/// - **Rounded corners**: Mathematically precise corner radius rendering
-/// - **Gradient fills**: Linear and radial gradients with adaptive sampling
-/// - **Stroke rendering**: Geometric boundary calculation for optimal performance
-/// - **Anti-aliasing**: Multiple quality levels for smooth edges
-///
-/// # Memory Layout
-///
-/// The struct is designed for cache efficiency:
-/// - Frequently accessed geometry data is first
-/// - Optional rendering parameters follow
-/// - Total size is kept minimal for better cache utilization
-///
-/// # Performance Characteristics
-///
-/// - **Simple solid rectangles**: ~1-2ms (ultra-fast path)
-/// - **Rounded solid rectangles**: ~5-15ms (scanline algorithm)
-/// - **Gradient rectangles**: ~8-25ms (adaptive sampling)
-/// - **Complex stroked rectangles**: ~10-20ms (geometric boundaries)
-///
-/// # Usage Patterns
-///
-/// ```rust
-/// // Simple solid rectangle (fastest path)
-/// let rect = Rect::from_coords(10, 10, 100, 50)
-///     .fill(Paint::solid(Rgba8888::new(255, 0, 0, 255)));
-///
-/// // Rounded rectangle with stroke (optimized scanline rendering)
-/// let rounded = Rect::from_coords(10, 10, 100, 50)
-///     .corner_radius(8.0)
-///     .fill(Paint::solid(Rgba8888::new(255, 255, 255, 255)))
-///     .stroke(Stroke::new(Rgba8888::new(0, 0, 0, 255), 2.0));
-/// ```
+/// Rectangle primitive with optional corner radii
 #[derive(Debug, Clone)]
 pub struct Rect {
-    /// Core geometric properties (position and size)
-    /// Placed first for optimal cache access patterns
     geometry: RectGeometry,
-    
-    /// Optional fill paint (None = no fill)
-    /// Using Option<Paint> allows zero-cost abstraction for stroke-only rectangles
     fill: Option<Paint>,
-    
-    /// Optional stroke definition (None = no stroke)
-    /// Separate from fill to enable independent optimization paths
     stroke: Option<Stroke>,
-    
-    /// Corner radius specification for rounded rectangles
-    /// Uses fixed-point arithmetic for consistent sub-pixel precision
     corner_radii: CornerRadii,
-    
-    /// Anti-aliasing quality setting
-    /// Affects rendering performance vs visual quality trade-off
     anti_aliasing: AntiAliasing,
 }
 
-// =============================================================================
-// RECTANGLE CONSTRUCTION AND CONFIGURATION
-// =============================================================================
-
 impl Rect {
-    /// Create a new rectangle with default properties
-    ///
-    /// # Design Decision: Minimal Constructor
-    ///
-    /// The constructor only requires essential geometric parameters.
-    /// All rendering properties (fill, stroke, corners) are optional
-    /// and configured through the fluent API. This approach:
-    ///
-    /// - Reduces cognitive load (fewer required parameters)
-    /// - Enables method chaining for readable code
-    /// - Allows zero-cost abstraction for unused features
-    ///
-    /// # Performance Notes
-    ///
-    /// This constructor is marked `#[inline]` because it's frequently
-    /// called and contains only simple field assignments.
+    /// Create new rectangle
     #[inline]
     pub fn new(top_left: Point, size: Size) -> Self {
         Self {
@@ -180,277 +43,99 @@ impl Rect {
         }
     }
     
-    /// Create rectangle from individual coordinate values
-    ///
-    /// # Convenience Method Rationale
-    ///
-    /// While `new()` is more type-safe, this method reduces boilerplate
-    /// for the common case of creating rectangles from raw coordinates.
-    /// The slight code duplication is justified by improved ergonomics.
+    /// Create rectangle from coordinates
     #[inline]
     pub fn from_coords(x: i32, y: i32, width: u32, height: u32) -> Self {
         Self::new(Point::new(x, y), Size::new(width, height))
     }
     
-    /// Configure fill paint for this rectangle
-    ///
-    /// # Fluent API Design
-    ///
-    /// Returns `Self` to enable method chaining. The `mut self` parameter
-    /// ensures move semantics, preventing accidental reuse of partially
-    /// configured rectangles.
-    ///
-    /// # Performance Impact
-    ///
-    /// Setting a fill paint enables the fill rendering path. Solid colors
-    /// use the fastest rendering algorithm, while gradients use adaptive
-    /// sampling based on rectangle size.
+    /// Set fill paint
     #[inline]
     pub fn fill(mut self, paint: Paint) -> Self {
         self.fill = Some(paint);
         self
     }
     
-    /// Configure stroke properties for this rectangle
-    ///
-    /// # Stroke Rendering Strategy
-    ///
-    /// Strokes are rendered using geometric boundary calculations rather
-    /// than pixel-by-pixel sampling. This approach provides:
-    ///
-    /// - Consistent performance regardless of stroke width
-    /// - Mathematically precise edge placement
-    /// - Optimal memory access patterns
+    /// Set stroke
     #[inline]
     pub fn stroke(mut self, stroke: Stroke) -> Self {
         self.stroke = Some(stroke);
         self
     }
     
-    /// Set uniform corner radius for rounded rectangles
-    ///
-    /// # Corner Radius Implementation
-    ///
-    /// Corner radii use fixed-point arithmetic for sub-pixel precision.
-    /// The rendering algorithm uses circle intersection mathematics
-    /// for pixel-perfect corner shapes.
-    ///
-    /// # Performance Considerations
-    ///
-    /// Rounded rectangles use scanline rendering, which scales O(height)
-    /// rather than O(width×height). This makes them suitable for
-    /// real-time UI rendering even with large corner radii.
+    /// Set uniform corner radius
     #[inline]
     pub fn corner_radius(mut self, radius: f32) -> Self {
         self.corner_radii = CornerRadii::from_f32(radius);
         self
     }
     
-    /// Set individual corner radii for asymmetric rounded rectangles
-    ///
-    /// # Use Case
-    ///
-    /// Enables advanced UI effects like "speech bubble" shapes
-    /// or partially rounded interface elements.
+    /// Set individual corner radii
     #[inline]
     pub fn corner_radii(mut self, radii: CornerRadii) -> Self {
         self.corner_radii = radii;
         self
     }
     
-    /// Configure anti-aliasing quality
-    ///
-    /// # Quality vs Performance Trade-off
-    ///
-    /// - `None`: Fastest rendering, aliased edges
-    /// - `Low`: Minimal performance impact, basic smoothing
-    /// - `Medium`: Balanced quality and performance
-    /// - `High`: Best quality, highest computational cost
-    ///
-    /// # Implementation Strategy
-    ///
-    /// Anti-aliasing is implemented through coverage calculation
-    /// rather than supersampling, providing better performance
-    /// characteristics for embedded systems.
+    /// Set anti-aliasing quality
     #[inline]
     pub fn anti_aliasing(mut self, aa: AntiAliasing) -> Self {
         self.anti_aliasing = aa;
         self
     }
     
-    /// Alias for anti_aliasing() - shorter method name for common usage
+    /// Set anti-aliasing quality (alias for anti_aliasing)
     #[inline]
     pub fn aa(mut self, aa: AntiAliasing) -> Self {
         self.anti_aliasing(aa)
     }
 }
 
-// =============================================================================
-// RECTANGLE RENDERING IMPLEMENTATION
-// =============================================================================
-
 impl Drawable for Rect {
-    /// Render rectangle using optimized multi-path algorithm
-    ///
-    /// # Rendering Strategy
-    ///
-    /// The implementation uses multiple specialized rendering paths
-    /// based on rectangle properties:
-    ///
-    /// 1. **Fast Path**: Solid color, no corners, no stroke
-    ///    - Direct rasterizer call, ~1-2ms typical
-    ///
-    /// 2. **Rounded Path**: Corner radii present
-    ///    - Scanline algorithm with geometric calculations
-    ///    - Performance scales with height, not area
-    ///
-    /// 3. **Stroke Path**: Stroke properties defined
-    ///    - Geometric boundary calculation
-    ///    - Separate inner/outer boundary rendering
-    ///
-    /// 4. **Combined Path**: Fill + stroke together
-    ///    - Optimized to render both in minimal passes
-    ///
-    /// # Error Handling Philosophy
-    ///
-    /// All rendering is designed to be infallible. Invalid parameters
-    /// are handled through:
-    /// - Coordinate clamping to valid ranges
-    /// - Saturating arithmetic for overflow protection
-    /// - Graceful degradation for extreme values
     fn draw(self, canvas: &mut Canvas2D) {
-        // Render fill first (if present) so stroke appears on top
-        // This ordering matches standard graphics API conventions
         if let Some(fill) = &self.fill {
-            self.render_fill(canvas, fill);
+            if self.corner_radii.has_radius() {
+                // Draw rounded rectangle
+                self.draw_rounded_fill(canvas, fill);
+            } else {
+                // Draw simple rectangle
+                match fill {
+                    Paint::Solid(color) => {
+                        canvas.fill_rect(
+                            self.geometry.top_left.x,
+                            self.geometry.top_left.y,
+                            self.geometry.size.width,
+                            self.geometry.size.height,
+                            *color
+                        );
+                    }
+                    _ => {
+                        // Sample gradient for each pixel
+                        for y in self.geometry.top_left.y..=self.geometry.bottom() {
+                            for x in self.geometry.top_left.x..=self.geometry.right() {
+                                let color = fill.sample_at(Point::new(x, y));
+                                canvas.set_pixel(x, y, color);
+                            }
+                        }
+                    }
+                }
+            }
         }
         
-        // Render stroke second to ensure proper visual layering
         if let Some(stroke) = &self.stroke {
-            self.render_stroke(canvas, stroke);
+            if self.corner_radii.has_radius() {
+                // Draw rounded stroke
+                self.draw_rounded_stroke(canvas, stroke);
+            } else {
+                // Draw simple rectangle stroke
+                self.draw_simple_stroke(canvas, stroke);
+            }
         }
     }
 }
 
-// =============================================================================
-// FILL RENDERING IMPLEMENTATION
-// =============================================================================
-
 impl Rect {
-    /// Render rectangle fill using performance-optimized algorithms
-    ///
-    /// # Algorithm Selection Strategy
-    ///
-    /// The method automatically selects the optimal rendering algorithm
-    /// based on rectangle properties:
-    ///
-    /// - **Solid + No Corners**: Ultra-fast rectangle fill (~1ms)
-    /// - **Solid + Corners**: Optimized scanline rendering (~5-15ms)
-    /// - **Gradient + No Corners**: Block sampling for large areas
-    /// - **Gradient + Corners**: Adaptive sampling with quality scaling
-    ///
-    /// # Performance Monitoring
-    ///
-    /// In debug builds, rendering times are tracked to ensure
-    /// performance targets are met across different hardware platforms.
-    fn render_fill(&self, canvas: &mut Canvas2D, fill: &Paint) {
-        if self.corner_radii.has_radius() {
-            // Rounded rectangle path - requires geometric calculations
-            self.draw_rounded_fill(canvas, fill);
-        } else {
-            // Simple rectangle path - use fastest possible method
-            self.render_simple_fill(canvas, fill);
-        }
-    }
-    
-    /// Render simple (non-rounded) rectangle fill
-    ///
-    /// # Ultra-Fast Path Optimization
-    ///
-    /// For solid colors, this method bypasses all per-pixel calculations
-    /// and uses direct rasterizer calls. This provides:
-    ///
-    /// - Constant-time performance regardless of rectangle size
-    /// - Optimal memory access patterns (sequential writes)
-    /// - Hardware acceleration opportunities (if available)
-    ///
-    /// # Gradient Handling
-    ///
-    /// For gradient fills, the method uses block sampling to maintain
-    /// performance while providing acceptable visual quality.
-    fn render_simple_fill(&self, canvas: &mut Canvas2D, fill: &Paint) {
-        match fill {
-            Paint::Solid(color) => {
-                // Ultra-fast path: direct rasterizer call
-                // This is the most common case and receives maximum optimization
-                canvas.fill_rect_fast(self.geometry, *color);
-            }
-            _ => {
-                // Gradient path: use adaptive block sampling
-                // Block size is determined by rectangle area to balance
-                // performance and visual quality
-                self.render_gradient_fill_blocks(canvas, fill);
-            }
-        }
-    }
-    
-    /// Render gradient using block sampling for performance
-    ///
-    /// # Block Sampling Algorithm
-    ///
-    /// Instead of sampling the gradient at every pixel, this method:
-    /// 1. Samples at regular intervals (block corners)
-    /// 2. Fills entire blocks with the sampled color
-    /// 3. Uses fast rectangle fills for each block
-    ///
-    /// This approach can provide 4x to 64x performance improvement
-    /// for large gradient areas with minimal visual degradation.
-    fn render_gradient_fill_blocks(&self, canvas: &mut Canvas2D, fill: &Paint) {
-        let bounds = self.geometry;
-        let area = bounds.size.width * bounds.size.height;
-        
-        // Adaptive block size based on rectangle area
-        // Larger rectangles use larger blocks for better performance
-        let block_size = if area > 50000 { 8 } else if area > 10000 { 4 } else { 2 };
-        
-        for y in (bounds.top_left.y..=bounds.bottom()).step_by(block_size) {
-            for x in (bounds.top_left.x..=bounds.right()).step_by(block_size) {
-                // Sample gradient once per block
-                let color = fill.sample_at(Point::new(x, y));
-                
-                if color.a > 0 {
-                    // Calculate actual block bounds (handle partial blocks at edges)
-                    let block_width = (block_size as i32).min(bounds.right() - x + 1) as u32;
-                    let block_height = (block_size as i32).min(bounds.bottom() - y + 1) as u32;
-                    
-                    // Fill entire block with sampled color
-                    let block_rect = RectGeometry::new(
-                        Point::new(x, y),
-                        Size::new(block_width, block_height)
-                    );
-                    canvas.fill_rect_fast(block_rect, color);
-                }
-            }
-        }
-    }
-    
-    /// Render rounded rectangle fill using scanline algorithm
-    ///
-    /// # Scanline Algorithm Benefits
-    ///
-    /// The scanline approach provides several advantages over
-    /// traditional pixel-by-pixel rendering:
-    ///
-    /// - **Performance**: O(height) instead of O(width×height)
-    /// - **Cache Efficiency**: Sequential memory access patterns
-    /// - **Precision**: Exact geometric calculations per scanline
-    /// - **Scalability**: Performance independent of rectangle width
-    ///
-    /// # Mathematical Foundation
-    ///
-    /// Corner boundaries are calculated using circle intersection:
-    /// For a circle at (cx, cy) with radius r, the intersection
-    /// with horizontal line y is at x = cx ± √(r² - (y-cy)²)
+    /// Draw rounded rectangle fill with fast anti-aliasing
     fn draw_rounded_fill(&self, canvas: &mut Canvas2D, fill: &Paint) {
         let bounds = self.geometry;
         
@@ -713,78 +398,6 @@ impl Rect {
         }
         
         true
-    }
-}
-
-// =============================================================================
-// STROKE RENDERING IMPLEMENTATION
-// =============================================================================
-
-impl Rect {
-    /// Render rectangle stroke using optimized geometric algorithms
-    ///
-    /// # Stroke Rendering Philosophy
-    ///
-    /// Traditional stroke rendering uses pixel-by-pixel sampling to determine
-    /// if each pixel is inside the stroke region. This approach is simple but
-    /// has poor performance characteristics (O(area) complexity).
-    ///
-    /// This implementation uses geometric boundary calculations instead:
-    /// 1. Calculate outer boundary of the stroke
-    /// 2. Calculate inner boundary of the stroke
-    /// 3. Render the region between boundaries using scanline algorithms
-    ///
-    /// This approach provides O(perimeter) complexity and consistent
-    /// performance regardless of stroke width.
-    ///
-    /// # Performance Targets
-    ///
-    /// - Simple rectangle strokes: <3ms
-    /// - Rounded rectangle strokes: <15ms
-    /// - Complex multi-stroke shapes: <25ms
-    fn render_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke) {
-        if self.corner_radii.has_radius() {
-            // Rounded rectangle stroke - requires geometric calculations
-            self.draw_rounded_stroke(canvas, stroke);
-        } else {
-            // Simple rectangle stroke - use ultra-fast rectangle method
-            self.render_simple_stroke(canvas, stroke);
-        }
-    }
-    
-    /// Render simple rectangle stroke using optimized rectangle fills
-    ///
-    /// # Ultra-Fast Rectangle Stroke Algorithm
-    ///
-    /// Instead of calculating stroke boundaries pixel-by-pixel, this method
-    /// renders the stroke as four separate rectangles:
-    /// - Top edge rectangle
-    /// - Bottom edge rectangle  
-    /// - Left edge rectangle
-    /// - Right edge rectangle
-    ///
-    /// This approach provides:
-    /// - Constant-time performance O(1)
-    /// - Optimal memory access patterns
-    /// - Hardware acceleration opportunities
-    /// - Perfect pixel alignment
-    ///
-    /// # Visual Quality
-    ///
-    /// The four-rectangle approach produces pixel-perfect results for
-    /// simple rectangular strokes, with no visual artifacts or gaps.
-    fn render_simple_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke) {
-        let bounds = self.geometry;
-        let stroke_width = stroke.effective_width().to_num::<i32>().max(1);
-        
-        // Extract stroke color (optimize for solid colors)
-        let stroke_color = match &stroke.paint {
-            Paint::Solid(color) => *color,
-            _ => stroke.paint.sample_at(Point::new(bounds.top_left.x, bounds.top_left.y)),
-        };
-        
-        // Render stroke as four optimized rectangle fills
-        self.draw_simple_rect_stroke_fast(canvas, stroke_color, stroke_width);
     }
     
     /// Draw rounded rectangle stroke
