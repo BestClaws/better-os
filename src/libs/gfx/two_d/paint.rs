@@ -166,19 +166,20 @@ impl RadialGradient {
     /// Sample color at given point using distance from center
     #[inline]
     pub fn sample_at(&self, point: Point) -> Rgba8888 {
-        let distance_squared = self.center.distance_squared(point);
+        let dx = point.x - self.center.x;
+        let dy = point.y - self.center.y;
         
-        if distance_squared <= 0 {
+        // Use fast distance approximation instead of sqrt
+        let distance = fast_distance_approx(dx, dy) as i32;
+        let radius_int = self.radius_fixed.to_num::<i32>();
+        
+        if distance <= 0 {
             return self.center_color;
         }
         
-        if distance_squared >= self.radius_squared {
+        if distance >= radius_int {
             return self.edge_color;
         }
-        
-        // Use fast integer square root approximation
-        let distance = fast_sqrt(distance_squared as u32) as i32;
-        let radius_int = self.radius_fixed.to_num::<i32>();
         
         let t = FixedI32::<U16>::from_bits((distance * (1 << 16)) / radius_int);
         self.center_color.lerp(self.edge_color, t)
@@ -296,28 +297,35 @@ impl ConicGradient {
     }
 }
 
-/// Fast integer square root using binary search
+/// Ultra-fast integer square root using bit manipulation
 #[inline]
 fn fast_sqrt(n: u32) -> u32 {
     if n == 0 { return 0; }
     if n == 1 { return 1; }
     
-    let mut start = 1u32;
-    let mut end = n;
-    let mut result = 0;
+    // Use Newton's method with a good initial guess
+    let mut x = n;
+    let mut y = (x + 1) >> 1;
     
-    while start <= end {
-        let mid = start + (end - start) / 2;
-        
-        if mid <= n / mid {
-            start = mid + 1;
-            result = mid;
-        } else {
-            end = mid - 1;
-        }
+    while y < x {
+        x = y;
+        y = (x + n / x) >> 1;
     }
     
-    result
+    x
+}
+
+/// Even faster distance approximation for gradients (avoids sqrt entirely)
+#[inline]
+fn fast_distance_approx(dx: i32, dy: i32) -> u32 {
+    let dx = dx.abs() as u32;
+    let dy = dy.abs() as u32;
+    
+    // Octagonal approximation: max + 0.4 * min
+    // This is ~96% accurate and much faster than sqrt
+    let max = dx.max(dy);
+    let min = dx.min(dy);
+    max + (min * 2 + 2) / 5  // Integer approximation of 0.4
 }
 
 /// Fast atan2 approximation for embedded systems

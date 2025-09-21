@@ -47,6 +47,36 @@ pub trait Rasterizer {
         coverage: u8,
     );
     
+    /// Fast path: Fill entire rectangle with solid color (no blending)
+    /// 
+    /// This should be implemented with the fastest possible method for
+    /// filling large rectangular areas with a single color.
+    fn set_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888) {
+        // Default implementation - can be overridden for hardware acceleration
+        for y in rect.top_left.y..=rect.bottom() {
+            for x in rect.top_left.x..=rect.right() {
+                self.set_pixel(x, y, color);
+            }
+        }
+    }
+    
+    /// Fast path: Fill rectangle with alpha blending
+    fn blend_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888, coverage: u8) {
+        // Default implementation - can be overridden for hardware acceleration
+        for y in rect.top_left.y..=rect.bottom() {
+            for x in rect.top_left.x..=rect.right() {
+                self.blend_pixel(x, y, color, coverage);
+            }
+        }
+    }
+    
+    /// Fast path: Fill horizontal line
+    fn set_pixels_hline(&mut self, x_start: i32, x_end: i32, y: i32, color: super::types::Rgba8888) {
+        for x in x_start..=x_end {
+            self.set_pixel(x, y, color);
+        }
+    }
+    
     /// Sets multiple pixels in a horizontal line with optimized performance.
     /// 
     /// This method provides an optimized path for setting multiple pixels
@@ -121,42 +151,6 @@ pub trait Rasterizer {
         }
     }
     
-    /// Sets a rectangular region of pixels with optimized performance.
-    /// 
-    /// This method provides an optimized path for setting multiple pixels
-    /// in a rectangular region, which is common in many rendering operations.
-    /// 
-    /// # Arguments
-    /// * `rect` - Rectangle defining the region to fill
-    /// * `color` - RGBA8888 color to set
-    fn set_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888) {
-        // Default implementation using individual pixel operations
-        // Implementations should override this for better performance
-        for y in rect.top_left.y..=rect.bottom() {
-            for x in rect.top_left.x..=rect.right() {
-                self.set_pixel(x, y, color);
-            }
-        }
-    }
-    
-    /// Blends a rectangular region of pixels with optimized performance.
-    /// 
-    /// This method provides an optimized path for blending multiple pixels
-    /// in a rectangular region, which is common in many rendering operations.
-    /// 
-    /// # Arguments
-    /// * `rect` - Rectangle defining the region to fill
-    /// * `color` - RGBA8888 color to blend with
-    /// * `coverage` - Additional coverage (0-255)
-    fn blend_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888, coverage: u8) {
-        // Default implementation using individual pixel operations
-        // Implementations should override this for better performance
-        for y in rect.top_left.y..=rect.bottom() {
-            for x in rect.top_left.x..=rect.right() {
-                self.blend_pixel(x, y, color, coverage);
-            }
-        }
-    }
     
     /// Gets the current pixel color at the specified coordinates.
     /// 

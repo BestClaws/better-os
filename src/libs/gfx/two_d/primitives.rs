@@ -139,18 +139,222 @@ impl Rect {
     fn draw_rounded_fill(&self, canvas: &mut Canvas2D, fill: &Paint) {
         let bounds = self.geometry;
         
+        // Fast path for solid colors - use optimized scanline rendering
+        if let Paint::Solid(color) = fill {
+            self.draw_rounded_fill_solid(canvas, *color);
+            return;
+        }
+        
+        // Optimized gradient rendering with reduced calculations
+        self.draw_rounded_fill_gradient(canvas, fill);
+    }
+    
+    /// Optimized solid color rounded rectangle using scanline algorithm
+    fn draw_rounded_fill_solid(&self, canvas: &mut Canvas2D, color: Rgba8888) {
+        let bounds = self.geometry;
+        let radii = &self.corner_radii;
+        
+        // Early exit for zero radius - use ultra-fast rectangle fill
+        if !radii.has_radius() {
+            canvas.fill_rect_fast(bounds, color);
+            return;
+        }
+        
+        let left = bounds.top_left.x as f32;
+        let top = bounds.top_left.y as f32;
+        let right = bounds.right() as f32;
+        let bottom = bounds.bottom() as f32;
+        
+        // Precompute corner centers and radii
+        let tl_radius = radii.top_left.to_num::<f32>();
+        let tr_radius = radii.top_right.to_num::<f32>();
+        let br_radius = radii.bottom_right.to_num::<f32>();
+        let bl_radius = radii.bottom_left.to_num::<f32>();
+        
+        let tl_center = (left + tl_radius, top + tl_radius);
+        let tr_center = (right - tr_radius, top + tr_radius);
+        let br_center = (right - br_radius, bottom - br_radius);
+        let bl_center = (left + bl_radius, bottom - bl_radius);
+        
+        // Scanline rendering - much faster than per-pixel
         for y in bounds.top_left.y..=bounds.bottom() {
-            for x in bounds.top_left.x..=bounds.right() {
-                let coverage = self.calculate_rounded_coverage(x, y);
-                if coverage > 0.0 {
-                    let mut color = fill.sample_at(Point::new(x, y));
-                    color.a = (color.a as f32 * coverage) as u8;
+            let fy = y as f32;
+            let mut x_start = bounds.top_left.x;
+            let mut x_end = bounds.right();
+            
+            // Check corner intersections for this scanline
+            if fy <= top + tl_radius.max(tr_radius) {
+                // Top corners
+                if fy <= top + tl_radius {
+                    let dy = fy - tl_center.1;
+                    let dx_max = (tl_radius * tl_radius - dy * dy).sqrt();
+                    x_start = x_start.max((tl_center.0 - dx_max) as i32);
+                }
+                if fy <= top + tr_radius {
+                    let dy = fy - tr_center.1;
+                    let dx_max = (tr_radius * tr_radius - dy * dy).sqrt();
+                    x_end = x_end.min((tr_center.0 + dx_max) as i32);
+                }
+            } else if fy >= bottom - bl_radius.max(br_radius) {
+                // Bottom corners
+                if fy >= bottom - bl_radius {
+                    let dy = fy - bl_center.1;
+                    let dx_max = (bl_radius * bl_radius - dy * dy).sqrt();
+                    x_start = x_start.max((bl_center.0 - dx_max) as i32);
+                }
+                if fy >= bottom - br_radius {
+                    let dy = fy - br_center.1;
+                    let dx_max = (br_radius * br_radius - dy * dy).sqrt();
+                    x_end = x_end.min((br_center.0 + dx_max) as i32);
+                }
+            }
+            
+            // Draw horizontal line for this scanline using fast path
+            if x_start <= x_end {
+                canvas.fill_hline_fast(x_start, x_end, y, color);
+            }
+        }
+    }
+    
+    /// Ultra-fast gradient rounded rectangle using aggressive block sampling
+    fn draw_rounded_fill_gradient(&self, canvas: &mut Canvas2D, fill: &Paint) {
+        let bounds = self.geometry;
+        let area = bounds.size.width * bounds.size.height;
+        
+        // Use very aggressive sampling for large areas
+        let sample_step = if area > 50000 { 8 } else if area > 20000 { 4 } else if area > 5000 { 2 } else { 1 };
+        
+        // For very large areas, use scanline approach instead of per-pixel
+        if area > 30000 {
+            self.draw_gradient_scanline(canvas, fill);
+            return;
+        }
+        
+        for y in (bounds.top_left.y..=bounds.bottom()).step_by(sample_step) {
+            for x in (bounds.top_left.x..=bounds.right()).step_by(sample_step) {
+                // Use ultra-fast coverage check
+                if self.is_inside_rounded_rect_fast(x, y) {
+                    let color = fill.sample_at(Point::new(x, y));
                     if color.a > 0 {
-                        canvas.set_pixel(x, y, color);
+                        // Fill large sample blocks for performance
+                        for dy in 0..sample_step {
+                            for dx in 0..sample_step {
+                                let px = x + dx as i32;
+                                let py = y + dy as i32;
+                                if px <= bounds.right() && py <= bounds.bottom() {
+                                    canvas.set_pixel(px, py, color);
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+    
+    /// Ultra-fast gradient rendering using scanline approach
+    fn draw_gradient_scanline(&self, canvas: &mut Canvas2D, fill: &Paint) {
+        let bounds = self.geometry;
+        let radii = &self.corner_radii;
+        
+        if !radii.has_radius() {
+            // Simple rectangle - use block sampling
+            let block_size = 4;
+            for y in (bounds.top_left.y..=bounds.bottom()).step_by(block_size) {
+                for x in (bounds.top_left.x..=bounds.right()).step_by(block_size) {
+                    let color = fill.sample_at(Point::new(x, y));
+                    if color.a > 0 {
+                        let end_x = (x + block_size as i32).min(bounds.right());
+                        let end_y = (y + block_size as i32).min(bounds.bottom());
+                        
+                        for py in y..=end_y {
+                            canvas.fill_hline_fast(x, end_x, py, color);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        
+        // Rounded rectangle - use scanline with reduced gradient sampling
+        for y in bounds.top_left.y..=bounds.bottom() {
+            let (x_start, x_end) = self.calculate_fill_scanline_bounds(y as f32);
+            if x_start <= x_end {
+                // Sample gradient only at scanline start for performance
+                let color = fill.sample_at(Point::new(x_start as i32, y));
+                if color.a > 0 {
+                    canvas.fill_hline_fast(x_start as i32, x_end as i32, y, color);
+                }
+            }
+        }
+    }
+    
+    /// Calculate fill scanline bounds for rounded rectangle
+    fn calculate_fill_scanline_bounds(&self, y: f32) -> (f32, f32) {
+        let bounds = self.geometry;
+        let radii = &self.corner_radii;
+        
+        let left = bounds.top_left.x as f32;
+        let top = bounds.top_left.y as f32;
+        let right = bounds.right() as f32;
+        let bottom = bounds.bottom() as f32;
+        
+        let tl_radius = radii.top_left.to_num::<f32>();
+        let tr_radius = radii.top_right.to_num::<f32>();
+        let br_radius = radii.bottom_right.to_num::<f32>();
+        let bl_radius = radii.bottom_left.to_num::<f32>();
+        
+        self.calculate_scanline_bounds(y, left, top, right, bottom, tl_radius, tr_radius, br_radius, bl_radius)
+    }
+    
+    /// Ultra-fast inside check without coverage calculation
+    fn is_inside_rounded_rect_fast(&self, x: i32, y: i32) -> bool {
+        let bounds = self.geometry;
+        let radii = &self.corner_radii;
+        
+        // Fast bounds check
+        if x < bounds.top_left.x || x > bounds.right() || y < bounds.top_left.y || y > bounds.bottom() {
+            return false;
+        }
+        
+        if !radii.has_radius() {
+            return true;
+        }
+        
+        // Fast corner checks using integer arithmetic where possible
+        let left = bounds.top_left.x;
+        let top = bounds.top_left.y;
+        let right = bounds.right();
+        let bottom = bounds.bottom();
+        
+        let tl_r = radii.top_left.to_num::<i32>();
+        let tr_r = radii.top_right.to_num::<i32>();
+        let br_r = radii.bottom_right.to_num::<i32>();
+        let bl_r = radii.bottom_left.to_num::<i32>();
+        
+        // Check corner regions with fast distance approximation
+        if x <= left + tl_r && y <= top + tl_r {
+            let dx = x - (left + tl_r);
+            let dy = y - (top + tl_r);
+            return dx * dx + dy * dy <= tl_r * tl_r;
+        }
+        if x >= right - tr_r && y <= top + tr_r {
+            let dx = x - (right - tr_r);
+            let dy = y - (top + tr_r);
+            return dx * dx + dy * dy <= tr_r * tr_r;
+        }
+        if x >= right - br_r && y >= bottom - br_r {
+            let dx = x - (right - br_r);
+            let dy = y - (bottom - br_r);
+            return dx * dx + dy * dy <= br_r * br_r;
+        }
+        if x <= left + bl_r && y >= bottom - bl_r {
+            let dx = x - (left + bl_r);
+            let dy = y - (bottom - bl_r);
+            return dx * dx + dy * dy <= bl_r * bl_r;
+        }
+        
+        true
     }
     
     /// Draw rounded rectangle stroke
@@ -199,28 +403,159 @@ impl Rect {
             (self.corner_radii.bottom_left.to_num::<f32>() - half_stroke).max(0.0),
         );
         
-        for y in outer_bounds.top_left.y..=outer_bounds.bottom() {
-            for x in outer_bounds.top_left.x..=outer_bounds.right() {
-                let outer_coverage = self.calculate_rounded_coverage_for_rect(x, y, &outer_bounds, &outer_radii);
-                let inner_coverage = if inner_bounds.size.width > 0 && inner_bounds.size.height > 0 {
-                    self.calculate_rounded_coverage_for_rect(x, y, &inner_bounds, &inner_radii)
-                } else {
-                    0.0
-                };
-                
-                let coverage = outer_coverage - inner_coverage;
-                if coverage > 0.0 {
-                    let mut color = match &stroke.paint {
-                        Paint::Solid(c) => *c,
-                        _ => stroke.paint.sample_at(Point::new(x, y)),
-                    };
-                    color.a = (color.a as f32 * coverage) as u8;
-                    if color.a > 0 {
-                        canvas.set_pixel(x, y, color);
-                    }
-                }
+        // Ultra-fast stroke rendering using geometric approach instead of per-pixel sampling
+        let stroke_color = match &stroke.paint {
+            Paint::Solid(c) => *c,
+            _ => stroke.paint.sample_at(Point::new(self.geometry.top_left.x, self.geometry.top_left.y)),
+        };
+        
+        if !self.corner_radii.has_radius() {
+            // Simple rectangle stroke - draw 4 rectangles for edges
+            self.draw_simple_rect_stroke_fast(canvas, stroke_color, stroke_width as i32);
+        } else {
+            // For rounded rectangles, use scanline approach
+            self.draw_rounded_stroke_scanline(canvas, stroke_color, stroke_width);
+        }
+    }
+    
+    /// Ultra-fast simple rectangle stroke using 4 rectangle fills
+    fn draw_simple_rect_stroke_fast(&self, canvas: &mut Canvas2D, color: Rgba8888, width: i32) {
+        let bounds = self.geometry;
+        
+        // Top edge
+        let top_rect = RectGeometry::new(
+            Point::new(bounds.top_left.x - width, bounds.top_left.y - width),
+            Size::new(bounds.size.width + (2 * width) as u32, width as u32)
+        );
+        canvas.fill_rect_fast(top_rect, color);
+        
+        // Bottom edge
+        let bottom_rect = RectGeometry::new(
+            Point::new(bounds.top_left.x - width, bounds.bottom() + 1),
+            Size::new(bounds.size.width + (2 * width) as u32, width as u32)
+        );
+        canvas.fill_rect_fast(bottom_rect, color);
+        
+        // Left edge
+        let left_rect = RectGeometry::new(
+            Point::new(bounds.top_left.x - width, bounds.top_left.y),
+            Size::new(width as u32, bounds.size.height)
+        );
+        canvas.fill_rect_fast(left_rect, color);
+        
+        // Right edge
+        let right_rect = RectGeometry::new(
+            Point::new(bounds.right() + 1, bounds.top_left.y),
+            Size::new(width as u32, bounds.size.height)
+        );
+        canvas.fill_rect_fast(right_rect, color);
+    }
+    
+    /// Ultra-fast rounded stroke using scanline algorithm
+    fn draw_rounded_stroke_scanline(&self, canvas: &mut Canvas2D, color: Rgba8888, stroke_width: f32) {
+        let bounds = self.geometry;
+        let radii = &self.corner_radii;
+        let half_stroke = stroke_width / 2.0;
+        
+        // Precompute corner data
+        let left = bounds.top_left.x as f32;
+        let top = bounds.top_left.y as f32;
+        let right = bounds.right() as f32;
+        let bottom = bounds.bottom() as f32;
+        
+        let tl_radius = radii.top_left.to_num::<f32>();
+        let tr_radius = radii.top_right.to_num::<f32>();
+        let br_radius = radii.bottom_right.to_num::<f32>();
+        let bl_radius = radii.bottom_left.to_num::<f32>();
+        
+        // Expand for outer stroke boundary
+        let outer_left = left - half_stroke;
+        let outer_top = top - half_stroke;
+        let outer_right = right + half_stroke;
+        let outer_bottom = bottom + half_stroke;
+        
+        // Contract for inner boundary
+        let inner_left = left + half_stroke;
+        let inner_top = top + half_stroke;
+        let inner_right = right - half_stroke;
+        let inner_bottom = bottom - half_stroke;
+        
+        // Scanline rendering with geometric calculations
+        for y in (outer_top as i32)..=(outer_bottom as i32) {
+            let fy = y as f32;
+            
+            // Calculate stroke boundaries for this scanline
+            let (outer_x_start, outer_x_end) = self.calculate_scanline_bounds(
+                fy, outer_left, outer_top, outer_right, outer_bottom,
+                tl_radius + half_stroke, tr_radius + half_stroke, 
+                br_radius + half_stroke, bl_radius + half_stroke
+            );
+            
+            let (inner_x_start, inner_x_end) = if fy >= inner_top && fy <= inner_bottom {
+                self.calculate_scanline_bounds(
+                    fy, inner_left, inner_top, inner_right, inner_bottom,
+                    (tl_radius - half_stroke).max(0.0), (tr_radius - half_stroke).max(0.0),
+                    (br_radius - half_stroke).max(0.0), (bl_radius - half_stroke).max(0.0)
+                )
+            } else {
+                (outer_right + 1.0, outer_left - 1.0) // No inner boundary
+            };
+            
+            // Draw left stroke segment
+            if outer_x_start <= inner_x_start - 1.0 {
+                canvas.fill_hline_fast(outer_x_start as i32, (inner_x_start - 1.0) as i32, y, color);
+            }
+            
+            // Draw right stroke segment  
+            if inner_x_end + 1.0 <= outer_x_end {
+                canvas.fill_hline_fast((inner_x_end + 1.0) as i32, outer_x_end as i32, y, color);
             }
         }
+    }
+    
+    /// Calculate scanline intersection bounds for rounded rectangle
+    fn calculate_scanline_bounds(&self, y: f32, left: f32, top: f32, right: f32, bottom: f32,
+                                tl_r: f32, tr_r: f32, br_r: f32, bl_r: f32) -> (f32, f32) {
+        let mut x_start = left;
+        let mut x_end = right;
+        
+        // Top-left corner
+        if y <= top + tl_r && tl_r > 0.0 {
+            let dy = y - (top + tl_r);
+            if dy * dy <= tl_r * tl_r {
+                let dx = (tl_r * tl_r - dy * dy).sqrt();
+                x_start = x_start.max(left + tl_r - dx);
+            }
+        }
+        
+        // Top-right corner
+        if y <= top + tr_r && tr_r > 0.0 {
+            let dy = y - (top + tr_r);
+            if dy * dy <= tr_r * tr_r {
+                let dx = (tr_r * tr_r - dy * dy).sqrt();
+                x_end = x_end.min(right - tr_r + dx);
+            }
+        }
+        
+        // Bottom-left corner
+        if y >= bottom - bl_r && bl_r > 0.0 {
+            let dy = y - (bottom - bl_r);
+            if dy * dy <= bl_r * bl_r {
+                let dx = (bl_r * bl_r - dy * dy).sqrt();
+                x_start = x_start.max(left + bl_r - dx);
+            }
+        }
+        
+        // Bottom-right corner
+        if y >= bottom - br_r && br_r > 0.0 {
+            let dy = y - (bottom - br_r);
+            if dy * dy <= br_r * br_r {
+                let dx = (br_r * br_r - dy * dy).sqrt();
+                x_end = x_end.min(right - br_r + dx);
+            }
+        }
+        
+        (x_start, x_end)
     }
     
     /// Draw simple rectangle stroke
@@ -272,6 +607,55 @@ impl Rect {
                 color
             );
         }
+    }
+    
+    /// Fast coverage calculation with reduced precision for performance
+    fn calculate_rounded_coverage_fast(&self, px: i32, py: i32) -> f32 {
+        let bounds = self.geometry;
+        let radii = &self.corner_radii;
+        
+        let left = bounds.top_left.x as f32;
+        let top = bounds.top_left.y as f32;
+        let right = bounds.right() as f32;
+        let bottom = bounds.bottom() as f32;
+        let px = px as f32;
+        let py = py as f32;
+        
+        // Fast bounds check
+        if px < left || px > right || py < top || py > bottom {
+            return 0.0;
+        }
+        
+        // Fast corner region detection with integer arithmetic where possible
+        let tl_radius = radii.top_left.to_num::<f32>();
+        let tr_radius = radii.top_right.to_num::<f32>();
+        let br_radius = radii.bottom_right.to_num::<f32>();
+        let bl_radius = radii.bottom_left.to_num::<f32>();
+        
+        // Use fast distance approximation instead of sqrt
+        if px <= left + tl_radius && py <= top + tl_radius && tl_radius > 0.0 {
+            let dx = px - (left + tl_radius);
+            let dy = py - (top + tl_radius);
+            let dist_approx = dx.abs().max(dy.abs()) + 0.4 * dx.abs().min(dy.abs()); // Fast distance approximation
+            return if dist_approx <= tl_radius { 1.0 } else { 0.0 };
+        } else if px >= right - tr_radius && py <= top + tr_radius && tr_radius > 0.0 {
+            let dx = px - (right - tr_radius);
+            let dy = py - (top + tr_radius);
+            let dist_approx = dx.abs().max(dy.abs()) + 0.4 * dx.abs().min(dy.abs());
+            return if dist_approx <= tr_radius { 1.0 } else { 0.0 };
+        } else if px >= right - br_radius && py >= bottom - br_radius && br_radius > 0.0 {
+            let dx = px - (right - br_radius);
+            let dy = py - (bottom - br_radius);
+            let dist_approx = dx.abs().max(dy.abs()) + 0.4 * dx.abs().min(dy.abs());
+            return if dist_approx <= br_radius { 1.0 } else { 0.0 };
+        } else if px <= left + bl_radius && py >= bottom - bl_radius && bl_radius > 0.0 {
+            let dx = px - (left + bl_radius);
+            let dy = py - (bottom - bl_radius);
+            let dist_approx = dx.abs().max(dy.abs()) + 0.4 * dx.abs().min(dy.abs());
+            return if dist_approx <= bl_radius { 1.0 } else { 0.0 };
+        }
+        
+        1.0 // Not in corner region
     }
     
     /// Calculate coverage for rounded rectangle using fast analytical method
