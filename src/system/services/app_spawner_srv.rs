@@ -10,22 +10,29 @@ use embassy_sync::mutex::Mutex;
 use defmt::{debug, error, info, warn, Format};
 use crate::apps::rect::rect_app;
 use crate::apps::demo_fluent::demo_fluent_app;
+use crate::apps::gfx_perf_bench_adaptive::gfx_perf_bench_adaptive_app;
 
 /// Application registry for system apps
 ///
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
+    AppDescriptor {
+        name: "Adaptive GFX Performance Benchmark",
+        id: 1,
+        spawn_fn: spawn_gfx_perf_bench_adaptive_app,
+    },
+
+    AppDescriptor {
+        name: "Fluent GFX Demo",
+        id: 5,
+        spawn_fn: spawn_demo_fluent_app,
+    },
 
     AppDescriptor {
         name: "rect Monitor",
         id: 2,
         spawn_fn: spawn_rect_app,
-    },
-    AppDescriptor {
-        name: "Fluent GFX Demo",
-        id: 5,
-        spawn_fn: spawn_demo_fluent_app,
     },
 
 ];
@@ -156,9 +163,14 @@ pub enum AppSpawnError {
 // These wrapper functions provide type safety and error handling
 
 
+fn spawn_gfx_perf_bench_adaptive_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(gfx_perf_bench_adaptive_app(context))
+}
+
 fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(rect_app(context))
 }
+
 fn spawn_demo_fluent_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(demo_fluent_app(context))
 }
