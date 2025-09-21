@@ -1,7 +1,7 @@
 /// Comprehensive Graphics Performance Benchmarking App
 ///
 /// Tests all permutations of shapes, fills, strokes, and anti-aliasing variants
-/// Each test draws centered at ~50% screen size with 500ms delays
+/// Each test draws centered at ~50% screen size with 50ms delays
 
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -77,7 +77,7 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
     let mut test_count = 0;
     let benchmark_start = Instant::now();
 
-    // Execute each test with 500ms delay
+    // Execute each test with 50ms delay
     for (i, config) in test_configs.iter().enumerate() {
         info!("🧪 Test {}/{}: {} {} {} {} {}",
               i + 1, test_configs.len(),
@@ -107,8 +107,8 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
         total_render_time += test_time;
         test_count += 1;
 
-        // Wait 500ms before next test
-        Timer::after(Duration::from_millis(500)).await;
+        // Wait 50ms before next test
+        Timer::after(Duration::from_millis(50)).await;
     }
 
     // Final comprehensive statistics

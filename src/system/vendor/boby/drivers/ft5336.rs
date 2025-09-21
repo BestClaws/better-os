@@ -92,7 +92,7 @@ where
         
         let duration = start.elapsed();
         if duration.as_millis() > 15 {
-            defmt::info!("Touch update slow: {}ms, points={}, pressed={}", duration.as_millis(), points, pressed);
+            defmt::debug!("Touch update slow: {}ms, points={}, pressed={}", duration.as_millis(), points, pressed);
         }
     }
 

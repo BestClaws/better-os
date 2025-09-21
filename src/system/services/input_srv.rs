@@ -133,7 +133,7 @@ pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Bo
 
         // Log touch performance issues (every 2 seconds max)
         if read_duration.as_millis() > 20 || (pressed && last_log_time.elapsed().as_secs() >= 2) {
-            defmt::info!("Touch read: {}ms, pressed={}, pos=({},{})", 
+            defmt::debug!("Touch read: {}ms, pressed={}, pos=({},{})",
                 read_duration.as_millis(), pressed, xi, yi);
             last_log_time = Instant::now();
         }
