@@ -23,6 +23,7 @@ struct TestConfig {
     stroke_type: Option<StrokeType>,
     aa_type: Option<AntiAliasing>,
     corner_type: Option<CornerType>,
+    alpha_type: AlphaType,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +42,9 @@ enum ShapeType {
 enum FillType {
     Solid,
     LinearGradient,
+    LinearGradientHorizontal,
     RadialGradient,
+    RadialGradientOffCenter,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,6 +62,16 @@ enum CornerType {
     Small,     // 2.0px radius
     Medium,    // 8.0px radius
     Large,     // 20.0px radius
+    Asymmetric, // Different radius per corner
+}
+
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+enum AlphaType {
+    Opaque,        // 255 alpha - fastest path
+    SemiTransparent, // 128 alpha - blending required
+    LowAlpha,      // 64 alpha - heavy blending
+    VeryLowAlpha,  // 32 alpha - very heavy blending
 }
 
 /// Comprehensive performance benchmarking application
@@ -79,13 +92,14 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
 
     // Execute each test with 50ms delay
     for (i, config) in test_configs.iter().enumerate() {
-        info!("🧪 Test {}/{}: {} {} {} {} {}",
+        info!("🧪 Test {}/{}: {} {} {} {} {} {}",
               i + 1, test_configs.len(),
               shape_name(config.shape_type),
               fill_name(config.fill_type),
               stroke_name(config.stroke_type),
               aa_name(config.aa_type),
-              corner_name(config.corner_type));
+              corner_name(config.corner_type),
+              alpha_name(config.alpha_type));
 
         let draw_start = Instant::now();
 
@@ -140,7 +154,7 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
 }
 
 /// Generate all possible test permutations for comprehensive benchmarking
-fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 256> {
+fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 2048> {
     let mut configs = heapless::Vec::new();
 
     let shapes = [
@@ -156,7 +170,9 @@ fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 256> {
         None,
         Some(FillType::Solid),
         Some(FillType::LinearGradient),
+        Some(FillType::LinearGradientHorizontal),
         Some(FillType::RadialGradient),
+        Some(FillType::RadialGradientOffCenter),
     ];
 
     let strokes = [
@@ -179,6 +195,14 @@ fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 256> {
         Some(CornerType::Small),
         Some(CornerType::Medium),
         Some(CornerType::Large),
+        Some(CornerType::Asymmetric),
+    ];
+
+    let alphas = [
+        AlphaType::Opaque,
+        AlphaType::SemiTransparent,
+        AlphaType::LowAlpha,
+        AlphaType::VeryLowAlpha,
     ];
 
     // Generate all valid combinations
@@ -187,27 +211,30 @@ fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 256> {
             for &stroke in &strokes {
                 for &aa in &aa_types {
                     for &corner in &corners {
-                        // Skip invalid combinations
-                        if !is_valid_combination(shape, fill, stroke, corner) {
-                            continue;
-                        }
+                        for &alpha in &alphas {
+                            // Skip invalid combinations
+                            if !is_valid_combination(shape, fill, stroke, corner) {
+                                continue;
+                            }
 
-                        // Skip if no fill and no stroke (invisible)
-                        if fill.is_none() && stroke.is_none() {
-                            continue;
-                        }
+                            // Skip if no fill and no stroke (invisible)
+                            if fill.is_none() && stroke.is_none() {
+                                continue;
+                            }
 
-                        let config = TestConfig {
-                            shape_type: shape,
-                            fill_type: fill,
-                            stroke_type: stroke,
-                            aa_type: aa,
-                            corner_type: corner,
-                        };
+                            let config = TestConfig {
+                                shape_type: shape,
+                                fill_type: fill,
+                                stroke_type: stroke,
+                                aa_type: aa,
+                                corner_type: corner,
+                                alpha_type: alpha,
+                            };
 
-                        if configs.push(config).is_err() {
-                            warn!("⚠️  Reached maximum test configurations (256)");
-                            return configs;
+                            if configs.push(config).is_err() {
+                                warn!("⚠️  Reached maximum test configurations (2048)");
+                                return configs;
+                            }
                         }
                     }
                 }
@@ -245,12 +272,12 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 
             // Apply fill
             if let Some(fill_type) = config.fill_type {
-                rect = rect.fill(create_paint(fill_type, left, top, test_width, test_height));
+                rect = rect.fill(create_paint(fill_type, left, top, test_width, test_height, config.alpha_type));
             }
 
             // Apply stroke
             if let Some(stroke_type) = config.stroke_type {
-                rect = rect.stroke(create_stroke(stroke_type));
+                rect = rect.stroke(create_stroke(stroke_type, config.alpha_type));
             }
 
             // Apply corners
@@ -272,12 +299,12 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 
             // Apply fill
             if let Some(fill_type) = config.fill_type {
-                circle = circle.fill(create_paint(fill_type, center_x - radius as i32, center_y - radius as i32, (radius * 2.0) as i32, (radius * 2.0) as i32));
+                circle = circle.fill(create_paint(fill_type, center_x - radius as i32, center_y - radius as i32, (radius * 2.0) as i32, (radius * 2.0) as i32, config.alpha_type));
             }
 
             // Apply stroke
             if let Some(stroke_type) = config.stroke_type {
-                circle = circle.stroke(create_stroke(stroke_type));
+                circle = circle.stroke(create_stroke(stroke_type, config.alpha_type));
             }
 
             // Apply anti-aliasing
@@ -296,9 +323,9 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 
             // Apply stroke (required for lines)
             if let Some(stroke_type) = config.stroke_type {
-                line = line.stroke(create_stroke(stroke_type));
+                line = line.stroke(create_stroke(stroke_type, config.alpha_type));
             } else {
-                line = line.stroke(create_stroke(StrokeType::Thin)); // Default stroke
+                line = line.stroke(create_stroke(StrokeType::Thin, config.alpha_type)); // Default stroke
             }
 
             // Apply anti-aliasing
@@ -320,9 +347,9 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 
             // Apply stroke (required for arcs)
             if let Some(stroke_type) = config.stroke_type {
-                arc = arc.stroke(create_stroke(stroke_type));
+                arc = arc.stroke(create_stroke(stroke_type, config.alpha_type));
             } else {
-                arc = arc.stroke(create_stroke(StrokeType::Thin)); // Default stroke
+                arc = arc.stroke(create_stroke(StrokeType::Thin, config.alpha_type)); // Default stroke
             }
 
             // Apply anti-aliasing
@@ -342,9 +369,9 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 
             // Apply stroke (required for beziers)
             if let Some(stroke_type) = config.stroke_type {
-                bezier = bezier.stroke(create_stroke(stroke_type));
+                bezier = bezier.stroke(create_stroke(stroke_type, config.alpha_type));
             } else {
-                bezier = bezier.stroke(create_stroke(StrokeType::Thin)); // Default stroke
+                bezier = bezier.stroke(create_stroke(StrokeType::Thin, config.alpha_type)); // Default stroke
             }
 
             // Apply anti-aliasing
@@ -365,9 +392,9 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 
             // Apply stroke (required for beziers)
             if let Some(stroke_type) = config.stroke_type {
-                bezier = bezier.stroke(create_stroke(stroke_type));
+                bezier = bezier.stroke(create_stroke(stroke_type, config.alpha_type));
             } else {
-                bezier = bezier.stroke(create_stroke(StrokeType::Thin)); // Default stroke
+                bezier = bezier.stroke(create_stroke(StrokeType::Thin, config.alpha_type)); // Default stroke
             }
 
             // Apply anti-aliasing
@@ -381,43 +408,74 @@ fn execute_test(canvas: &mut Canvas2D, config: TestConfig, width: i32, height: i
 }
 
 /// Create paint based on fill type
-fn create_paint(fill_type: FillType, x: i32, y: i32, width: i32, height: i32) -> Paint {
+fn create_paint(fill_type: FillType, x: i32, y: i32, width: i32, height: i32, alpha_type: AlphaType) -> Paint {
+    let alpha = match alpha_type {
+        AlphaType::Opaque => 255,
+        AlphaType::SemiTransparent => 128,
+        AlphaType::LowAlpha => 64,
+        AlphaType::VeryLowAlpha => 32,
+    };
+
     match fill_type {
-        FillType::Solid => Paint::solid(Rgba8888::new(100, 150, 255, 255)),
+        FillType::Solid => Paint::solid(Rgba8888::new(100, 150, 255, alpha)),
         FillType::LinearGradient => Paint::linear(
             Point::new(x, y),
             Point::new(x + width, y + height),
-            Rgba8888::new(255, 100, 100, 255),
-            Rgba8888::new(100, 100, 255, 255)
+            Rgba8888::new(255, 100, 100, alpha),
+            Rgba8888::new(100, 100, 255, alpha)
+        ),
+        FillType::LinearGradientHorizontal => Paint::linear(
+            Point::new(x, y + height / 2),
+            Point::new(x + width, y + height / 2),
+            Rgba8888::new(255, 200, 100, alpha),
+            Rgba8888::new(100, 200, 255, alpha)
         ),
         FillType::RadialGradient => Paint::radial(
             Point::new(x + width / 2, y + height / 2),
             (width.min(height) / 2) as f32,
-            Rgba8888::new(255, 255, 100, 255),
-            Rgba8888::new(255, 100, 100, 100)
+            Rgba8888::new(255, 255, 100, alpha),
+            Rgba8888::new(255, 100, 100, alpha.saturating_sub(50))
+        ),
+        FillType::RadialGradientOffCenter => Paint::radial(
+            Point::new(x + width / 4, y + height / 4),
+            (width.min(height) * 3 / 4) as f32,
+            Rgba8888::new(100, 255, 255, alpha),
+            Rgba8888::new(255, 100, 255, alpha.saturating_sub(30))
         ),
     }
 }
 
-/// Create stroke based on stroke type
-fn create_stroke(stroke_type: StrokeType) -> Stroke {
+/// Create stroke based on stroke type and alpha
+fn create_stroke(stroke_type: StrokeType, alpha_type: AlphaType) -> Stroke {
+    let alpha = match alpha_type {
+        AlphaType::Opaque => 255,
+        AlphaType::SemiTransparent => 128,
+        AlphaType::LowAlpha => 64,
+        AlphaType::VeryLowAlpha => 32,
+    };
+
     let (width, color) = match stroke_type {
-        StrokeType::Thin => (1.0, Rgba8888::new(255, 255, 255, 255)),
-        StrokeType::Medium => (3.0, Rgba8888::new(255, 255, 0, 255)),
-        StrokeType::Thick => (6.0, Rgba8888::new(255, 0, 255, 255)),
+        StrokeType::Thin => (1.0, Rgba8888::new(255, 255, 255, alpha)),
+        StrokeType::Medium => (3.0, Rgba8888::new(255, 255, 0, alpha)),
+        StrokeType::Thick => (6.0, Rgba8888::new(255, 0, 255, alpha)),
     };
     Stroke::new(color, width)
 }
 
 /// Create corner radii based on corner type
 fn create_corner_radii(corner_type: CornerType) -> CornerRadii {
-    let radius = match corner_type {
-        CornerType::Sharp => 0.0,
-        CornerType::Small => 2.0,
-        CornerType::Medium => 8.0,
-        CornerType::Large => 20.0,
-    };
-    CornerRadii::uniform(FixedI32::<U16>::from_num(radius))
+    match corner_type {
+        CornerType::Sharp => CornerRadii::uniform(FixedI32::<U16>::from_num(0.0)),
+        CornerType::Small => CornerRadii::uniform(FixedI32::<U16>::from_num(2.0)),
+        CornerType::Medium => CornerRadii::uniform(FixedI32::<U16>::from_num(8.0)),
+        CornerType::Large => CornerRadii::uniform(FixedI32::<U16>::from_num(20.0)),
+        CornerType::Asymmetric => CornerRadii::new(
+            12.0, // top_left
+            4.0,  // top_right
+            16.0, // bottom_right
+            0.0,  // bottom_left
+        ),
+    }
 }
 
 /// Convert shape type to string for logging
@@ -438,7 +496,9 @@ fn fill_name(fill: Option<FillType>) -> &'static str {
         None => "NoFill",
         Some(FillType::Solid) => "SolidFill",
         Some(FillType::LinearGradient) => "LinearGrad",
+        Some(FillType::LinearGradientHorizontal) => "LinearHGrad",
         Some(FillType::RadialGradient) => "RadialGrad",
+        Some(FillType::RadialGradientOffCenter) => "RadialOGrad",
     }
 }
 
@@ -471,5 +531,16 @@ fn corner_name(corner: Option<CornerType>) -> &'static str {
         Some(CornerType::Small) => "SmallCorner",
         Some(CornerType::Medium) => "MedCorner",
         Some(CornerType::Large) => "LargeCorner",
+        Some(CornerType::Asymmetric) => "AsymCorner",
+    }
+}
+
+/// Convert alpha type to string for logging
+fn alpha_name(alpha: AlphaType) -> &'static str {
+    match alpha {
+        AlphaType::Opaque => "Opaque",
+        AlphaType::SemiTransparent => "SemiAlpha",
+        AlphaType::LowAlpha => "LowAlpha",
+        AlphaType::VeryLowAlpha => "VeryLowAlpha",
     }
 }
