@@ -24,7 +24,7 @@ pub async fn demo_fluent_app(context: AppContext) {
         let t = start.elapsed().as_micros() as f32 / 1_000_000.0;
         
         // Cycle through different demos every 3 seconds for better visibility
-        let demo_phase = ((t / 3.0) as u32) % 8;
+        let demo_phase = ((t / 3.0) as u32) % 7;
         let demo_t = (t % 3.0) / 3.0; // 0.0 to 1.0 within each demo
         
         context.draw(|surface: &mut DrawingSurface| {
@@ -41,12 +41,11 @@ pub async fn demo_fluent_app(context: AppContext) {
             match demo_phase {
                 0 => demo_antialiased_shapes(&mut canvas, w, h, demo_t),
                 1 => demo_alpha_blending_rects(&mut canvas, w, h, demo_t),
-                2 => demo_rounded_corners_gradient(&mut canvas, w, h, demo_t),
-                3 => demo_arcs(&mut canvas, w, h, demo_t),
-                4 => demo_bezier_curves(&mut canvas, w, h, demo_t),
-                5 => demo_radial_gradients(&mut canvas, w, h, demo_t),
-                6 => demo_linear_gradients(&mut canvas, w, h, demo_t),
-                7 => demo_performance_clock(&mut canvas, w, h, t),
+                2 => demo_arcs(&mut canvas, w, h, demo_t),
+                3 => demo_bezier_curves(&mut canvas, w, h, demo_t),
+                4 => demo_radial_gradients(&mut canvas, w, h, demo_t),
+                5 => demo_linear_gradients(&mut canvas, w, h, demo_t),
+                6 => demo_performance_clock(&mut canvas, w, h, t),
                 _ => {}
             }
             
@@ -114,59 +113,6 @@ fn demo_alpha_blending_rects(canvas: &mut Canvas2D, w: i32, h: i32, t: f32) {
         .draw(canvas);
     }
 }
-
-// Demo 3: ASYMMETRIC CORNER RADII + TRANSPARENT GRADIENT
-fn demo_rounded_corners_gradient(canvas: &mut Canvas2D, w: i32, h: i32, t: f32) {
-    let center_x = w / 2;
-    let center_y = h / 2;
-    
-    // ASYMMETRIC CORNER RADII - Each corner is DIFFERENT
-    let anim = (t * 1.5).sin() * 0.5 + 0.5;
-    let top_left = 5.0 + anim * 15.0;      // Small, animated
-    let top_right = 40.0 + anim * 20.0;    // Large, animated  
-    let bottom_right = 10.0 + anim * 30.0; // Medium, animated
-    let bottom_left = 50.0 + anim * 10.0;  // Very large, animated
-    
-    // TRANSPARENT GRADIENT - from transparent to semi-transparent
-    let transparent_gradient = Paint::linear(
-        Point::new(center_x - 100, center_y - 80),
-        Point::new(center_x + 100, center_y + 80),
-        Rgba8888::new(255, 100, 150, 80),   // Transparent pink
-        Rgba8888::new(100, 200, 255, 180),  // Semi-transparent blue
-    );
-    
-    // Main rectangle with ASYMMETRIC corners
-    PrimitiveRect::new(
-        Point::new(center_x - 100, center_y - 80),
-        Size::new(200, 160)
-    )
-    .fill(transparent_gradient)
-    .corner_radii(CornerRadii::new(top_left, top_right, bottom_right, bottom_left))
-    .stroke(Stroke::new(Rgba8888::new(255, 255, 255, 200), 3.0))
-    .draw(canvas);
-    
-    // Show another example with EXTREME asymmetric radii
-    let extreme_gradient = Paint::radial(
-        Point::new(center_x, center_y + 120),
-        60.0,
-        Rgba8888::new(255, 255, 100, 120), // Transparent yellow center
-        Rgba8888::new(255, 50, 100, 60),   // Very transparent red edge
-    );
-    
-    PrimitiveRect::new(
-        Point::new(center_x - 60, center_y + 90),
-        Size::new(120, 80)
-    )
-    .fill(extreme_gradient)
-    .corner_radii(CornerRadii::new(
-        0.0,   // TOP LEFT: Sharp corner
-        60.0,  // TOP RIGHT: Very round
-        20.0,  // BOTTOM RIGHT: Medium round
-        40.0   // BOTTOM LEFT: Large round
-    ))
-    .draw(canvas);
-}
-
 
 // Demo 4: Arcs showcase
 fn demo_arcs(canvas: &mut Canvas2D, w: i32, h: i32, t: f32) {

@@ -496,7 +496,7 @@ impl CornerRadii {
     
     /// Check if any corner has radius
     #[inline(always)]
-    pub const fn has_radius(self) -> bool {
+    pub const fn has_radius(&self) -> bool {
         self.top_left.raw > 0
             || self.top_right.raw > 0
             || self.bottom_right.raw > 0

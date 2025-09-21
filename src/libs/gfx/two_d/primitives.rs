@@ -280,48 +280,53 @@ impl Rect {
         let right = rect.right() as f32;
         let bottom = rect.bottom() as f32;
         
+        // CSS-like clamping: radius can't exceed half the rectangle's dimensions
+        let width = right - left;
+        let height = bottom - top;
+        let max_radius = if width < height { width / 2.0 } else { height / 2.0 };
+        
+        // Clamp radii like CSS does
+        let clamped_radii = CornerRadii {
+            top_left: Fixed::from_f32(if radii.top_left.to_f32() > max_radius { max_radius } else { radii.top_left.to_f32() }),
+            top_right: Fixed::from_f32(if radii.top_right.to_f32() > max_radius { max_radius } else { radii.top_right.to_f32() }),
+            bottom_right: Fixed::from_f32(if radii.bottom_right.to_f32() > max_radius { max_radius } else { radii.bottom_right.to_f32() }),
+            bottom_left: Fixed::from_f32(if radii.bottom_left.to_f32() > max_radius { max_radius } else { radii.bottom_left.to_f32() }),
+        };
+        let radii = &clamped_radii;
+        
         // Check if point is outside the rectangle bounds
         if px < left || px > right || py < top || py > bottom {
             return 0.0;
         }
         
-        // Get the appropriate corner radius
-        let corner_radius = if px <= left + radii.top_left.to_f32() && py <= top + radii.top_left.to_f32() {
-            // Top-left corner
-            radii.top_left.to_f32()
+        // Determine which corner region we're in and get the appropriate radius
+        let (corner_radius, corner_x, corner_y) = if px <= left + radii.top_left.to_f32() && py <= top + radii.top_left.to_f32() {
+            // Top-left corner region
+            let radius = radii.top_left.to_f32();
+            (radius, left + radius, top + radius)
         } else if px >= right - radii.top_right.to_f32() && py <= top + radii.top_right.to_f32() {
-            // Top-right corner
-            radii.top_right.to_f32()
+            // Top-right corner region
+            let radius = radii.top_right.to_f32();
+            (radius, right - radius, top + radius)
         } else if px >= right - radii.bottom_right.to_f32() && py >= bottom - radii.bottom_right.to_f32() {
-            // Bottom-right corner
-            radii.bottom_right.to_f32()
+            // Bottom-right corner region
+            let radius = radii.bottom_right.to_f32();
+            (radius, right - radius, bottom - radius)
         } else if px <= left + radii.bottom_left.to_f32() && py >= bottom - radii.bottom_left.to_f32() {
-            // Bottom-left corner
-            radii.bottom_left.to_f32()
+            // Bottom-left corner region
+            let radius = radii.bottom_left.to_f32();
+            (radius, left + radius, bottom - radius)
         } else {
-            // Not in a corner - always fully covered
+            // Not in any corner region - always fully covered
             return 1.0;
         };
         
+        // If no radius, it's a sharp corner
         if corner_radius <= 0.0 {
             return 1.0;
         }
         
         // Calculate distance from corner center
-        let (corner_x, corner_y) = if px <= left + corner_radius && py <= top + corner_radius {
-            // Top-left
-            (left + corner_radius, top + corner_radius)
-        } else if px >= right - corner_radius && py <= top + corner_radius {
-            // Top-right
-            (right - corner_radius, top + corner_radius)
-        } else if px >= right - corner_radius && py >= bottom - corner_radius {
-            // Bottom-right
-            (right - corner_radius, bottom - corner_radius)
-        } else {
-            // Bottom-left
-            (left + corner_radius, bottom - corner_radius)
-        };
-        
         let dx = px - corner_x;
         let dy = py - corner_y;
         let dist = (dx * dx + dy * dy).sqrt();
