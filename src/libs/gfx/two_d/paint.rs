@@ -111,18 +111,22 @@ impl LinearGradient {
             return self.start_color;
         }
         
-        // Project point onto gradient line
+        // Project point onto gradient line with overflow protection
         let px = point.x - self.start.x;
         let py = point.y - self.start.y;
-        let dot_product = px * self.dx + py * self.dy;
         
-        // Calculate interpolation parameter (0.0 to 1.0)
+        // Use saturating arithmetic to prevent overflow
+        let dot_product = px.saturating_mul(self.dx).saturating_add(py.saturating_mul(self.dy));
+        
+        // Calculate interpolation parameter (0.0 to 1.0) with overflow protection
         let t = if dot_product <= 0 {
             FixedI32::<U16>::ZERO
         } else if dot_product >= self.length_squared {
             FixedI32::<U16>::ONE
         } else {
-            FixedI32::<U16>::from_bits((dot_product * (1 << 16)) / self.length_squared)
+            // Use 64-bit arithmetic to prevent overflow
+            let t_bits = ((dot_product as i64) * (1i64 << 16)) / (self.length_squared as i64);
+            FixedI32::<U16>::from_bits(t_bits.min(0xFFFF) as i32)
         };
         
         self.start_color.lerp(self.end_color, t)
@@ -169,8 +173,8 @@ impl RadialGradient {
         let dx = point.x - self.center.x;
         let dy = point.y - self.center.y;
         
-        // Use fast distance approximation instead of sqrt
-        let distance = fast_distance_approx(dx, dy) as i32;
+        // Use fast distance approximation with bounds checking
+        let distance = fast_distance_approx(dx, dy).min(i32::MAX as u32) as i32;
         let radius_int = self.radius_fixed.to_num::<i32>();
         
         if distance <= 0 {
@@ -181,7 +185,9 @@ impl RadialGradient {
             return self.edge_color;
         }
         
-        let t = FixedI32::<U16>::from_bits((distance * (1 << 16)) / radius_int);
+        // Use 64-bit arithmetic to prevent overflow
+        let t_bits = ((distance as i64) * (1i64 << 16)) / (radius_int as i64);
+        let t = FixedI32::<U16>::from_bits(t_bits.min(0xFFFF) as i32);
         self.center_color.lerp(self.edge_color, t)
     }
     
