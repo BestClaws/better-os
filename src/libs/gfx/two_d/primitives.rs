@@ -161,71 +161,114 @@ impl Circle {
 
 impl Drawable for Circle {
     fn draw(self, canvas: &mut Canvas2D) {
-        let radius_int = self.radius.to_int();
+        let radius_f = self.radius.to_f32();
         
         if let Some(fill) = &self.fill {
-            // Anti-aliased filled circle
-            for y in (self.center.y - radius_int - 1)..=(self.center.y + radius_int + 1) {
-                for x in (self.center.x - radius_int - 1)..=(self.center.x + radius_int + 1) {
-                    if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
-                        let dx = x - self.center.x;
-                        let dy = y - self.center.y;
-                        let dist = ((dx * dx + dy * dy) as f32).sqrt();
-                        let radius_f = radius_int as f32;
-                        
-                        if dist <= radius_f + 1.0 {
-                            let mut color = fill.sample_at(Point::new(x, y));
-                            
-                            // Anti-aliasing on the edge
-                            if dist > radius_f - 1.0 {
-                                let edge_factor = (radius_f + 1.0 - dist).max(0.0).min(1.0);
-                                color.a = (color.a as f32 * edge_factor) as u8;
-                            }
-                            
-                            if color.a > 0 {
-                                canvas.set_pixel(x, y, color);
-                            }
+            self.draw_filled_circle(canvas, fill, radius_f);
+        }
+        
+        if let Some(stroke) = &self.stroke {
+            self.draw_circle_stroke(canvas, stroke, radius_f);
+        }
+    }
+}
+
+impl Circle {
+    /// Draw filled circle with analytical anti-aliasing
+    fn draw_filled_circle(&self, canvas: &mut Canvas2D, fill: &Paint, radius: f32) {
+        let bounds = (radius + 1.0) as i32;
+        
+        for y in (self.center.y - bounds)..=(self.center.y + bounds) {
+            for x in (self.center.x - bounds)..=(self.center.x + bounds) {
+                if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
+                    let coverage = self.calculate_circle_coverage(x, y, radius);
+                    if coverage > 0.0 {
+                        let mut color = fill.sample_at(Point::new(x, y));
+                        color.a = (color.a as f32 * coverage) as u8;
+                        if color.a > 0 {
+                            canvas.set_pixel(x, y, color);
                         }
                     }
+                }
+            }
+        }
+    }
+    
+    /// Draw circle stroke with analytical anti-aliasing
+    fn draw_circle_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke, radius: f32) {
+        let stroke_width = stroke.effective_width().to_f32();
+        let half_stroke = stroke_width * 0.5;
+        let inner_radius = radius - half_stroke;
+        let outer_radius = radius + half_stroke;
+        let bounds = (outer_radius + 1.0) as i32;
+        
+        for y in (self.center.y - bounds)..=(self.center.y + bounds) {
+            for x in (self.center.x - bounds)..=(self.center.x + bounds) {
+                if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
+                    let coverage = self.calculate_ring_coverage(x, y, inner_radius, outer_radius);
+                    if coverage > 0.0 {
+                        let mut color = match &stroke.paint {
+                            Paint::Solid(c) => *c,
+                            _ => stroke.paint.sample_at(Point::new(x, y)),
+                        };
+                        color.a = (color.a as f32 * coverage) as u8;
+                        if color.a > 0 {
+                            canvas.set_pixel(x, y, color);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Calculate coverage for filled circle using analytical method
+    fn calculate_circle_coverage(&self, x: i32, y: i32, radius: f32) -> f32 {
+        // Use 2x2 supersampling for high quality anti-aliasing
+        let mut covered_samples = 0;
+        const SAMPLES: i32 = 2;
+        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        
+        for sy in 0..SAMPLES {
+            for sx in 0..SAMPLES {
+                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
+                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
+                
+                let dx = sample_x - self.center.x as f32;
+                let dy = sample_y - self.center.y as f32;
+                let dist = (dx * dx + dy * dy).sqrt();
+                
+                if dist <= radius {
+                    covered_samples += 1;
                 }
             }
         }
         
-        // Anti-aliased stroke
-        if let Some(stroke) = &self.stroke {
-            let stroke_width = stroke.effective_width().to_int().max(1);
-            let half_stroke = stroke_width / 2;
-            let inner_radius = radius_int - half_stroke;
-            let outer_radius = radius_int + half_stroke;
-            
-            for y in (self.center.y - outer_radius - 1)..=(self.center.y + outer_radius + 1) {
-                for x in (self.center.x - outer_radius - 1)..=(self.center.x + outer_radius + 1) {
-                    if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
-                        let dx = x - self.center.x;
-                        let dy = y - self.center.y;
-                        let dist = ((dx * dx + dy * dy) as f32).sqrt();
-                        
-                        if dist >= inner_radius as f32 - 1.0 && dist <= outer_radius as f32 + 1.0 {
-                            let mut color = match &stroke.paint {
-                                Paint::Solid(c) => *c,
-                                _ => stroke.paint.sample_at(Point::new(x, y)),
-                            };
-                            
-                            // Anti-aliasing on both edges
-                            let inner_edge = (dist - (inner_radius as f32 - 1.0)).max(0.0).min(1.0);
-                            let outer_edge = ((outer_radius as f32 + 1.0) - dist).max(0.0).min(1.0);
-                            let edge_factor = inner_edge.min(outer_edge);
-                            
-                            color.a = (color.a as f32 * edge_factor) as u8;
-                            
-                            if color.a > 0 {
-                                canvas.set_pixel(x, y, color);
-                            }
-                        }
-                    }
+        covered_samples as f32 / TOTAL_SAMPLES as f32
+    }
+    
+    /// Calculate coverage for circle ring (stroke) using analytical method
+    fn calculate_ring_coverage(&self, x: i32, y: i32, inner_radius: f32, outer_radius: f32) -> f32 {
+        // Use 2x2 supersampling for high quality anti-aliasing
+        let mut covered_samples = 0;
+        const SAMPLES: i32 = 2;
+        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        
+        for sy in 0..SAMPLES {
+            for sx in 0..SAMPLES {
+                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
+                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
+                
+                let dx = sample_x - self.center.x as f32;
+                let dy = sample_y - self.center.y as f32;
+                let dist = (dx * dx + dy * dy).sqrt();
+                
+                if dist >= inner_radius && dist <= outer_radius {
+                    covered_samples += 1;
                 }
             }
         }
+        
+        covered_samples as f32 / TOTAL_SAMPLES as f32
     }
 }
 
@@ -264,59 +307,206 @@ impl Drawable for Line {
                 _ => stroke.paint.sample_at(self.start),
             };
             
-            let stroke_width = stroke.effective_width().to_int().max(1);
-            let half_width = stroke_width / 2;
+            let stroke_width = stroke.effective_width().to_f32().max(1.0);
             
-            // Bresenham's line algorithm with anti-aliased thickness
-            let dx = (self.end.x - self.start.x).abs();
-            let dy = (self.end.y - self.start.y).abs();
-            let sx = if self.start.x < self.end.x { 1 } else { -1 };
-            let sy = if self.start.y < self.end.y { 1 } else { -1 };
-            let mut err = dx - dy;
+            if stroke_width <= 1.5 {
+                // Use Xiaolin Wu's anti-aliased line algorithm for thin lines
+                self.draw_wu_line(canvas, color);
+            } else {
+                // Use thick line with proper anti-aliasing
+                self.draw_thick_line(canvas, color, stroke_width);
+            }
+        }
+    }
+}
+
+impl Line {
+    /// Xiaolin Wu's anti-aliased line algorithm - industry standard for thin lines
+    fn draw_wu_line(&self, canvas: &mut Canvas2D, color: Rgba8888) {
+        let mut x0 = self.start.x as f32;
+        let mut y0 = self.start.y as f32;
+        let mut x1 = self.end.x as f32;
+        let mut y1 = self.end.y as f32;
+        
+        let steep = (y1 - y0).abs() > (x1 - x0).abs();
+        
+        if steep {
+            core::mem::swap(&mut x0, &mut y0);
+            core::mem::swap(&mut x1, &mut y1);
+        }
+        
+        if x0 > x1 {
+            core::mem::swap(&mut x0, &mut x1);
+            core::mem::swap(&mut y0, &mut y1);
+        }
+        
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let gradient = if dx == 0.0 { 1.0 } else { dy / dx };
+        
+        // Handle first endpoint
+        let xend = x0.round();
+        let yend = y0 + gradient * (xend - x0);
+        let xgap = 1.0 - (x0 + 0.5).fract();
+        let xpxl1 = xend as i32;
+        let ypxl1 = yend.floor() as i32;
+        
+        if steep {
+            self.plot_pixel(canvas, ypxl1, xpxl1, color, (1.0 - yend.fract()) * xgap);
+            self.plot_pixel(canvas, ypxl1 + 1, xpxl1, color, yend.fract() * xgap);
+        } else {
+            self.plot_pixel(canvas, xpxl1, ypxl1, color, (1.0 - yend.fract()) * xgap);
+            self.plot_pixel(canvas, xpxl1, ypxl1 + 1, color, yend.fract() * xgap);
+        }
+        
+        let mut intery = yend + gradient;
+        
+        // Handle second endpoint
+        let xend = x1.round();
+        let yend = y1 + gradient * (xend - x1);
+        let xgap = (x1 + 0.5).fract();
+        let xpxl2 = xend as i32;
+        let ypxl2 = yend.floor() as i32;
+        
+        if steep {
+            self.plot_pixel(canvas, ypxl2, xpxl2, color, (1.0 - yend.fract()) * xgap);
+            self.plot_pixel(canvas, ypxl2 + 1, xpxl2, color, yend.fract() * xgap);
+        } else {
+            self.plot_pixel(canvas, xpxl2, ypxl2, color, (1.0 - yend.fract()) * xgap);
+            self.plot_pixel(canvas, xpxl2, ypxl2 + 1, color, yend.fract() * xgap);
+        }
+        
+        // Main loop
+        for x in (xpxl1 + 1)..xpxl2 {
+            if steep {
+                self.plot_pixel(canvas, intery.floor() as i32, x, color, 1.0 - intery.fract());
+                self.plot_pixel(canvas, intery.floor() as i32 + 1, x, color, intery.fract());
+            } else {
+                self.plot_pixel(canvas, x, intery.floor() as i32, color, 1.0 - intery.fract());
+                self.plot_pixel(canvas, x, intery.floor() as i32 + 1, color, intery.fract());
+            }
+            intery += gradient;
+        }
+    }
+    
+    /// Draw thick line with analytical anti-aliasing
+    fn draw_thick_line(&self, canvas: &mut Canvas2D, color: Rgba8888, width: f32) {
+        let half_width = width * 0.5;
+        
+        // Calculate line direction and normal
+        let dx = (self.end.x - self.start.x) as f32;
+        let dy = (self.end.y - self.start.y) as f32;
+        let length = (dx * dx + dy * dy).sqrt();
+        
+        if length < 0.001 {
+            // Point - draw as circle
+            let center_x = self.start.x as f32;
+            let center_y = self.start.y as f32;
             
-            let mut x = self.start.x;
-            let mut y = self.start.y;
+            let min_x = (center_x - half_width - 1.0) as i32;
+            let max_x = (center_x + half_width + 1.0) as i32;
+            let min_y = (center_y - half_width - 1.0) as i32;
+            let max_y = (center_y + half_width + 1.0) as i32;
             
-            loop {
-                // Draw thick anti-aliased point
-                for dy_offset in -half_width..=half_width {
-                    for dx_offset in -half_width..=half_width {
-                        let px = x + dx_offset;
-                        let py = y + dy_offset;
-                        
-                        if px >= 0 && py >= 0 && px < canvas.width() as i32 && py < canvas.height() as i32 {
-                            // Simple distance-based anti-aliasing
-                            let dist_sq = dx_offset * dx_offset + dy_offset * dy_offset;
-                            let radius_sq = half_width * half_width;
-                            
-                            if dist_sq <= radius_sq + half_width {
-                                let mut aa_color = color;
-                                
-                                // Anti-aliasing on the edge
-                                if dist_sq > radius_sq {
-                                    let edge_factor = 1.0 - ((dist_sq - radius_sq) as f32 / half_width as f32).min(1.0);
-                                    aa_color.a = (color.a as f32 * edge_factor) as u8;
-                                }
-                                
-                                if aa_color.a > 0 {
-                                    canvas.set_pixel(px, py, aa_color);
-                                }
-                            }
-                        }
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let dist = ((x as f32 - center_x).powi(2) + (y as f32 - center_y).powi(2)).sqrt();
+                    let coverage = self.calculate_circle_coverage(dist, half_width);
+                    if coverage > 0.0 {
+                        self.plot_pixel(canvas, x, y, color, coverage);
                     }
                 }
-                
-                if x == self.end.x && y == self.end.y { break; }
-                
-                let e2 = 2 * err;
-                if e2 > -dy {
-                    err -= dy;
-                    x += sx;
+            }
+            return;
+        }
+        
+        let nx = -dy / length; // Normal X
+        let ny = dx / length;  // Normal Y
+        
+        // Calculate bounding box
+        let min_x = (self.start.x.min(self.end.x) as f32 - half_width - 1.0) as i32;
+        let max_x = (self.start.x.max(self.end.x) as f32 + half_width + 1.0) as i32;
+        let min_y = (self.start.y.min(self.end.y) as f32 - half_width - 1.0) as i32;
+        let max_y = (self.start.y.max(self.end.y) as f32 + half_width + 1.0) as i32;
+        
+        // Sample each pixel with 4x4 supersampling for high quality
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let coverage = self.calculate_line_coverage_supersampled(x, y, half_width, nx, ny, dx, dy);
+                if coverage > 0.0 {
+                    self.plot_pixel(canvas, x, y, color, coverage);
                 }
-                if e2 < dx {
-                    err += dx;
-                    y += sy;
+            }
+        }
+    }
+    
+    /// Calculate line coverage using 4x4 supersampling
+    fn calculate_line_coverage_supersampled(&self, x: i32, y: i32, half_width: f32, nx: f32, ny: f32, dx: f32, dy: f32) -> f32 {
+        let mut covered_samples = 0;
+        const SAMPLES: i32 = 4;
+        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        
+        for sy in 0..SAMPLES {
+            for sx in 0..SAMPLES {
+                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
+                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
+                
+                if self.point_in_thick_line(sample_x, sample_y, half_width, nx, ny, dx, dy) {
+                    covered_samples += 1;
                 }
+            }
+        }
+        
+        covered_samples as f32 / TOTAL_SAMPLES as f32
+    }
+    
+    /// Check if point is inside thick line using analytical geometry
+    fn point_in_thick_line(&self, px: f32, py: f32, half_width: f32, nx: f32, ny: f32, dx: f32, dy: f32) -> bool {
+        let x0 = self.start.x as f32;
+        let y0 = self.start.y as f32;
+        let x1 = self.end.x as f32;
+        let y1 = self.end.y as f32;
+        
+        // Vector from line start to point
+        let dpx = px - x0;
+        let dpy = py - y0;
+        
+        // Project point onto line direction
+        let dot = dpx * dx + dpy * dy;
+        let length_sq = dx * dx + dy * dy;
+        
+        // Check if projection is within line segment
+        if dot < 0.0 || dot > length_sq {
+            // Outside line segment - check distance to endpoints
+            let dist_start = ((px - x0).powi(2) + (py - y0).powi(2)).sqrt();
+            let dist_end = ((px - x1).powi(2) + (py - y1).powi(2)).sqrt();
+            return dist_start <= half_width || dist_end <= half_width;
+        }
+        
+        // Distance from point to line
+        let distance = (dpx * nx + dpy * ny).abs();
+        distance <= half_width
+    }
+    
+    /// Calculate circle coverage for round line caps
+    fn calculate_circle_coverage(&self, distance: f32, radius: f32) -> f32 {
+        if distance <= radius - 0.5 {
+            1.0
+        } else if distance >= radius + 0.5 {
+            0.0
+        } else {
+            // Linear falloff in the transition zone
+            (radius + 0.5 - distance).max(0.0).min(1.0)
+        }
+    }
+    
+    /// Plot pixel with alpha blending
+    fn plot_pixel(&self, canvas: &mut Canvas2D, x: i32, y: i32, color: Rgba8888, coverage: f32) {
+        if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 && coverage > 0.0 {
+            let alpha = (color.a as f32 * coverage.min(1.0)) as u8;
+            if alpha > 0 {
+                let aa_color = Rgba8888::new(color.r, color.g, color.b, alpha);
+                canvas.set_pixel(x, y, aa_color);
             }
         }
     }
@@ -365,63 +555,100 @@ impl Arc {
 impl Drawable for Arc {
     fn draw(self, canvas: &mut Canvas2D) {
         if let Some(stroke) = &self.stroke {
-            // Simple arc drawing with safe iteration
             let color = match &stroke.paint {
                 Paint::Solid(c) => *c,
                 _ => stroke.paint.sample_at(self.center),
             };
             
-            let radius_int = self.radius.to_int();
+            let radius = self.radius.to_f32();
+            let stroke_width = stroke.effective_width().to_f32();
+            let half_stroke = stroke_width * 0.5;
+            let inner_radius = radius - half_stroke;
+            let outer_radius = radius + half_stroke;
+            
             let start_rad = self.start_angle.to_f32();
             let end_rad = self.end_angle.to_f32();
             
-            // Calculate arc length and step size for smooth rendering
+            // Calculate normalized arc length
             let mut arc_length = end_rad - start_rad;
             if arc_length < 0.0 {
                 arc_length += 2.0 * core::f32::consts::PI;
             }
-            
-            // Limit arc length to prevent infinite loops
             arc_length = arc_length.min(2.0 * core::f32::consts::PI);
             
-            let steps = (arc_length * radius_int as f32 * 0.5).max(1.0) as i32;
-            let step_size = arc_length / steps as f32;
+            // Calculate bounding box
+            let bounds = (outer_radius + 1.0) as i32;
             
-            // Draw arc with anti-aliasing consideration
-            for i in 0..=steps {
-                let angle = start_rad + i as f32 * step_size;
-                let x = self.center.x + (radius_int as f32 * angle.cos()) as i32;
-                let y = self.center.y + (radius_int as f32 * angle.sin()) as i32;
-                
-                // Simple anti-aliasing: draw slightly thicker lines
-                let stroke_width = stroke.effective_width().to_int().max(1);
-                let half_width = stroke_width / 2;
-                
-                for dy in -half_width..=half_width {
-                    for dx in -half_width..=half_width {
-                        let px = x + dx;
-                        let py = y + dy;
-                        
-                        if px >= 0 && py >= 0 && px < canvas.width() as i32 && py < canvas.height() as i32 {
-                            // Simple distance-based anti-aliasing
-                            let dist_sq = dx * dx + dy * dy;
-                            let radius_sq = half_width * half_width;
-                            
-                            if dist_sq <= radius_sq {
-                                let alpha = if dist_sq == 0 {
-                                    color.a
-                                } else {
-                                    let dist_factor = 1.0 - (dist_sq as f32 / radius_sq as f32).sqrt();
-                                    (color.a as f32 * dist_factor) as u8
-                                };
-                                
+            // Use supersampling anti-aliasing for smooth arcs
+            for y in (self.center.y - bounds)..=(self.center.y + bounds) {
+                for x in (self.center.x - bounds)..=(self.center.x + bounds) {
+                    if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
+                        let coverage = self.calculate_arc_coverage(x, y, inner_radius, outer_radius, start_rad, arc_length);
+                        if coverage > 0.0 {
+                            let alpha = (color.a as f32 * coverage) as u8;
+                            if alpha > 0 {
                                 let aa_color = Rgba8888::new(color.r, color.g, color.b, alpha);
-                                canvas.set_pixel(px, py, aa_color);
+                                canvas.set_pixel(x, y, aa_color);
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+impl Arc {
+    /// Calculate arc coverage using 2x2 supersampling
+    fn calculate_arc_coverage(&self, x: i32, y: i32, inner_radius: f32, outer_radius: f32, start_angle: f32, arc_length: f32) -> f32 {
+        let mut covered_samples = 0;
+        const SAMPLES: i32 = 2;
+        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        
+        for sy in 0..SAMPLES {
+            for sx in 0..SAMPLES {
+                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
+                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
+                
+                if self.point_in_arc(sample_x, sample_y, inner_radius, outer_radius, start_angle, arc_length) {
+                    covered_samples += 1;
+                }
+            }
+        }
+        
+        covered_samples as f32 / TOTAL_SAMPLES as f32
+    }
+    
+    /// Check if point is inside arc using analytical geometry
+    fn point_in_arc(&self, px: f32, py: f32, inner_radius: f32, outer_radius: f32, start_angle: f32, arc_length: f32) -> bool {
+        let dx = px - self.center.x as f32;
+        let dy = py - self.center.y as f32;
+        let dist = (dx * dx + dy * dy).sqrt();
+        
+        // Check if point is in the ring
+        if dist < inner_radius || dist > outer_radius {
+            return false;
+        }
+        
+        // Check if point is within the arc angle range
+        let mut angle = dy.atan2(dx);
+        if angle < 0.0 {
+            angle += 2.0 * core::f32::consts::PI;
+        }
+        
+        let mut start = start_angle;
+        if start < 0.0 {
+            start += 2.0 * core::f32::consts::PI;
+        }
+        
+        let end = start + arc_length;
+        
+        if end <= 2.0 * core::f32::consts::PI {
+            // Arc doesn't wrap around
+            angle >= start && angle <= end
+        } else {
+            // Arc wraps around 0/2π
+            angle >= start || angle <= (end - 2.0 * core::f32::consts::PI)
         }
     }
 }
