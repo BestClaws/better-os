@@ -67,7 +67,7 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
     info!("🚀 Starting Comprehensive Graphics Performance Benchmark");
 
     // Wait for app initialization
-    Timer::after(Duration::from_millis(500)).await;
+    Timer::after(Duration::from_millis(50)).await;
 
     // Generate all test permutations
     let test_configs = generate_all_test_permutations();

@@ -159,25 +159,27 @@ impl Rect {
         let half_stroke = stroke_width / 2.0;
         
         // Create outer and inner rectangles
+        let half_stroke_ceil = half_stroke.ceil() as i32;
+        
         let outer_bounds = RectGeometry::new(
             Point::new(
-                self.geometry.top_left.x - half_stroke as i32,
-                self.geometry.top_left.y - half_stroke as i32
+                self.geometry.top_left.x - half_stroke_ceil,
+                self.geometry.top_left.y - half_stroke_ceil
             ),
             Size::new(
-                self.geometry.size.width + (2.0 * half_stroke) as u32,
-                self.geometry.size.height + (2.0 * half_stroke) as u32
+                self.geometry.size.width + (2 * half_stroke_ceil) as u32,
+                self.geometry.size.height + (2 * half_stroke_ceil) as u32
             )
         );
         
         let inner_bounds = RectGeometry::new(
             Point::new(
-                self.geometry.top_left.x + half_stroke as i32,
-                self.geometry.top_left.y + half_stroke as i32
+                self.geometry.top_left.x + half_stroke_ceil,
+                self.geometry.top_left.y + half_stroke_ceil
             ),
             Size::new(
-                self.geometry.size.width.saturating_sub(stroke_width as u32),
-                self.geometry.size.height.saturating_sub(stroke_width as u32)
+                self.geometry.size.width.saturating_sub((2 * half_stroke_ceil) as u32),
+                self.geometry.size.height.saturating_sub((2 * half_stroke_ceil) as u32)
             )
         );
         
@@ -1270,7 +1272,7 @@ impl RectRasterizer {
         // A more sophisticated implementation would use proper arc rendering
         
         let half_width = stroke.effective_width() / FixedI32::<U16>::from_num(2);
-        let width_int = half_width.to_num::<i32>();
+        let width_int = half_width.to_num::<f32>().ceil() as i32;
         
         // Create outer rectangle that includes stroke width
         let outer_rect = RectGeometry::new(
@@ -1300,8 +1302,8 @@ impl RectRasterizer {
                 let inner_rect = RectGeometry::new(
                     Point::new(rect.top_left.x + width_int, rect.top_left.y + width_int),
                     Size::new(
-                        rect.size.width.saturating_sub(2 * width_int as u32),
-                        rect.size.height.saturating_sub(2 * width_int as u32),
+                        rect.size.width.saturating_sub((2 * width_int) as u32),
+                        rect.size.height.saturating_sub((2 * width_int) as u32),
                     ),
                 );
                 
