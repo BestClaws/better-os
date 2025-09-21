@@ -86,31 +86,254 @@ impl Rect {
 
 impl Drawable for Rect {
     fn draw(self, canvas: &mut Canvas2D) {
-        // For now, use simple rectangle drawing
         if let Some(fill) = &self.fill {
-            match fill {
-                Paint::Solid(color) => {
-                    canvas.fill_rect(
-                        self.geometry.top_left.x,
-                        self.geometry.top_left.y,
-                        self.geometry.size.width,
-                        self.geometry.size.height,
-                        *color
-                    );
-                }
-                _ => {
-                    // Sample gradient for each pixel
-                    for y in self.geometry.top_left.y..=self.geometry.bottom() {
-                        for x in self.geometry.top_left.x..=self.geometry.right() {
-                            let color = fill.sample_at(Point::new(x, y));
-                            canvas.set_pixel(x, y, color);
+            if self.corner_radii.has_radius() {
+                // Draw rounded rectangle
+                self.draw_rounded_fill(canvas, fill);
+            } else {
+                // Draw simple rectangle
+                match fill {
+                    Paint::Solid(color) => {
+                        canvas.fill_rect(
+                            self.geometry.top_left.x,
+                            self.geometry.top_left.y,
+                            self.geometry.size.width,
+                            self.geometry.size.height,
+                            *color
+                        );
+                    }
+                    _ => {
+                        // Sample gradient for each pixel
+                        for y in self.geometry.top_left.y..=self.geometry.bottom() {
+                            for x in self.geometry.top_left.x..=self.geometry.right() {
+                                let color = fill.sample_at(Point::new(x, y));
+                                canvas.set_pixel(x, y, color);
+                            }
                         }
                     }
                 }
             }
         }
         
-        // TODO: Implement stroke drawing
+        if let Some(stroke) = &self.stroke {
+            if self.corner_radii.has_radius() {
+                // Draw rounded stroke
+                self.draw_rounded_stroke(canvas, stroke);
+            } else {
+                // Draw simple rectangle stroke
+                self.draw_simple_stroke(canvas, stroke);
+            }
+        }
+    }
+}
+
+impl Rect {
+    /// Draw rounded rectangle fill with fast anti-aliasing
+    fn draw_rounded_fill(&self, canvas: &mut Canvas2D, fill: &Paint) {
+        let bounds = self.geometry;
+        
+        for y in bounds.top_left.y..=bounds.bottom() {
+            for x in bounds.top_left.x..=bounds.right() {
+                let coverage = self.calculate_rounded_coverage(x, y);
+                if coverage > 0.0 {
+                    let mut color = fill.sample_at(Point::new(x, y));
+                    color.a = (color.a as f32 * coverage) as u8;
+                    if color.a > 0 {
+                        canvas.set_pixel(x, y, color);
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Draw rounded rectangle stroke
+    fn draw_rounded_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke) {
+        let stroke_width = stroke.effective_width().to_f32();
+        let half_stroke = stroke_width * 0.5;
+        
+        // Create outer and inner rectangles
+        let outer_bounds = RectGeometry::new(
+            Point::new(
+                self.geometry.top_left.x - half_stroke as i32,
+                self.geometry.top_left.y - half_stroke as i32
+            ),
+            Size::new(
+                self.geometry.size.width + stroke_width as u32,
+                self.geometry.size.height + stroke_width as u32
+            )
+        );
+        
+        let inner_bounds = RectGeometry::new(
+            Point::new(
+                self.geometry.top_left.x + half_stroke as i32,
+                self.geometry.top_left.y + half_stroke as i32
+            ),
+            Size::new(
+                self.geometry.size.width.saturating_sub(stroke_width as u32),
+                self.geometry.size.height.saturating_sub(stroke_width as u32)
+            )
+        );
+        
+        // Expand corner radii for outer rectangle
+        let outer_radii = CornerRadii::new(
+            self.corner_radii.top_left.to_f32() + half_stroke,
+            self.corner_radii.top_right.to_f32() + half_stroke,
+            self.corner_radii.bottom_right.to_f32() + half_stroke,
+            self.corner_radii.bottom_left.to_f32() + half_stroke,
+        );
+        
+        // Shrink corner radii for inner rectangle
+        let inner_radii = CornerRadii::new(
+            (self.corner_radii.top_left.to_f32() - half_stroke).max(0.0),
+            (self.corner_radii.top_right.to_f32() - half_stroke).max(0.0),
+            (self.corner_radii.bottom_right.to_f32() - half_stroke).max(0.0),
+            (self.corner_radii.bottom_left.to_f32() - half_stroke).max(0.0),
+        );
+        
+        for y in outer_bounds.top_left.y..=outer_bounds.bottom() {
+            for x in outer_bounds.top_left.x..=outer_bounds.right() {
+                let outer_coverage = self.calculate_rounded_coverage_for_rect(x, y, &outer_bounds, &outer_radii);
+                let inner_coverage = if inner_bounds.size.width > 0 && inner_bounds.size.height > 0 {
+                    self.calculate_rounded_coverage_for_rect(x, y, &inner_bounds, &inner_radii)
+                } else {
+                    0.0
+                };
+                
+                let coverage = outer_coverage - inner_coverage;
+                if coverage > 0.0 {
+                    let mut color = match &stroke.paint {
+                        Paint::Solid(c) => *c,
+                        _ => stroke.paint.sample_at(Point::new(x, y)),
+                    };
+                    color.a = (color.a as f32 * coverage) as u8;
+                    if color.a > 0 {
+                        canvas.set_pixel(x, y, color);
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Draw simple rectangle stroke
+    fn draw_simple_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke) {
+        let stroke_width = stroke.effective_width().to_int().max(1);
+        let bounds = &self.geometry;
+        
+        let color = match &stroke.paint {
+            Paint::Solid(c) => *c,
+            _ => stroke.paint.sample_at(bounds.top_left),
+        };
+        
+        // Draw top and bottom edges
+        for i in 0..stroke_width {
+            // Top edge
+            canvas.fill_rect(
+                bounds.top_left.x,
+                bounds.top_left.y + i,
+                bounds.size.width,
+                1,
+                color
+            );
+            // Bottom edge
+            canvas.fill_rect(
+                bounds.top_left.x,
+                bounds.bottom() - i,
+                bounds.size.width,
+                1,
+                color
+            );
+        }
+        
+        // Draw left and right edges
+        for i in 0..stroke_width {
+            // Left edge
+            canvas.fill_rect(
+                bounds.top_left.x + i,
+                bounds.top_left.y,
+                1,
+                bounds.size.height,
+                color
+            );
+            // Right edge
+            canvas.fill_rect(
+                bounds.right() - i,
+                bounds.top_left.y,
+                1,
+                bounds.size.height,
+                color
+            );
+        }
+    }
+    
+    /// Calculate coverage for rounded rectangle using fast analytical method
+    fn calculate_rounded_coverage(&self, x: i32, y: i32) -> f32 {
+        self.calculate_rounded_coverage_for_rect(x, y, &self.geometry, &self.corner_radii)
+    }
+    
+    /// Calculate coverage for any rounded rectangle
+    fn calculate_rounded_coverage_for_rect(&self, x: i32, y: i32, rect: &RectGeometry, radii: &CornerRadii) -> f32 {
+        let px = x as f32 + 0.5;
+        let py = y as f32 + 0.5;
+        
+        let left = rect.top_left.x as f32;
+        let top = rect.top_left.y as f32;
+        let right = rect.right() as f32;
+        let bottom = rect.bottom() as f32;
+        
+        // Check if point is outside the rectangle bounds
+        if px < left || px > right || py < top || py > bottom {
+            return 0.0;
+        }
+        
+        // Get the appropriate corner radius
+        let corner_radius = if px <= left + radii.top_left.to_f32() && py <= top + radii.top_left.to_f32() {
+            // Top-left corner
+            radii.top_left.to_f32()
+        } else if px >= right - radii.top_right.to_f32() && py <= top + radii.top_right.to_f32() {
+            // Top-right corner
+            radii.top_right.to_f32()
+        } else if px >= right - radii.bottom_right.to_f32() && py >= bottom - radii.bottom_right.to_f32() {
+            // Bottom-right corner
+            radii.bottom_right.to_f32()
+        } else if px <= left + radii.bottom_left.to_f32() && py >= bottom - radii.bottom_left.to_f32() {
+            // Bottom-left corner
+            radii.bottom_left.to_f32()
+        } else {
+            // Not in a corner - always fully covered
+            return 1.0;
+        };
+        
+        if corner_radius <= 0.0 {
+            return 1.0;
+        }
+        
+        // Calculate distance from corner center
+        let (corner_x, corner_y) = if px <= left + corner_radius && py <= top + corner_radius {
+            // Top-left
+            (left + corner_radius, top + corner_radius)
+        } else if px >= right - corner_radius && py <= top + corner_radius {
+            // Top-right
+            (right - corner_radius, top + corner_radius)
+        } else if px >= right - corner_radius && py >= bottom - corner_radius {
+            // Bottom-right
+            (right - corner_radius, bottom - corner_radius)
+        } else {
+            // Bottom-left
+            (left + corner_radius, bottom - corner_radius)
+        };
+        
+        let dx = px - corner_x;
+        let dy = py - corner_y;
+        let dist = (dx * dx + dy * dy).sqrt();
+        
+        // Fast analytical anti-aliasing
+        if dist <= corner_radius - 0.5 {
+            1.0
+        } else if dist >= corner_radius + 0.5 {
+            0.0
+        } else {
+            (corner_radius + 0.5 - dist).max(0.0).min(1.0)
+        }
     }
 }
 
@@ -221,54 +444,49 @@ impl Circle {
         }
     }
     
-    /// Calculate coverage for filled circle using analytical method
+    /// Calculate coverage for filled circle using fast analytical method
     fn calculate_circle_coverage(&self, x: i32, y: i32, radius: f32) -> f32 {
-        // Use 2x2 supersampling for high quality anti-aliasing
-        let mut covered_samples = 0;
-        const SAMPLES: i32 = 2;
-        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        let dx = x as f32 - self.center.x as f32;
+        let dy = y as f32 - self.center.y as f32;
+        let dist = (dx * dx + dy * dy).sqrt();
         
-        for sy in 0..SAMPLES {
-            for sx in 0..SAMPLES {
-                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
-                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
-                
-                let dx = sample_x - self.center.x as f32;
-                let dy = sample_y - self.center.y as f32;
-                let dist = (dx * dx + dy * dy).sqrt();
-                
-                if dist <= radius {
-                    covered_samples += 1;
-                }
-            }
+        // Fast analytical anti-aliasing - single sample with smooth falloff
+        if dist <= radius - 0.5 {
+            1.0
+        } else if dist >= radius + 0.5 {
+            0.0
+        } else {
+            // Smooth linear falloff in the transition zone
+            (radius + 0.5 - dist).max(0.0).min(1.0)
         }
-        
-        covered_samples as f32 / TOTAL_SAMPLES as f32
     }
     
-    /// Calculate coverage for circle ring (stroke) using analytical method
+    /// Calculate coverage for circle ring (stroke) using fast analytical method
     fn calculate_ring_coverage(&self, x: i32, y: i32, inner_radius: f32, outer_radius: f32) -> f32 {
-        // Use 2x2 supersampling for high quality anti-aliasing
-        let mut covered_samples = 0;
-        const SAMPLES: i32 = 2;
-        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        let dx = x as f32 - self.center.x as f32;
+        let dy = y as f32 - self.center.y as f32;
+        let dist = (dx * dx + dy * dy).sqrt();
         
-        for sy in 0..SAMPLES {
-            for sx in 0..SAMPLES {
-                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
-                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
-                
-                let dx = sample_x - self.center.x as f32;
-                let dy = sample_y - self.center.y as f32;
-                let dist = (dx * dx + dy * dy).sqrt();
-                
-                if dist >= inner_radius && dist <= outer_radius {
-                    covered_samples += 1;
-                }
-            }
-        }
+        // Fast analytical anti-aliasing for ring
+        let outer_coverage = if dist <= outer_radius - 0.5 {
+            1.0
+        } else if dist >= outer_radius + 0.5 {
+            0.0
+        } else {
+            (outer_radius + 0.5 - dist).max(0.0).min(1.0)
+        };
         
-        covered_samples as f32 / TOTAL_SAMPLES as f32
+        let inner_coverage = if inner_radius <= 0.5 {
+            0.0
+        } else if dist <= inner_radius - 0.5 {
+            1.0
+        } else if dist >= inner_radius + 0.5 {
+            0.0
+        } else {
+            (inner_radius + 0.5 - dist).max(0.0).min(1.0)
+        };
+        
+        outer_coverage - inner_coverage
     }
 }
 
@@ -440,24 +658,44 @@ impl Line {
         }
     }
     
-    /// Calculate line coverage using 4x4 supersampling
+    /// Calculate line coverage using fast analytical method
     fn calculate_line_coverage_supersampled(&self, x: i32, y: i32, half_width: f32, nx: f32, ny: f32, dx: f32, dy: f32) -> f32 {
-        let mut covered_samples = 0;
-        const SAMPLES: i32 = 4;
-        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        let px = x as f32 + 0.5;
+        let py = y as f32 + 0.5;
         
-        for sy in 0..SAMPLES {
-            for sx in 0..SAMPLES {
-                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
-                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
-                
-                if self.point_in_thick_line(sample_x, sample_y, half_width, nx, ny, dx, dy) {
-                    covered_samples += 1;
-                }
-            }
+        let x0 = self.start.x as f32;
+        let y0 = self.start.y as f32;
+        let x1 = self.end.x as f32;
+        let y1 = self.end.y as f32;
+        
+        // Vector from line start to point
+        let dpx = px - x0;
+        let dpy = py - y0;
+        
+        // Project point onto line direction
+        let dot = dpx * dx + dpy * dy;
+        let length_sq = dx * dx + dy * dy;
+        
+        // Check if projection is within line segment
+        let distance = if dot < 0.0 {
+            // Before start - distance to start point
+            ((px - x0).powi(2) + (py - y0).powi(2)).sqrt()
+        } else if dot > length_sq {
+            // After end - distance to end point
+            ((px - x1).powi(2) + (py - y1).powi(2)).sqrt()
+        } else {
+            // Within segment - distance to line
+            (dpx * nx + dpy * ny).abs()
+        };
+        
+        // Fast analytical anti-aliasing
+        if distance <= half_width - 0.5 {
+            1.0
+        } else if distance >= half_width + 0.5 {
+            0.0
+        } else {
+            (half_width + 0.5 - distance).max(0.0).min(1.0)
         }
-        
-        covered_samples as f32 / TOTAL_SAMPLES as f32
     }
     
     /// Check if point is inside thick line using analytical geometry
@@ -599,24 +837,39 @@ impl Drawable for Arc {
 }
 
 impl Arc {
-    /// Calculate arc coverage using 2x2 supersampling
+    /// Calculate arc coverage using fast analytical method
     fn calculate_arc_coverage(&self, x: i32, y: i32, inner_radius: f32, outer_radius: f32, start_angle: f32, arc_length: f32) -> f32 {
-        let mut covered_samples = 0;
-        const SAMPLES: i32 = 2;
-        const TOTAL_SAMPLES: i32 = SAMPLES * SAMPLES;
+        let px = x as f32 + 0.5;
+        let py = y as f32 + 0.5;
         
-        for sy in 0..SAMPLES {
-            for sx in 0..SAMPLES {
-                let sample_x = x as f32 + (sx as f32 + 0.5) / SAMPLES as f32;
-                let sample_y = y as f32 + (sy as f32 + 0.5) / SAMPLES as f32;
-                
-                if self.point_in_arc(sample_x, sample_y, inner_radius, outer_radius, start_angle, arc_length) {
-                    covered_samples += 1;
-                }
-            }
+        if !self.point_in_arc(px, py, inner_radius, outer_radius, start_angle, arc_length) {
+            return 0.0;
         }
         
-        covered_samples as f32 / TOTAL_SAMPLES as f32
+        let dx = px - self.center.x as f32;
+        let dy = py - self.center.y as f32;
+        let dist = (dx * dx + dy * dy).sqrt();
+        
+        // Fast analytical anti-aliasing for ring edges
+        let outer_coverage = if dist <= outer_radius - 0.5 {
+            1.0
+        } else if dist >= outer_radius + 0.5 {
+            0.0
+        } else {
+            (outer_radius + 0.5 - dist).max(0.0).min(1.0)
+        };
+        
+        let inner_coverage = if inner_radius <= 0.5 {
+            0.0
+        } else if dist <= inner_radius - 0.5 {
+            1.0
+        } else if dist >= inner_radius + 0.5 {
+            0.0
+        } else {
+            (inner_radius + 0.5 - dist).max(0.0).min(1.0)
+        };
+        
+        outer_coverage - inner_coverage
     }
     
     /// Check if point is inside arc using analytical geometry
@@ -630,25 +883,33 @@ impl Arc {
             return false;
         }
         
+        // For full circle, always include
+        if arc_length >= 2.0 * core::f32::consts::PI - 0.01 {
+            return true;
+        }
+        
         // Check if point is within the arc angle range
-        let mut angle = dy.atan2(dx);
-        if angle < 0.0 {
-            angle += 2.0 * core::f32::consts::PI;
-        }
+        let angle = dy.atan2(dx);
         
-        let mut start = start_angle;
-        if start < 0.0 {
-            start += 2.0 * core::f32::consts::PI;
-        }
+        // Normalize angles to [0, 2π]
+        let normalize_angle = |a: f32| -> f32 {
+            let mut normalized = a % (2.0 * core::f32::consts::PI);
+            if normalized < 0.0 {
+                normalized += 2.0 * core::f32::consts::PI;
+            }
+            normalized
+        };
         
-        let end = start + arc_length;
+        let norm_angle = normalize_angle(angle);
+        let norm_start = normalize_angle(start_angle);
+        let norm_end = normalize_angle(start_angle + arc_length);
         
-        if end <= 2.0 * core::f32::consts::PI {
+        if norm_start <= norm_end {
             // Arc doesn't wrap around
-            angle >= start && angle <= end
+            norm_angle >= norm_start && norm_angle <= norm_end
         } else {
             // Arc wraps around 0/2π
-            angle >= start || angle <= (end - 2.0 * core::f32::consts::PI)
+            norm_angle >= norm_start || norm_angle <= norm_end
         }
     }
 }

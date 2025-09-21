@@ -455,6 +455,17 @@ pub struct CornerRadii {
 }
 
 impl CornerRadii {
+    /// Create corner radii with individual values
+    #[inline]
+    pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
+        Self {
+            top_left: Fixed::from_f32(top_left),
+            top_right: Fixed::from_f32(top_right),
+            bottom_right: Fixed::from_f32(bottom_right),
+            bottom_left: Fixed::from_f32(bottom_left),
+        }
+    }
+    
     /// Create uniform corner radii
     #[inline(always)]
     pub fn uniform(radius: Fixed) -> Self {
