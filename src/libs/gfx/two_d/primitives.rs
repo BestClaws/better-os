@@ -83,6 +83,12 @@ impl Rect {
         self.anti_aliasing = aa;
         self
     }
+    
+    /// Set anti-aliasing quality (alias for anti_aliasing)
+    #[inline]
+    pub fn aa(mut self, aa: AntiAliasing) -> Self {
+        self.anti_aliasing(aa)
+    }
 }
 
 impl Drawable for Rect {
@@ -159,8 +165,8 @@ impl Rect {
                 self.geometry.top_left.y - half_stroke as i32
             ),
             Size::new(
-                self.geometry.size.width + stroke_width as u32,
-                self.geometry.size.height + stroke_width as u32
+                self.geometry.size.width + (2.0 * half_stroke) as u32,
+                self.geometry.size.height + (2.0 * half_stroke) as u32
             )
         );
         
@@ -386,6 +392,12 @@ impl Circle {
         self.anti_aliasing = aa;
         self
     }
+    
+    /// Set anti-aliasing quality (alias for anti_aliasing)
+    #[inline]
+    pub fn aa(mut self, aa: AntiAliasing) -> Self {
+        self.anti_aliasing(aa)
+    }
 }
 
 impl Drawable for Circle {
@@ -502,6 +514,7 @@ pub struct Line {
     start: Point,
     end: Point,
     stroke: Option<Stroke>,
+    anti_aliasing: AntiAliasing,
 }
 
 impl Line {
@@ -512,6 +525,7 @@ impl Line {
             start,
             end,
             stroke: None,
+            anti_aliasing: AntiAliasing::default(),
         }
     }
     
@@ -520,6 +534,19 @@ impl Line {
     pub fn stroke(mut self, stroke: Stroke) -> Self {
         self.stroke = Some(stroke);
         self
+    }
+    
+    /// Set anti-aliasing quality
+    #[inline]
+    pub fn anti_aliasing(mut self, aa: AntiAliasing) -> Self {
+        self.anti_aliasing = aa;
+        self
+    }
+    
+    /// Set anti-aliasing quality (alias for anti_aliasing)
+    #[inline]
+    pub fn aa(mut self, aa: AntiAliasing) -> Self {
+        self.anti_aliasing(aa)
     }
 }
 
@@ -794,6 +821,12 @@ impl Arc {
         self.anti_aliasing = aa;
         self
     }
+    
+    /// Set anti-aliasing quality (alias for anti_aliasing)
+    #[inline]
+    pub fn aa(mut self, aa: AntiAliasing) -> Self {
+        self.anti_aliasing(aa)
+    }
 }
 
 impl Drawable for Arc {
@@ -972,6 +1005,12 @@ impl Bezier {
     pub fn anti_aliasing(mut self, aa: AntiAliasing) -> Self {
         self.anti_aliasing = aa;
         self
+    }
+    
+    /// Set anti-aliasing quality (alias for anti_aliasing)
+    #[inline]
+    pub fn aa(mut self, aa: AntiAliasing) -> Self {
+        self.anti_aliasing(aa)
     }
 }
 
@@ -1233,12 +1272,29 @@ impl RectRasterizer {
         let half_width = stroke.effective_width() / FixedI32::<U16>::from_num(2);
         let width_int = half_width.to_num::<i32>();
         
+        // Create outer rectangle that includes stroke width
+        let outer_rect = RectGeometry::new(
+            Point::new(rect.top_left.x - width_int, rect.top_left.y - width_int),
+            Size::new(
+                rect.size.width + (2 * width_int) as u32,
+                rect.size.height + (2 * width_int) as u32,
+            ),
+        );
+        
+        // Expand corner radii for outer rectangle
+        let outer_radii = CornerRadii::new(
+            corner_radii.top_left.to_num::<f32>() + width_int as f32,
+            corner_radii.top_right.to_num::<f32>() + width_int as f32,
+            corner_radii.bottom_right.to_num::<f32>() + width_int as f32,
+            corner_radii.bottom_left.to_num::<f32>() + width_int as f32,
+        );
+        
         for y in rect.top_left.y - width_int..=rect.bottom() + width_int {
             for x in rect.top_left.x - width_int..=rect.right() + width_int {
                 let point = Point::new(x, y);
                 
                 // Check if point is on the stroke boundary
-                let inside_outer = self.point_in_rounded_rect(point, rect, corner_radii);
+                let inside_outer = self.point_in_rounded_rect(point, &outer_rect, &outer_radii);
                 
                 // Create inner rectangle
                 let inner_rect = RectGeometry::new(
@@ -1249,8 +1305,16 @@ impl RectRasterizer {
                     ),
                 );
                 
+                // Shrink corner radii for inner rectangle
+                let inner_radii = CornerRadii::new(
+                    (corner_radii.top_left.to_num::<f32>() - width_int as f32).max(0.0),
+                    (corner_radii.top_right.to_num::<f32>() - width_int as f32).max(0.0),
+                    (corner_radii.bottom_right.to_num::<f32>() - width_int as f32).max(0.0),
+                    (corner_radii.bottom_left.to_num::<f32>() - width_int as f32).max(0.0),
+                );
+                
                 let inside_inner = if inner_rect.size.width > 0 && inner_rect.size.height > 0 {
-                    self.point_in_rounded_rect(point, &inner_rect, corner_radii)
+                    self.point_in_rounded_rect(point, &inner_rect, &inner_radii)
                 } else {
                     false
                 };
