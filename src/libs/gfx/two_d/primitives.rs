@@ -304,7 +304,50 @@ impl Rect {
         let br_radius = radii.bottom_right.to_num::<f32>();
         let bl_radius = radii.bottom_left.to_num::<f32>();
         
-        self.calculate_scanline_bounds(y, left, top, right, bottom, tl_radius, tr_radius, br_radius, bl_radius)
+        let mut x_start = left;
+        let mut x_end = right;
+        
+        // Top-left corner
+        if y <= top + tl_radius && tl_radius > 0.0 {
+            let dy = y - (top + tl_radius);
+            let dx_sq = tl_radius * tl_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_start = x_start.max(left + tl_radius - dx);
+            }
+        }
+        
+        // Top-right corner
+        if y <= top + tr_radius && tr_radius > 0.0 {
+            let dy = y - (top + tr_radius);
+            let dx_sq = tr_radius * tr_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_end = x_end.min(right - tr_radius + dx);
+            }
+        }
+        
+        // Bottom-left corner
+        if y >= bottom - bl_radius && bl_radius > 0.0 {
+            let dy = y - (bottom - bl_radius);
+            let dx_sq = bl_radius * bl_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_start = x_start.max(left + bl_radius - dx);
+            }
+        }
+        
+        // Bottom-right corner
+        if y >= bottom - br_radius && br_radius > 0.0 {
+            let dy = y - (bottom - br_radius);
+            let dx_sq = br_radius * br_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_end = x_end.min(right - br_radius + dx);
+            }
+        }
+        
+        (x_start, x_end)
     }
     
     /// Ultra-fast inside check without coverage calculation
@@ -403,7 +446,7 @@ impl Rect {
             (self.corner_radii.bottom_left.to_num::<f32>() - half_stroke).max(0.0),
         );
         
-        // Ultra-fast stroke rendering using geometric approach instead of per-pixel sampling
+        // Ultra-fast stroke rendering using geometric approach
         let stroke_color = match &stroke.paint {
             Paint::Solid(c) => *c,
             _ => stroke.paint.sample_at(Point::new(self.geometry.top_left.x, self.geometry.top_left.y)),
@@ -413,8 +456,8 @@ impl Rect {
             // Simple rectangle stroke - draw 4 rectangles for edges
             self.draw_simple_rect_stroke_fast(canvas, stroke_color, stroke_width as i32);
         } else {
-            // For rounded rectangles, use scanline approach
-            self.draw_rounded_stroke_scanline(canvas, stroke_color, stroke_width);
+            // For rounded rectangles, use fixed scanline approach
+            self.draw_rounded_stroke_scanline_fixed(canvas, stroke_color, stroke_width, &outer_bounds, &inner_bounds, &outer_radii, &inner_radii);
         }
     }
     
@@ -451,111 +494,110 @@ impl Rect {
         canvas.fill_rect_fast(right_rect, color);
     }
     
-    /// Ultra-fast rounded stroke using scanline algorithm
-    fn draw_rounded_stroke_scanline(&self, canvas: &mut Canvas2D, color: Rgba8888, stroke_width: f32) {
-        let bounds = self.geometry;
-        let radii = &self.corner_radii;
+    /// Fixed rounded stroke using proper scanline algorithm
+    fn draw_rounded_stroke_scanline_fixed(&self, canvas: &mut Canvas2D, color: Rgba8888, stroke_width: f32,
+                                         outer_bounds: &RectGeometry, inner_bounds: &RectGeometry,
+                                         outer_radii: &CornerRadii, inner_radii: &CornerRadii) {
         let half_stroke = stroke_width / 2.0;
         
-        // Precompute corner data
-        let left = bounds.top_left.x as f32;
-        let top = bounds.top_left.y as f32;
-        let right = bounds.right() as f32;
-        let bottom = bounds.bottom() as f32;
-        
-        let tl_radius = radii.top_left.to_num::<f32>();
-        let tr_radius = radii.top_right.to_num::<f32>();
-        let br_radius = radii.bottom_right.to_num::<f32>();
-        let bl_radius = radii.bottom_left.to_num::<f32>();
-        
-        // Expand for outer stroke boundary
-        let outer_left = left - half_stroke;
-        let outer_top = top - half_stroke;
-        let outer_right = right + half_stroke;
-        let outer_bottom = bottom + half_stroke;
-        
-        // Contract for inner boundary
-        let inner_left = left + half_stroke;
-        let inner_top = top + half_stroke;
-        let inner_right = right - half_stroke;
-        let inner_bottom = bottom - half_stroke;
-        
-        // Scanline rendering with geometric calculations
-        for y in (outer_top as i32)..=(outer_bottom as i32) {
-            let fy = y as f32;
+        // Scanline rendering with proper bounds
+        for y in outer_bounds.top_left.y..=outer_bounds.bottom() {
+            // Calculate outer boundary for this scanline
+            let outer_x_range = self.calculate_rounded_rect_x_range(y, outer_bounds, outer_radii);
             
-            // Calculate stroke boundaries for this scanline
-            let (outer_x_start, outer_x_end) = self.calculate_scanline_bounds(
-                fy, outer_left, outer_top, outer_right, outer_bottom,
-                tl_radius + half_stroke, tr_radius + half_stroke, 
-                br_radius + half_stroke, bl_radius + half_stroke
-            );
-            
-            let (inner_x_start, inner_x_end) = if fy >= inner_top && fy <= inner_bottom {
-                self.calculate_scanline_bounds(
-                    fy, inner_left, inner_top, inner_right, inner_bottom,
-                    (tl_radius - half_stroke).max(0.0), (tr_radius - half_stroke).max(0.0),
-                    (br_radius - half_stroke).max(0.0), (bl_radius - half_stroke).max(0.0)
-                )
+            // Calculate inner boundary for this scanline
+            let inner_x_range = if inner_bounds.size.width > 0 && inner_bounds.size.height > 0 
+                && y >= inner_bounds.top_left.y && y <= inner_bounds.bottom() {
+                self.calculate_rounded_rect_x_range(y, inner_bounds, inner_radii)
             } else {
-                (outer_right + 1.0, outer_left - 1.0) // No inner boundary
+                None
             };
             
-            // Draw left stroke segment
-            if outer_x_start <= inner_x_start - 1.0 {
-                canvas.fill_hline_fast(outer_x_start as i32, (inner_x_start - 1.0) as i32, y, color);
-            }
-            
-            // Draw right stroke segment  
-            if inner_x_end + 1.0 <= outer_x_end {
-                canvas.fill_hline_fast((inner_x_end + 1.0) as i32, outer_x_end as i32, y, color);
+            if let Some((outer_start, outer_end)) = outer_x_range {
+                match inner_x_range {
+                    Some((inner_start, inner_end)) => {
+                        // Draw left stroke segment
+                        if outer_start < inner_start {
+                            canvas.fill_hline_fast(outer_start, inner_start - 1, y, color);
+                        }
+                        // Draw right stroke segment
+                        if inner_end < outer_end {
+                            canvas.fill_hline_fast(inner_end + 1, outer_end, y, color);
+                        }
+                    }
+                    None => {
+                        // No inner boundary, draw entire outer range
+                        canvas.fill_hline_fast(outer_start, outer_end, y, color);
+                    }
+                }
             }
         }
     }
     
-    /// Calculate scanline intersection bounds for rounded rectangle
-    fn calculate_scanline_bounds(&self, y: f32, left: f32, top: f32, right: f32, bottom: f32,
-                                tl_r: f32, tr_r: f32, br_r: f32, bl_r: f32) -> (f32, f32) {
+    /// Calculate X range for rounded rectangle at given Y coordinate
+    fn calculate_rounded_rect_x_range(&self, y: i32, bounds: &RectGeometry, radii: &CornerRadii) -> Option<(i32, i32)> {
+        if y < bounds.top_left.y || y > bounds.bottom() {
+            return None;
+        }
+        
+        let left = bounds.top_left.x as f32;
+        let top = bounds.top_left.y as f32;
+        let right = bounds.right() as f32;
+        let bottom = bounds.bottom() as f32;
+        let fy = y as f32;
+        
         let mut x_start = left;
         let mut x_end = right;
         
-        // Top-left corner
-        if y <= top + tl_r && tl_r > 0.0 {
-            let dy = y - (top + tl_r);
-            if dy * dy <= tl_r * tl_r {
-                let dx = (tl_r * tl_r - dy * dy).sqrt();
-                x_start = x_start.max(left + tl_r - dx);
+        // Check top-left corner
+        let tl_radius = radii.top_left.to_num::<f32>();
+        if fy <= top + tl_radius && tl_radius > 0.0 {
+            let dy = fy - (top + tl_radius);
+            let dx_sq = tl_radius * tl_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_start = x_start.max(left + tl_radius - dx);
             }
         }
         
-        // Top-right corner
-        if y <= top + tr_r && tr_r > 0.0 {
-            let dy = y - (top + tr_r);
-            if dy * dy <= tr_r * tr_r {
-                let dx = (tr_r * tr_r - dy * dy).sqrt();
-                x_end = x_end.min(right - tr_r + dx);
+        // Check top-right corner
+        let tr_radius = radii.top_right.to_num::<f32>();
+        if fy <= top + tr_radius && tr_radius > 0.0 {
+            let dy = fy - (top + tr_radius);
+            let dx_sq = tr_radius * tr_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_end = x_end.min(right - tr_radius + dx);
             }
         }
         
-        // Bottom-left corner
-        if y >= bottom - bl_r && bl_r > 0.0 {
-            let dy = y - (bottom - bl_r);
-            if dy * dy <= bl_r * bl_r {
-                let dx = (bl_r * bl_r - dy * dy).sqrt();
-                x_start = x_start.max(left + bl_r - dx);
+        // Check bottom-left corner
+        let bl_radius = radii.bottom_left.to_num::<f32>();
+        if fy >= bottom - bl_radius && bl_radius > 0.0 {
+            let dy = fy - (bottom - bl_radius);
+            let dx_sq = bl_radius * bl_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_start = x_start.max(left + bl_radius - dx);
             }
         }
         
-        // Bottom-right corner
-        if y >= bottom - br_r && br_r > 0.0 {
-            let dy = y - (bottom - br_r);
-            if dy * dy <= br_r * br_r {
-                let dx = (br_r * br_r - dy * dy).sqrt();
-                x_end = x_end.min(right - br_r + dx);
+        // Check bottom-right corner
+        let br_radius = radii.bottom_right.to_num::<f32>();
+        if fy >= bottom - br_radius && br_radius > 0.0 {
+            let dy = fy - (bottom - br_radius);
+            let dx_sq = br_radius * br_radius - dy * dy;
+            if dx_sq >= 0.0 {
+                let dx = dx_sq.sqrt();
+                x_end = x_end.min(right - br_radius + dx);
             }
         }
         
-        (x_start, x_end)
+        if x_start <= x_end {
+            Some((x_start as i32, x_end as i32))
+        } else {
+            None
+        }
     }
     
     /// Draw simple rectangle stroke
