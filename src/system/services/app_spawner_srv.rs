@@ -11,6 +11,7 @@ use defmt::{debug, error, info, warn, Format};
 use crate::apps::rect::rect_app;
 use crate::apps::demo_fluent::demo_fluent_app;
 use crate::apps::gfx_perf_bench_adaptive::gfx_perf_bench_adaptive_app;
+use crate::apps::watch_app::watch_app;
 
 /// Application registry for system apps
 ///
@@ -164,7 +165,7 @@ pub enum AppSpawnError {
 
 
 fn spawn_gfx_perf_bench_adaptive_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(gfx_perf_bench_adaptive_app(context))
+    spawner.spawn(watch_app(context))
 }
 
 fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
