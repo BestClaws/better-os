@@ -1,5 +1,5 @@
 #![allow(unused)]
-use crate::libs::gfx::two_d::{Point, Size, Rgba8888, Canvas2D, FluentRect, Paint, Stroke};
+use crate::libs::gfx::two_d::{Point, Size, Rgba8888, Canvas2D, PrimitiveRect, Paint, Stroke, Drawable};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use embassy_time::{Duration, Timer};
@@ -7,7 +7,7 @@ use micromath::F32Ext;
 
 fn draw_rects(canvas: &mut Canvas2D) {
     // NEW FLUENT API - exactly what you wanted!
-    FluentRect::new(Point::new(25, 25), Size::new(25, 25))
+    PrimitiveRect::new(Point::new(25, 25), Size::new(25, 25))
         .fill(Paint::solid(Rgba8888::opaque(200, 60, 60)))
         .stroke(Stroke::new(Rgba8888::opaque(255, 255, 255), 2.0))
         .corner_radius(5.0)

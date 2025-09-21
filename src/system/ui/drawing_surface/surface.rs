@@ -408,7 +408,7 @@ impl<'a> DrawingSurface<'a> {
             return;
         }
         let clip = Rect::new(Point::zero(), Size::new(self.width, self.height));
-        let Some(clipped_rect) = rect.intersection(&clip) else {
+        let Some(clipped_rect) = rect.intersection(clip) else {
             return;
         };
         let bpp = self.ops.bpp;

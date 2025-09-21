@@ -25,7 +25,7 @@ pub trait Rasterizer {
     /// * `x` - X coordinate of the pixel
     /// * `y` - Y coordinate of the pixel
     /// * `color` - RGBA8888 color to set (alpha is applied as overwrite semantics)
-    fn set_pixel(&mut self, x: i32, y: i32, color: crate::libs::gfx::two_d::types::Rgba8888);
+    fn set_pixel(&mut self, x: i32, y: i32, color: super::types::Rgba8888);
     
     /// Blends a pixel with the specified color and alpha value.
     /// 
@@ -43,7 +43,7 @@ pub trait Rasterizer {
         &mut self,
         x: i32,
         y: i32,
-        color: crate::libs::gfx::two_d::types::Rgba8888,
+        color: super::types::Rgba8888,
         coverage: u8,
     );
     
@@ -57,7 +57,7 @@ pub trait Rasterizer {
     /// * `y` - Y coordinate
     /// * `width` - Number of pixels to set
     /// * `color` - RGBA8888 color to set
-    fn set_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: crate::libs::gfx::two_d::types::Rgba8888) {
+    fn set_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: super::types::Rgba8888) {
         // Default implementation using individual pixel operations
         // Implementations should override this for better performance
         for i in 0..width {
@@ -76,7 +76,7 @@ pub trait Rasterizer {
     /// * `width` - Number of pixels to blend
     /// * `color` - RGBA8888 color to blend with
     /// * `coverage` - Additional coverage (0-255)
-    fn blend_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: crate::libs::gfx::two_d::types::Rgba8888, coverage: u8) {
+    fn blend_pixels_horizontal(&mut self, x: i32, y: i32, width: u32, color: super::types::Rgba8888, coverage: u8) {
         // Default implementation using individual pixel operations
         // Implementations should override this for better performance
         for i in 0..width {
@@ -94,7 +94,7 @@ pub trait Rasterizer {
     /// * `y` - Starting Y coordinate
     /// * `height` - Number of pixels to set
     /// * `color` - RGBA8888 color to set
-    fn set_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: crate::libs::gfx::two_d::types::Rgba8888) {
+    fn set_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: super::types::Rgba8888) {
         // Default implementation using individual pixel operations
         // Implementations should override this for better performance
         for i in 0..height {
@@ -113,7 +113,7 @@ pub trait Rasterizer {
     /// * `height` - Number of pixels to blend
     /// * `color` - RGBA8888 color to blend with
     /// * `coverage` - Additional coverage (0-255)
-    fn blend_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: crate::libs::gfx::two_d::types::Rgba8888, coverage: u8) {
+    fn blend_pixels_vertical(&mut self, x: i32, y: i32, height: u32, color: super::types::Rgba8888, coverage: u8) {
         // Default implementation using individual pixel operations
         // Implementations should override this for better performance
         for i in 0..height {
@@ -129,7 +129,7 @@ pub trait Rasterizer {
     /// # Arguments
     /// * `rect` - Rectangle defining the region to fill
     /// * `color` - RGBA8888 color to set
-    fn set_pixels_rect(&mut self, rect: crate::libs::gfx::two_d::types::Rect, color: crate::libs::gfx::two_d::types::Rgba8888) {
+    fn set_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888) {
         // Default implementation using individual pixel operations
         // Implementations should override this for better performance
         for y in rect.top_left.y..=rect.bottom() {
@@ -148,7 +148,7 @@ pub trait Rasterizer {
     /// * `rect` - Rectangle defining the region to fill
     /// * `color` - RGBA8888 color to blend with
     /// * `coverage` - Additional coverage (0-255)
-    fn blend_pixels_rect(&mut self, rect: crate::libs::gfx::two_d::types::Rect, color: crate::libs::gfx::two_d::types::Rgba8888, coverage: u8) {
+    fn blend_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888, coverage: u8) {
         // Default implementation using individual pixel operations
         // Implementations should override this for better performance
         for y in rect.top_left.y..=rect.bottom() {
@@ -169,10 +169,10 @@ pub trait Rasterizer {
     /// 
     /// # Returns
     /// The current RGBA8888 color at the specified coordinates
-    fn get_pixel(&self, x: i32, y: i32) -> crate::libs::gfx::two_d::types::Rgba8888 {
+    fn get_pixel(&self, x: i32, y: i32) -> super::types::Rgba8888 {
         // Default implementation - implementations should override this
         // for better performance and actual pixel reading
-        crate::libs::gfx::two_d::types::Rgba8888 { r: 0, g: 0, b: 0, a: 255 }
+        super::types::Rgba8888 { r: 0, g: 0, b: 0, a: 255 }
     }
     
     /// Clears the entire drawing surface to the specified color.
@@ -182,10 +182,10 @@ pub trait Rasterizer {
     /// 
     /// # Arguments
     /// * `color` - RGBA8888 color to clear to
-    fn clear(&mut self, color: crate::libs::gfx::two_d::types::Rgba8888) {
-        let full_rect = crate::libs::gfx::two_d::types::Rect::new(
-            crate::libs::gfx::two_d::types::Point::zero(),
-            crate::libs::gfx::two_d::types::Size::new(self.width(), self.height())
+    fn clear(&mut self, color: super::types::Rgba8888) {
+        let full_rect = super::types::Rect::new(
+            super::types::Point::zero(),
+            super::types::Size::new(self.width(), self.height())
         );
         self.set_pixels_rect(full_rect, color);
     }
