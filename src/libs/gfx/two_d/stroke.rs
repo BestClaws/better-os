@@ -8,7 +8,8 @@
 /// - Dash patterns for decorative effects
 /// - Optimized rasterization for performance
 
-use super::types::{Point, Rgba8888, Fixed, AntiAliasing};
+use super::types::{Point, Rgba8888, AntiAliasing};
+use fixed::{FixedI32, types::extra::U16};
 use super::paint::Paint;
 use micromath::F32Ext;
 
@@ -18,17 +19,17 @@ pub struct Stroke {
     /// Stroke color or paint
     pub paint: Paint,
     /// Stroke width in pixels (sub-pixel precision)
-    pub width: Fixed,
+    pub width: FixedI32<U16>,
     /// Line cap style
     pub cap: LineCap,
     /// Line join style
     pub join: LineJoin,
     /// Miter limit for miter joins
-    pub miter_limit: Fixed,
+    pub miter_limit: FixedI32<U16>,
     /// Dash pattern (empty for solid lines)
-    pub dash_pattern: heapless::Vec<Fixed, 8>,
+    pub dash_pattern: heapless::Vec<FixedI32<U16>, 8>,
     /// Dash offset
-    pub dash_offset: Fixed,
+    pub dash_offset: FixedI32<U16>,
     /// Anti-aliasing quality
     pub anti_aliasing: AntiAliasing,
 }
@@ -39,12 +40,12 @@ impl Stroke {
     pub fn new(color: Rgba8888, width: f32) -> Self {
         Self {
             paint: Paint::solid(color),
-            width: Fixed::from_f32(width.max(0.0)),
+            width: FixedI32::<U16>::from_num(width.max(0.0)),
             cap: LineCap::Round,
             join: LineJoin::Round,
-            miter_limit: Fixed::from_f32(4.0),
+            miter_limit: FixedI32::<U16>::from_num(4.0),
             dash_pattern: heapless::Vec::new(),
-            dash_offset: Fixed::ZERO,
+            dash_offset: FixedI32::<U16>::ZERO,
             anti_aliasing: AntiAliasing::default(),
         }
     }
@@ -54,12 +55,12 @@ impl Stroke {
     pub fn with_paint(paint: Paint, width: f32) -> Self {
         Self {
             paint,
-            width: Fixed::from_f32(width.max(0.0)),
+            width: FixedI32::<U16>::from_num(width.max(0.0)),
             cap: LineCap::Round,
             join: LineJoin::Round,
-            miter_limit: Fixed::from_f32(4.0),
+            miter_limit: FixedI32::<U16>::from_num(4.0),
             dash_pattern: heapless::Vec::new(),
-            dash_offset: Fixed::ZERO,
+            dash_offset: FixedI32::<U16>::ZERO,
             anti_aliasing: AntiAliasing::default(),
         }
     }
@@ -81,7 +82,7 @@ impl Stroke {
     /// Set miter limit
     #[inline]
     pub fn with_miter_limit(mut self, limit: f32) -> Self {
-        self.miter_limit = Fixed::from_f32(limit.max(1.0));
+        self.miter_limit = FixedI32::<U16>::from_num(limit.max(1.0));
         self
     }
     
@@ -90,7 +91,7 @@ impl Stroke {
     pub fn with_dash_pattern(mut self, pattern: &[f32]) -> Self {
         self.dash_pattern.clear();
         for &dash in pattern.iter().take(8) {
-            let _ = self.dash_pattern.push(Fixed::from_f32(dash.max(0.0)));
+            let _ = self.dash_pattern.push(FixedI32::<U16>::from_num(dash.max(0.0)));
         }
         self
     }
@@ -98,7 +99,7 @@ impl Stroke {
     /// Set dash offset
     #[inline]
     pub fn with_dash_offset(mut self, offset: f32) -> Self {
-        self.dash_offset = Fixed::from_f32(offset);
+        self.dash_offset = FixedI32::<U16>::from_num(offset);
         self
     }
     
@@ -117,9 +118,9 @@ impl Stroke {
     
     /// Get effective stroke width (minimum 1 pixel for visibility)
     #[inline(always)]
-    pub fn effective_width(&self) -> Fixed {
-        if self.width.raw < Fixed::SCALE {
-            Fixed::ONE
+    pub fn effective_width(&self) -> FixedI32<U16> {
+        if self.width < FixedI32::<U16>::ONE {
+            FixedI32::<U16>::ONE
         } else {
             self.width
         }
@@ -172,7 +173,7 @@ impl StrokeRasterizer {
         end: Point,
         stroke: &Stroke,
     ) {
-        if stroke.width.raw <= 0 {
+        if stroke.width.to_bits() <= 0 {
             return;
         }
         
@@ -196,7 +197,7 @@ impl StrokeRasterizer {
             _ => stroke.paint.sample_at(start), // Simplified for aliased rendering
         };
         
-        let width = stroke.effective_width().to_int().max(1);
+        let width = stroke.effective_width().to_num::<i32>().max(1);
         let half_width = width / 2;
         
         // Use Bresenham's line algorithm with thickness
@@ -246,7 +247,7 @@ impl StrokeRasterizer {
         stroke: &Stroke,
     ) {
         let width = stroke.effective_width();
-        let half_width = width / Fixed::from_int(2);
+        let half_width = width / FixedI32::<U16>::from_num(2);
         
         // Calculate line direction and normal
         let dx = end.x - start.x;
@@ -259,15 +260,15 @@ impl StrokeRasterizer {
             return;
         }
         
-        let length = Fixed::from_f32((length_sq as f32).sqrt());
-        let nx = Fixed::from_int(-dy) / length; // Normal X
-        let ny = Fixed::from_int(dx) / length;  // Normal Y
+        let length = FixedI32::<U16>::from_num((length_sq as f32).sqrt());
+        let nx = FixedI32::<U16>::from_num(-dy) / length; // Normal X
+        let ny = FixedI32::<U16>::from_num(dx) / length;  // Normal Y
         
         // Calculate bounding box
-        let min_x = (start.x.min(end.x) - half_width.to_int() - 1).max(0);
-        let max_x = (start.x.max(end.x) + half_width.to_int() + 1).min(raster.width() as i32 - 1);
-        let min_y = (start.y.min(end.y) - half_width.to_int() - 1).max(0);
-        let max_y = (start.y.max(end.y) + half_width.to_int() + 1).min(raster.height() as i32 - 1);
+        let min_x = (start.x.min(end.x) - half_width.to_num::<i32>() - 1).max(0);
+        let max_x = (start.x.max(end.x) + half_width.to_num::<i32>() + 1).min(raster.width() as i32 - 1);
+        let min_y = (start.y.min(end.y) - half_width.to_num::<i32>() - 1).max(0);
+        let max_y = (start.y.max(end.y) + half_width.to_num::<i32>() + 1).min(raster.height() as i32 - 1);
         
         // Sample each pixel in bounding box
         for y in min_y..=max_y {
@@ -295,7 +296,7 @@ impl StrokeRasterizer {
         pixel: Point,
         line_start: Point,
         line_end: Point,
-        half_width: Fixed,
+        half_width: FixedI32<U16>,
         aa_quality: AntiAliasing,
     ) -> u8 {
         let samples = match aa_quality {
@@ -307,12 +308,12 @@ impl StrokeRasterizer {
         
         let mut covered_samples = 0;
         let samples_per_axis = (samples as f32).sqrt() as i32;
-        let step = Fixed::ONE / Fixed::from_int(samples_per_axis);
+        let step = FixedI32::<U16>::ONE / FixedI32::<U16>::from_num(samples_per_axis);
         
         for sy in 0..samples_per_axis {
             for sx in 0..samples_per_axis {
-                let sample_x = Fixed::from_int(pixel.x) + step * Fixed::from_int(sx) + step / Fixed::from_int(2);
-                let sample_y = Fixed::from_int(pixel.y) + step * Fixed::from_int(sy) + step / Fixed::from_int(2);
+                let sample_x = FixedI32::<U16>::from_num(pixel.x) + step * FixedI32::<U16>::from_num(sx) + step / FixedI32::<U16>::from_num(2);
+                let sample_y = FixedI32::<U16>::from_num(pixel.y) + step * FixedI32::<U16>::from_num(sy) + step / FixedI32::<U16>::from_num(2);
                 
                 let distance = self.point_to_line_distance(
                     Point::from_fixed(sample_x, sample_y),
@@ -331,7 +332,7 @@ impl StrokeRasterizer {
     
     /// Calculate distance from point to line segment
     #[inline]
-    fn point_to_line_distance(&self, point: Point, line_start: Point, line_end: Point) -> Fixed {
+    fn point_to_line_distance(&self, point: Point, line_start: Point, line_end: Point) -> FixedI32<U16> {
         let dx = line_end.x - line_start.x;
         let dy = line_end.y - line_start.y;
         let length_sq = dx * dx + dy * dy;
@@ -340,7 +341,7 @@ impl StrokeRasterizer {
             // Line is a point
             let px_diff = point.x - line_start.x;
             let py_diff = point.y - line_start.y;
-            return Fixed::from_f32((px_diff * px_diff + py_diff * py_diff) as f32).sqrt();
+            return FixedI32::<U16>::from_num((px_diff * px_diff + py_diff * py_diff) as f32).sqrt();
         }
         
         // Project point onto line
@@ -356,7 +357,7 @@ impl StrokeRasterizer {
         // Calculate distance
         let dist_x = point.x - closest_x;
         let dist_y = point.y - closest_y;
-        Fixed::from_f32((dist_x * dist_x + dist_y * dist_y) as f32).sqrt()
+        FixedI32::<U16>::from_num((dist_x * dist_x + dist_y * dist_y) as f32).sqrt()
     }
     
     /// Rasterize point with anti-aliasing (for zero-length lines)
@@ -367,8 +368,8 @@ impl StrokeRasterizer {
         center: Point,
         stroke: &Stroke,
     ) {
-        let radius = stroke.effective_width() / Fixed::from_int(2);
-        let radius_int = radius.to_int();
+        let radius = stroke.effective_width() / FixedI32::<U16>::from_num(2);
+        let radius_int = radius.to_num::<i32>();
         
         let min_x = (center.x - radius_int - 1).max(0);
         let max_x = (center.x + radius_int + 1).min(raster.width() as i32 - 1);
@@ -377,13 +378,13 @@ impl StrokeRasterizer {
         
         for y in min_y..=max_y {
             for x in min_x..=max_x {
-                let distance = Fixed::from_f32(center.distance_squared(Point::new(x, y)) as f32).sqrt();
+                let distance = FixedI32::<U16>::from_num(center.distance_squared(Point::new(x, y)) as f32).sqrt();
                 
                 if distance <= radius {
-                    let coverage = if distance >= radius - Fixed::ONE {
+                    let coverage = if distance >= radius - FixedI32::<U16>::ONE {
                         // Anti-aliased edge
-                        let edge_coverage = (radius - distance) / Fixed::ONE;
-                        (edge_coverage.to_f32() * 255.0) as u8
+                        let edge_coverage = (radius - distance) / FixedI32::<U16>::ONE;
+                        (edge_coverage.to_num::<f32>() * 255.0) as u8
                     } else {
                         255
                     };
@@ -414,7 +415,7 @@ impl StrokeRasterizer {
                 self.rasterize_point_antialiased(raster, point, stroke);
             }
             LineCap::Square => {
-                let half_width = stroke.effective_width() / Fixed::from_int(2);
+                let half_width = stroke.effective_width() / FixedI32::<U16>::from_num(2);
                 let extension = half_width;
                 
                 // Calculate square cap corners
@@ -422,12 +423,12 @@ impl StrokeRasterizer {
                 let normal_y = direction.x;
                 
                 let corner1 = Point::new(
-                    point.x + (normal_x as f32 * half_width.to_f32()) as i32 + (direction.x as f32 * extension.to_f32()) as i32,
-                    point.y + (normal_y as f32 * half_width.to_f32()) as i32 + (direction.y as f32 * extension.to_f32()) as i32,
+                    point.x + (normal_x as f32 * half_width.to_num::<f32>()) as i32 + (direction.x as f32 * extension.to_num::<f32>()) as i32,
+                    point.y + (normal_y as f32 * half_width.to_num::<f32>()) as i32 + (direction.y as f32 * extension.to_num::<f32>()) as i32,
                 );
                 let corner2 = Point::new(
-                    point.x - (normal_x as f32 * half_width.to_f32()) as i32 + (direction.x as f32 * extension.to_f32()) as i32,
-                    point.y - (normal_y as f32 * half_width.to_f32()) as i32 + (direction.y as f32 * extension.to_f32()) as i32,
+                    point.x - (normal_x as f32 * half_width.to_num::<f32>()) as i32 + (direction.x as f32 * extension.to_num::<f32>()) as i32,
+                    point.y - (normal_y as f32 * half_width.to_num::<f32>()) as i32 + (direction.y as f32 * extension.to_num::<f32>()) as i32,
                 );
                 
                 // Render square cap as rectangle

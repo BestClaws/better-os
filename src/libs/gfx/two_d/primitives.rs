@@ -7,7 +7,8 @@
 /// - Advanced stroke options
 /// - Optimized rasterization algorithms
 
-use super::types::{Point, Size, Rect as RectGeometry, Fixed, CornerRadii, Rgba8888, AntiAliasing};
+use super::types::{Point, Size, Rect as RectGeometry, CornerRadii, Rgba8888, AntiAliasing};
+use fixed::{FixedI32, types::extra::U16};
 use super::paint::Paint;
 use super::stroke::{Stroke, StrokeRasterizer};
 use super::canvas2d::Canvas2D;
@@ -148,8 +149,8 @@ impl Rect {
     
     /// Draw rounded rectangle stroke
     fn draw_rounded_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke) {
-        let stroke_width = stroke.effective_width().to_f32();
-        let half_stroke = stroke_width * 0.5;
+        let stroke_width = stroke.effective_width().to_num::<f32>();
+        let half_stroke = stroke_width / 2.0;
         
         // Create outer and inner rectangles
         let outer_bounds = RectGeometry::new(
@@ -176,18 +177,18 @@ impl Rect {
         
         // Expand corner radii for outer rectangle
         let outer_radii = CornerRadii::new(
-            self.corner_radii.top_left.to_f32() + half_stroke,
-            self.corner_radii.top_right.to_f32() + half_stroke,
-            self.corner_radii.bottom_right.to_f32() + half_stroke,
-            self.corner_radii.bottom_left.to_f32() + half_stroke,
+            self.corner_radii.top_left.to_num::<f32>() + half_stroke,
+            self.corner_radii.top_right.to_num::<f32>() + half_stroke,
+            self.corner_radii.bottom_right.to_num::<f32>() + half_stroke,
+            self.corner_radii.bottom_left.to_num::<f32>() + half_stroke,
         );
         
         // Shrink corner radii for inner rectangle
         let inner_radii = CornerRadii::new(
-            (self.corner_radii.top_left.to_f32() - half_stroke).max(0.0),
-            (self.corner_radii.top_right.to_f32() - half_stroke).max(0.0),
-            (self.corner_radii.bottom_right.to_f32() - half_stroke).max(0.0),
-            (self.corner_radii.bottom_left.to_f32() - half_stroke).max(0.0),
+            (self.corner_radii.top_left.to_num::<f32>() - half_stroke).max(0.0),
+            (self.corner_radii.top_right.to_num::<f32>() - half_stroke).max(0.0),
+            (self.corner_radii.bottom_right.to_num::<f32>() - half_stroke).max(0.0),
+            (self.corner_radii.bottom_left.to_num::<f32>() - half_stroke).max(0.0),
         );
         
         for y in outer_bounds.top_left.y..=outer_bounds.bottom() {
@@ -216,7 +217,7 @@ impl Rect {
     
     /// Draw simple rectangle stroke
     fn draw_simple_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke) {
-        let stroke_width = stroke.effective_width().to_int().max(1);
+        let stroke_width = stroke.effective_width().to_num::<i32>().max(1);
         let bounds = &self.geometry;
         
         let color = match &stroke.paint {
@@ -287,10 +288,10 @@ impl Rect {
         
         // Clamp radii like CSS does
         let clamped_radii = CornerRadii {
-            top_left: Fixed::from_f32(if radii.top_left.to_f32() > max_radius { max_radius } else { radii.top_left.to_f32() }),
-            top_right: Fixed::from_f32(if radii.top_right.to_f32() > max_radius { max_radius } else { radii.top_right.to_f32() }),
-            bottom_right: Fixed::from_f32(if radii.bottom_right.to_f32() > max_radius { max_radius } else { radii.bottom_right.to_f32() }),
-            bottom_left: Fixed::from_f32(if radii.bottom_left.to_f32() > max_radius { max_radius } else { radii.bottom_left.to_f32() }),
+            top_left: FixedI32::<U16>::from_num(if radii.top_left.to_num::<f32>() > max_radius { max_radius } else { radii.top_left.to_num::<f32>() }),
+            top_right: FixedI32::<U16>::from_num(if radii.top_right.to_num::<f32>() > max_radius { max_radius } else { radii.top_right.to_num::<f32>() }),
+            bottom_right: FixedI32::<U16>::from_num(if radii.bottom_right.to_num::<f32>() > max_radius { max_radius } else { radii.bottom_right.to_num::<f32>() }),
+            bottom_left: FixedI32::<U16>::from_num(if radii.bottom_left.to_num::<f32>() > max_radius { max_radius } else { radii.bottom_left.to_num::<f32>() }),
         };
         let radii = &clamped_radii;
         
@@ -300,21 +301,21 @@ impl Rect {
         }
         
         // Determine which corner region we're in and get the appropriate radius
-        let (corner_radius, corner_x, corner_y) = if px <= left + radii.top_left.to_f32() && py <= top + radii.top_left.to_f32() {
+        let (corner_radius, corner_x, corner_y) = if px <= left + radii.top_left.to_num::<f32>() && py <= top + radii.top_left.to_num::<f32>() {
             // Top-left corner region
-            let radius = radii.top_left.to_f32();
+            let radius = radii.top_left.to_num::<f32>();
             (radius, left + radius, top + radius)
-        } else if px >= right - radii.top_right.to_f32() && py <= top + radii.top_right.to_f32() {
+        } else if px >= right - radii.top_right.to_num::<f32>() && py <= top + radii.top_right.to_num::<f32>() {
             // Top-right corner region
-            let radius = radii.top_right.to_f32();
+            let radius = radii.top_right.to_num::<f32>();
             (radius, right - radius, top + radius)
-        } else if px >= right - radii.bottom_right.to_f32() && py >= bottom - radii.bottom_right.to_f32() {
+        } else if px >= right - radii.bottom_right.to_num::<f32>() && py >= bottom - radii.bottom_right.to_num::<f32>() {
             // Bottom-right corner region
-            let radius = radii.bottom_right.to_f32();
+            let radius = radii.bottom_right.to_num::<f32>();
             (radius, right - radius, bottom - radius)
-        } else if px <= left + radii.bottom_left.to_f32() && py >= bottom - radii.bottom_left.to_f32() {
+        } else if px <= left + radii.bottom_left.to_num::<f32>() && py >= bottom - radii.bottom_left.to_num::<f32>() {
             // Bottom-left corner region
-            let radius = radii.bottom_left.to_f32();
+            let radius = radii.bottom_left.to_num::<f32>();
             (radius, left + radius, bottom - radius)
         } else {
             // Not in any corner region - always fully covered
@@ -346,7 +347,7 @@ impl Rect {
 #[derive(Debug, Clone)]
 pub struct Circle {
     center: Point,
-    radius: Fixed,
+    radius: FixedI32<U16>,
     fill: Option<Paint>,
     stroke: Option<Stroke>,
     anti_aliasing: AntiAliasing,
@@ -358,7 +359,7 @@ impl Circle {
     pub fn new(center: Point, radius: f32) -> Self {
         Self {
             center,
-            radius: Fixed::from_f32(radius.max(0.0)),
+            radius: FixedI32::<U16>::from_num(radius.max(0.0)),
             fill: None,
             stroke: None,
             anti_aliasing: AntiAliasing::default(),
@@ -389,7 +390,7 @@ impl Circle {
 
 impl Drawable for Circle {
     fn draw(self, canvas: &mut Canvas2D) {
-        let radius_f = self.radius.to_f32();
+        let radius_f = self.radius.to_num::<f32>();
         
         if let Some(fill) = &self.fill {
             self.draw_filled_circle(canvas, fill, radius_f);
@@ -424,8 +425,8 @@ impl Circle {
     
     /// Draw circle stroke with analytical anti-aliasing
     fn draw_circle_stroke(&self, canvas: &mut Canvas2D, stroke: &Stroke, radius: f32) {
-        let stroke_width = stroke.effective_width().to_f32();
-        let half_stroke = stroke_width * 0.5;
+        let stroke_width = stroke.effective_width().to_num::<f32>();
+        let half_stroke = stroke_width / 2.0;
         let inner_radius = radius - half_stroke;
         let outer_radius = radius + half_stroke;
         let bounds = (outer_radius + 1.0) as i32;
@@ -530,7 +531,7 @@ impl Drawable for Line {
                 _ => stroke.paint.sample_at(self.start),
             };
             
-            let stroke_width = stroke.effective_width().to_f32().max(1.0);
+            let stroke_width = stroke.effective_width().to_num::<f32>().max(1.0);
             
             if stroke_width <= 1.5 {
                 // Use Xiaolin Wu's anti-aliased line algorithm for thin lines
@@ -759,9 +760,9 @@ impl Line {
 #[derive(Debug, Clone)]
 pub struct Arc {
     center: Point,
-    radius: Fixed,
-    start_angle: Fixed,
-    end_angle: Fixed,
+    radius: FixedI32<U16>,
+    start_angle: FixedI32<U16>,
+    end_angle: FixedI32<U16>,
     stroke: Option<Stroke>,
     anti_aliasing: AntiAliasing,
 }
@@ -772,9 +773,9 @@ impl Arc {
     pub fn new(center: Point, radius: f32, start_angle: f32, end_angle: f32) -> Self {
         Self {
             center,
-            radius: Fixed::from_f32(radius.max(0.0)),
-            start_angle: Fixed::from_f32(start_angle),
-            end_angle: Fixed::from_f32(end_angle),
+            radius: FixedI32::<U16>::from_num(radius.max(0.0)),
+            start_angle: FixedI32::<U16>::from_num(start_angle),
+            end_angle: FixedI32::<U16>::from_num(end_angle),
             stroke: None,
             anti_aliasing: AntiAliasing::default(),
         }
@@ -803,14 +804,14 @@ impl Drawable for Arc {
                 _ => stroke.paint.sample_at(self.center),
             };
             
-            let radius = self.radius.to_f32();
-            let stroke_width = stroke.effective_width().to_f32();
-            let half_stroke = stroke_width * 0.5;
+            let radius = self.radius.to_num::<f32>();
+            let stroke_width = stroke.effective_width().to_num::<f32>();
+            let half_stroke = stroke_width / 2.0;
             let inner_radius = radius - half_stroke;
             let outer_radius = radius + half_stroke;
             
-            let start_rad = self.start_angle.to_f32();
-            let end_rad = self.end_angle.to_f32();
+            let start_rad = self.start_angle.to_num::<f32>();
+            let end_rad = self.end_angle.to_num::<f32>();
             
             // Calculate normalized arc length
             let mut arc_length = end_rad - start_rad;
@@ -1103,7 +1104,7 @@ impl RectRasterizer {
         };
         
         let samples_per_axis = (samples as f32).sqrt() as i32;
-        let step = Fixed::ONE / Fixed::from_int(samples_per_axis);
+        let step = FixedI32::<U16>::ONE / FixedI32::<U16>::from_num(samples_per_axis);
         
         for y in rect.top_left.y..=rect.bottom() {
             for x in rect.top_left.x..=rect.right() {
@@ -1112,8 +1113,8 @@ impl RectRasterizer {
                 // Multi-sample for anti-aliasing
                 for sy in 0..samples_per_axis {
                     for sx in 0..samples_per_axis {
-                        let sample_x = Fixed::from_int(x) + step * Fixed::from_int(sx) + step / Fixed::from_int(2);
-                        let sample_y = Fixed::from_int(y) + step * Fixed::from_int(sy) + step / Fixed::from_int(2);
+                        let sample_x = FixedI32::<U16>::from_num(x) + step * FixedI32::<U16>::from_num(sx) + step / FixedI32::<U16>::from_num(2);
+                        let sample_y = FixedI32::<U16>::from_num(y) + step * FixedI32::<U16>::from_num(sy) + step / FixedI32::<U16>::from_num(2);
                         
                         if self.point_in_rounded_rect(Point::from_fixed(sample_x, sample_y), rect, corner_radii) {
                             covered_samples += 1;
@@ -1149,38 +1150,38 @@ impl RectRasterizer {
             let bottom = rect.bottom();
             
             // Top-left corner
-            if px < left + corner_radii.top_left.to_int() && py < top + corner_radii.top_left.to_int() {
-                let cx = left + corner_radii.top_left.to_int();
-                let cy = top + corner_radii.top_left.to_int();
+            if px < left + corner_radii.top_left.to_num::<i32>() && py < top + corner_radii.top_left.to_num::<i32>() {
+                let cx = left + corner_radii.top_left.to_num::<i32>();
+                let cy = top + corner_radii.top_left.to_num::<i32>();
                 let dist_sq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
-                let radius_sq = corner_radii.top_left.to_int() * corner_radii.top_left.to_int();
+                let radius_sq = corner_radii.top_left.to_num::<i32>() * corner_radii.top_left.to_num::<i32>();
                 return dist_sq <= radius_sq;
             }
             
             // Top-right corner
-            if px > right - corner_radii.top_right.to_int() && py < top + corner_radii.top_right.to_int() {
-                let cx = right - corner_radii.top_right.to_int();
-                let cy = top + corner_radii.top_right.to_int();
+            if px > right - corner_radii.top_right.to_num::<i32>() && py < top + corner_radii.top_right.to_num::<i32>() {
+                let cx = right - corner_radii.top_right.to_num::<i32>();
+                let cy = top + corner_radii.top_right.to_num::<i32>();
                 let dist_sq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
-                let radius_sq = corner_radii.top_right.to_int() * corner_radii.top_right.to_int();
+                let radius_sq = corner_radii.top_right.to_num::<i32>() * corner_radii.top_right.to_num::<i32>();
                 return dist_sq <= radius_sq;
             }
             
             // Bottom-right corner
-            if px > right - corner_radii.bottom_right.to_int() && py > bottom - corner_radii.bottom_right.to_int() {
-                let cx = right - corner_radii.bottom_right.to_int();
-                let cy = bottom - corner_radii.bottom_right.to_int();
+            if px > right - corner_radii.bottom_right.to_num::<i32>() && py > bottom - corner_radii.bottom_right.to_num::<i32>() {
+                let cx = right - corner_radii.bottom_right.to_num::<i32>();
+                let cy = bottom - corner_radii.bottom_right.to_num::<i32>();
                 let dist_sq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
-                let radius_sq = corner_radii.bottom_right.to_int() * corner_radii.bottom_right.to_int();
+                let radius_sq = corner_radii.bottom_right.to_num::<i32>() * corner_radii.bottom_right.to_num::<i32>();
                 return dist_sq <= radius_sq;
             }
             
             // Bottom-left corner
-            if px < left + corner_radii.bottom_left.to_int() && py > bottom - corner_radii.bottom_left.to_int() {
-                let cx = left + corner_radii.bottom_left.to_int();
-                let cy = bottom - corner_radii.bottom_left.to_int();
+            if px < left + corner_radii.bottom_left.to_num::<i32>() && py > bottom - corner_radii.bottom_left.to_num::<i32>() {
+                let cx = left + corner_radii.bottom_left.to_num::<i32>();
+                let cy = bottom - corner_radii.bottom_left.to_num::<i32>();
                 let dist_sq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
-                let radius_sq = corner_radii.bottom_left.to_int() * corner_radii.bottom_left.to_int();
+                let radius_sq = corner_radii.bottom_left.to_num::<i32>() * corner_radii.bottom_left.to_num::<i32>();
                 return dist_sq <= radius_sq;
             }
             
@@ -1229,8 +1230,8 @@ impl RectRasterizer {
         // For now, use a simplified approach - draw the outline pixel by pixel
         // A more sophisticated implementation would use proper arc rendering
         
-        let half_width = stroke.effective_width() / Fixed::from_int(2);
-        let width_int = half_width.to_int();
+        let half_width = stroke.effective_width() / FixedI32::<U16>::from_num(2);
+        let width_int = half_width.to_num::<i32>();
         
         for y in rect.top_left.y - width_int..=rect.bottom() + width_int {
             for x in rect.top_left.x - width_int..=rect.right() + width_int {
@@ -1276,11 +1277,11 @@ impl CircleRasterizer {
         &mut self,
         raster: &mut R,
         center: Point,
-        radius: Fixed,
+        radius: FixedI32<U16>,
         paint: &Paint,
         aa: AntiAliasing,
     ) {
-        let radius_int = radius.to_int();
+        let radius_int = radius.to_num::<i32>();
         let radius_sq = radius_int * radius_int;
         
         let min_x = (center.x - radius_int - 1).max(0);
@@ -1296,7 +1297,7 @@ impl CircleRasterizer {
         };
         
         let samples_per_axis = (samples as f32).sqrt() as i32;
-        let step = Fixed::ONE / Fixed::from_int(samples_per_axis);
+        let step = FixedI32::<U16>::ONE / FixedI32::<U16>::from_num(samples_per_axis);
         
         for y in min_y..=max_y {
             for x in min_x..=max_x {
@@ -1304,11 +1305,11 @@ impl CircleRasterizer {
                 
                 for sy in 0..samples_per_axis {
                     for sx in 0..samples_per_axis {
-                        let sample_x = Fixed::from_int(x) + step * Fixed::from_int(sx) + step / Fixed::from_int(2);
-                        let sample_y = Fixed::from_int(y) + step * Fixed::from_int(sy) + step / Fixed::from_int(2);
+                        let sample_x = FixedI32::<U16>::from_num(x) + step * FixedI32::<U16>::from_num(sx) + step / FixedI32::<U16>::from_num(2);
+                        let sample_y = FixedI32::<U16>::from_num(y) + step * FixedI32::<U16>::from_num(sy) + step / FixedI32::<U16>::from_num(2);
                         
-                        let dx = sample_x.to_int() - center.x;
-                        let dy = sample_y.to_int() - center.y;
+                        let dx = sample_x.to_num::<i32>() - center.x;
+                        let dy = sample_y.to_num::<i32>() - center.y;
                         let dist_sq = dx * dx + dy * dy;
                         
                         if dist_sq <= radius_sq {
@@ -1336,12 +1337,12 @@ impl CircleRasterizer {
         &mut self,
         raster: &mut R,
         center: Point,
-        radius: Fixed,
+        radius: FixedI32<U16>,
         stroke: &Stroke,
     ) {
         // Use Bresenham's circle algorithm with stroke width
-        let radius_int = radius.to_int();
-        let stroke_width = stroke.effective_width().to_int();
+        let radius_int = radius.to_num::<i32>();
+        let stroke_width = stroke.effective_width().to_num::<i32>();
         let half_stroke = stroke_width / 2;
         
         // Draw circle outline with thickness
@@ -1382,17 +1383,17 @@ impl ArcRasterizer {
         &mut self,
         raster: &mut R,
         center: Point,
-        radius: Fixed,
-        start_angle: Fixed,
-        end_angle: Fixed,
+        radius: FixedI32<U16>,
+        start_angle: FixedI32<U16>,
+        end_angle: FixedI32<U16>,
         stroke: &Stroke,
     ) {
-        let radius_int = radius.to_int();
-        let stroke_width = stroke.effective_width().to_int();
+        let radius_int = radius.to_num::<i32>();
+        let stroke_width = stroke.effective_width().to_num::<i32>();
         let half_stroke = stroke_width / 2;
         
-        let start_deg = (start_angle.to_f32() * 180.0 / core::f32::consts::PI) as i32;
-        let end_deg = (end_angle.to_f32() * 180.0 / core::f32::consts::PI) as i32;
+        let start_deg = (start_angle.to_num::<f32>() * 180.0 / core::f32::consts::PI) as i32;
+        let end_deg = (end_angle.to_num::<f32>() * 180.0 / core::f32::consts::PI) as i32;
         
         let mut angle = start_deg;
         while angle != end_deg {

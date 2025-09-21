@@ -7,7 +7,7 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::libs::gfx::two_d::{
     Canvas2D, Rasterizer, Point, Size, Rgba8888, Paint, Stroke, Drawable,
-    PrimitiveRect as Rect, Circle, Line, Arc, Bezier, CornerRadii, AntiAliasing, Fixed
+    PrimitiveRect as Rect, Circle, Line, Arc, Bezier, CornerRadii, AntiAliasing, FixedI32, U16
 };
 use crate::libs::gfx::two_d::paint::{LinearGradient, RadialGradient};
 use crate::libs::gfx::two_d::stroke::{LineCap, LineJoin};
@@ -167,7 +167,7 @@ fn test_adaptive_rounded_rectangles(canvas: &mut Canvas2D, total_time: &mut Dura
     let start = Instant::now();
     Rect::from_coords(margin, height / 4, (width / 3) as u32, (height / 6) as u32)
         .fill(Paint::solid(Rgba8888::new(128, 64, 192, 255)))
-        .corner_radii(CornerRadii::uniform(Fixed::from_f32(3.0))) // Smaller radius for small canvas
+        .corner_radii(CornerRadii::uniform(FixedI32::<U16>::from_num(3.0))) // Smaller radius for small canvas
         .draw(canvas);
     let elapsed = start.elapsed();
     info!("  🔥 Small rounded rect: {:?} (EXPECTED: ~93ms!)", elapsed);

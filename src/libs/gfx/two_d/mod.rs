@@ -15,7 +15,8 @@ pub mod raster;
 pub mod canvas2d;
 
 // Re-export core types for convenience
-pub use types::{Point, Size, Rgba8888, Fixed, CornerRadii, AntiAliasing, BlendMode};
+pub use types::{Point, Size, Rgba8888, CornerRadii, AntiAliasing, BlendMode};
+pub use fixed::{FixedI32, types::extra::U16};
 pub use types::Rect; // Use geometry rect as the main Rect
 pub use paint::*;
 pub use stroke::*;

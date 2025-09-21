@@ -1,164 +1,13 @@
 /// Core types for high-performance 2D graphics with fixed-point math optimizations
 /// 
 /// This module provides fundamental data types optimized for embedded systems:
-/// - Fixed-point arithmetic for consistent performance
+/// - Fixed-point arithmetic for consistent performance using the fixed crate
 /// - SIMD-friendly data layouts
 /// - Cache-optimized memory access patterns
 /// - Zero-cost abstractions where possible
 
-use core::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign};
-
-/// Fixed-point number with 16.16 format for sub-pixel precision
-/// Provides consistent performance across platforms without floating-point overhead
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Fixed {
-    pub raw: i32,
-}
-
-impl Fixed {
-    /// Fixed-point scale factor (2^16)
-    pub const SCALE: i32 = 65536;
-    pub const ZERO: Fixed = Fixed { raw: 0 };
-    pub const ONE: Fixed = Fixed { raw: Self::SCALE };
-    pub const HALF: Fixed = Fixed { raw: Self::SCALE / 2 };
-    
-    /// Create from integer value
-    #[inline(always)]
-    pub const fn from_int(value: i32) -> Self {
-        Self { raw: value * Self::SCALE }
-    }
-    
-    /// Create from raw fixed-point value
-    #[inline(always)]
-    pub const fn from_raw(raw: i32) -> Self {
-        Self { raw }
-    }
-    
-    /// Create from f32 (for initialization, avoid in hot paths)
-    #[inline]
-    pub fn from_f32(value: f32) -> Self {
-        Self { raw: (value * Self::SCALE as f32) as i32 }
-    }
-    
-    /// Convert to integer (truncating)
-    #[inline(always)]
-    pub const fn to_int(self) -> i32 {
-        self.raw / Self::SCALE
-    }
-    
-    /// Convert to f32 (for debugging/display)
-    #[inline]
-    pub fn to_f32(self) -> f32 {
-        self.raw as f32 / Self::SCALE as f32
-    }
-    
-    /// Get fractional part (0.0 to 0.999...)
-    #[inline(always)]
-    pub const fn fract(self) -> Fixed {
-        Self { raw: self.raw & (Self::SCALE - 1) }
-    }
-    
-    /// Floor to integer
-    #[inline(always)]
-    pub const fn floor(self) -> Fixed {
-        Self { raw: self.raw & !(Self::SCALE - 1) }
-    }
-    
-    /// Ceiling to integer
-    #[inline(always)]
-    pub const fn ceil(self) -> Fixed {
-        if self.raw & (Self::SCALE - 1) == 0 {
-            self
-        } else {
-            Self { raw: (self.raw & !(Self::SCALE - 1)) + Self::SCALE }
-        }
-    }
-    
-    /// Absolute value
-    #[inline(always)]
-    pub const fn abs(self) -> Fixed {
-        Self { raw: self.raw.abs() }
-    }
-    
-    /// Fast multiplication (may overflow for large values)
-    #[inline(always)]
-    pub const fn mul_fast(self, other: Fixed) -> Fixed {
-        Self { raw: (self.raw * other.raw) / Self::SCALE }
-    }
-    
-    /// Safe multiplication with overflow protection
-    #[inline]
-    pub fn mul_safe(self, other: Fixed) -> Fixed {
-        let result = (self.raw as i64 * other.raw as i64) / Self::SCALE as i64;
-        Self { raw: result as i32 }
-    }
-    
-    /// Square root approximation using Newton's method
-    #[inline]
-    pub fn sqrt(self) -> Fixed {
-        if self.raw <= 0 { return Self::ZERO; }
-        
-        let mut x = self;
-        let mut prev;
-        
-        // Newton's method: x = (x + n/x) / 2
-        for _ in 0..8 { // 8 iterations for good precision
-            prev = x;
-            x = (x + self / x) / Fixed::from_int(2);
-            if (x.raw - prev.raw).abs() < 2 { break; }
-        }
-        
-        x
-    }
-}
-
-impl Add for Fixed {
-    type Output = Self;
-    #[inline(always)]
-    fn add(self, other: Self) -> Self {
-        Self { raw: self.raw + other.raw }
-    }
-}
-
-impl Sub for Fixed {
-    type Output = Self;
-    #[inline(always)]
-    fn sub(self, other: Self) -> Self {
-        Self { raw: self.raw - other.raw }
-    }
-}
-
-impl Mul for Fixed {
-    type Output = Self;
-    #[inline]
-    fn mul(self, other: Self) -> Self {
-        self.mul_safe(other)
-    }
-}
-
-impl Div for Fixed {
-    type Output = Self;
-    #[inline]
-    fn div(self, other: Self) -> Self {
-        if other.raw == 0 { return Self::ZERO; }
-        let result = (self.raw as i64 * Self::SCALE as i64) / other.raw as i64;
-        Self { raw: result as i32 }
-    }
-}
-
-impl AddAssign for Fixed {
-    #[inline(always)]
-    fn add_assign(&mut self, other: Self) {
-        self.raw += other.raw;
-    }
-}
-
-impl SubAssign for Fixed {
-    #[inline(always)]
-    fn sub_assign(&mut self, other: Self) {
-        self.raw -= other.raw;
-    }
-}
+use fixed::{FixedI32, types::extra::U16};
+use core::ops::{Add, Sub};
 
 /// RGBA color with 8-bit components optimized for blending operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,11 +79,11 @@ impl Rgba8888 {
     
     /// Linear interpolation between two colors
     #[inline]
-    pub fn lerp(self, other: Self, t: Fixed) -> Self {
-        if t.raw <= 0 { return self; }
-        if t.raw >= Fixed::SCALE { return other; }
+    pub fn lerp(self, other: Self, t: FixedI32<U16>) -> Self {
+        if t <= FixedI32::<U16>::ZERO { return self; }
+        if t >= FixedI32::<U16>::ONE { return other; }
         
-        let t_u8 = (t.raw >> 8) as u8; // Convert to 0-255 range
+        let t_u8 = (t.to_bits() >> 8) as u8; // Convert to 0-255 range
         let inv_t = 255 - t_u8;
         
         Self {
@@ -285,8 +134,8 @@ impl Point {
     
     /// Create from fixed-point coordinates
     #[inline(always)]
-    pub fn from_fixed(x: Fixed, y: Fixed) -> Self {
-        Self { x: x.to_int(), y: y.to_int() }
+    pub fn from_fixed(x: FixedI32<U16>, y: FixedI32<U16>) -> Self {
+        Self { x: x.to_num(), y: y.to_num() }
     }
     
     /// Distance squared to another point (avoids sqrt for performance)
@@ -448,10 +297,10 @@ impl Rect {
 /// Corner radii for rectangles (allows different radius per corner)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CornerRadii {
-    pub top_left: Fixed,
-    pub top_right: Fixed,
-    pub bottom_right: Fixed,
-    pub bottom_left: Fixed,
+    pub top_left: FixedI32<U16>,
+    pub top_right: FixedI32<U16>,
+    pub bottom_right: FixedI32<U16>,
+    pub bottom_left: FixedI32<U16>,
 }
 
 impl CornerRadii {
@@ -459,16 +308,16 @@ impl CornerRadii {
     #[inline]
     pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
         Self {
-            top_left: Fixed::from_f32(top_left),
-            top_right: Fixed::from_f32(top_right),
-            bottom_right: Fixed::from_f32(bottom_right),
-            bottom_left: Fixed::from_f32(bottom_left),
+            top_left: FixedI32::<U16>::from_num(top_left),
+            top_right: FixedI32::<U16>::from_num(top_right),
+            bottom_right: FixedI32::<U16>::from_num(bottom_right),
+            bottom_left: FixedI32::<U16>::from_num(bottom_left),
         }
     }
     
     /// Create uniform corner radii
     #[inline(always)]
-    pub fn uniform(radius: Fixed) -> Self {
+    pub fn uniform(radius: FixedI32<U16>) -> Self {
         Self {
             top_left: radius,
             top_right: radius,
@@ -480,27 +329,27 @@ impl CornerRadii {
     /// Create from f32 (for convenience)
     #[inline]
     pub fn from_f32(radius: f32) -> Self {
-        Self::uniform(Fixed::from_f32(radius))
+        Self::uniform(FixedI32::<U16>::from_num(radius))
     }
     
     /// Zero radii (sharp corners)
     #[inline(always)]
     pub const fn zero() -> Self {
         Self {
-            top_left: Fixed::ZERO,
-            top_right: Fixed::ZERO,
-            bottom_right: Fixed::ZERO,
-            bottom_left: Fixed::ZERO,
+            top_left: FixedI32::<U16>::ZERO,
+            top_right: FixedI32::<U16>::ZERO,
+            bottom_right: FixedI32::<U16>::ZERO,
+            bottom_left: FixedI32::<U16>::ZERO,
         }
     }
     
     /// Check if any corner has radius
     #[inline(always)]
-    pub const fn has_radius(&self) -> bool {
-        self.top_left.raw > 0
-            || self.top_right.raw > 0
-            || self.bottom_right.raw > 0
-            || self.bottom_left.raw > 0
+    pub fn has_radius(&self) -> bool {
+        self.top_left.to_bits() > 0
+            || self.top_right.to_bits() > 0
+            || self.bottom_right.to_bits() > 0
+            || self.bottom_left.to_bits() > 0
     }
 }
 

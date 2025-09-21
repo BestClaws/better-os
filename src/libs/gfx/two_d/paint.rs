@@ -7,7 +7,8 @@
 /// - Conic gradients with angle-based color transitions
 /// - Optimized color interpolation using fixed-point math
 
-use super::types::{Point, Rgba8888, Fixed};
+use super::types::{Point, Rgba8888};
+use fixed::{FixedI32, types::extra::U16};
 use micromath::F32Ext;
 
 /// Paint defines how shapes are filled with colors or gradients
@@ -117,11 +118,11 @@ impl LinearGradient {
         
         // Calculate interpolation parameter (0.0 to 1.0)
         let t = if dot_product <= 0 {
-            Fixed::ZERO
+            FixedI32::<U16>::ZERO
         } else if dot_product >= self.length_squared {
-            Fixed::ONE
+            FixedI32::<U16>::ONE
         } else {
-            Fixed::from_raw((dot_product * Fixed::SCALE) / self.length_squared)
+            FixedI32::<U16>::from_bits((dot_product * (1 << 16)) / self.length_squared)
         };
         
         self.start_color.lerp(self.end_color, t)
@@ -138,7 +139,7 @@ impl LinearGradient {
 #[derive(Debug, Clone)]
 pub struct RadialGradient {
     center: Point,
-    radius_fixed: Fixed,
+    radius_fixed: FixedI32<U16>,
     center_color: Rgba8888,
     edge_color: Rgba8888,
     // Precomputed for performance
@@ -149,8 +150,8 @@ impl RadialGradient {
     /// Create new radial gradient
     #[inline]
     pub fn new(center: Point, radius: f32, center_color: Rgba8888, edge_color: Rgba8888) -> Self {
-        let radius_fixed = Fixed::from_f32(radius);
-        let radius_int = radius_fixed.to_int();
+        let radius_fixed = FixedI32::<U16>::from_num(radius);
+        let radius_int = radius_fixed.to_num::<i32>();
         let radius_squared = radius_int * radius_int;
         
         Self {
@@ -177,9 +178,9 @@ impl RadialGradient {
         
         // Use fast integer square root approximation
         let distance = fast_sqrt(distance_squared as u32) as i32;
-        let radius_int = self.radius_fixed.to_int();
+        let radius_int = self.radius_fixed.to_num::<i32>();
         
-        let t = Fixed::from_raw((distance * Fixed::SCALE) / radius_int);
+        let t = FixedI32::<U16>::from_bits((distance * (1 << 16)) / radius_int);
         self.center_color.lerp(self.edge_color, t)
     }
     
@@ -193,7 +194,7 @@ impl RadialGradient {
 /// Color stop for multi-color gradients
 #[derive(Debug, Clone, Copy)]
 pub struct ColorStop {
-    pub position: Fixed, // 0.0 to 1.0
+    pub position: FixedI32<U16>, // 0.0 to 1.0
     pub color: Rgba8888,
 }
 
@@ -202,7 +203,7 @@ impl ColorStop {
     #[inline(always)]
     pub fn new(position: f32, color: Rgba8888) -> Self {
         Self {
-            position: Fixed::from_f32(position.max(0.0).min(1.0)),
+            position: FixedI32::<U16>::from_num(position.max(0.0).min(1.0)),
             color,
         }
     }
@@ -212,7 +213,7 @@ impl ColorStop {
 #[derive(Debug, Clone)]
 pub struct ConicGradient {
     center: Point,
-    start_angle: Fixed,
+    start_angle: FixedI32<U16>,
     stops: heapless::Vec<ColorStop, 16>, // Max 16 color stops for embedded systems
 }
 
@@ -227,11 +228,11 @@ impl ConicGradient {
         }
         
         // Ensure stops are sorted by position
-        stops.sort_by(|a, b| a.position.raw.cmp(&b.position.raw));
+        stops.sort_by(|a, b| a.position.to_bits().cmp(&b.position.to_bits()));
         
         Self {
             center,
-            start_angle: Fixed::from_f32(start_angle),
+            start_angle: FixedI32::<U16>::from_num(start_angle),
             stops,
         }
     }
@@ -257,8 +258,8 @@ impl ConicGradient {
         
         // Fast atan2 approximation for embedded systems
         let angle = fast_atan2(dy as f32, dx as f32);
-        let normalized_angle = (angle + self.start_angle.to_f32()) % (2.0 * core::f32::consts::PI);
-        let t = Fixed::from_f32(normalized_angle / (2.0 * core::f32::consts::PI));
+        let normalized_angle = (angle + self.start_angle.to_num::<f32>()) % (2.0 * core::f32::consts::PI);
+        let t = FixedI32::<U16>::from_num(normalized_angle / (2.0 * core::f32::consts::PI));
         
         // Find appropriate color stops for interpolation
         self.interpolate_stops(t)
@@ -266,15 +267,15 @@ impl ConicGradient {
     
     /// Interpolate between color stops
     #[inline]
-    fn interpolate_stops(&self, t: Fixed) -> Rgba8888 {
+    fn interpolate_stops(&self, t: FixedI32<U16>) -> Rgba8888 {
         // Find the two stops to interpolate between
         let mut prev_stop = &self.stops[0];
         
         for stop in &self.stops[1..] {
-            if t.raw <= stop.position.raw {
+            if t <= stop.position {
                 // Interpolate between prev_stop and stop
                 let range = stop.position - prev_stop.position;
-                if range.raw == 0 {
+                if range == FixedI32::<U16>::ZERO {
                     return stop.color;
                 }
                 
@@ -366,18 +367,18 @@ impl GradientBuilder {
             return LinearGradient::new(start, end, Rgba8888::black(), Rgba8888::white());
         }
         
-        self.stops.sort_by(|a, b| a.position.raw.cmp(&b.position.raw));
+        self.stops.sort_by(|a, b| a.position.to_bits().cmp(&b.position.to_bits()));
         LinearGradient::new(start, end, self.stops[0].color, self.stops.last().unwrap().color)
     }
     
     /// Build conic gradient
     #[inline]
     pub fn build_conic(mut self, center: Point, start_angle: f32) -> ConicGradient {
-        self.stops.sort_by(|a, b| a.position.raw.cmp(&b.position.raw));
+        self.stops.sort_by(|a, b| a.position.to_bits().cmp(&b.position.to_bits()));
         
         let colors: heapless::Vec<(f32, Rgba8888), 16> = self.stops
             .iter()
-            .map(|stop| (stop.position.to_f32(), stop.color))
+            .map(|stop| (stop.position.to_num::<f32>(), stop.color))
             .collect();
         
         ConicGradient::new(center, start_angle, &colors)
