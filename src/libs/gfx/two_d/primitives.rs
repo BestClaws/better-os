@@ -161,27 +161,71 @@ impl Circle {
 
 impl Drawable for Circle {
     fn draw(self, canvas: &mut Canvas2D) {
-        // Simple circle drawing - TODO: implement proper anti-aliased circles
         let radius_int = self.radius.to_int();
         
         if let Some(fill) = &self.fill {
-            // Simple filled circle using distance check
-            for y in (self.center.y - radius_int)..=(self.center.y + radius_int) {
-                for x in (self.center.x - radius_int)..=(self.center.x + radius_int) {
-                    let dx = x - self.center.x;
-                    let dy = y - self.center.y;
-                    let dist_sq = dx * dx + dy * dy;
-                    let radius_sq = radius_int * radius_int;
-                    
-                    if dist_sq <= radius_sq {
-                        let color = fill.sample_at(Point::new(x, y));
-                        canvas.set_pixel(x, y, color);
+            // Anti-aliased filled circle
+            for y in (self.center.y - radius_int - 1)..=(self.center.y + radius_int + 1) {
+                for x in (self.center.x - radius_int - 1)..=(self.center.x + radius_int + 1) {
+                    if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
+                        let dx = x - self.center.x;
+                        let dy = y - self.center.y;
+                        let dist = ((dx * dx + dy * dy) as f32).sqrt();
+                        let radius_f = radius_int as f32;
+                        
+                        if dist <= radius_f + 1.0 {
+                            let mut color = fill.sample_at(Point::new(x, y));
+                            
+                            // Anti-aliasing on the edge
+                            if dist > radius_f - 1.0 {
+                                let edge_factor = (radius_f + 1.0 - dist).max(0.0).min(1.0);
+                                color.a = (color.a as f32 * edge_factor) as u8;
+                            }
+                            
+                            if color.a > 0 {
+                                canvas.set_pixel(x, y, color);
+                            }
+                        }
                     }
                 }
             }
         }
         
-        // TODO: Implement stroke drawing
+        // Anti-aliased stroke
+        if let Some(stroke) = &self.stroke {
+            let stroke_width = stroke.effective_width().to_int().max(1);
+            let half_stroke = stroke_width / 2;
+            let inner_radius = radius_int - half_stroke;
+            let outer_radius = radius_int + half_stroke;
+            
+            for y in (self.center.y - outer_radius - 1)..=(self.center.y + outer_radius + 1) {
+                for x in (self.center.x - outer_radius - 1)..=(self.center.x + outer_radius + 1) {
+                    if x >= 0 && y >= 0 && x < canvas.width() as i32 && y < canvas.height() as i32 {
+                        let dx = x - self.center.x;
+                        let dy = y - self.center.y;
+                        let dist = ((dx * dx + dy * dy) as f32).sqrt();
+                        
+                        if dist >= inner_radius as f32 - 1.0 && dist <= outer_radius as f32 + 1.0 {
+                            let mut color = match &stroke.paint {
+                                Paint::Solid(c) => *c,
+                                _ => stroke.paint.sample_at(Point::new(x, y)),
+                            };
+                            
+                            // Anti-aliasing on both edges
+                            let inner_edge = (dist - (inner_radius as f32 - 1.0)).max(0.0).min(1.0);
+                            let outer_edge = ((outer_radius as f32 + 1.0) - dist).max(0.0).min(1.0);
+                            let edge_factor = inner_edge.min(outer_edge);
+                            
+                            color.a = (color.a as f32 * edge_factor) as u8;
+                            
+                            if color.a > 0 {
+                                canvas.set_pixel(x, y, color);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -215,13 +259,15 @@ impl Line {
 impl Drawable for Line {
     fn draw(self, canvas: &mut Canvas2D) {
         if let Some(stroke) = &self.stroke {
-            // Simple line drawing using Bresenham's algorithm
             let color = match &stroke.paint {
                 Paint::Solid(c) => *c,
                 _ => stroke.paint.sample_at(self.start),
             };
             
-            // Bresenham's line algorithm
+            let stroke_width = stroke.effective_width().to_int().max(1);
+            let half_width = stroke_width / 2;
+            
+            // Bresenham's line algorithm with anti-aliased thickness
             let dx = (self.end.x - self.start.x).abs();
             let dy = (self.end.y - self.start.y).abs();
             let sx = if self.start.x < self.end.x { 1 } else { -1 };
@@ -232,7 +278,33 @@ impl Drawable for Line {
             let mut y = self.start.y;
             
             loop {
-                canvas.set_pixel(x, y, color);
+                // Draw thick anti-aliased point
+                for dy_offset in -half_width..=half_width {
+                    for dx_offset in -half_width..=half_width {
+                        let px = x + dx_offset;
+                        let py = y + dy_offset;
+                        
+                        if px >= 0 && py >= 0 && px < canvas.width() as i32 && py < canvas.height() as i32 {
+                            // Simple distance-based anti-aliasing
+                            let dist_sq = dx_offset * dx_offset + dy_offset * dy_offset;
+                            let radius_sq = half_width * half_width;
+                            
+                            if dist_sq <= radius_sq + half_width {
+                                let mut aa_color = color;
+                                
+                                // Anti-aliasing on the edge
+                                if dist_sq > radius_sq {
+                                    let edge_factor = 1.0 - ((dist_sq - radius_sq) as f32 / half_width as f32).min(1.0);
+                                    aa_color.a = (color.a as f32 * edge_factor) as u8;
+                                }
+                                
+                                if aa_color.a > 0 {
+                                    canvas.set_pixel(px, py, aa_color);
+                                }
+                            }
+                        }
+                    }
+                }
                 
                 if x == self.end.x && y == self.end.y { break; }
                 
@@ -293,26 +365,62 @@ impl Arc {
 impl Drawable for Arc {
     fn draw(self, canvas: &mut Canvas2D) {
         if let Some(stroke) = &self.stroke {
-            // Simple arc drawing
+            // Simple arc drawing with safe iteration
             let color = match &stroke.paint {
                 Paint::Solid(c) => *c,
                 _ => stroke.paint.sample_at(self.center),
             };
             
             let radius_int = self.radius.to_int();
-            let start_deg = (self.start_angle.to_f32() * 180.0 / core::f32::consts::PI) as i32;
-            let end_deg = (self.end_angle.to_f32() * 180.0 / core::f32::consts::PI) as i32;
+            let start_rad = self.start_angle.to_f32();
+            let end_rad = self.end_angle.to_f32();
             
-            let mut angle = start_deg;
-            while angle != end_deg {
-                let angle_rad = (angle as f32) * core::f32::consts::PI / 180.0;
-                let x = self.center.x + (radius_int as f32 * angle_rad.cos()) as i32;
-                let y = self.center.y + (radius_int as f32 * angle_rad.sin()) as i32;
+            // Calculate arc length and step size for smooth rendering
+            let mut arc_length = end_rad - start_rad;
+            if arc_length < 0.0 {
+                arc_length += 2.0 * core::f32::consts::PI;
+            }
+            
+            // Limit arc length to prevent infinite loops
+            arc_length = arc_length.min(2.0 * core::f32::consts::PI);
+            
+            let steps = (arc_length * radius_int as f32 * 0.5).max(1.0) as i32;
+            let step_size = arc_length / steps as f32;
+            
+            // Draw arc with anti-aliasing consideration
+            for i in 0..=steps {
+                let angle = start_rad + i as f32 * step_size;
+                let x = self.center.x + (radius_int as f32 * angle.cos()) as i32;
+                let y = self.center.y + (radius_int as f32 * angle.sin()) as i32;
                 
-                canvas.set_pixel(x, y, color);
+                // Simple anti-aliasing: draw slightly thicker lines
+                let stroke_width = stroke.effective_width().to_int().max(1);
+                let half_width = stroke_width / 2;
                 
-                angle = (angle + 1) % 360;
-                if angle == start_deg { break; } // Prevent infinite loop
+                for dy in -half_width..=half_width {
+                    for dx in -half_width..=half_width {
+                        let px = x + dx;
+                        let py = y + dy;
+                        
+                        if px >= 0 && py >= 0 && px < canvas.width() as i32 && py < canvas.height() as i32 {
+                            // Simple distance-based anti-aliasing
+                            let dist_sq = dx * dx + dy * dy;
+                            let radius_sq = half_width * half_width;
+                            
+                            if dist_sq <= radius_sq {
+                                let alpha = if dist_sq == 0 {
+                                    color.a
+                                } else {
+                                    let dist_factor = 1.0 - (dist_sq as f32 / radius_sq as f32).sqrt();
+                                    (color.a as f32 * dist_factor) as u8
+                                };
+                                
+                                let aa_color = Rgba8888::new(color.r, color.g, color.b, alpha);
+                                canvas.set_pixel(px, py, aa_color);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
