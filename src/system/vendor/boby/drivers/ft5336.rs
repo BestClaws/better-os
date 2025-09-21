@@ -64,6 +64,9 @@ where
 
     /// Update touch data
     async fn update(&mut self) {
+        use embassy_time::Instant;
+        let start = Instant::now();
+        
         Timer::after(POLL_PERIOD).await;
 
         // Read number of touch points
@@ -86,6 +89,11 @@ where
         }
 
         self.pressed_old = pressed;
+        
+        let duration = start.elapsed();
+        if duration.as_millis() > 15 {
+            defmt::info!("Touch update slow: {}ms, points={}, pressed={}", duration.as_millis(), points, pressed);
+        }
     }
 
     /// Suspend the controller (hibernate mode)

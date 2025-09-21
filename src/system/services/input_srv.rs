@@ -77,15 +77,19 @@ pub async fn encoder_reader_task(encoder: &'static Mutex<CriticalSectionRawMutex
 /// Converts raw xyz polling into MotionEvent DOWN/MOVE/UP with bounds/clamping and coalescing.
 #[embassy_executor::task]
 pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>) {
+    use embassy_time::Instant;
     let mut was_pressed = false;
     let mut last_x: i32 = 0;
     let mut last_y: i32 = 0;
+    let mut last_log_time = Instant::now();
 
     loop {
+        let read_start = Instant::now();
         let (x, y, z) = {
             let mut t = touch.lock().await;
             t.read_xyz().await
         };
+        let read_duration = read_start.elapsed();
 
         let pressed = z != 0;
 
@@ -127,6 +131,13 @@ pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Bo
             INPUT_EVENTS_CH.send(e).await;
         }
 
+        // Log touch performance issues (every 2 seconds max)
+        if read_duration.as_millis() > 20 || (pressed && last_log_time.elapsed().as_secs() >= 2) {
+            defmt::info!("Touch read: {}ms, pressed={}, pos=({},{})", 
+                read_duration.as_millis(), pressed, xi, yi);
+            last_log_time = Instant::now();
+        }
+
         was_pressed = pressed;
         if pressed { last_x = xi; last_y = yi; }
 
@@ -140,20 +151,28 @@ pub async fn input_dispatcher_task(
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
 ) {
+    use embassy_time::Instant;
+    
     loop {
+        let dispatch_start = Instant::now();
         let event = INPUT_EVENTS_CH.receive().await;
 
         // Send to System UI
         SUI_EVENT_CH.send(event).await;
 
         // Wait for ACK with timeout
+        let ack_start = Instant::now();
         let consumed = match SUI_ACK_CH
             .receive()
             .with_timeout(Duration::from_millis(DISPATCH_ACK_TIMEOUT_MS))
             .await {
             Ok(val) => val,
-            Err(_) => false,
+            Err(_) => {
+                defmt::info!("SUI ACK timeout after {}ms", DISPATCH_ACK_TIMEOUT_MS);
+                false
+            },
         };
+        let ack_duration = ack_start.elapsed();
 
         if consumed {
             debug!("SUI consumed event");
@@ -161,6 +180,7 @@ pub async fn input_dispatcher_task(
         }
 
         // Forward to focused app
+        let app_forward_start = Instant::now();
         let mut comp = compositor.lock().await;
         let mut wm = window_manager.lock().await;
         if let Some(handle) = comp.focused_window_handle() {
@@ -168,6 +188,13 @@ pub async fn input_dispatcher_task(
             comp.request_redraw(handle);
         } else {
             warn!("No focused window to receive input");
+        }
+        let total_duration = dispatch_start.elapsed();
+        
+        // Log slow event processing
+        if total_duration.as_millis() > 50 || ack_duration.as_millis() > 30 {
+            defmt::info!("Input dispatch slow: total={}ms, ack={}ms, consumed={}", 
+                total_duration.as_millis(), ack_duration.as_millis(), consumed);
         }
     }
 }

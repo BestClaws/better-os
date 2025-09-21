@@ -66,20 +66,36 @@ pub async fn ui_compositor_service(
 
     // Main service loop
     let mut edge_swipe = EdgeSwipeRecognizer::new();
+    let mut frame_count = 0u32;
+    let mut last_perf_log = Instant::now();
+    
     loop {
         let frame_start = Instant::now();
 
         // Process System UI events with a short idle to keep frames flowing
+        let sui_start = Instant::now();
         let handled_sui_events = handle_system_ui_events(compositor, window_manager, &mut edge_swipe).await;
+        let sui_duration = sui_start.elapsed();
+        
         if !handled_sui_events {
             // Idle refresh for dynamic content updates
             Timer::after(Duration::from_millis(0)).await;
+            let redraw_start = Instant::now();
             let mut compositor_mut = compositor.lock().await;
             if let Some(focused_handle) = compositor_mut.focused_window_handle() {
                 compositor_mut.request_redraw(focused_handle);
             }
             let mut wm_mut = window_manager.lock().await;
             compositor_mut.process_redraws(&mut wm_mut).await;
+            let redraw_duration = redraw_start.elapsed();
+            
+            // Log slow frame processing (every 5 seconds max)
+            frame_count += 1;
+            if redraw_duration.as_millis() > 50 || (frame_count % 300 == 0 && last_perf_log.elapsed().as_secs() >= 5) {
+                defmt::info!("Compositor frame: redraw={}ms, sui={}ms, total={}ms", 
+                    redraw_duration.as_millis(), sui_duration.as_millis(), frame_start.elapsed().as_millis());
+                last_perf_log = Instant::now();
+            }
         }
 
         // Maintain consistent frame timing
@@ -168,10 +184,14 @@ async fn handle_system_ui_events(
     use crate::system::input::types::{HighLevelEvent, MotionEvent};
 
     let mut processed_any = false;
+    let mut event_count = 0;
 
     // Try non-blocking receive on SUI_EVENT_CH to keep frame cadence
     while let Ok(ev) = SUI_EVENT_CH.try_receive() {
+        event_count += 1;
+        let event_start = Instant::now();
         let mut consumed = false;
+        
         if let HighLevelEvent::Motion(MotionEvent { action, pointers, .. }) = ev {
             if let Some(p) = pointers[0] {
                 let frame_w = {
@@ -203,7 +223,16 @@ async fn handle_system_ui_events(
             }
         }
 
+        let event_duration = event_start.elapsed();
+        if event_duration.as_millis() > 20 {
+            defmt::info!("SUI event slow: {}ms, consumed={}", event_duration.as_millis(), consumed);
+        }
+
         SUI_ACK_CH.send(consumed).await;
+    }
+
+    if event_count > 5 {
+        defmt::info!("SUI processed {} events in batch", event_count);
     }
 
     processed_any

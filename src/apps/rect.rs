@@ -20,9 +20,16 @@ pub async fn rect_app(context: AppContext) {
             continue;
         }
         context.draw(|surface: &mut DrawingSurface| {
+            use embassy_time::Instant;
+            let draw_start = Instant::now();
             // Use Canvas2D fluent drawing over the DrawingSurface
             let mut c2d = Canvas2D::new(surface as &mut dyn crate::libs::gfx::two_d::Rasterizer);
             draw_rects(&mut c2d);
+            
+            let draw_duration = draw_start.elapsed();
+            if draw_duration.as_millis() > 5 {
+                defmt::info!("Rect draw: {}ms", draw_duration.as_millis());
+            }
         }).await;
 
         context.request_redraw().await;

@@ -25,7 +25,9 @@ pub async fn demo_2d_app(context: AppContext) {
         let scene = ((t as u32) / 5) % 3; // switch every 5 seconds
 
         context.draw(|surface: &mut DrawingSurface| {
-            let w = surface.width() as i32; let h = surface.height() as i32;
+            let draw_start = Instant::now();
+            let w = surface.width() as i32; 
+            let h = surface.height() as i32;
             let mut c2d: Canvas2D = Canvas2D::new(surface as &mut dyn crate::libs::gfx::two_d::Rasterizer);
 
             // Background base per scene
@@ -60,51 +62,25 @@ pub async fn demo_2d_app(context: AppContext) {
                     }
                 }
                 1 => {
-                    // Gradient fills in rounded rectangles
-                    use crate::libs::gfx::two_d::{gradient_vertical, gradient_angle};
-                    // Uniform rounded rect with angle gradient
-                    let gr1 = gradient_angle(30.0, crate::libs::gfx::two_d::Rgba8888::opaque(255, 80, 80), crate::libs::gfx::two_d::Rgba8888::opaque(60, 120, 255));
+                    // Simplified solid color rectangles instead of expensive gradients
                     let ur = GRect::new(GPoint::new(w / 4, h / 6), GSize::new((w / 2) as u32, (h / 5) as u32));
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
                         d.rect(ur)
                             .corner_radius(10)
-                            .fill(Brush::linear({
-                                // Convert spec to concrete gradient based on rect
-                                let rad = 30.0f32.to_radians();
-                                let cx = ur.top_left.x + (ur.size.width as i32 / 2);
-                                let cy = ur.top_left.y + (ur.size.height as i32 / 2);
-                                let rx = (ur.size.width as f32 * 0.5) * rad.cos().abs();
-                                let ry = (ur.size.height as f32 * 0.5) * rad.sin().abs();
-                                let dx = (rad.cos() * rx) as i32;
-                                let dy = (rad.sin() * ry) as i32;
-                                crate::libs::gfx::two_d::gradients::LinearGradient::new(
-                                    GPoint::new(cx - dx, cy - dy),
-                                    GPoint::new(cx + dx, cy + dy),
-                                    crate::libs::gfx::two_d::Rgba8888::opaque(255, 80, 80),
-                                    crate::libs::gfx::two_d::Rgba8888::opaque(60, 120, 255),
-                                )
-                            }))
+                            .fill_rgba(Rgba8888::new(255, 80, 80, 255))
                             .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
                             .draw();
                     }
 
-                    // Non-uniform rounded rect with vertical gradient
+                    // Simplified solid color rect with non-uniform corners
                     let radii = crate::libs::gfx::two_d::CornerRadiiPx { tl: 6, tr: 14, br: 10, bl: 4 };
-                    let gr2 = gradient_vertical(crate::libs::gfx::two_d::Rgba8888::opaque(40, 200, 120), crate::libs::gfx::two_d::Rgba8888::opaque(10, 60, 40));
                     let nr = GRect::new(GPoint::new(w / 6, h / 2), GSize::new((w * 2 / 3) as u32, (h / 3) as u32));
                     {
                         let mut d = crate::libs::gfx::two_d::draw::Draw::new(c2d.raster_mut());
                         d.rect(nr)
                             .corner_radii(radii)
-                            .fill(Brush::linear({
-                                crate::libs::gfx::two_d::gradients::LinearGradient::new(
-                                    GPoint::new(nr.top_left.x, nr.top_left.y),
-                                    GPoint::new(nr.top_left.x, nr.bottom()),
-                                    crate::libs::gfx::two_d::Rgba8888::opaque(40, 200, 120),
-                                    crate::libs::gfx::two_d::Rgba8888::opaque(10, 60, 40),
-                                )
-                            }))
+                            .fill_rgba(Rgba8888::new(40, 200, 120, 255))
                             .stroke(crate::libs::gfx::two_d::draw::stroke(1, crate::libs::gfx::two_d::Rgba8888::opaque(255, 255, 255)))
                             .draw();
                     }
@@ -192,10 +168,15 @@ pub async fn demo_2d_app(context: AppContext) {
                     .fill_rgba(overlay)
                     .draw();
             }
+            
+            let draw_duration = draw_start.elapsed();
+            if draw_duration.as_millis() > 30 {
+                defmt::info!("Demo2D draw slow: {}ms, scene={}", draw_duration.as_millis(), scene);
+            }
         }).await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(16)).await; // ~60 FPS
+        Timer::after(Duration::from_millis(50)).await; // ~20 FPS to reduce I2C contention
     }
 }
 

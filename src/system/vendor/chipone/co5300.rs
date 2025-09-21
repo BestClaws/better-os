@@ -107,7 +107,7 @@ where
         height: u16,
         pixel_format: PixelFormat,
     ) -> Self {
-        info!("Creating Co5300 driver");
+        debug!("Creating Co5300 driver");
         let physical = DisplaySize { width: width as u32, height: height as u32 };
         // Default logical to 116x116 with scale=4 if panel dimensions fit; else fall back to 1x
         let (logical, scale) = if (width as u32) >= 116 * 4 && (height as u32) >= 116 * 4 {
@@ -179,7 +179,7 @@ where
 
     /// Perform hardware reset
     async fn hard_reset(&mut self) -> Result<(), ()> {
-        info!("Performing hard reset");
+        debug!("Performing hard reset");
 
         self.reset_pin.set_low().map_err(|_| ())?;
         Timer::after(Duration::from_millis(10)).await;
@@ -243,7 +243,7 @@ where
         }
         let transfer_us = t_transfer.elapsed().as_micros() as u64;
         let total_us = t0.elapsed().as_micros() as u64;
-        info!(
+        debug!(
             "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
             region,
             (scaling_us as f64) / 1000.0,
@@ -302,7 +302,7 @@ where
         }
 
         let total_us = t0.elapsed().as_micros() as u64;
-        info!(
+        debug!(
             "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
             region,
             (scaling_us as f64) / 1000.0,
@@ -390,7 +390,7 @@ where
         }
 
         let total_us = t0.elapsed().as_micros() as u64;
-        info!(
+        debug!(
             "draw_region: region: {:?}, scaling {} ms, transfer {} ms, total {} ms",
             region,
             (scaling_us as f64) / 1000.0,
@@ -406,7 +406,7 @@ where
     RST: OutputPin + Send,
 {
     async fn init(&mut self) {
-        info!("Initializing Co5300 display");
+        debug!("Initializing Co5300 display");
 
         if let Err(_) = self.hard_reset().await {
             error!("Hard reset failed");
@@ -449,7 +449,7 @@ where
         }.await;
 
         match init_result {
-            Ok(_) => info!("Display initialization complete"),
+            Ok(_) => debug!("Display initialization complete"),
             Err(_) => error!("Display initialization failed"),
         }
     }
@@ -535,7 +535,7 @@ where
     }
 
         async fn set_brightness(&mut self, value: u8) {
-        info!("Setting brightness to {}", value);
+        debug!("Setting brightness to {}", value);
 
         if let Err(_) = self.send_command_with_data(commands::WRDISBV, &[value]).await {
             error!("Failed to set brightness");
