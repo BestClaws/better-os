@@ -1,7 +1,15 @@
 /// Comprehensive Graphics Performance Benchmarking App
 ///
-/// Tests all permutations of shapes, fills, strokes, and anti-aliasing variants
+/// Tests selected permutations of shapes, fills, strokes, and anti-aliasing variants
 /// Each test draws centered at ~50% screen size with 50ms delays
+///
+/// QUICK START - To benchmark specific primitives:
+/// 1. Edit generate_all_test_permutations() function
+/// 2. Comment out unwanted lines in the arrays (shapes, fills, strokes, etc.)
+/// 3. Example: To test only circles with solid fills:
+///    - Keep only `ShapeType::Circle,` in shapes array
+///    - Keep only `Some(FillType::Solid),` in fills array
+/// 4. Rebuild and run to see focused benchmark results
 
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -80,7 +88,7 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
     info!("🚀 Starting Comprehensive Graphics Performance Benchmark");
 
     // Wait for app initialization
-    Timer::after(Duration::from_millis(50)).await;
+    Timer::after(Duration::from_millis(1)).await;
 
     // Generate all test permutations
     let test_configs = generate_all_test_permutations();
@@ -153,56 +161,83 @@ pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
     info!("🏁 Comprehensive Graphics Performance Benchmark Complete");
 }
 
-/// Generate all possible test permutations for comprehensive benchmarking
-fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 2048> {
+/// Generate test permutations based on selected primitives and options
+/// 
+/// HOW TO USE:
+/// - Comment out lines in the arrays below to disable specific tests
+/// - For example, to test only circles: comment out all shapes except ShapeType::Circle
+/// - To test only solid fills: comment out all fills except Some(FillType::Solid)
+/// - To test without anti-aliasing: comment out all AA types except None
+/// 
+/// This allows you to run targeted benchmarks instead of the full 2000+ test suite
+fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 4096> {
     let mut configs = heapless::Vec::new();
 
+    // ============================================================================
+    // PRIMITIVE SELECTION - Comment/uncomment lines to select which to benchmark
+    // ============================================================================
     let shapes = [
-        ShapeType::Rectangle,
-        ShapeType::Circle,
-        ShapeType::Line,
-        ShapeType::Arc,
-        ShapeType::BezierQuadratic,
-        ShapeType::BezierCubic,
+        // ShapeType::Rectangle,       // Fast rectangles with corner radius support
+        ShapeType::Circle,          // Optimized circle fills and strokes  
+        ShapeType::Line,            // Lines with Wu/Bresenham algorithms
+        ShapeType::Arc,             // Arc rendering with angular stepping
+        // ShapeType::BezierQuadratic, // Quadratic bezier curves
+        // ShapeType::BezierCubic,     // Cubic bezier curves
     ];
 
+    // ============================================================================
+    // FILL TYPE SELECTION - Comment/uncomment lines to select which to benchmark
+    // ============================================================================
     let fills = [
-        None,
-        Some(FillType::Solid),
-        Some(FillType::LinearGradient),
-        Some(FillType::LinearGradientHorizontal),
-        Some(FillType::RadialGradient),
-        Some(FillType::RadialGradientOffCenter),
+        None,                                       // No fill (stroke only)
+        Some(FillType::Solid),                     // Solid color fills (fastest)
+        Some(FillType::LinearGradient),            // Linear gradients
+        Some(FillType::LinearGradientHorizontal),  // Horizontal linear gradients
+        Some(FillType::RadialGradient),            // Radial gradients
+        Some(FillType::RadialGradientOffCenter),   // Off-center radial gradients
     ];
 
+    // ============================================================================
+    // STROKE TYPE SELECTION - Comment/uncomment lines to select which to benchmark
+    // ============================================================================
     let strokes = [
-        None,
-        Some(StrokeType::Thin),
-        Some(StrokeType::Medium),
-        Some(StrokeType::Thick),
+        None,                       // No stroke (fill only)
+        // Some(StrokeType::Thin),     // 1.0px stroke width
+        Some(StrokeType::Medium),   // 3.0px stroke width  
+        // Some(StrokeType::Thick),    // 6.0px stroke width
     ];
 
+    // ============================================================================
+    // ANTI-ALIASING SELECTION - Comment/uncomment lines to select which to benchmark
+    // ============================================================================
     let aa_types = [
-        None,
-        Some(AntiAliasing::Low),
-        Some(AntiAliasing::Medium),
-        Some(AntiAliasing::High),
+        None,                           // No anti-aliasing (fastest)
+        Some(AntiAliasing::Low),        // Low quality AA
+        // Some(AntiAliasing::Medium),     // Medium quality AA
+        // Some(AntiAliasing::High),       // High quality AA (slowest)
     ];
 
+    // ============================================================================
+    // CORNER RADIUS SELECTION - Comment/uncomment lines to select which to benchmark
+    // NOTE: Corner radii only apply to rectangles! If no rectangles selected, use None only
+    // ============================================================================
     let corners = [
-        None,
-        Some(CornerType::Sharp),
-        Some(CornerType::Small),
-        Some(CornerType::Medium),
-        Some(CornerType::Large),
-        Some(CornerType::Asymmetric),
+        None,                           // No corner radius (rectangles only)
+        // Some(CornerType::Sharp),        // Sharp corners (0px radius)
+        // Some(CornerType::Small),        // Small radius (2px)
+        // Some(CornerType::Medium),       // Medium radius (8px)
+        // Some(CornerType::Large),        // Large radius (20px)
+        // Some(CornerType::Asymmetric),   // Different radius per corner
     ];
 
+    // ============================================================================
+    // ALPHA TRANSPARENCY SELECTION - Comment/uncomment lines to select which to benchmark
+    // ============================================================================
     let alphas = [
-        AlphaType::Opaque,
-        AlphaType::SemiTransparent,
-        AlphaType::LowAlpha,
-        AlphaType::VeryLowAlpha,
+        AlphaType::Opaque,          // 255 alpha - fastest path (no blending)
+        AlphaType::SemiTransparent, // 128 alpha - blending required
+        AlphaType::LowAlpha,        // 64 alpha - heavy blending
+        AlphaType::VeryLowAlpha,    // 32 alpha - very heavy blending
     ];
 
     // Generate all valid combinations

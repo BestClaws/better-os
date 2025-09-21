@@ -165,7 +165,7 @@ pub enum AppSpawnError {
 
 
 fn spawn_gfx_perf_bench_adaptive_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(watch_app(context))
+    spawner.spawn(gfx_perf_bench_adaptive_app(context))
 }
 
 fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
