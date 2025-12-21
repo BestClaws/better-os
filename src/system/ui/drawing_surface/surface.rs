@@ -21,36 +21,54 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
         PixelFormat::Rgb565 => {
             // hi,lo ordering
             fn set(buf: &mut [u8], idx: usize, c: Rgba8888) {
+                // Store RGB565 in big-endian (hi,lo) order using unaligned write.
                 let (raw, _) = rgba8888_to_rgb565_and_alpha(c.to_u32());
-                buf[idx] = (raw >> 8) as u8;
-                buf[idx + 1] = raw as u8;
+                unsafe {
+                    // Convert to BE numeric so native write yields hi,lo bytes.
+                    let be = raw.to_be();
+                    core::ptr::write_unaligned(buf.as_mut_ptr().add(idx) as *mut u16, be);
+                }
             }
             fn get(buf: &[u8], idx: usize) -> Rgba8888 {
-                let hi = buf[idx] as u16;
-                let lo = buf[idx + 1] as u16;
-                let raw = (hi << 8) | lo;
+                // Read RGB565 stored in hi,lo order via unaligned u16 and fix endianness.
+                let raw = unsafe {
+                    let be = core::ptr::read_unaligned(buf.as_ptr().add(idx) as *const u16);
+                    u16::from_be(be)
+                };
                 let r = (((raw >> 11) & 0x1F) as u16 * 527 + 23) >> 6;
                 let g = (((raw >> 5) & 0x3F) as u16 * 259 + 33) >> 6;
                 let b = ((raw & 0x1F) as u16 * 527 + 23) >> 6;
                 Rgba8888::rgba(r as u8, g as u8, b as u8, 255)
             }
             fn blend(buf: &mut [u8], idx: usize, c: Rgba8888, coverage: u8) {
-                let bg_raw: u16 = ((buf[idx] as u16) << 8) | buf[idx + 1] as u16;
+                // Unaligned u16 read/write with explicit BE order handling.
+                let bg_raw: u16 = unsafe {
+                    let be = core::ptr::read_unaligned(buf.as_ptr().add(idx) as *const u16);
+                    u16::from_be(be)
+                };
                 let (fg_rgb565, a_src) = rgba8888_to_rgb565_and_alpha(c.to_u32());
                 let eff = ((coverage as u32 * a_src as u32) / 255) as u8;
                 if eff == 0 { return; }
                 let out = blend_rgb565(bg_raw, fg_rgb565, eff);
-                buf[idx] = (out >> 8) as u8;
-                buf[idx + 1] = out as u8;
+                unsafe {
+                    core::ptr::write_unaligned(buf.as_mut_ptr().add(idx) as *mut u16, out.to_be());
+                }
             }
             fn encode_row(dst: &mut [u8], c: Rgba8888) {
+                // Fill `dst` with the RGB565 representation of `c` using unsafe doubling.
                 let (raw, _) = rgba8888_to_rgb565_and_alpha(c.to_u32());
-                let hi = (raw >> 8) as u8;
-                let lo = raw as u8;
-                for chunk in dst.chunks_mut(2) {
-                    if chunk.len() == 2 {
-                        chunk[0] = hi;
-                        chunk[1] = lo;
+                let be = raw.to_be();
+                unsafe {
+                    let len = dst.len();
+                    if len == 0 { return; }
+                    // Write the first pixel (2 bytes)
+                    core::ptr::write_unaligned(dst.as_mut_ptr() as *mut u16, be);
+                    let mut filled = 2; // bytes filled
+                    // Exponentially copy the written block to fill the buffer quickly.
+                    while filled < len {
+                        let copy_len = core::cmp::min(filled, len - filled);
+                        core::ptr::copy_nonoverlapping(dst.as_ptr(), dst.as_mut_ptr().add(filled), copy_len);
+                        filled += copy_len;
                     }
                 }
             }
@@ -250,6 +268,12 @@ impl<'a> DrawingSurface<'a> {
         let buf = self.buf_mut();
         encode(buf, color);
         self.mark_region_dirty(Rect::new(Point::zero(), Size::new(self.width, self.height)));
+    }
+
+    /// Accessor for hot-path row encoder to avoid exposing private `ops`.
+    #[inline(always)]
+    pub(crate) fn encode_row_fn(&self) -> fn(&mut [u8], Rgba8888) {
+        self.ops.encode_row
     }
 
     #[inline(always)]
