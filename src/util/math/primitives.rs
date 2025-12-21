@@ -106,7 +106,7 @@ impl Quaternion {
 }
 
 /// 2D point with sub-pixel precision using fixed-point coordinates
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Format)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
@@ -161,7 +161,7 @@ impl Sub for Point {
 }
 
 /// 2D size with width and height
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Format)]
 pub struct Size {
     pub width: u32,
     pub height: u32,
@@ -188,7 +188,7 @@ impl Size {
 }
 
 /// Rectangle defined by top-left point and size
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Format)]
 pub struct Rect {
     pub top_left: Point,
     pub size: Size,

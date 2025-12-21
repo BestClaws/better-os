@@ -9,6 +9,7 @@ use embassy_sync::mutex::Mutex;
 use defmt::{debug, error, info, warn, Format};
 use crate::apps::watch_app::watch_app;
 use crate::apps::gfx_bench::gfx_bench_app;
+use crate::apps::rect::rect_app;
 
 /// Application registry for system apps
 ///
@@ -17,13 +18,18 @@ use crate::apps::gfx_bench::gfx_bench_app;
 const SYSTEM_APPS: &[AppDescriptor] = &[
     AppDescriptor {
         name: "Watch",
-        id: 1,
+        id: 3,
         spawn_fn: spawn_watch_app,
     },
     AppDescriptor {
         name: "GFX Benchmark",
         id: 2,
         spawn_fn: spawn_gfx_bench_app,
+    },
+    AppDescriptor {
+        name: "Rect",
+        id: 1,
+        spawn_fn: spawn_rect_app,
     },
 ];
 
@@ -164,7 +170,10 @@ fn spawn_watch_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_
 fn spawn_gfx_bench_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(gfx_bench_app(context))
 }
-// Other app spawners removed for simplicity
+
+fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(rect_app(context))
+}
 
 
 /// Utility functions for application management
