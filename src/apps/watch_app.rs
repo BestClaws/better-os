@@ -1,11 +1,12 @@
 //! Simplified Analog Watch Application using new gfx API
 
+use alloc::format;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::shapes::{Shape, Line};
-use crate::libs::gfx::Circle;
+use crate::libs::gfx::shapes::{Shape, Line, Text};
+use crate::libs::gfx::{Circle, RoundedRect};
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
 use libm::{cosf, sinf, roundf};
@@ -28,7 +29,8 @@ pub async fn watch_app(ctx: AppContext) {
 
             // Bezel
             Circle::new(cx, cy, bezel_r)
-                .stroke(2, Rgba8888::rgba(200, 200, 200, 255))
+                .stroke(1, Rgba8888::rgba(200, 200, 200, 255))
+                .fill_radial(Rgba8888::rgba(12, 13, 18, 150), Rgba8888::rgba(108, 19, 24, 150))
                 .draw(surface);
 
             // Time since app start (monotonic). Drives the clock hands.
@@ -63,22 +65,34 @@ pub async fn watch_app(ctx: AppContext) {
 
             // Draw hands
             Line::new(cx, cy, hx, hy)
-                .stroke(4, Rgba8888::rgba(255, 215, 0, 255))
+                .stroke(1, Rgba8888::rgba(255, 215, 0, 255))
                 .draw(surface);
             Line::new(cx, cy, mx, my)
-                .stroke(3, Rgba8888::rgba(255, 255, 255, 255))
+                .stroke(1, Rgba8888::rgba(255, 255, 255, 255))
                 .draw(surface);
             Line::new(cx, cy, sx, sy)
-                .stroke(2, Rgba8888::rgba(255, 60, 60, 255))
+                .stroke(1, Rgba8888::rgba(255, 60, 60, 255))
                 .draw(surface);
 
             // Center cap
             Circle::new(cx, cy, 2)
-                .stroke(2, Rgba8888::rgba(255, 255, 255, 255))
+                .fill_solid( Rgba8888::rgba(255, 255, 255, 255))
+                .draw(surface);
+
+
+            RoundedRect::new(cx - 25, cy + 10, 52, 16, 5,5,5,5)
+                .fill_linear_h(Rgba8888::rgba(255, 255, 255, 155), Rgba8888::rgba(255, 255, 0, 155))
+                .stroke(1, Rgba8888::rgba(255, 255, 255, 255))
+                .draw(surface);
+
+
+            let time_str = format!("01:39");
+            Text::new(cx - 20 as i32, cy + 15 as i32, &time_str)
+                .color(Rgba8888::rgba(0, 0, 0, 255))
                 .draw(surface);
         }).await;
         let t = draw_start.elapsed();
         info!("watch frame: {}us", t.as_micros());
-        Timer::after(Duration::from_millis(16)).await;
+        Timer::after(Duration::from_millis(1)).await;
     }
 }
