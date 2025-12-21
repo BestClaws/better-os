@@ -2,7 +2,7 @@
 
 use alloc::vec;
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{aa_coverage, blend_rgb565, rgba8888_to_rgb565_and_alpha, Rasterizer};
+use crate::libs::gfx::{aa_coverage, Rasterizer};
 
 pub struct Line {
     x1: i32,
@@ -10,7 +10,7 @@ pub struct Line {
     x2: i32,
     y2: i32,
     width: i32,
-    color: u16,
+    color: Rgba8888,
     alpha: u8,
 }
 
@@ -22,16 +22,14 @@ impl Line {
             x2,
             y2,
             width: 1,
-            color: 0,
+            color: Rgba8888::rgba(0, 0, 0, 255),
             alpha: 255,
         }
     }
 
     pub fn stroke(mut self, width: i32, color: Rgba8888) -> Self {
-        let (rgb565, alpha) = rgba8888_to_rgb565_and_alpha(color.to_u32());
         self.width = width;
-        self.color = rgb565;
-        self.alpha = alpha;
+        self.color = color;
         self
     }
 
@@ -59,18 +57,16 @@ impl super::Shape for Line {
 
         let mut err = dx - dy;
 
-        let width = rasterizer.width() as usize;
-
-        let height = rasterizer.height() as usize;
-        let mut buf = rasterizer.buffer_mut();
+        let width = rasterizer.width() as i32;
+        let height = rasterizer.height() as i32;
 
         let half_width = self.width / 2;
         let outer = half_width + 1;
 
         let min_x = (x1.min(x2) - outer).max(0);
-        let max_x = (x1.max(x2) + outer).min(width as i32 - 1);
+        let max_x = (x1.max(x2) + outer).min(width - 1);
         let min_y = (y1.min(y2) - outer).max(0);
-        let max_y = (y1.max(y2) + outer).min(height as i32 - 1);
+        let max_y = (y1.max(y2) + outer).min(height - 1);
 
         // Bresenham's line algorithm to get centerline pixels
         let mut points = vec![];
@@ -97,6 +93,8 @@ impl super::Shape for Line {
         }
 
         // Rasterize thick line with anti-aliasing
+        // No RGB565 conversions in primitives; rasterizer handles native formats.
+
         for py in min_y..=max_y {
             for px in min_x..=max_x {
                 // Find closest distance to centerline
@@ -129,17 +127,15 @@ impl super::Shape for Line {
                     continue;
                 }
 
-                let effective_opa = ((opa as u32 * self.alpha as u32) / 255) as u8;
-                if effective_opa == 0 {
-                    continue;
-                }
-
-                let idx = (py as usize * width + px as usize) * 2;
-                let bg = ((buf[idx] as u16) << 8) | buf[idx + 1] as u16;
-                let out = blend_rgb565(bg, self.color, effective_opa);
-
-                buf[idx] = (out >> 8) as u8;
-                buf[idx + 1] = out as u8;
+                let su = self.color.to_u32();
+                let sr = ((su >> 24) & 0xFF) as u8;
+                let sg = ((su >> 16) & 0xFF) as u8;
+                let sb = ((su >> 8) & 0xFF) as u8;
+                let sa = (su & 0xFF) as u8;
+                let sa_eff = ((sa as u32 * self.alpha as u32) / 255) as u8;
+                if sa_eff == 0 { continue; }
+                let stroke_rgba = Rgba8888::rgba(sr, sg, sb, sa_eff);
+                rasterizer.blend_pixel(px, py, stroke_rgba, opa);
             }
         }
 

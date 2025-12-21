@@ -3,7 +3,7 @@
 
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::font::{FONT_6X8, FONT_WIDTH, FONT_HEIGHT};
-use crate::libs::gfx::{blend_rgb565, rgba8888_to_rgb565_and_alpha, Rasterizer};
+use crate::libs::gfx::Rasterizer;
 
 /// Text shape that supports temporary strings by being lifetime-generic
 pub struct Text<'a> {
@@ -38,16 +38,18 @@ impl<'a> Text<'a> {
 
 impl<'a> super::Shape for Text<'a> {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
-        let (fg_rgb565, mut fg_alpha) = rgba8888_to_rgb565_and_alpha(self.color.to_u32());
-        fg_alpha = ((fg_alpha as u32 * self.alpha as u32) / 255) as u8;
+        // Effective alpha combines color alpha with Text alpha
+        let c = self.color.to_u32();
+        let r = ((c >> 24) & 0xFF) as u8;
+        let g = ((c >> 16) & 0xFF) as u8;
+        let b = ((c >> 8) & 0xFF) as u8;
+        let a = (c & 0xFF) as u8;
+        let eff_a = ((a as u32 * self.alpha as u32) / 255) as u8;
+        if eff_a == 0 { return; }
+        let fg_rgba = Rgba8888::rgba(r, g, b, eff_a);
 
-        if fg_alpha == 0 {
-            return;
-        }
-
-        let width = rasterizer.width() as usize;
+        let width = rasterizer.width() as i32;
         let height = rasterizer.height() as i32;
-        let mut buf = rasterizer.buffer_mut();
 
         let mut cursor_x = self.x;
 
@@ -75,11 +77,7 @@ impl<'a> super::Shape for Text<'a> {
                             continue;
                         }
 
-                        let idx = (py as usize * width + px as usize) * 2;
-                        let bg = ((buf[idx] as u16) << 8) | buf[idx + 1] as u16;
-                        let out = blend_rgb565(bg, fg_rgb565, fg_alpha);
-                        buf[idx] = (out >> 8) as u8;
-                        buf[idx + 1] = out as u8;
+                        rasterizer.blend_pixel(px, py, fg_rgba, 255);
                     }
                 }
             }
@@ -88,9 +86,9 @@ impl<'a> super::Shape for Text<'a> {
         }
 
         let min_x = self.x.max(0);
-        let max_x = (cursor_x + FONT_WIDTH).min(rasterizer.width() as i32 - 1);
+        let max_x = (cursor_x + FONT_WIDTH).min(width - 1);
         let min_y = self.y.max(0);
-        let max_y = (self.y + FONT_HEIGHT).min(rasterizer.height() as i32 - 1);
+        let max_y = (self.y + FONT_HEIGHT).min(height - 1);
         rasterizer.mark_dirty(min_x, min_y, max_x, max_y);
     }
 }

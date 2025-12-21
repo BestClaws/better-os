@@ -1,7 +1,7 @@
 // file: src/shapes/rounded_rect.rs
 
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{aa_coverage, blend_rgb565, linear_gradient_h, linear_gradient_v, radial_gradient_sq, rgba8888_to_rgb565_and_alpha, Fill, Rasterizer};
+use crate::libs::gfx::{aa_coverage, linear_gradient_h_rgba, linear_gradient_v_rgba, radial_gradient_rgba_sq, Fill, Rasterizer};
 
 pub struct RoundedRect {
     x: i32,
@@ -13,7 +13,7 @@ pub struct RoundedRect {
     radius_bl: i32,
     radius_br: i32,
     stroke_width: i32,
-    stroke_color: u16,
+    stroke_color: Rgba8888,
     stroke_alpha: u8,
     fill: Option<Fill>,
 }
@@ -39,17 +39,15 @@ impl RoundedRect {
             radius_bl,
             radius_br,
             stroke_width: 0,
-            stroke_color: 0,
+            stroke_color: Rgba8888::rgba(0, 0, 0, 255),
             stroke_alpha: 255,
             fill: None,
         }
     }
 
     pub fn stroke(mut self, width: i32, color: Rgba8888) -> Self {
-        let (rgb565, alpha) = rgba8888_to_rgb565_and_alpha(color.to_u32());
         self.stroke_width = width;
-        self.stroke_color = rgb565;
-        self.stroke_alpha = alpha;
+        self.stroke_color = color;
         self
     }
 
@@ -59,51 +57,29 @@ impl RoundedRect {
     }
 
     pub fn fill_solid(mut self, color: Rgba8888) -> Self {
-        let (rgb565, alpha) = rgba8888_to_rgb565_and_alpha(color.to_u32());
-        self.fill = Some(Fill::Solid(rgb565, alpha));
+        self.fill = Some(Fill::Solid(color));
         self
     }
 
     pub fn fill_radial(mut self, inner: Rgba8888, outer: Rgba8888) -> Self {
-        let (inner_color, inner_alpha) = rgba8888_to_rgb565_and_alpha(inner.to_u32());
-        let (outer_color, outer_alpha) = rgba8888_to_rgb565_and_alpha(outer.to_u32());
-        self.fill = Some(Fill::RadialGradient {
-            inner_color,
-            inner_alpha,
-            outer_color,
-            outer_alpha,
-        });
+        self.fill = Some(Fill::RadialGradient { inner, outer });
         self
     }
 
     pub fn fill_linear_h(mut self, start: Rgba8888, end: Rgba8888) -> Self {
-        let (start_color, start_alpha) = rgba8888_to_rgb565_and_alpha(start.to_u32());
-        let (end_color, end_alpha) = rgba8888_to_rgb565_and_alpha(end.to_u32());
-        self.fill = Some(Fill::LinearGradientH {
-            start_color,
-            start_alpha,
-            end_color,
-            end_alpha,
-        });
+        self.fill = Some(Fill::LinearGradientH { start, end });
         self
     }
 
     pub fn fill_linear_v(mut self, start: Rgba8888, end: Rgba8888) -> Self {
-        let (start_color, start_alpha) = rgba8888_to_rgb565_and_alpha(start.to_u32());
-        let (end_color, end_alpha) = rgba8888_to_rgb565_and_alpha(end.to_u32());
-        self.fill = Some(Fill::LinearGradientV {
-            start_color,
-            start_alpha,
-            end_color,
-            end_alpha,
-        });
+        self.fill = Some(Fill::LinearGradientV { start, end });
         self
     }
 }
 
 impl super::Shape for RoundedRect {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
-        // (exact original implementation from your provided rounded_rect.rs - unchanged except removed fill_opacity)
+        // Refactored: compute coverage and colors, then delegate blending to rasterizer
         let x1 = self.x;
         let y1 = self.y;
         let x2 = self.x + self.width - 1;
@@ -126,21 +102,13 @@ impl super::Shape for RoundedRect {
         let inner_radius_bl = (self.radius_bl - self.stroke_width).max(0);
         let inner_radius_br = (self.radius_br - self.stroke_width).max(0);
 
-        let width = rasterizer.width() as usize;
-
-        let mut buf = rasterizer.buffer_mut();
+        // No RGB565 conversions in primitives; rasterizer handles native formats.
 
         for py in min_y..=max_y {
             for px in min_x..=max_x {
-                let idx = (py as usize * width + px as usize) * 2;
-                let bg = ((buf[idx] as u16) << 8) | buf[idx + 1] as u16;
-                let mut color_out = bg;
-
                 // Stroke
-                let mut stroke_opa = 0u8;
                 if self.stroke_width > 0 {
-                    // (original stroke logic unchanged)
-                    // ... [full original stroke corner and edge detection]
+                    let mut stroke_opa = 0u8;
                     let mut in_corner = false;
                     let mut dist2: i32 = 0;
                     let mut outer_r: i32 = 0;
@@ -189,26 +157,30 @@ impl super::Shape for RoundedRect {
                             stroke_opa = aa_coverage(dist2, outer_r);
                         }
                     } else {
-                        if (py >= y1 && py < y1 + self.stroke_width && px >= x1 + self.radius_tl && px <= x2 - self.radius_tr) ||
-                            (py > inner_y2 && py <= y2 && px >= x1 + self.radius_bl && px <= x2 - self.radius_br) ||
-                            (px >= x1 && px < x1 + self.stroke_width && py >= y1 + self.radius_tl && py <= y2 - self.radius_bl) ||
-                            (px > inner_x2 && px <= x2 && py >= y1 + self.radius_tr && py <= y2 - self.radius_br) {
+                        if (py >= y1 && py < y1 + self.stroke_width && px >= x1 + self.radius_tl && px <= x2 - self.radius_tr)
+                            || (py > inner_y2 && py <= y2 && px >= x1 + self.radius_bl && px <= x2 - self.radius_br)
+                            || (px >= x1 && px < x1 + self.stroke_width && py >= y1 + self.radius_tl && py <= y2 - self.radius_bl)
+                            || (px > inner_x2 && px <= x2 && py >= y1 + self.radius_tr && py <= y2 - self.radius_br)
+                        {
                             stroke_opa = 255;
                         }
                     }
 
                     if stroke_opa > 0 {
-                        let effective_opa = ((stroke_opa as u32 * self.stroke_alpha as u32) / 255) as u8;
-                        if effective_opa > 0 {
-                            color_out = blend_rgb565(color_out, self.stroke_color, effective_opa);
-                        }
+                        let su = self.stroke_color.to_u32();
+                        let sr = ((su >> 24) & 0xFF) as u8;
+                        let sg = ((su >> 16) & 0xFF) as u8;
+                        let sb = ((su >> 8) & 0xFF) as u8;
+                        let sa = (su & 0xFF) as u8;
+                        let sa_eff = ((sa as u32 * self.stroke_alpha as u32) / 255) as u8;
+                        let stroke_rgba = Rgba8888::rgba(sr, sg, sb, sa_eff);
+                        rasterizer.blend_pixel(px, py, stroke_rgba, stroke_opa);
                     }
                 }
 
                 // Fill
                 if let Some(fill) = self.fill {
                     let mut fill_opa = 0u8;
-                    // (original fill logic unchanged)
                     let mut in_corner = false;
                     let mut dist2: i32 = 0;
                     let mut r: i32 = 0;
@@ -252,50 +224,63 @@ impl super::Shape for RoundedRect {
                             fill_opa = aa_coverage(dist2, r);
                         }
                     } else {
+                        // The interior rectangle will be filled via spans per row; skip here
                         if px >= inner_x1 && px <= inner_x2 && py >= inner_y1 && py <= inner_y2 {
-                            fill_opa = 255;
+                            continue;
                         }
                     }
 
                     if fill_opa > 0 {
-                        let (color, px_alpha) = match fill {
-                            Fill::Solid(c, a) => (c, a),
-                            Fill::RadialGradient {
-                                inner_color,
-                                outer_color,
-                                inner_alpha,
-                                outer_alpha,
-                            } => {
+                        let color = match fill {
+                            Fill::Solid(c) => c,
+                            Fill::RadialGradient { inner, outer } => {
                                 let cx = self.x + self.width / 2;
                                 let cy = self.y + self.height / 2;
                                 let dx = px - cx;
                                 let dy = py - cy;
                                 let dist2 = dx * dx + dy * dy;
                                 let r2 = (self.width / 2).pow(2) + (self.height / 2).pow(2);
-                                radial_gradient_sq(inner_color, outer_color, inner_alpha, outer_alpha, dist2, r2)
+                                radial_gradient_rgba_sq(inner, outer, dist2, r2)
                             }
-                            Fill::LinearGradientH {
-                                start_color,
-                                end_color,
-                                start_alpha,
-                                end_alpha,
-                            } => linear_gradient_h(start_color, end_color, start_alpha, end_alpha, px, self.x + self.width / 2, self.width / 2),
-                            Fill::LinearGradientV {
-                                start_color,
-                                end_color,
-                                start_alpha,
-                                end_alpha,
-                            } => linear_gradient_v(start_color, end_color, start_alpha, end_alpha, py, self.y + self.height / 2, self.height / 2),
+                            Fill::LinearGradientH { start, end } => {
+                                linear_gradient_h_rgba(start, end, px, self.x + self.width / 2, self.width / 2)
+                            }
+                            Fill::LinearGradientV { start, end } => {
+                                linear_gradient_v_rgba(start, end, py, self.y + self.height / 2, self.height / 2)
+                            }
                         };
-                        let effective_opa = ((fill_opa as u32 * px_alpha as u32) / 255) as u8;
-                        if effective_opa > 0 {
-                            color_out = blend_rgb565(color_out, color, effective_opa);
-                        }
+                        rasterizer.blend_pixel(px, py, color, fill_opa);
                     }
                 }
-
-                buf[idx] = (color_out >> 8) as u8;
-                buf[idx + 1] = color_out as u8;
+            }
+            // After handling stroke and corner fill per pixel for this row,
+            // fill the inner rectangle with a single horizontal span if row lies within it.
+            if py >= inner_y1 && py <= inner_y2 {
+                if let Some(fill) = self.fill {
+                    let len = (inner_x2 - inner_x1 + 1).max(0);
+                    rasterizer.blend_hspan_with(inner_x1, py, len, |i| {
+                        let px = inner_x1 + i as i32;
+                        let color = match fill {
+                            Fill::Solid(c) => c,
+                            Fill::RadialGradient { inner, outer } => {
+                                let cx = self.x + self.width / 2;
+                                let cy = self.y + self.height / 2;
+                                let dx = px - cx;
+                                let dy = py - cy;
+                                let dist2 = dx * dx + dy * dy;
+                                let r2 = (self.width / 2).pow(2) + (self.height / 2).pow(2);
+                                radial_gradient_rgba_sq(inner, outer, dist2, r2)
+                            }
+                            Fill::LinearGradientH { start, end } => {
+                                linear_gradient_h_rgba(start, end, px, self.x + self.width / 2, self.width / 2)
+                            }
+                            Fill::LinearGradientV { start, end } => {
+                                linear_gradient_v_rgba(start, end, py, self.y + self.height / 2, self.height / 2)
+                            }
+                        };
+                        (color, 255)
+                    });
+                }
             }
         }
 
