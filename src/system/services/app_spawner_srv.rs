@@ -2,16 +2,13 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
-// Simplify: only rect app is kept registered
 
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use defmt::{debug, error, info, warn, Format};
-use crate::apps::rect::rect_app;
-use crate::apps::demo_fluent::demo_fluent_app;
-// use crate::apps::gfx_perf_bench_adaptive::gfx_perf_bench_adaptive_app; // disabled during gfx API migration
-// use crate::apps::watch_app::watch_app; // disabled during gfx API migration
+use crate::apps::watch_app::watch_app;
+use crate::apps::gfx_bench::gfx_bench_app;
 
 /// Application registry for system apps
 ///
@@ -19,17 +16,15 @@ use crate::apps::demo_fluent::demo_fluent_app;
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
     AppDescriptor {
-        name: "Fluent GFX Demo",
-        id: 5,
-        spawn_fn: spawn_demo_fluent_app,
+        name: "Watch",
+        id: 1,
+        spawn_fn: spawn_watch_app,
     },
-
     AppDescriptor {
-        name: "rect Monitor",
+        name: "GFX Benchmark",
         id: 2,
-        spawn_fn: spawn_rect_app,
+        spawn_fn: spawn_gfx_bench_app,
     },
-
 ];
 
 /// Application descriptor for registration
@@ -162,12 +157,12 @@ pub enum AppSpawnError {
 //     spawner.spawn(gfx_perf_bench_adaptive_app(context))
 // }
 
-fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(rect_app(context))
+fn spawn_watch_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(watch_app(context))
 }
 
-fn spawn_demo_fluent_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(demo_fluent_app(context))
+fn spawn_gfx_bench_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(gfx_bench_app(context))
 }
 // Other app spawners removed for simplicity
 

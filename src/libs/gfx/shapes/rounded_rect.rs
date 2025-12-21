@@ -224,9 +224,8 @@ impl super::Shape for RoundedRect {
                             fill_opa = aa_coverage(dist2, r);
                         }
                     } else {
-                        // The interior rectangle will be filled via spans per row; skip here
                         if px >= inner_x1 && px <= inner_x2 && py >= inner_y1 && py <= inner_y2 {
-                            continue;
+                            fill_opa = 255;
                         }
                     }
 
@@ -251,35 +250,6 @@ impl super::Shape for RoundedRect {
                         };
                         rasterizer.blend_pixel(px, py, color, fill_opa);
                     }
-                }
-            }
-            // After handling stroke and corner fill per pixel for this row,
-            // fill the inner rectangle with a single horizontal span if row lies within it.
-            if py >= inner_y1 && py <= inner_y2 {
-                if let Some(fill) = self.fill {
-                    let len = (inner_x2 - inner_x1 + 1).max(0);
-                    rasterizer.blend_hspan_with(inner_x1, py, len, |i| {
-                        let px = inner_x1 + i as i32;
-                        let color = match fill {
-                            Fill::Solid(c) => c,
-                            Fill::RadialGradient { inner, outer } => {
-                                let cx = self.x + self.width / 2;
-                                let cy = self.y + self.height / 2;
-                                let dx = px - cx;
-                                let dy = py - cy;
-                                let dist2 = dx * dx + dy * dy;
-                                let r2 = (self.width / 2).pow(2) + (self.height / 2).pow(2);
-                                radial_gradient_rgba_sq(inner, outer, dist2, r2)
-                            }
-                            Fill::LinearGradientH { start, end } => {
-                                linear_gradient_h_rgba(start, end, px, self.x + self.width / 2, self.width / 2)
-                            }
-                            Fill::LinearGradientV { start, end } => {
-                                linear_gradient_v_rgba(start, end, py, self.y + self.height / 2, self.height / 2)
-                            }
-                        };
-                        (color, 255)
-                    });
                 }
             }
         }
