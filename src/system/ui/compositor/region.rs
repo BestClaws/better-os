@@ -1,6 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec as AllocVec;
-use crate::libs::gfx::two_d::Rect;
+use crate::util::math::primitives::Rect;
 
 pub fn extract_region_buffer(
     full_buffer: &[u8],

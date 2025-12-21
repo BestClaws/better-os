@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 
-use crate::libs::gfx::two_d::{Point, Rasterizer, Rect, Rgba8888, Size};
+use crate::libs::gfx::two_d::{Rasterizer, Rgba8888};
 use crate::system::hal::display::PixelFormat;
-
+use crate::util::math::primitives::{Point, Rect, Size};
 use super::util::{clip_rect, intersects_or_touches, union_rect};
 
 /// Pixel operation function pointers cached per format for hot paths.

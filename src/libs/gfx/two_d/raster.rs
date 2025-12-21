@@ -1,3 +1,5 @@
+use crate::util::math::primitives::{Point, Rect, Size};
+
 /// High-performance rasterizer trait for space-grade 2D graphics rendering.
 /// 
 /// This trait defines the core interface for pixel-level graphics operations
@@ -51,7 +53,7 @@ pub trait Rasterizer {
     /// 
     /// This should be implemented with the fastest possible method for
     /// filling large rectangular areas with a single color.
-    fn set_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888) {
+    fn set_pixels_rect(&mut self, rect: Rect, color: super::types::Rgba8888) {
         // Default implementation - can be overridden for hardware acceleration
         for y in rect.top_left.y..=rect.bottom() {
             for x in rect.top_left.x..=rect.right() {
@@ -61,7 +63,7 @@ pub trait Rasterizer {
     }
     
     /// Fast path: Fill rectangle with alpha blending
-    fn blend_pixels_rect(&mut self, rect: super::types::Rect, color: super::types::Rgba8888, coverage: u8) {
+    fn blend_pixels_rect(&mut self, rect: Rect, color: super::types::Rgba8888, coverage: u8) {
         // Default implementation - can be overridden for hardware acceleration
         for y in rect.top_left.y..=rect.bottom() {
             for x in rect.top_left.x..=rect.right() {
@@ -177,9 +179,9 @@ pub trait Rasterizer {
     /// # Arguments
     /// * `color` - RGBA8888 color to clear to
     fn clear(&mut self, color: super::types::Rgba8888) {
-        let full_rect = super::types::Rect::new(
-            super::types::Point::zero(),
-            super::types::Size::new(self.width(), self.height())
+        let full_rect = Rect::new(
+            Point::zero(),
+            Size::new(self.width(), self.height())
         );
         self.set_pixels_rect(full_rect, color);
     }

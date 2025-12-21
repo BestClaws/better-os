@@ -33,13 +33,48 @@
 /// - Complex rounded shapes: <20ms worst case
 /// - Gradient fills: Adaptive quality scaling
 
-use super::types::{Point, Size, Rect as RectGeometry, CornerRadii, Rgba8888, AntiAliasing};
-use fixed::{FixedI32, types::extra::U16};
+use super::types::{AntiAliasing, CornerRadii, Rgba8888};
+use fixed::{types::extra::U16, FixedI32};
 use super::paint::Paint;
 use super::stroke::{Stroke, StrokeRasterizer};
 use super::canvas2d::Canvas2D;
 use micromath::F32Ext;
+/// Space-Grade 2D Graphics Primitives
+///
+/// This module provides mission-critical 2D rendering primitives designed for embedded systems
+/// where performance, reliability, and memory efficiency are paramount. All algorithms are
+/// optimized for real-time rendering while maintaining mathematical precision.
+///
+/// # Architecture Overview
+///
+/// The graphics system uses a layered approach:
+/// 1. **Geometric Primitives**: Mathematical representations of shapes
+/// 2. **Rendering Pipeline**: Optimized rasterization algorithms  
+/// 3. **Performance Layer**: Fast paths for common operations
+/// 4. **Quality Control**: Anti-aliasing and precision management
+///
+/// # Performance Characteristics
+///
+/// - **Rectangle fills**: O(1) using direct rasterizer calls
+/// - **Rounded rectangles**: O(height) using scanline algorithms
+/// - **Gradients**: Adaptive sampling based on area size
+/// - **Strokes**: Geometric boundary calculation, not pixel iteration
+///
+/// # Memory Safety
+///
+/// All operations use saturating arithmetic and bounds checking to prevent:
+/// - Integer overflow in coordinate calculations
+/// - Buffer overruns in rasterization
+/// - Invalid memory access patterns
+///
+/// # Real-Time Guarantees
+///
+/// Rendering times are predictable and bounded:
+/// - Simple shapes: <5ms on target hardware
+/// - Complex rounded shapes: <20ms worst case
+/// - Gradient fills: Adaptive quality scaling
 
+use crate::util::math::primitives::{Point, Rect as RectGeometry, Size};
 // =============================================================================
 // CORE TRAITS AND INTERFACES
 // =============================================================================

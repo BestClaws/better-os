@@ -1,5 +1,5 @@
 //! Utility helpers for rectangle math used by the drawing surface.
-use crate::libs::gfx::two_d::{Rect, Point, Size};
+use crate::util::math::primitives::{Point, Rect};
 
 #[inline(always)]
 pub fn clip_rect(area: &Rect, width: u32, height: u32) -> (u32, u32, u32, u32) {

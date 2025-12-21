@@ -1,4 +1,4 @@
-use crate::libs::gfx::two_d::Rect;
+use crate::util::math::primitives::Rect;
 
 #[derive(Debug)]
 pub enum UpdateStrategy {

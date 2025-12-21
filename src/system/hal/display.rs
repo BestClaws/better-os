@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use defmt::Format;
-use crate::libs::gfx::two_d::Rect;
+use crate::util::math::primitives::Rect;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 pub enum PixelFormat {

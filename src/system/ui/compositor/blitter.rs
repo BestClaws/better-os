@@ -3,7 +3,7 @@
 use defmt::debug;
 use embassy_time::Instant;
 
-use crate::libs::gfx::two_d::Rect;
+use crate::util::math::primitives::Rect;
 use crate::system::ui::drawing_surface::DrawingSurface;
 
 pub struct SurfaceBlitter;

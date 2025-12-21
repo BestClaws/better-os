@@ -34,10 +34,46 @@
 /// - **Fixed-point precision** for consistent sub-pixel accuracy
 /// - **Fast approximations** where mathematically justified
 
-use super::types::{Point, Rgba8888};
-use fixed::{FixedI32, types::extra::U16};
+use super::types::Rgba8888;
+use fixed::{types::extra::U16, FixedI32};
 use micromath::F32Ext;
+/// Space-Grade Paint System with Mission-Critical Color Management
+///
+/// This module provides a comprehensive paint system designed for embedded graphics
+/// where performance, precision, and reliability are paramount. The system handles
+/// all color operations with mathematical rigor and overflow protection.
+///
+/// # Architecture Overview
+///
+/// The paint system is built on several key principles:
+/// 1. **Performance First**: Optimized algorithms for real-time rendering
+/// 2. **Mathematical Precision**: Fixed-point arithmetic for consistent results
+/// 3. **Memory Efficiency**: Minimal allocations and cache-friendly data structures
+/// 4. **Overflow Safety**: Saturating arithmetic prevents system crashes
+///
+/// # Color Space Management
+///
+/// All colors are managed in sRGB color space with premultiplied alpha:
+/// - **Consistent color reproduction** across different hardware
+/// - **Optimized blending operations** using premultiplied alpha
+/// - **Gamma-correct interpolation** for visually accurate gradients
+///
+/// # Performance Characteristics
+///
+/// - **Solid colors**: O(1) - Direct color application
+/// - **Linear gradients**: O(1) per pixel - Precomputed coefficients
+/// - **Radial gradients**: O(1) per pixel - Fast distance approximation
+/// - **Conic gradients**: O(1) per pixel - Optimized angle calculation
+///
+/// # Numerical Stability
+///
+/// All gradient calculations use:
+/// - **64-bit intermediate arithmetic** to prevent overflow
+/// - **Saturating operations** for safe boundary conditions
+/// - **Fixed-point precision** for consistent sub-pixel accuracy
+/// - **Fast approximations** where mathematically justified
 
+use crate::util::math::primitives::Point;
 // =============================================================================
 // CORE PAINT TYPES AND INTERFACES
 // =============================================================================

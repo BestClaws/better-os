@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
-use crate::libs::gfx::two_d::Rect;
+use crate::util::math::primitives::Rect;
 use crate::system::hal::display::{AsyncDisplay, PixelFormat, DisplayResolution, DisplayCapabilities};
 
 /// UI-level Display facade that negotiates with the HAL driver

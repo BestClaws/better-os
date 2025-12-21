@@ -1,14 +1,15 @@
 #![no_std]
 
-use embassy_time::{Duration, Timer, Instant};
+use embassy_time::{Duration, Instant, Timer};
 use defmt::info;
 use crate::libs::gfx::two_d::{
-    Point, Size, Rgba8888, Canvas2D, Rasterizer, CornerRadii,
-    PrimitiveRect, Circle, Line, Arc, Bezier, Paint, Stroke, Drawable, AntiAliasing
+    AntiAliasing, Arc, Bezier, Canvas2D,
+    Circle, CornerRadii, Drawable, Line, Paint, PrimitiveRect, Rasterizer, Rgba8888, Stroke
 };
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use micromath::F32Ext;
+use crate::util::math::primitives::{Point, Size};
 
 // Easing functions for smooth animations
 fn ease_in_out_sine(t: f32) -> f32 {

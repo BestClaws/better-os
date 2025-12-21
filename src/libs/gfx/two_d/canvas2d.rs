@@ -36,7 +36,46 @@
 /// - Consistent performance across different hardware
 /// - Graceful degradation under resource constraints
 
-use super::{Rasterizer, Rgba8888, Point, Size, Paint};
+use crate::util::math::primitives::{Point, Rect, Size};
+/// Space-Grade 2D Canvas Interface
+///
+/// This module provides a high-level, performance-optimized interface for 2D graphics
+/// operations. The Canvas2D acts as an intelligent adapter between high-level drawing
+/// primitives and low-level rasterization hardware, providing:
+///
+/// # Architecture Overview
+///
+/// The canvas system uses a zero-copy, streaming architecture:
+/// 1. **No Backing Buffer**: Operations stream directly to hardware
+/// 2. **Intelligent Dispatch**: Automatic selection of optimal rendering paths
+/// 3. **Alpha Optimization**: Fast paths for opaque and transparent rendering
+/// 4. **Hardware Abstraction**: Consistent API across different rasterizers
+///
+/// # Performance Philosophy
+///
+/// Every method is designed for maximum performance:
+/// - **Zero-cost abstractions**: No runtime overhead for unused features
+/// - **Inline optimization**: Critical paths marked for aggressive inlining
+/// - **Branch prediction**: Hot paths optimized for common cases
+/// - **Cache efficiency**: Memory access patterns optimized for modern CPUs
+///
+/// # Memory Safety
+///
+/// All operations are bounds-checked and overflow-safe:
+/// - Coordinate clamping prevents buffer overruns
+/// - Saturating arithmetic prevents integer overflow
+/// - Lifetime management ensures memory safety
+/// - No dynamic allocation during rendering
+///
+/// # Real-Time Guarantees
+///
+/// The canvas provides predictable performance characteristics:
+/// - Bounded execution time for all operations
+/// - No hidden memory allocations
+/// - Consistent performance across different hardware
+/// - Graceful degradation under resource constraints
+
+use super::{Paint, Rasterizer, Rgba8888};
 
 // =============================================================================
 // CORE CANVAS INTERFACE
@@ -207,7 +246,7 @@ impl<'a> Canvas2D<'a> {
     /// - Performance-critical rendering loops
     /// - Battery-powered devices requiring efficiency
     #[inline]
-    pub fn fill_rect_fast(&mut self, rect: super::types::Rect, color: Rgba8888) {
+    pub fn fill_rect_fast(&mut self, rect: Rect, color: Rgba8888) {
         if color.a == 255 {
             // Opaque fast path: direct hardware write
             // This is the most common case and receives maximum optimization
@@ -281,7 +320,7 @@ impl<'a> Canvas2D<'a> {
 
     /// Fill a rectangle with a solid RGBA color.
     pub fn fill_rect(&mut self, top_left_x: i32, top_left_y: i32, width: u32, height: u32, color: Rgba8888) {
-        let rect = crate::libs::gfx::two_d::types::Rect::new(
+        let rect = crate::util::math::primitives::Rect::new(
             Point::new(top_left_x, top_left_y),
             Size::new(width, height)
         );
@@ -295,7 +334,7 @@ impl<'a> Canvas2D<'a> {
 
     /// Fill a rectangle with paint (solid color or gradient).
     pub fn fill_rect_with_paint(&mut self, top_left_x: i32, top_left_y: i32, width: u32, height: u32, paint: &Paint) {
-        let rect = crate::libs::gfx::two_d::types::Rect::new(
+        let rect = crate::util::math::primitives::Rect::new(
             Point::new(top_left_x, top_left_y),
             Size::new(width, height)
         );

@@ -3,8 +3,8 @@
 //! This connects the format-agnostic 2D algorithms to the storage format
 //! via `PixelOps`. All inputs/outputs are in `Rgba8888`; storage is in
 //! the negotiated `PixelFormat` (Rgb565 reference implementation).
-use crate::libs::gfx::two_d::{Rasterizer, Rect, Point, Size, Rgba8888};
-
+use crate::libs::gfx::two_d::{Rasterizer, Rgba8888};
+use crate::util::math::primitives::Rect;
 use super::surface::DrawingSurface;
 
 impl Rasterizer for DrawingSurface<'_> {

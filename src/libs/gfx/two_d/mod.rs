@@ -15,11 +15,11 @@ pub mod raster;
 pub mod canvas2d;
 
 // Re-export core types for convenience
-pub use types::{Point, Size, Rgba8888, CornerRadii, AntiAliasing, BlendMode};
-pub use fixed::{FixedI32, types::extra::U16};
-pub use types::Rect; // Use geometry rect as the main Rect
+pub use types::{AntiAliasing, CornerRadii, Rgba8888};
+pub use fixed::{types::extra::U16, FixedI32};
+// Use geometry rect as the main Rect
 pub use paint::*;
 pub use stroke::*;
-pub use primitives::{Rect as PrimitiveRect, Circle, Line, Arc, Bezier, Drawable}; // Primitive rect
+pub use primitives::{Arc, Bezier, Circle, Drawable, Line, Rect as PrimitiveRect}; // Primitive rect
 pub use raster::Rasterizer;
 pub use canvas2d::Canvas2D;

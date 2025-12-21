@@ -8,9 +8,9 @@ use async_trait::async_trait;
 use embedded_hal::digital::OutputPin;
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
-use defmt::{info, error, debug};
-use crate::libs::gfx::two_d::{Point, Size, Rect};
-use crate::system::hal::display::{AsyncDisplay, Orientation, PixelFormat, DisplayCapabilities, DisplayResolution, DisplaySize};
+use defmt::{debug, error, info};
+use crate::system::hal::display::{AsyncDisplay, DisplayCapabilities, DisplayResolution, DisplaySize, Orientation, PixelFormat};
+use crate::util::math::primitives::{Point, Rect, Size};
 
 /// SH8601 Command Set
 pub mod commands {

@@ -1,9 +1,10 @@
 #![allow(unused)]
-use crate::libs::gfx::two_d::{Point, Size, Rgba8888, Canvas2D, PrimitiveRect, Paint, Stroke, Drawable, CornerRadii};
+use crate::libs::gfx::two_d::{Canvas2D, CornerRadii, Drawable, Paint, PrimitiveRect, Rgba8888, Stroke};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use embassy_time::{Duration, Timer, Instant};
+use embassy_time::{Duration, Instant, Timer};
 use micromath::F32Ext;
+use crate::util::math::primitives::{Point, Size};
 
 fn draw_rects(canvas: &mut Canvas2D, t: f32) {
     let w = canvas.width() as i32;

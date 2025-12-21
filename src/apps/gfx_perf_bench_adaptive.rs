@@ -14,13 +14,14 @@
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::libs::gfx::two_d::{
-    Canvas2D, Rasterizer, Point, Size, Rgba8888, Paint, Stroke, Drawable,
-    PrimitiveRect as Rect, Circle, Line, Arc, Bezier, CornerRadii, AntiAliasing, FixedI32, U16
+    AntiAliasing, Arc, Bezier, Canvas2D, Circle, CornerRadii,
+    Drawable, FixedI32, Line, Paint, PrimitiveRect as Rect, Rasterizer, Rgba8888, Stroke, U16
 };
 use crate::libs::gfx::two_d::paint::{LinearGradient, RadialGradient};
 use crate::libs::gfx::two_d::stroke::{LineCap, LineJoin};
-use defmt::{info, warn, error};
-use embassy_time::{Instant, Duration, Timer};
+use defmt::{error, info, warn};
+use embassy_time::{Duration, Instant, Timer};
+use crate::util::math::primitives::{Point, Size};
 
 /// Test configuration for comprehensive benchmarking
 #[derive(Debug, Clone, Copy)]

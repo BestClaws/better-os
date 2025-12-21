@@ -10,13 +10,13 @@ use alloc::vec::Vec as AllocVec;
 use defmt::{debug, warn};
 use embassy_time::{Duration, Instant, Timer};
 
-use crate::libs::gfx::two_d::{Rect, Rgba8888};
+use crate::libs::gfx::two_d::Rgba8888;
 use crate::system::ui::display::Display;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::window_manager::WindowManager;
-
-use super::animation::{AnimationConfig, WindowAnimation, SlideZoomAnimation, TransitionDirection};
+use crate::util::math::primitives::Rect;
+use super::animation::{AnimationConfig, SlideZoomAnimation, TransitionDirection, WindowAnimation};
 use super::blitter::SurfaceBlitter;
 use super::strategy::UpdateStrategy;
 use super::region::extract_region_buffer;

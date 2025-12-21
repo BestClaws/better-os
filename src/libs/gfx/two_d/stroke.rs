@@ -8,10 +8,21 @@
 /// - Dash patterns for decorative effects
 /// - Optimized rasterization for performance
 
-use super::types::{Point, Rgba8888, AntiAliasing};
-use fixed::{FixedI32, types::extra::U16};
+use super::types::{AntiAliasing, Rgba8888};
+use fixed::{types::extra::U16, FixedI32};
 use super::paint::Paint;
 use micromath::F32Ext;
+/// Advanced stroke system with anti-aliasing and line cap/join support
+/// 
+/// This module provides comprehensive stroke rendering with:
+/// - Variable stroke widths with sub-pixel precision
+/// - Anti-aliased edges for smooth appearance
+/// - Line caps: butt, round, square
+/// - Line joins: miter, round, bevel
+/// - Dash patterns for decorative effects
+/// - Optimized rasterization for performance
+
+use crate::util::math::primitives::Point;
 
 /// Stroke defines how shape outlines are rendered
 #[derive(Debug, Clone)]
