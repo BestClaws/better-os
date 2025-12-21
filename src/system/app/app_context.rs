@@ -7,7 +7,7 @@ use crate::system::ui::window_manager::WindowManager;
 use crate::system::input::types::{MotionEvent, TouchAction};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use crate::libs::gfx::two_d::Canvas2D;
+// migrated away from two_d Canvas2D; apps use gfx::Rasterizer directly
 
 pub struct AppContext {
     pub handle: WindowHandle,

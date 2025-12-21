@@ -178,7 +178,7 @@ pub fn linear_gradient_v_rgba(start: color::Rgba8888, end: color::Rgba8888, y: i
 }
 
 #[inline(always)]
-fn rgba8888_to_rgb565_and_alpha(color: u32) -> (u16, u8) {
+pub(crate) fn rgba8888_to_rgb565_and_alpha(color: u32) -> (u16, u8) {
     let r = ((color >> 24) & 0xFF) >> 3;
     let g = ((color >> 16) & 0xFF) >> 2;
     let b = ((color >> 8) & 0xFF) >> 3;

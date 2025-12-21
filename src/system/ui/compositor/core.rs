@@ -10,7 +10,7 @@ use alloc::vec::Vec as AllocVec;
 use defmt::{debug, warn};
 use embassy_time::{Duration, Instant, Timer};
 
-use crate::libs::gfx::two_d::Rgba8888;
+use crate::libs::gfx::color::Rgba8888;
 use crate::system::ui::display::Display;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::window::WindowHandle;
@@ -186,7 +186,7 @@ impl UICompositor {
                 let eased_progress = (self.animation_config.easing_fn)(progress);
                 let frame = animation.animate_frame(eased_progress, direction, width);
 
-                surface.clear(Rgba8888::opaque(0,0,0));
+                surface.clear(Rgba8888::rgba(0,0,0,255));
                 let _ = wm.with_surface(source_h, |src| {
                     SurfaceBlitter::copy_full(&mut surface, src, frame.source_x, frame.source_y);
                 });
@@ -211,7 +211,7 @@ impl UICompositor {
     }
 
     async fn compose_frame_optimized<'a>(&mut self, wm: &mut WindowManager, output_surface: &mut DrawingSurface<'a>) {
-        output_surface.clear(Rgba8888::opaque(0,0,0));
+        output_surface.clear(Rgba8888::rgba(0,0,0,255));
         if self.windows_order.is_empty() { return; }
         if let Some((cur, _prev, _next)) = self.current_prev_next() {
             let regions = self.collect_dirty_regions(wm, cur);

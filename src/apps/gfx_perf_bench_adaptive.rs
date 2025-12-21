@@ -1,183 +1,52 @@
-/// Comprehensive Graphics Performance Benchmarking App
-///
-/// Tests selected permutations of shapes, fills, strokes, and anti-aliasing variants
-/// Each test draws centered at ~50% screen size with 50ms delays
-///
-/// QUICK START - To benchmark specific primitives:
-/// 1. Edit generate_all_test_permutations() function
-/// 2. Comment out unwanted lines in the arrays (shapes, fills, strokes, etc.)
-/// 3. Example: To test only circles with solid fills:
-///    - Keep only `ShapeType::Circle,` in shapes array
-///    - Keep only `Some(FillType::Solid),` in fills array
-/// 4. Rebuild and run to see focused benchmark results
-
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use crate::libs::gfx::two_d::{
-    AntiAliasing, Arc, Bezier, Canvas2D, Circle, CornerRadii,
-    Drawable, FixedI32, Line, Paint, PrimitiveRect as Rect, Rasterizer, Rgba8888, Stroke, U16
-};
-use crate::libs::gfx::two_d::paint::{LinearGradient, RadialGradient};
-use crate::libs::gfx::two_d::stroke::{LineCap, LineJoin};
-use defmt::{error, info, warn};
+use crate::libs::gfx::color::Rgba8888;
+use crate::libs::gfx::{Rasterizer, Circle, RoundedRect, Arc};
+use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
-use crate::util::math::primitives::{Point, Size};
+use crate::util::math::primitives::Point;
 
-/// Test configuration for comprehensive benchmarking
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-struct TestConfig {
-    shape_type: ShapeType,
-    fill_type: Option<FillType>,
-    stroke_type: Option<StrokeType>,
-    aa_type: Option<AntiAliasing>,
-    corner_type: Option<CornerType>,
-    alpha_type: AlphaType,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum ShapeType {
-    Rectangle,
-    Circle,
-    Line,
-    Arc,
-    BezierQuadratic,
-    BezierCubic,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum FillType {
-    Solid,
-    LinearGradient,
-    LinearGradientHorizontal,
-    RadialGradient,
-    RadialGradientOffCenter,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum StrokeType {
-    Thin,      // 1.0px
-    Medium,    // 3.0px
-    Thick,     // 6.0px
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum CornerType {
-    Sharp,
-    Small,     // 2.0px radius
-    Medium,    // 8.0px radius
-    Large,     // 20.0px radius
-    Asymmetric, // Different radius per corner
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum AlphaType {
-    Opaque,        // 255 alpha - fastest path
-    SemiTransparent, // 128 alpha - blending required
-    LowAlpha,      // 64 alpha - heavy blending
-    VeryLowAlpha,  // 32 alpha - very heavy blending
-}
-
-/// Comprehensive performance benchmarking application
+/// Simplified Graphics Performance Benchmark (migrated to new gfx API)
 #[embassy_executor::task]
 pub async fn gfx_perf_bench_adaptive_app(ctx: AppContext) {
-    info!("🚀 Starting Comprehensive Graphics Performance Benchmark");
-
-    // Wait for app initialization
+    info!("Starting simplified GFX benchmark");
     Timer::after(Duration::from_millis(1)).await;
 
-    // Generate all test permutations
-    let test_configs = generate_all_test_permutations();
-    info!("📊 Generated {} comprehensive test configurations", test_configs.len());
-
-    let mut total_render_time = Duration::from_ticks(0);
-    let mut test_count = 0;
-    let benchmark_start = Instant::now();
-
-    // Execute each test with 50ms delay
-    for (i, config) in test_configs.iter().enumerate() {
-        info!("🧪 Test {}/{}: {} {} {} {} {} {}",
-              i + 1, test_configs.len(),
-              shape_name(config.shape_type),
-              fill_name(config.fill_type),
-              stroke_name(config.stroke_type),
-              aa_name(config.aa_type),
-              corner_name(config.corner_type),
-              alpha_name(config.alpha_type));
-
+    for _step in 0..50 {
         let draw_start = Instant::now();
-
         ctx.draw(|surface: &mut DrawingSurface| {
-            // Create Canvas2D
-            let mut canvas = Canvas2D::new(surface as &mut dyn Rasterizer);
-            let canvas_width = canvas.width() as i32;
-            let canvas_height = canvas.height() as i32;
+            let raster: &mut dyn Rasterizer = surface;
+            let w = raster.width() as i32;
+            let h = raster.height() as i32;
+            raster.fill_rect(0, 0, w, h, Rgba8888::rgba(12, 14, 22, 255));
 
-            // Clear canvas
-            canvas.clear_color(Rgba8888::new(20, 25, 35, 255));
+            // Draw circles
+            for i in 0..6 {
+                let cx = (w / 7) * (i + 1);
+                Circle::new(Point::new(cx, h / 2), 18)
+                    .fill_solid(Rgba8888::rgba(80 + (i as u8)*20, 120, 200, 200))
+                    .draw(raster);
+            }
 
-            // Execute the specific test
-            execute_test(&mut canvas, *config, canvas_width, canvas_height);
+            // Draw rounded rects
+            for i in 0..3 {
+                let x = 10 + i * 60;
+                RoundedRect::new(x, 10, 50, 30, 6, 6, 6, 6)
+                    .fill_linear_h(Rgba8888::rgba(200, 80, 80, 180), Rgba8888::rgba(120, 180, 255, 200))
+                    .draw(raster);
+            }
+
+            // Draw arcs
+            Arc::new(Point::new(w - 40, h - 40), 28, 0, (core::f32::consts::PI * 1.5) as i32)
+                .stroke(3, Rgba8888::rgba(100, 255, 150, 255))
+                .draw(raster);
         }).await;
 
-        let test_time = draw_start.elapsed();
-        info!("  ⏱️  Render time: {}μs", test_time.as_micros());
-        total_render_time += test_time;
-        test_count += 1;
-
-        // Wait 50ms before next test
-        Timer::after(Duration::from_millis(50)).await;
+        let t = draw_start.elapsed();
+        info!("frame: {}us", t.as_micros());
+        Timer::after(Duration::from_millis(20)).await;
     }
-
-    // Final comprehensive statistics
-    let total_benchmark_time = benchmark_start.elapsed();
-    let avg_render_time = if test_count > 0 { total_render_time / test_count as u32 } else { Duration::from_ticks(0) };
-
-    info!("📊 COMPREHENSIVE PERFORMANCE SUMMARY:");
-    info!("   Total test configurations: {}", test_count);
-    info!("   Total render time: {}μs", total_render_time.as_micros());
-    info!("   Total benchmark time: {}μs", total_benchmark_time.as_micros());
-    info!("   Average per test: {}μs", avg_render_time.as_micros());
-
-    // Performance analysis
-    let avg_micros = avg_render_time.as_micros();
-    if avg_micros < 1000 {
-        info!("   ✅ Excellent performance: {}μs average render time", avg_micros);
-    } else if avg_micros < 5000 {
-        info!("   ✅ Good performance: {}μs average render time", avg_micros);
-    } else if avg_micros < 10000 {
-        info!("   ⚠️  Moderate performance: {}μs average render time", avg_micros);
-    } else {
-        info!("   🔥 Performance needs improvement: {}μs average render time", avg_micros);
-    }
-
-    let throughput = test_count as f32 / (total_render_time.as_micros() as f32 / 1_000_000.0);
-    info!("   🎯 Render throughput: {} ops/sec", throughput as u32);
-
-    info!("🏁 Comprehensive Graphics Performance Benchmark Complete");
 }
-
-/// Generate test permutations based on selected primitives and options
-/// 
-/// HOW TO USE:
-/// - Comment out lines in the arrays below to disable specific tests
-/// - For example, to test only circles: comment out all shapes except ShapeType::Circle
-/// - To test only solid fills: comment out all fills except Some(FillType::Solid)
-/// - To test without anti-aliasing: comment out all AA types except None
-/// 
-/// This allows you to run targeted benchmarks instead of the full 2000+ test suite
-fn generate_all_test_permutations() -> heapless::Vec<TestConfig, 4096> {
-    let mut configs = heapless::Vec::new();
-
-    // ============================================================================
-    // PRIMITIVE SELECTION - Comment/uncomment lines to select which to benchmark
-    // ============================================================================
-    let shapes = [
         // ShapeType::Rectangle,       // Fast rectangles with corner radius support
         ShapeType::Circle,          // Optimized circle fills and strokes  
         ShapeType::Line,            // Lines with Wu/Bresenham algorithms

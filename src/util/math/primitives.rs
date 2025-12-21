@@ -2,7 +2,7 @@ use core::ops::{Add, Sub};
 use defmt::Format;
 use micromath::F32Ext;
 use fixed::FixedI32;
-use crate::libs::gfx::two_d::U16;
+use fixed::types::extra::U16;
 
 #[derive(Copy, Clone, Debug, Format)]
 pub struct Vec3(pub f32, pub f32, pub f32);
@@ -127,9 +127,7 @@ impl Point {
     
     /// Create from fixed-point coordinates
     #[inline(always)]
-    pub fn from_fixed(x: FixedI32<U16>, y: FixedI32<U16>) -> Self {
-        Self { x: x.to_num(), y: y.to_num() }
-    }
+    pub fn from_fixed(x: FixedI32<U16>, y: FixedI32<U16>) -> Self { Self { x: x.to_num(), y: y.to_num() } }
     
     /// Distance squared to another point (avoids sqrt for performance)
     #[inline]

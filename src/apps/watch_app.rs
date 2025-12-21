@@ -102,216 +102,45 @@ impl PerfStats {
     fn maybe_log_summary(&mut self) {
         // Log every ~60 frames or every 5 seconds, whichever comes first
         if self.frame_count % 60 != 0 && self.last_summary.elapsed().as_secs() < 5 { return; }
+use crate::system::app::app_context::AppContext;
+use crate::system::ui::drawing_surface::DrawingSurface;
+use crate::libs::gfx::color::Rgba8888;
+use crate::libs::gfx::{Rasterizer, Circle, line::Line};
+use defmt::info;
+use embassy_time::{Duration, Instant, Timer};
+use crate::util::math::primitives::Point;
 
-        let frames = self.frame_count.max(1);
-        let avg_total = (self.total_draw_us / frames as u64) as u32;
-        let avg_update = (self.sum_update_us / frames as u64) as u32;
-        let avg_bg = (self.sum_bg_us / frames as u64) as u32;
-        let avg_bezel = (self.sum_bezel_us / frames as u64) as u32;
-        let avg_minute = (self.sum_minute_track_us / frames as u64) as u32;
-        let avg_hour_marks = (self.sum_hour_markers_us / frames as u64) as u32;
-        let avg_hands = (self.sum_hands_us / frames as u64) as u32;
-        let avg_center = (self.sum_center_jewel_us / frames as u64) as u32;
-        let avg_second = (self.sum_second_hand_us / frames as u64) as u32;
-
-        let fps = if avg_total > 0 { 1_000_000 / avg_total } else { 0 };
-
-        // Percentages based on avg_total (guard against div-by-zero)
-        let pct = |part: u32| -> u32 { if avg_total > 0 { (part as u64 * 100 / avg_total as u64) as u32 } else { 0 } };
-
-        info!("📊 Watch perf: avg={}μs (fps≈{}), max={}μs", avg_total, fps, self.max_frame_us);
-        info!("   update={}μs ({}%), bg={}μs ({}%), bezel={}μs ({}%)",
-              avg_update, pct(avg_update), avg_bg, pct(avg_bg), avg_bezel, pct(avg_bezel));
-        info!("   minuteTrack={}μs ({}%), hourMarkers={}μs ({}%), hands={}μs ({}%)",
-              avg_minute, pct(avg_minute), avg_hour_marks, pct(avg_hour_marks), avg_hands, pct(avg_hands));
-        info!("   centerJewel={}μs ({}%), secondHand={}μs ({}%)",
-              avg_center, pct(avg_center), avg_second, pct(avg_second));
-
-        // Reset rolling window after reporting to keep numbers fresh
-        self.frame_count = 0;
-        self.total_draw_us = 0;
-        self.max_frame_us = 0;
-        self.sum_update_us = 0;
-        self.sum_bg_us = 0;
-        self.sum_bezel_us = 0;
-        self.sum_minute_track_us = 0;
-        self.sum_hour_markers_us = 0;
-        self.sum_hands_us = 0;
-        self.sum_center_jewel_us = 0;
-        self.sum_second_hand_us = 0;
-        self.last_summary = Instant::now();
-    }
-}
-
-/// Watch application state
-struct WatchState {
-    /// Current time components (simulated for demo)
-    hours: f32,
-    minutes: f32,
-    seconds: f32,
-    
-    /// Animation frame counter for smooth effects
-    frame_count: u32,
-    
-    /// Last update time for smooth animations
-    last_update: Instant,
-    
-    /// Watch face geometry
-    center_x: i32,
-    center_y: i32,
-    radius: f32,
-}
-
-impl WatchState {
-    fn new(canvas_width: i32, canvas_height: i32) -> Self {
-        let center_x = canvas_width / 2;
-        let center_y = canvas_height / 2;
-        // Dial radius sits comfortably inside a 3px outer ring with a small margin
-        let outer_ring_radius = (canvas_width.min(canvas_height) as f32) / 2.0 - 1.5; // 3px ring => 1.5px inset
-        let radius = (outer_ring_radius - 8.0).max(0.0);
-        
-        Self {
-            hours: 10.0,      // Classic 10:10 display time
-            minutes: 10.0,
-            seconds: 30.0,
-            frame_count: 0,
-            last_update: Instant::now(),
-            center_x,
-            center_y,
-            radius,
-        }
-    }
-    
-    /// Update time with smooth animation (real-time progression)
-    fn update_time(&mut self) {
-        let now = Instant::now();
-        let delta = now.duration_since(self.last_update).as_millis() as f32 / 1000.0;
-        self.last_update = now;
-
-        // Continuous, smooth progression
-        self.seconds += delta;              // seconds advance smoothly
-        self.minutes += delta / 60.0;       // minutes advance smoothly
-        self.hours += delta / 3600.0;       // hours advance smoothly
-
-        if self.seconds >= 60.0 { self.seconds -= 60.0; }
-        if self.minutes >= 60.0 { self.minutes -= 60.0; }
-        if self.hours >= 12.0 { self.hours -= 12.0; }
-        
-        self.frame_count += 1;
-    }
-}
-
-/// Fancy analog watch application
+/// Simplified Analog Watch Application (migrated to new gfx API)
 #[embassy_executor::task]
 pub async fn watch_app(ctx: AppContext) {
-    info!("🕐 Starting Fancy Analog Watch Application");
-    
-    // Initialize watch state
-    let mut watch_state = WatchState::new(0, 0); // Will be updated with actual canvas size
-    let mut perf = PerfStats::new();
-    
-    // Main rendering loop
+    info!("Starting simplified watch app");
     loop {
-        // Check if the app is focused before drawing
-        if !ctx.is_focused().await {
-            Timer::after(Duration::from_millis(100)).await;
-            continue;
-        }
-
+        if !ctx.is_focused().await { Timer::after(Duration::from_millis(100)).await; continue; }
         let draw_start = Instant::now();
-        let mut sections: SectionTimes = SectionTimes::default();
-
         ctx.draw(|surface: &mut DrawingSurface| {
-            let mut canvas = Canvas2D::new(surface as &mut dyn Rasterizer);
-            let canvas_width = canvas.width() as i32;
-            let canvas_height = canvas.height() as i32;
-            
-            // Update watch state with actual canvas dimensions on first frame
-            if watch_state.frame_count == 0 {
-                watch_state = WatchState::new(canvas_width, canvas_height);
-            }
-            
-            // Update time and animations
-            let t_update = Instant::now();
-            watch_state.update_time();
-            sections.update_us = t_update.elapsed().as_micros() as u32;
-            
-            // Render the complete watch interface
-            // Background
-            let t_bg = Instant::now();
-            render_watch_background(&mut canvas, &watch_state);
-            sections.bg_us = t_bg.elapsed().as_micros() as u32;
+            let raster: &mut dyn Rasterizer = surface;
+            let w = raster.width() as i32;
+            let h = raster.height() as i32;
+            raster.fill_rect(0, 0, w, h, Rgba8888::rgba(20, 25, 35, 255));
 
             // Bezel
-            let t_bezel = Instant::now();
-            render_watch_bezel(&mut canvas, &watch_state);
-            sections.bezel_us = t_bezel.elapsed().as_micros() as u32;
+            Circle::new(Point::new(w/2, h/2), (h.min(w) / 2 - 4))
+                .stroke(2, Rgba8888::rgba(200, 200, 200, 255))
+                .draw(raster);
 
-            // Minute track
-            let t_minute = Instant::now();
-            render_minute_track(&mut canvas, &watch_state);
-            sections.minute_track_us = t_minute.elapsed().as_micros() as u32;
-
-            // Hour markers
-            let t_hour_marks = Instant::now();
-            render_hour_markers(&mut canvas, &watch_state);
-            sections.hour_markers_us = t_hour_marks.elapsed().as_micros() as u32;
-
-            // Hour and minute hands
-            let t_hands = Instant::now();
-            render_hour_and_minute_hands(&mut canvas, &watch_state);
-            sections.hands_us = t_hands.elapsed().as_micros() as u32;
-
-            // Center jewel
-            let t_center = Instant::now();
-            render_center_jewel(&mut canvas, &watch_state);
-            sections.center_jewel_us = t_center.elapsed().as_micros() as u32;
-
-            // Second hand (on top)
-            let t_second = Instant::now();
-            render_second_hand(&mut canvas, &watch_state);
-            sections.second_hand_us = t_second.elapsed().as_micros() as u32;
-            
+            // Hands (static)
+            Line::new(Point::new(w/2, h/2), Point::new(w/2, h/4))
+                .stroke(4, Rgba8888::rgba(255, 215, 0, 255))
+                .draw(raster);
+            Line::new(Point::new(w/2, h/2), Point::new(w*3/4, h/2))
+                .stroke(3, Rgba8888::rgba(255, 255, 255, 255))
+                .draw(raster);
         }).await;
-
-        let draw_time = draw_start.elapsed();
-        let frame_us = draw_time.as_micros() as u32;
-
-        // Record and occasionally summarize
-        perf.record_frame(sections, frame_us);
-        if frame_us > 20_000 {
-            info!("⚠️ Slow frame: {}μs (update={}μs, bg={}μs, bezel={}μs, minute={}μs, hourMarks={}μs, hands={}μs, center={}μs, second={}μs)",
-                  frame_us, sections.update_us, sections.bg_us, sections.bezel_us, sections.minute_track_us,
-                  sections.hour_markers_us, sections.hands_us, sections.center_jewel_us, sections.second_hand_us);
-        }
-        perf.maybe_log_summary();
-        
-        // 60 FPS for smooth animations
-        Timer::after(Duration::from_millis(1)).await;
+        let t = draw_start.elapsed();
+        info!("watch frame: {}us", t.as_micros());
+        Timer::after(Duration::from_millis(16)).await;
     }
 }
-
-/// Render the complete fancy analog watch
-fn render_watch_face(canvas: &mut Canvas2D, state: &WatchState) {
-    // Retained for potential future single-call render; now measured per-section in draw loop
-    render_watch_background(canvas, state);
-    render_watch_bezel(canvas, state);
-    render_minute_track(canvas, state);
-    render_hour_markers(canvas, state);
-    render_hour_and_minute_hands(canvas, state);
-    render_center_jewel(canvas, state);
-    render_second_hand(canvas, state);
-}
-
-/// Render background with turquoise to white radial gradient - NO TRANSPARENCY
-fn render_watch_background(canvas: &mut Canvas2D, state: &WatchState) {
-    let center = Point::new(state.center_x, state.center_y);
-    let width = canvas.width() as i32;
-    let height = canvas.height() as i32;
-    
-    // Ensure entire canvas is painted white first
-    Rect::from_coords(0, 0, width as u32, height as u32)
-        .fill(Paint::solid(WatchColors::WHITE))
         .aa(AntiAliasing::High)
         .draw(canvas);
 

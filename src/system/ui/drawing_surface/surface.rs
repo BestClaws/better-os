@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
-use crate::libs::gfx::two_d::{Rasterizer, Rgba8888};
+use crate::libs::gfx::color::Rgba8888;
+use crate::libs::gfx::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::{Point, Rect, Size};
 use super::util::{clip_rect, intersects_or_touches, union_rect};
@@ -20,10 +21,7 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
         PixelFormat::Rgb565 => {
             // hi,lo ordering
             fn set(buf: &mut [u8], idx: usize, c: Rgba8888) {
-                let r5: u16 = ((c.r as u16) >> 3) & 0x1F;
-                let g6: u16 = ((c.g as u16) >> 2) & 0x3F;
-                let b5: u16 = ((c.b as u16) >> 3) & 0x1F;
-                let raw: u16 = (r5 << 11) | (g6 << 5) | b5;
+                let (raw, _) = rgba8888_to_rgb565_and_alpha(c.to_u32());
                 buf[idx] = (raw >> 8) as u8;
                 buf[idx + 1] = raw as u8;
             }
@@ -34,34 +32,19 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 let r = (((raw >> 11) & 0x1F) as u16 * 527 + 23) >> 6;
                 let g = (((raw >> 5) & 0x3F) as u16 * 259 + 33) >> 6;
                 let b = ((raw & 0x1F) as u16 * 527 + 23) >> 6;
-                Rgba8888::opaque(r as u8, g as u8, b as u8)
+                Rgba8888::rgba(r as u8, g as u8, b as u8, 255)
             }
             fn blend(buf: &mut [u8], idx: usize, c: Rgba8888, coverage: u8) {
-                // Read bg
-                let hi = buf[idx] as u16;
-                let lo = buf[idx + 1] as u16;
-                let bg_raw = (hi << 8) | lo;
-                let br = (((bg_raw >> 11) & 0x1F) as u16 * 527 + 23) >> 6;
-                let gg = (((bg_raw >> 5) & 0x3F) as u16 * 259 + 33) >> 6;
-                let bb = ((bg_raw & 0x1F) as u16 * 527 + 23) >> 6;
-                // Compose alpha
-                let cov = coverage as u32;
-                let a_src = c.a as u32;
-                let a = ((cov * a_src + 127) / 255) as u8;
-                let ia = 255 - a as u16;
-                let r = ((c.r as u16 * a as u16 + br as u16 * ia + 127) / 255) as u8;
-                let g = ((c.g as u16 * a as u16 + gg as u16 * ia + 127) / 255) as u8;
-                let b = ((c.b as u16 * a as u16 + bb as u16 * ia + 127) / 255) as u8;
-                let raw: u16 =
-                    (((r as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | ((b as u16) >> 3);
-                buf[idx] = (raw >> 8) as u8;
-                buf[idx + 1] = raw as u8;
+                let bg_raw: u16 = ((buf[idx] as u16) << 8) | buf[idx + 1] as u16;
+                let (fg_rgb565, a_src) = rgba8888_to_rgb565_and_alpha(c.to_u32());
+                let eff = ((coverage as u32 * a_src as u32) / 255) as u8;
+                if eff == 0 { return; }
+                let out = blend_rgb565(bg_raw, fg_rgb565, eff);
+                buf[idx] = (out >> 8) as u8;
+                buf[idx + 1] = out as u8;
             }
             fn encode_row(dst: &mut [u8], c: Rgba8888) {
-                let r5: u16 = ((c.r as u16) >> 3) & 0x1F;
-                let g6: u16 = ((c.g as u16) >> 2) & 0x3F;
-                let b5: u16 = ((c.b as u16) >> 3) & 0x1F;
-                let raw: u16 = (r5 << 11) | (g6 << 5) | b5;
+                let (raw, _) = rgba8888_to_rgb565_and_alpha(c.to_u32());
                 let hi = (raw >> 8) as u8;
                 let lo = raw as u8;
                 for chunk in dst.chunks_mut(2) {
@@ -83,9 +66,7 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
             debug_assert!(false, "Unsupported PixelFormat not implemented in PixelOps");
             fn noop_set(_: &mut [u8], _: usize, _: Rgba8888) {}
             fn noop_blend(_: &mut [u8], _: usize, _: Rgba8888, _: u8) {}
-            fn noop_get(_: &[u8], _: usize) -> Rgba8888 {
-                Rgba8888::opaque(0, 0, 0)
-            }
+            fn noop_get(_: &[u8], _: usize) -> Rgba8888 { Rgba8888::rgba(0, 0, 0, 255) }
             fn noop_row(_: &mut [u8], _: Rgba8888) {}
             PixelOps {
                 bpp: 1,
@@ -288,9 +269,6 @@ impl<'a> DrawingSurface<'a> {
         }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.set_pixel)(self.buf_mut(), idx, color);
-        if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
-        }
     }
 
     #[inline(always)]
@@ -304,20 +282,13 @@ impl<'a> DrawingSurface<'a> {
         }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.blend_pixel)(self.buf_mut(), idx, color, coverage);
-        if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(Rect::new(Point::new(x as i32, y as i32), Size::new(1, 1)));
-        }
     }
 
     #[inline(always)]
     pub(crate) fn get_pixel_internal(&self, x: i32, y: i32) -> Rgba8888 {
-        if x < 0 || y < 0 {
-            return Rgba8888::opaque(0, 0, 0);
-        }
+        if x < 0 || y < 0 { return Rgba8888::rgba(0, 0, 0, 255); }
         let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height {
-            return Rgba8888::opaque(0, 0, 0);
-        }
+        if x >= self.width || y >= self.height { return Rgba8888::rgba(0, 0, 0, 255); }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.get_pixel)(self.buf(), idx)
     }
@@ -355,12 +326,6 @@ impl<'a> DrawingSurface<'a> {
                 buf[idx + 1] = tmp[1];
             }
         }
-        if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(Rect::new(
-                Point::new(start_x as i32, y),
-                Size::new(actual_width, 1),
-            ));
-        }
     }
 
     pub(crate) fn set_pixels_vertical_internal(
@@ -395,12 +360,6 @@ impl<'a> DrawingSurface<'a> {
                 buf[idx + 1] = tmp[1];
             }
         }
-        if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(Rect::new(
-                Point::new(x, start_y as i32),
-                Size::new(1, actual_height),
-            ));
-        }
     }
 
     pub(crate) fn set_pixels_rect_internal(&mut self, rect: Rect, color: Rgba8888) {
@@ -426,9 +385,6 @@ impl<'a> DrawingSurface<'a> {
                     buf[idx + 1] = tmp[1];
                 }
             }
-        }
-        if self.batched_dirty_bounds.is_none() {
-            self.mark_region_dirty(clipped_rect);
         }
     }
 }
