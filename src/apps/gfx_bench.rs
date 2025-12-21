@@ -124,10 +124,10 @@ fn generate_all_test_permutations() -> Vec<TestConfig> {
 
     let shapes = [
         ShapeType::RoundedRect,
-        // ShapeType::Circle,
-        // ShapeType::Line,
-        // ShapeType::Arc,
-        // ShapeType::Text,
+        ShapeType::Circle,
+        ShapeType::Line,
+        ShapeType::Arc,
+        ShapeType::Text,
     ];
 
     let fills = [
@@ -264,7 +264,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                 let us = (Instant::now() - t0).as_micros();
                 info!("bench {}: {} us", shape_name(cfg.shape_type), us);
             }).await;
-            Timer::after(Duration::from_millis(1000)).await;
+            Timer::after(Duration::from_millis(100)).await;
         }
     }
 }

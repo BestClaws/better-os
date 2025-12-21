@@ -8,29 +8,73 @@ use crate::libs::gfx::shapes::{Shape, Line};
 use crate::libs::gfx::Circle;
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
+use libm::{cosf, sinf, roundf};
 
 #[embassy_executor::task]
 pub async fn watch_app(ctx: AppContext) {
     info!("Starting watch app");
+    let start = Instant::now();
     loop {
         if !ctx.is_focused().await { Timer::after(Duration::from_millis(100)).await; continue; }
         let draw_start = Instant::now();
         ctx.draw(|surface: &mut DrawingSurface| {
-            let w = surface.width() as i32;
-            let h = surface.height() as i32;
-            surface.fill_rect(0, 0, w, h, Rgba8888::rgba(20, 25, 35, 255));
+            let width = surface.width() as i32;
+            let height = surface.height() as i32;
+            surface.fill_rect(0, 0, width, height, Rgba8888::rgba(20, 25, 35, 255));
+
+            let cx = width / 2;
+            let cy = height / 2;
+            let bezel_r = (height.min(width) / 2 - 4);
 
             // Bezel
-            Circle::new(w/2, h/2, (h.min(w) / 2 - 4))
+            Circle::new(cx, cy, bezel_r)
                 .stroke(2, Rgba8888::rgba(200, 200, 200, 255))
                 .draw(surface);
 
-            // Hands (static)
-            Line::new(w/2, h/2, w/2, h/4)
+            // Time since app start (monotonic). Drives the clock hands.
+            let elapsed = Instant::now() - start;
+            let micros = elapsed.as_micros();
+            let secs_f = micros as f32 / 1_000_000.0;
+
+            // Fractions for analog hands
+            let s = secs_f % 60.0;
+            let m = (secs_f / 60.0) % 60.0;      // includes seconds fraction
+            let h = (secs_f / 3600.0) % 12.0;    // includes minutes fraction
+
+            let tau = core::f32::consts::PI * 2.0;
+            let up_offset = -core::f32::consts::FRAC_PI_2; // 12 o'clock at top
+
+            let ang_s = up_offset + tau * (s / 60.0);
+            let ang_m = up_offset + tau * (m / 60.0);
+            let ang_h = up_offset + tau * (h / 12.0);
+
+            let r_base = bezel_r as f32;
+            let sec_len = (r_base - 6.0).max(0.0);
+            let min_len = (r_base - 14.0).max(0.0);
+            let hour_len = (r_base - 24.0).max(0.0);
+
+            // Compute endpoints
+            let sx = cx + roundf(sec_len * cosf(ang_s)) as i32;
+            let sy = cy + roundf(sec_len * sinf(ang_s)) as i32;
+            let mx = cx + roundf(min_len * cosf(ang_m)) as i32;
+            let my = cy + roundf(min_len * sinf(ang_m)) as i32;
+            let hx = cx + roundf(hour_len * cosf(ang_h)) as i32;
+            let hy = cy + roundf(hour_len * sinf(ang_h)) as i32;
+
+            // Draw hands
+            Line::new(cx, cy, hx, hy)
                 .stroke(4, Rgba8888::rgba(255, 215, 0, 255))
                 .draw(surface);
-            Line::new(w/2, h/2, 3*w/4, h/2)
+            Line::new(cx, cy, mx, my)
                 .stroke(3, Rgba8888::rgba(255, 255, 255, 255))
+                .draw(surface);
+            Line::new(cx, cy, sx, sy)
+                .stroke(2, Rgba8888::rgba(255, 60, 60, 255))
+                .draw(surface);
+
+            // Center cap
+            Circle::new(cx, cy, 2)
+                .stroke(2, Rgba8888::rgba(255, 255, 255, 255))
                 .draw(surface);
         }).await;
         let t = draw_start.elapsed();
