@@ -12,7 +12,7 @@ use libm::{cosf, roundf, sinf};
 
 #[embassy_executor::task]
 pub async fn rect_app(ctx: AppContext) {
-    info!("Starting watch app");
+    info!("Starting rect app");
     loop {
         if !ctx.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;

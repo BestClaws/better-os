@@ -101,6 +101,6 @@ pub async fn watch_app(ctx: AppContext) {
         .await;
         let t = draw_start.elapsed();
         info!("watch frame: {}us", t.as_micros());
-        Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_millis(1000)).await;
     }
 }

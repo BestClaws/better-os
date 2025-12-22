@@ -18,12 +18,12 @@ use embassy_sync::mutex::Mutex;
 const SYSTEM_APPS: &[AppDescriptor] = &[
     AppDescriptor {
         name: "GFX Benchmark",
-        id: 1,
+        id: 2,
         spawn_fn: spawn_gfx_bench_app,
     },
     AppDescriptor {
         name: "Watch",
-        id: 2,
+        id: 1,
         spawn_fn: spawn_watch_app,
     },
     AppDescriptor {
