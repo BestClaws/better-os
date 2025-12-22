@@ -9,6 +9,7 @@ use alloc::vec;
 use alloc::vec::Vec as AllocVec;
 use defmt::{debug, warn};
 use embassy_time::{Duration, Instant, Timer};
+use micromath::F32Ext;
 
 use super::animation::{AnimationConfig, SlideZoomAnimation, TransitionDirection, WindowAnimation};
 use super::blitter::SurfaceBlitter;
@@ -23,6 +24,13 @@ use crate::util::math::primitives::Rect;
 
 const MAX_WINDOWS: usize = 8;
 const MAX_REDRAW_REQUESTS: usize = 4;
+
+#[derive(Clone, Copy)]
+struct TransitionSession {
+    direction: TransitionDirection,
+    source: WindowHandle,
+    target: WindowHandle,
+}
 
 // TransitionDirection is defined in animation module; use that single source of truth
 
@@ -40,6 +48,7 @@ pub struct UICompositor {
     display_service: Option<Display>,
     pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
     animation_config: AnimationConfig,
+    active_transition: Option<TransitionSession>,
 }
 
 impl UICompositor {
@@ -51,6 +60,7 @@ impl UICompositor {
             display_service: None,
             pending_redraws: heapless::Vec::new(),
             animation_config: AnimationConfig::default(),
+            active_transition: None,
         }
     }
 
@@ -103,6 +113,9 @@ impl UICompositor {
     /// Process pending redraws; compose and present with an optimized strategy.
     pub async fn process_redraws(&mut self, wm: &mut WindowManager) {
         if self.pending_redraws.is_empty() {
+            return;
+        }
+        if self.transition_in_progress() {
             return;
         }
         let render_start = Instant::now();
@@ -184,70 +197,284 @@ impl UICompositor {
     }
 
     pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) {
-        self.animate_window_transition(wm, TransitionDirection::Next)
+        self.commit_transition(wm, TransitionDirection::Next, 0.0)
             .await;
     }
     pub async fn animate_to_previous_window(&mut self, wm: &mut WindowManager) {
-        self.animate_window_transition(wm, TransitionDirection::Previous)
+        self.commit_transition(wm, TransitionDirection::Previous, 0.0)
             .await;
     }
 
-    async fn animate_window_transition(
+    /// Render a snapshot of the transition at the supplied progress (0.0..=1.0).
+    pub async fn preview_transition(
         &mut self,
         wm: &mut WindowManager,
         direction: TransitionDirection,
+        progress: f32,
     ) {
-        let n = self.windows_order.len();
-        if n < 2 {
+        let Some((source, target, _)) = self.transition_context(direction) else {
+            return;
+        };
+        if !self.ensure_transition_surfaces(wm, source, target).await {
             return;
         }
+        self.begin_transition_session(direction, source, target);
         let animation = SlideZoomAnimation::default();
-        let dst_idx = match direction {
-            TransitionDirection::Previous => (self.current_index + n - 1) % n,
-            TransitionDirection::Next => (self.current_index + 1) % n,
-        };
-        self.current_index = dst_idx;
-        self.apply_active_triplet(wm).await;
-        self.execute_animation(wm, &animation, direction).await;
+        self.render_transition_frame(
+            wm,
+            &animation,
+            direction,
+            progress.clamp(0.0, 1.0),
+            source,
+            target,
+        )
+        .await;
     }
 
-    async fn execute_animation(
+    /// Complete the transition, animating from the provided starting progress to 1.0.
+    pub async fn commit_transition(
+        &mut self,
+        wm: &mut WindowManager,
+        direction: TransitionDirection,
+        start_progress: f32,
+    ) {
+        let Some((source, target, dst_idx)) = self.transition_context(direction) else {
+            return;
+        };
+        if !self.ensure_transition_surfaces(wm, source, target).await {
+            return;
+        }
+        self.begin_transition_session(direction, source, target);
+        let animation = SlideZoomAnimation::default();
+        self.run_transition_animation(
+            wm,
+            &animation,
+            direction,
+            source,
+            target,
+            start_progress,
+            1.0,
+        )
+        .await;
+
+        self.current_index = dst_idx;
+        self.apply_active_triplet(wm).await;
+        self.request_redraw(target);
+        self.end_transition_session();
+    }
+
+    /// Revert an in-progress transition by animating back to the resting state.
+    pub async fn cancel_transition(
+        &mut self,
+        wm: &mut WindowManager,
+        direction: TransitionDirection,
+        start_progress: f32,
+    ) {
+        let Some((source, target, _)) = self.transition_context(direction) else {
+            return;
+        };
+        if !self.ensure_transition_surfaces(wm, source, target).await {
+            return;
+        }
+        self.begin_transition_session(direction, source, target);
+        let animation = SlideZoomAnimation::default();
+        self.run_transition_animation(
+            wm,
+            &animation,
+            direction,
+            source,
+            target,
+            start_progress,
+            0.0,
+        )
+        .await;
+
+        if let Some((current, _prev, _next)) = self.current_prev_next() {
+            self.request_redraw(current);
+        }
+        self.end_transition_session();
+    }
+
+    async fn ensure_transition_surfaces(
+        &mut self,
+        wm: &mut WindowManager,
+        source: WindowHandle,
+        target: WindowHandle,
+    ) -> bool {
+        let source_ready = wm.is_active(source);
+        let target_ready = wm.is_active(target);
+        if source_ready && target_ready {
+            return true;
+        }
+
+        self.apply_active_triplet(wm).await;
+
+        let post_source_ready = wm.is_active(source);
+        let post_target_ready = wm.is_active(target);
+        if !(post_source_ready && post_target_ready) {
+            warn!("Transition surfaces missing resources");
+        }
+        post_source_ready && post_target_ready
+    }
+
+    fn begin_transition_session(
+        &mut self,
+        direction: TransitionDirection,
+        source: WindowHandle,
+        target: WindowHandle,
+    ) {
+        self.active_transition = Some(TransitionSession {
+            direction,
+            source,
+            target,
+        });
+    }
+
+    fn end_transition_session(&mut self) {
+        self.active_transition = None;
+    }
+
+    fn transition_in_progress(&self) -> bool {
+        self.active_transition.is_some()
+    }
+    fn transition_context(
+        &self,
+        direction: TransitionDirection,
+    ) -> Option<(WindowHandle, WindowHandle, usize)> {
+        if self.windows_order.len() < 2 {
+            return None;
+        }
+        let (cur, prev, next) = self.current_prev_next()?;
+        let n = self.windows_order.len();
+        match direction {
+            TransitionDirection::Next => {
+                let dst_idx = (self.current_index + 1) % n;
+                Some((cur, next, dst_idx))
+            }
+            TransitionDirection::Previous => {
+                let dst_idx = (self.current_index + n - 1) % n;
+                Some((cur, prev, dst_idx))
+            }
+        }
+    }
+
+    async fn render_transition_frame(
         &mut self,
         wm: &mut WindowManager,
         animation: &dyn WindowAnimation,
         direction: TransitionDirection,
+        progress: f32,
+        source: WindowHandle,
+        target: WindowHandle,
     ) {
-        if let Some(service) = self.display_service.as_ref() {
-            let width = service.width();
-            let height = service.height();
-            let fb_size = service.framebuffer_size(width, height);
-            let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
-            let mut surface = DrawingSurface::new_unattached(width, height, service.pixel_format());
-            surface.attach_buffer(&mut composition_buffer);
-
-            let (cur, prev, next) = self.current_prev_next().unwrap();
-            let (source_h, target_h) = match direction {
-                TransitionDirection::Previous => (next, cur),
-                TransitionDirection::Next => (prev, cur),
-            };
-
-            for step in 0..=self.animation_config.steps {
-                let progress = step as f32 / self.animation_config.steps as f32;
-                let eased_progress = (self.animation_config.easing_fn)(progress);
-                let frame = animation.animate_frame(eased_progress, direction, width);
-
-                surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                let _ = wm.with_surface(source_h, |src| {
-                    SurfaceBlitter::copy_full(&mut surface, src, frame.source_x, frame.source_y);
-                });
-                let _ = wm.with_surface(target_h, |dst| {
-                    SurfaceBlitter::copy_full(&mut surface, dst, frame.target_x, frame.target_y);
-                });
-
-                service.draw_full(surface.buffer()).await;
-                Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
+        let (width, height, pixel_format, fb_size) = match self.display_service.as_ref() {
+            Some(service) => {
+                let width = service.width();
+                let height = service.height();
+                let pixel_format = service.pixel_format();
+                let fb_size = service.framebuffer_size(width, height);
+                (width, height, pixel_format, fb_size)
             }
+            None => return,
+        };
+
+        let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
+        let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
+        surface.attach_buffer(&mut composition_buffer);
+
+        Self::compose_transition_frame(
+            wm,
+            &mut surface,
+            animation,
+            direction,
+            progress,
+            width,
+            source,
+            target,
+        );
+
+        if let Some(service) = self.display_service.as_ref() {
+            service.draw_full(surface.buffer()).await;
         }
+    }
+
+    async fn run_transition_animation(
+        &mut self,
+        wm: &mut WindowManager,
+        animation: &dyn WindowAnimation,
+        direction: TransitionDirection,
+        source: WindowHandle,
+        target: WindowHandle,
+        start_progress: f32,
+        end_progress: f32,
+    ) {
+        let (width, height, pixel_format, fb_size) = match self.display_service.as_ref() {
+            Some(service) => {
+                let width = service.width();
+                let height = service.height();
+                let pixel_format = service.pixel_format();
+                let fb_size = service.framebuffer_size(width, height);
+                (width, height, pixel_format, fb_size)
+            }
+            None => return,
+        };
+
+        let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
+        let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
+        surface.attach_buffer(&mut composition_buffer);
+
+        let steps = self.animation_config.steps.max(1) as i32;
+        let mut start_idx = ((start_progress.clamp(0.0, 1.0)) * steps as f32).round() as i32;
+        let mut end_idx = ((end_progress.clamp(0.0, 1.0)) * steps as f32).round() as i32;
+        start_idx = start_idx.clamp(0, steps);
+        end_idx = end_idx.clamp(0, steps);
+        let step_delta = if start_idx <= end_idx { 1 } else { -1 };
+        let mut current_idx = start_idx;
+
+        loop {
+            let normalized = current_idx as f32 / steps as f32;
+            let eased = (self.animation_config.easing_fn)(normalized);
+            Self::compose_transition_frame(
+                wm,
+                &mut surface,
+                animation,
+                direction,
+                eased,
+                width,
+                source,
+                target,
+            );
+            if let Some(service) = self.display_service.as_ref() {
+                service.draw_full(surface.buffer()).await;
+            }
+
+            if current_idx == end_idx {
+                break;
+            }
+
+            Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
+            current_idx += step_delta;
+        }
+    }
+
+    fn compose_transition_frame<'a>(
+        wm: &mut WindowManager,
+        surface: &mut DrawingSurface<'a>,
+        animation: &dyn WindowAnimation,
+        direction: TransitionDirection,
+        progress: f32,
+        screen_width: u32,
+        source: WindowHandle,
+        target: WindowHandle,
+    ) {
+        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+        let frame = animation.animate_frame(progress, direction, screen_width);
+        let _ = wm.with_surface(source, |src| {
+            SurfaceBlitter::copy_full(surface, src, frame.source_x, frame.source_y);
+        });
+        let _ = wm.with_surface(target, |dst| {
+            SurfaceBlitter::copy_full(surface, dst, frame.target_x, frame.target_y);
+        });
     }
 
     fn collect_dirty_regions(

@@ -9,7 +9,7 @@ use embassy_time::Instant;
 use crate::system::input::types::{HighLevelEvent, MotionEvent};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::compositor::{animation::TransitionDirection, core::UICompositor};
-use crate::system::ui::gestures::edge_swipe::EdgeSwipeRecognizer;
+use crate::system::ui::gestures::edge_swipe::{EdgeSwipeRecognizer, SwipeGestureUpdate};
 use crate::system::ui::window_manager::WindowManager;
 
 /// Dispatcher → System UI consumer (events for gesture/UI handling)
@@ -51,24 +51,24 @@ pub async fn system_ui_gesture_task(
         let event = SUI_EVENT_CH.receive().await;
         let event_start = Instant::now();
         let mut consumed = false;
-        let mut transition = None;
+        let mut swipe_update = None;
 
         if let HighLevelEvent::Motion(MotionEvent {
             action, pointers, ..
         }) = event
         {
             if let Some(pointer) = pointers[0] {
-                let (was_consumed, maybe_transition) =
+                let (was_consumed, maybe_update) =
                     recognizer.process_sample(pointer.x, pointer.y, action);
                 consumed = was_consumed;
-                transition = maybe_transition;
+                swipe_update = maybe_update;
             }
         }
 
         SUI_ACK_CH.send(consumed).await;
 
-        if let Some(direction) = transition {
-            execute_transition(direction, compositor, window_manager).await;
+        if let Some(update) = swipe_update {
+            handle_swipe_update(update, compositor, window_manager).await;
         }
 
         let event_duration = event_start.elapsed();
@@ -82,23 +82,37 @@ pub async fn system_ui_gesture_task(
     }
 }
 
-async fn execute_transition(
-    direction: TransitionDirection,
+async fn handle_swipe_update(
+    update: SwipeGestureUpdate,
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
 ) {
-    match direction {
-        TransitionDirection::Next => {
+    match update {
+        SwipeGestureUpdate::Preview {
+            direction,
+            progress,
+        } => {
             let mut comp = compositor.lock().await;
             let mut wm = window_manager.lock().await;
-            comp.animate_to_next_window(&mut wm).await;
+            comp.preview_transition(&mut wm, direction, progress).await;
+        }
+        SwipeGestureUpdate::Commit {
+            direction,
+            progress,
+        } => {
+            let mut comp = compositor.lock().await;
+            let mut wm = window_manager.lock().await;
+            comp.commit_transition(&mut wm, direction, progress).await;
             request_redraw_focused_window(&mut comp).await;
             comp.process_redraws(&mut wm).await;
         }
-        TransitionDirection::Previous => {
+        SwipeGestureUpdate::Cancel {
+            direction,
+            progress,
+        } => {
             let mut comp = compositor.lock().await;
             let mut wm = window_manager.lock().await;
-            comp.animate_to_previous_window(&mut wm).await;
+            comp.cancel_transition(&mut wm, direction, progress).await;
             request_redraw_focused_window(&mut comp).await;
             comp.process_redraws(&mut wm).await;
         }
