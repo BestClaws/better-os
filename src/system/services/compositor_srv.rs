@@ -5,31 +5,18 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::kernel::config::resources::FRAME_BUFFER_WIDTH;
-use crate::system::services::input_srv::{SUI_ACK_CH, SUI_EVENT_CH};
+use crate::system::services::system_ui_srv::update_display_metrics;
 use crate::system::ui::compositor::{
-    animation::{
-        ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig,
-        TransitionDirection,
-    },
+    animation::{ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig},
     core::UICompositor,
 };
-// CriticalSectionRawMutex already imported above
 use crate::system::ui::display::Display;
 use crate::system::ui::window_manager::WindowManager;
-// PixelFormat is determined via Display facade; no direct use here
 
-/// Service loop timing constants
-const MIN_FRAME_TIME_MS: u64 = 16; // ~60 FPS max
+/// Target cadence for the compositor loop (~60 FPS).
+const MIN_FRAME_TIME_MS: u64 = 16;
 
-/// Compositor service task - handles UI rendering, input events, and animations
-///
-/// This service:
-/// - Initializes display hardware
-/// - Processes user input events and routes them appropriately
-/// - Manages window transitions and animations
-/// - Provides idle refresh for dynamic content (clocks, sensors, etc.)
-/// - Maintains consistent frame timing for smooth operation
+/// Compositor service task - handles UI rendering, animations, and display upkeep.
 #[embassy_executor::task]
 pub async fn ui_compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
@@ -38,27 +25,29 @@ pub async fn ui_compositor_service(
 ) {
     info!("Starting compositor service");
 
-    // Initialize display hardware
+    // Initialize display hardware.
     {
         let mut display_lock = display.lock().await;
         display_lock.init().await;
-        display_lock.set_brightness(0xFF).await; // Maximum brightness
+        display_lock.set_brightness(0xFF).await;
         info!("Display initialized: brightness=100%");
     }
 
-    // Attach display to compositor and configure animations
+    // Attach display, configure compositor defaults, and publish dimensions to the UI layer.
     {
         let mut compositor_mut = compositor.lock().await;
         let display_facade: Display = Display::init(display).await;
+        let width = display_facade.width();
+        let height = display_facade.height();
         let negotiated_pixel_format = display_facade.pixel_format();
         compositor_mut.attach_display_service(display_facade);
-        // Align WindowManager default format with negotiated Display format
+        update_display_metrics(width, height);
+
         {
             let mut wm_mut = window_manager.lock().await;
             wm_mut.set_default_pixel_format(negotiated_pixel_format);
         }
 
-        // Configure smooth animations with cubic easing
         let animation_config = AnimationConfig {
             steps: 5,
             frame_delay_ms: 16,
@@ -69,14 +58,13 @@ pub async fn ui_compositor_service(
         info!("Compositor initialized with smooth animations");
     }
 
-    // Main service loop focuses on rendering; gesture handling runs in a dedicated task.
     let mut frame_count = 0u32;
     let mut last_perf_log = Instant::now();
 
     loop {
         let frame_start = Instant::now();
 
-        // Idle refresh for dynamic content updates
+        // Idle refresh for dynamic content updates.
         Timer::after(Duration::from_millis(0)).await;
         let redraw_start = Instant::now();
         let mut compositor_mut = compositor.lock().await;
@@ -87,12 +75,11 @@ pub async fn ui_compositor_service(
         compositor_mut.process_redraws(&mut wm_mut).await;
         let redraw_duration = redraw_start.elapsed();
 
-        // Log slow frame processing (every 5 seconds max)
         frame_count += 1;
         if redraw_duration.as_millis() > 50
             || (frame_count % 300 == 0 && last_perf_log.elapsed().as_secs() >= 5)
         {
-            defmt::info!(
+            info!(
                 "Compositor frame: redraw={}ms, total={}ms",
                 redraw_duration.as_millis(),
                 frame_start.elapsed().as_millis()
@@ -100,232 +87,42 @@ pub async fn ui_compositor_service(
             last_perf_log = Instant::now();
         }
 
-        // Maintain consistent frame timing
         maintain_frame_timing(frame_start).await;
     }
 }
 
-/// Request redraw for currently focused window
-async fn request_redraw_focused_window(compositor: &mut UICompositor) {
-    if let Some(focused_handle) = compositor.focused_window_handle() {
-        compositor.request_redraw(focused_handle);
-    }
-}
-
-/// Recognizes edge swipe gestures for System UI window transitions.
-struct EdgeSwipeRecognizer {
-    tracking: bool,
-    start_x: i32,
-    start_y: i32,
-    from_left: bool,
-    from_right: bool,
-    fired: bool,
-    frame_width: i32,
-}
-
-impl EdgeSwipeRecognizer {
-    const EDGE_THRESHOLD: i32 = 24;
-    const MIN_SWIPE_DISTANCE: i32 = 60;
-    const MIN_SWIPE_ANGLE_TOLERANCE: i32 = 20;
-    const MOVE_EDGE_BUFFER: i32 = 12;
-
-    fn new(initial_frame_width: i32) -> Self {
-        Self {
-            tracking: false,
-            start_x: 0,
-            start_y: 0,
-            from_left: false,
-            from_right: false,
-            fired: false,
-            frame_width: initial_frame_width,
-        }
-    }
-
-    fn calibrate_frame_width(&mut self, width: i32) {
-        if width > 0 {
-            self.frame_width = width;
-        }
-    }
-
-    fn reset(&mut self) {
-        self.tracking = false;
-        self.fired = false;
-    }
-
-    /// Process a motion sample; returns (consumed, optional transition)
-    fn process_motion(
-        &mut self,
-        x: i32,
-        y: i32,
-        action: crate::system::input::types::TouchAction,
-    ) -> (bool, Option<TransitionDirection>) {
-        use crate::system::input::types::TouchAction;
-        let frame_w = self.frame_width;
-        if frame_w <= 0 {
-            return (false, None);
-        }
-
-        let right_edge_start = (frame_w - 1).saturating_sub(Self::EDGE_THRESHOLD);
-        let gesture_margin = Self::EDGE_THRESHOLD + Self::MOVE_EDGE_BUFFER;
-        let right_move_start = (frame_w - 1).saturating_sub(gesture_margin);
-
-        match action {
-            TouchAction::Down => {
-                self.reset();
-                self.from_left = x <= Self::EDGE_THRESHOLD;
-                self.from_right = x >= right_edge_start;
-                if self.from_left || self.from_right {
-                    self.tracking = true;
-                    self.start_x = x;
-                    self.start_y = y;
-                    return (true, None);
-                }
-                (false, None)
-            }
-            TouchAction::Move => {
-                if !self.tracking {
-                    self.from_left = x <= gesture_margin;
-                    self.from_right = x >= right_move_start;
-                    if self.from_left || self.from_right {
-                        self.tracking = true;
-                        self.start_x = x;
-                        self.start_y = y;
-                    }
-                }
-
-                if self.tracking && !self.fired {
-                    let dx = x - self.start_x;
-                    let dy = (y - self.start_y).abs();
-                    if dy <= Self::MIN_SWIPE_ANGLE_TOLERANCE {
-                        if self.from_left && dx > Self::MIN_SWIPE_DISTANCE {
-                            self.fired = true;
-                            return (true, Some(TransitionDirection::Next));
-                        } else if self.from_right && (-dx) > Self::MIN_SWIPE_DISTANCE {
-                            self.fired = true;
-                            return (true, Some(TransitionDirection::Previous));
-                        }
-                    }
-                }
-
-                (self.tracking, None)
-            }
-            TouchAction::Up => {
-                let was_tracking = self.tracking;
-                self.reset();
-                (was_tracking, None)
-            }
-        }
-    }
-}
-
-#[embassy_executor::task]
-pub async fn system_ui_gesture_task(
-    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
-    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
-) {
-    use crate::system::input::types::{HighLevelEvent, MotionEvent};
-
-    let mut recognizer = EdgeSwipeRecognizer::new(FRAME_BUFFER_WIDTH as i32);
-
-    if let Some(width) = {
-        let comp = compositor.lock().await;
-        comp.display_dimensions().map(|(w, _)| w as i32)
-    } {
-        recognizer.calibrate_frame_width(width);
-    }
-
-    loop {
-        let event = SUI_EVENT_CH.receive().await;
-        let event_start = Instant::now();
-        let mut consumed = false;
-        let mut transition = None;
-
-        if let HighLevelEvent::Motion(MotionEvent {
-            action, pointers, ..
-        }) = event
-        {
-            if let Some(p) = pointers[0] {
-                let (was_consumed, detected_transition) =
-                    recognizer.process_motion(p.x, p.y, action);
-                consumed = was_consumed;
-                transition = detected_transition;
-            }
-        }
-
-        SUI_ACK_CH.send(consumed).await;
-
-        if let Some(dir) = transition {
-            execute_transition(dir, compositor, window_manager).await;
-        }
-
-        let event_duration = event_start.elapsed();
-        if event_duration.as_millis() > 20 {
-            defmt::info!(
-                "SUI event slow: {}ms, consumed={}",
-                event_duration.as_millis(),
-                consumed
-            );
-        }
-    }
-}
-
-async fn execute_transition(
-    direction: TransitionDirection,
-    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
-    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
-) {
-    match direction {
-        TransitionDirection::Next => {
-            let mut comp = compositor.lock().await;
-            let mut wm = window_manager.lock().await;
-            comp.animate_to_next_window(&mut wm).await;
-            request_redraw_focused_window(&mut comp).await;
-            comp.process_redraws(&mut wm).await;
-        }
-        TransitionDirection::Previous => {
-            let mut comp = compositor.lock().await;
-            let mut wm = window_manager.lock().await;
-            comp.animate_to_previous_window(&mut wm).await;
-            request_redraw_focused_window(&mut comp).await;
-            comp.process_redraws(&mut wm).await;
-        }
-    }
-}
-
-/// Maintain consistent frame timing to prevent system overload
+/// Maintain consistent frame timing to prevent system overload.
 async fn maintain_frame_timing(loop_start: Instant) {
     let loop_duration = loop_start.elapsed();
     let min_frame_time = Duration::from_millis(MIN_FRAME_TIME_MS);
 
     if loop_duration < min_frame_time {
-        let sleep_time = min_frame_time - loop_duration;
-        Timer::after(sleep_time).await;
+        Timer::after(min_frame_time - loop_duration).await;
     } else if loop_duration > Duration::from_millis(16) {
-        // Warn if frame took too long (may indicate performance issues)
         debug!("Slow frame: {} ms", loop_duration.as_millis());
     }
 }
 
-/// Alternative animation configurations for different use cases
+/// Alternative animation configurations for different use cases.
 #[allow(dead_code)]
 mod animation_presets {
     use super::*;
 
-    /// Fast, snappy animations for responsive feel
+    /// Fast, snappy animations for responsive feel.
     pub const FAST_ANIMATIONS: AnimationConfig = AnimationConfig {
         steps: 6,
         frame_delay_ms: 15,
         easing_fn: ease_in_out_cubic,
     };
 
-    /// Smooth, cinematic animations for premium feel
+    /// Smooth, cinematic animations for premium feel.
     pub const CINEMATIC_ANIMATIONS: AnimationConfig = AnimationConfig {
         steps: 15,
         frame_delay_ms: 25,
         easing_fn: ease_in_out_circular,
     };
 
-    /// Playful bouncy animations
+    /// Playful bouncy animations.
     pub const BOUNCY_ANIMATIONS: AnimationConfig = AnimationConfig {
         steps: 20,
         frame_delay_ms: 20,
@@ -333,15 +130,15 @@ mod animation_presets {
     };
 }
 
-/// Debug utilities for performance monitoring
+/// Debug utilities for performance monitoring.
 #[cfg(feature = "debug-performance")]
 mod debug_utils {
     use super::*;
     use heapless::Vec;
 
-    /// Track frame timing statistics
+    /// Track frame timing statistics.
     pub struct PerformanceMonitor {
-        frame_times: Vec<u32, 60>, // Last 60 frame times in microseconds
+        frame_times: Vec<u32, 60>,
         frame_count: u32,
     }
 
@@ -363,7 +160,6 @@ mod debug_utils {
             self.frame_times.push(micros).ok();
             self.frame_count += 1;
 
-            // Log performance stats every 60 frames
             if self.frame_count % 60 == 0 {
                 let avg_time = self.average_frame_time();
                 let max_time = self.max_frame_time();

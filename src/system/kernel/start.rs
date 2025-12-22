@@ -9,8 +9,9 @@ use crate::system::kernel::platforms;
 use crate::system::services::ambient_srv::ambient_sensor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
 use crate::system::services::battery_srv::battery_service;
-use crate::system::services::compositor_srv::{system_ui_gesture_task, ui_compositor_service};
-use crate::system::services::input_srv;
+use crate::system::services::compositor_srv::ui_compositor_service;
+use crate::system::services::system_input_srv;
+use crate::system::services::system_ui_srv::system_ui_gesture_task;
 use crate::system::services::vibrator_srv;
 use crate::system::ui::compositor::core::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
@@ -44,14 +45,16 @@ pub(crate) fn start(spawner: Spawner) {
     // Note: current PlatformDevice has no encoder field
     if let Some(button) = device.button {
         spawner
-            .spawn(input_srv::button_reader_task(button))
+            .spawn(system_input_srv::button_reader_task(button))
             .unwrap();
     }
     if let Some(touch) = device.touch {
-        spawner.spawn(input_srv::touch_reader_task(touch)).unwrap();
+        spawner
+            .spawn(system_input_srv::touch_reader_task(touch))
+            .unwrap();
     }
     spawner
-        .spawn(input_srv::input_dispatcher_task(
+        .spawn(system_input_srv::input_dispatcher_task(
             compositor_ref,
             window_manager_ref,
         ))
