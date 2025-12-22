@@ -1,5 +1,5 @@
-use alloc::boxed::Box;
 use crate::system::hal::vibrator::AsyncVibrator;
+use alloc::boxed::Box;
 use async_trait::async_trait;
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::Output;

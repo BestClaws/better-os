@@ -1,7 +1,7 @@
+use crate::util::math::primitives::Rect;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use defmt::Format;
-use crate::util::math::primitives::Rect;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 pub enum PixelFormat {
@@ -30,7 +30,9 @@ pub struct DisplaySize {
 }
 
 impl DisplaySize {
-    pub const fn new(width: u32, height: u32) -> Self { Self { width, height } }
+    pub const fn new(width: u32, height: u32) -> Self {
+        Self { width, height }
+    }
 }
 
 /// Resolution configuration describing logical size rendered by the system,
@@ -79,7 +81,9 @@ pub trait AsyncDisplay {
     fn get_height(&self) -> u32;
 
     /// Report native pixel format of the driver output buffer
-    fn native_pixel_format(&self) -> PixelFormat { PixelFormat::Rgb565 }
+    fn native_pixel_format(&self) -> PixelFormat {
+        PixelFormat::Rgb565
+    }
 
     /// Report static capabilities of the display driver/panel.
     fn capabilities(&self) -> DisplayCapabilities;

@@ -1,8 +1,8 @@
 #![allow(unused)]
 
+use crate::util::math::primitives::Quaternion;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use crate::util::math::primitives::Quaternion;
 
 /// Async interface for motion sensors with accel+gyro (and orientation if supported).
 #[async_trait(?Send)]

@@ -1,11 +1,11 @@
 use defmt::{debug, warn};
 
-use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::hal::display::PixelFormat;
-use crate::system::ui::window::{Window, WindowHandle};
+use crate::system::input::types::HighLevelEvent;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;
+use crate::system::ui::drawing_surface::DrawingSurface;
+use crate::system::ui::window::{Window, WindowHandle};
 
 /// Maximum supported windows in the system. Matches former compositor limit.
 const MAX_WINDOWS: usize = 8;
@@ -25,7 +25,10 @@ pub struct WindowManager {
 impl WindowManager {
     /// Create a new empty window manager with a default PixelFormat.
     pub fn new(default_format: PixelFormat) -> Self {
-        Self { windows: heapless::Vec::new(), default_format }
+        Self {
+            windows: heapless::Vec::new(),
+            default_format,
+        }
     }
 
     /// Update the default PixelFormat. Existing active windows are unaffected until
@@ -35,7 +38,12 @@ impl WindowManager {
     }
 
     /// Create a new window and add it to the manager.
-    pub async fn create_window(&mut self, width: u32, height: u32, id: usize) -> Option<WindowHandle> {
+    pub async fn create_window(
+        &mut self,
+        width: u32,
+        height: u32,
+        id: usize,
+    ) -> Option<WindowHandle> {
         if self.windows.len() >= MAX_WINDOWS {
             warn!("WindowManager capacity reached; cannot create more windows");
             return None;
@@ -70,7 +78,10 @@ impl WindowManager {
         for window in self.windows.iter_mut() {
             let is_active = active.iter().any(|h| h == &window.handle());
             if !is_active && window.framebuffer_id().is_some() {
-                debug!("Releasing resources for inactive window {:?}", window.handle());
+                debug!(
+                    "Releasing resources for inactive window {:?}",
+                    window.handle()
+                );
                 window.relax();
             }
         }
@@ -100,7 +111,10 @@ impl WindowManager {
                                     window.set_resources(fb, ic).await;
                                 }
                                 None => {
-                                    warn!("Input channel allocation failed for window {:?}", handle);
+                                    warn!(
+                                        "Input channel allocation failed for window {:?}",
+                                        handle
+                                    );
                                     FRAMEBUFFER_POOL.release(&fb);
                                 }
                             }
@@ -122,7 +136,11 @@ impl WindowManager {
     }
 
     /// Provide mutable access to a window's drawing surface for rendering.
-    pub fn with_surface<R>(&mut self, handle: WindowHandle, f: impl FnOnce(&mut DrawingSurface) -> R) -> Option<R> {
+    pub fn with_surface<R>(
+        &mut self,
+        handle: WindowHandle,
+        f: impl FnOnce(&mut DrawingSurface) -> R,
+    ) -> Option<R> {
         let window = self.get_window_mut(handle)?;
         let surface_opt = window.surface();
         if let Some(surface) = surface_opt.as_mut() {
@@ -140,7 +158,11 @@ impl WindowManager {
     }
 
     /// Try to send an input event to the specified window.
-    pub async fn try_send_input(&mut self, handle: WindowHandle, event: HighLevelEvent) -> Result<(), ()> {
+    pub async fn try_send_input(
+        &mut self,
+        handle: WindowHandle,
+        event: HighLevelEvent,
+    ) -> Result<(), ()> {
         if let Some(window) = self.get_window_mut(handle) {
             if let Some(sender) = window.input_sender().await {
                 sender.try_send(event).map_err(|_| ())
@@ -151,7 +173,6 @@ impl WindowManager {
             Err(())
         }
     }
-
 
     // --- Internal helpers ---
     fn index_of(&self, handle: WindowHandle) -> Option<usize> {
@@ -166,5 +187,3 @@ impl WindowManager {
         self.windows.iter_mut().find(|w| w.handle() == handle)
     }
 }
-
-

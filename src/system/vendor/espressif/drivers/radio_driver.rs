@@ -17,13 +17,10 @@ const CONNECTIONS_MAX: usize = 1;
 /// Max number of L2CAP channels (Signal and ATT)
 const L2CAP_CHANNELS_MAX: usize = 2;
 
-
-
 pub struct RadioDriver {
     timer: Option<Timer<'static>>,
     bt: Option<BT<'static>>,
 }
-
 
 impl RadioDriver {
     pub fn new(timer: Timer<'static>, bt: BT<'static>) -> Self {
@@ -36,29 +33,26 @@ impl RadioDriver {
 
 #[async_trait(?Send)]
 impl AsyncRadio for RadioDriver {
-    async fn get_stack(&mut self)
-    -> Stack<ExternalController<BleConnector<'static>, 20>, DefaultPacketPool>
-    {
-            let timer = self.timer.take().unwrap();
-            let bt = self.bt.take().unwrap();
-            esp_radio_preempt_baremetal::init(timer);
+    async fn get_stack(
+        &mut self,
+    ) -> Stack<ExternalController<BleConnector<'static>, 20>, DefaultPacketPool> {
+        let timer = self.timer.take().unwrap();
+        let bt = self.bt.take().unwrap();
+        esp_radio_preempt_baremetal::init(timer);
 
         static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
         let radio = RADIO.init(esp_radio::init().unwrap());
-
 
         let connector = BleConnector::new(radio, bt);
         let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
         let address = Address::random([0xC0, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
-            info!("[run] BLE address = {:?}", address.addr.raw());
-            let resources: &'static mut HostResources<
-                DefaultPacketPool,
-                CONNECTIONS_MAX,
-                L2CAP_CHANNELS_MAX,
-            > = Box::leak(Box::new(HostResources::new()));
-            trouble_host::new(controller, resources).set_random_address(address)
+        info!("[run] BLE address = {:?}", address.addr.raw());
+        let resources: &'static mut HostResources<
+            DefaultPacketPool,
+            CONNECTIONS_MAX,
+            L2CAP_CHANNELS_MAX,
+        > = Box::leak(Box::new(HostResources::new()));
+        trouble_host::new(controller, resources).set_random_address(address)
     }
 }
-
-

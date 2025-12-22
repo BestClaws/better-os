@@ -8,17 +8,12 @@ use crate::system::hal::vibrator::AsyncVibrator;
 
 pub static VIBRATION_SIG: Signal<CriticalSectionRawMutex, Duration> = Signal::new();
 
-
-
-
-
 #[embassy_executor::task]
-pub async fn vibrator_service(vibrator: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncVibrator>>) {
-
+pub async fn vibrator_service(
+    vibrator: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncVibrator>>,
+) {
     let mut vibrator = vibrator.lock().await;
     loop {
         vibrator.vibrate(VIBRATION_SIG.wait().await).await;
-
     }
-
 }

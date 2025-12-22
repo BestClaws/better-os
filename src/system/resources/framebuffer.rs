@@ -1,22 +1,15 @@
 #![allow(unused)]
 
-use defmt::{info, println};
-use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_COUNT, FRAME_BUFFER_SIZE};
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU8, Ordering};
+use defmt::{info, println};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
 use embassy_time::Timer;
-use crate::system::kernel::config::resources::{FRAME_BUFFER_COUNT, FRAME_BUFFER_SIZE};
-
 
 /// Global singleton framebuffer pool.
 pub static FRAMEBUFFER_POOL: FrameBufferPool = FrameBufferPool::new();
-
-
-
-
-
-
 
 /// A handle uniquely representing an allocated framebuffer slot.
 /// The handle is used to safely access a buffer in the pool,
@@ -27,9 +20,6 @@ pub struct FrameBufferHandle {
     _private: (),         // Prevent external construction (sealing)
 }
 
-
-
-
 impl FrameBufferHandle {
     /// Create a new handle for internal use.
     /// External code should only get handled via allocation.
@@ -37,9 +27,6 @@ impl FrameBufferHandle {
         Self { id, _private: () }
     }
 }
-
-
-
 
 /// A static pool managing a fixed number of reusable framebuffers.
 ///
@@ -62,8 +49,8 @@ impl FrameBufferPool {
     /// Construct a new buffer pool with all buffers zero-initialized and free.
     pub const fn new() -> Self {
         Self {
-            buffers: [ const { UnsafeCell::new([0; FRAME_BUFFER_SIZE]) }; FRAME_BUFFER_COUNT], // Safe because it's Copy + const init
-            status: AtomicU8::new(0),                // All buffers initially free
+            buffers: [const { UnsafeCell::new([0; FRAME_BUFFER_SIZE]) }; FRAME_BUFFER_COUNT], // Safe because it's Copy + const init
+            status: AtomicU8::new(0), // All buffers initially free
             permits: GreedySemaphore::new(FRAME_BUFFER_COUNT), // All permits available
         }
     }

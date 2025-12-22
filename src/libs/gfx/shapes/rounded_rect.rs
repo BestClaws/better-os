@@ -1,7 +1,10 @@
 // file: src/shapes/rounded_rect.rs
 
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{aa_coverage, linear_gradient_h_rgba, linear_gradient_v_rgba, radial_gradient_rgba_sq, Fill, Rasterizer};
+use crate::libs::gfx::{
+    aa_coverage, linear_gradient_h_rgba, linear_gradient_v_rgba, radial_gradient_rgba_sq, Fill,
+    Rasterizer,
+};
 
 pub struct RoundedRect {
     x: i32,
@@ -157,10 +160,22 @@ impl super::Shape for RoundedRect {
                             stroke_opa = aa_coverage(dist2, outer_r);
                         }
                     } else {
-                        if (py >= y1 && py < y1 + self.stroke_width && px >= x1 + self.radius_tl && px <= x2 - self.radius_tr)
-                            || (py > inner_y2 && py <= y2 && px >= x1 + self.radius_bl && px <= x2 - self.radius_br)
-                            || (px >= x1 && px < x1 + self.stroke_width && py >= y1 + self.radius_tl && py <= y2 - self.radius_bl)
-                            || (px > inner_x2 && px <= x2 && py >= y1 + self.radius_tr && py <= y2 - self.radius_br)
+                        if (py >= y1
+                            && py < y1 + self.stroke_width
+                            && px >= x1 + self.radius_tl
+                            && px <= x2 - self.radius_tr)
+                            || (py > inner_y2
+                                && py <= y2
+                                && px >= x1 + self.radius_bl
+                                && px <= x2 - self.radius_br)
+                            || (px >= x1
+                                && px < x1 + self.stroke_width
+                                && py >= y1 + self.radius_tl
+                                && py <= y2 - self.radius_bl)
+                            || (px > inner_x2
+                                && px <= x2
+                                && py >= y1 + self.radius_tr
+                                && py <= y2 - self.radius_br)
                         {
                             stroke_opa = 255;
                         }
@@ -241,12 +256,20 @@ impl super::Shape for RoundedRect {
                                 let r2 = (self.width / 2).pow(2) + (self.height / 2).pow(2);
                                 radial_gradient_rgba_sq(inner, outer, dist2, r2)
                             }
-                            Fill::LinearGradientH { start, end } => {
-                                linear_gradient_h_rgba(start, end, px, self.x + self.width / 2, self.width / 2)
-                            }
-                            Fill::LinearGradientV { start, end } => {
-                                linear_gradient_v_rgba(start, end, py, self.y + self.height / 2, self.height / 2)
-                            }
+                            Fill::LinearGradientH { start, end } => linear_gradient_h_rgba(
+                                start,
+                                end,
+                                px,
+                                self.x + self.width / 2,
+                                self.width / 2,
+                            ),
+                            Fill::LinearGradientV { start, end } => linear_gradient_v_rgba(
+                                start,
+                                end,
+                                py,
+                                self.y + self.height / 2,
+                                self.height / 2,
+                            ),
                         };
                         rasterizer.blend_pixel(px, py, color, fill_opa);
                     }

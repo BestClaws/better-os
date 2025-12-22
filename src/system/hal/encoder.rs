@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
-       // v1.0.0
-      // v1.0.0
+// v1.0.0
+// v1.0.0
 use async_trait::async_trait;
 use defmt::Format;
 // --- your driver and traits ---
@@ -10,7 +10,7 @@ pub enum EncoderState {
     // Cw(f32),
     // Ccw(f32),
     Cw,
-    Ccw
+    Ccw,
 }
 
 #[derive(Debug, Format)]
@@ -22,4 +22,3 @@ pub enum EncoderError {
 pub trait AsyncEncoder {
     async fn next(&mut self) -> Result<EncoderState, EncoderError>;
 }
-

@@ -1,10 +1,9 @@
-
+use crate::system::hal::battery::AsyncBattery;
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
-use crate::system::hal::battery::AsyncBattery;
-use embassy_sync::channel::Channel;
 
 pub const BATTERY_CHANNEL_SIZE: usize = 4;
 
@@ -13,7 +12,9 @@ pub static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, u8, BATTERY_CHANNEL
     Channel::new();
 
 #[embassy_executor::task]
-pub(crate) async fn battery_service(sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>) {
+pub(crate) async fn battery_service(
+    sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncBattery>>,
+) {
     let sender = BATTERY_CHANNEL.sender();
 
     loop {
@@ -30,6 +31,3 @@ pub(crate) async fn battery_service(sensor: &'static Mutex<CriticalSectionRawMut
         Timer::after_millis(100).await;
     }
 }
-
-
-

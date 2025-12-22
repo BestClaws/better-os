@@ -4,11 +4,11 @@
 
 use crate::system::hal::display::AsyncDisplay;
 
+pub(crate) mod color;
 pub mod fill;
+mod font;
 pub mod rasterizer;
 pub mod shapes;
-pub(crate) mod color;
-mod font;
 
 pub use fill::Fill;
 pub use rasterizer::Rasterizer;
@@ -53,9 +53,7 @@ pub fn blend_rgb565(bg: u16, fg: u16, opa: u8) -> u16 {
     let fg_g = ((fg >> 5) & 0x3F) * opa as u16;
     let fb = (fg & 0x1F) * opa as u16;
 
-    (((br + fr) / 255) << 11)
-        | (((bg_g + fg_g) / 255) << 5)
-        | ((bb + fb) / 255)
+    (((br + fr) / 255) << 11) | (((bg_g + fg_g) / 255) << 5) | ((bb + fb) / 255)
 }
 
 /// RGB565 linear interpolation
@@ -63,17 +61,11 @@ pub fn blend_rgb565(bg: u16, fg: u16, opa: u8) -> u16 {
 pub fn lerp_rgb565(a: u16, b: u16, frac: u8) -> u16 {
     let inv = 255 - frac;
 
-    let r = (((a >> 11) & 0x1F) * inv as u16
-        + ((b >> 11) & 0x1F) * frac as u16)
-        / 255;
+    let r = (((a >> 11) & 0x1F) * inv as u16 + ((b >> 11) & 0x1F) * frac as u16) / 255;
 
-    let g = (((a >> 5) & 0x3F) * inv as u16
-        + ((b >> 5) & 0x3F) * frac as u16)
-        / 255;
+    let g = (((a >> 5) & 0x3F) * inv as u16 + ((b >> 5) & 0x3F) * frac as u16) / 255;
 
-    let b = ((a & 0x1F) * inv as u16
-        + (b & 0x1F) * frac as u16)
-        / 255;
+    let b = ((a & 0x1F) * inv as u16 + (b & 0x1F) * frac as u16) / 255;
 
     (r << 11) | (g << 5) | b
 }
@@ -160,19 +152,36 @@ pub fn lerp_rgba(a: color::Rgba8888, b: color::Rgba8888, frac: u8) -> color::Rgb
 }
 
 #[inline(always)]
-pub fn radial_gradient_rgba_sq(inner: color::Rgba8888, outer: color::Rgba8888, dist2: i32, r2: i32) -> color::Rgba8888 {
+pub fn radial_gradient_rgba_sq(
+    inner: color::Rgba8888,
+    outer: color::Rgba8888,
+    dist2: i32,
+    r2: i32,
+) -> color::Rgba8888 {
     let frac = ((dist2 * 255) / r2).clamp(0, 255) as u8;
     lerp_rgba(inner, outer, frac)
 }
 
 #[inline(always)]
-pub fn linear_gradient_h_rgba(start: color::Rgba8888, end: color::Rgba8888, x: i32, cx: i32, r: i32) -> color::Rgba8888 {
+pub fn linear_gradient_h_rgba(
+    start: color::Rgba8888,
+    end: color::Rgba8888,
+    x: i32,
+    cx: i32,
+    r: i32,
+) -> color::Rgba8888 {
     let frac = (((x - (cx - r)) * 255) / (r * 2)).clamp(0, 255) as u8;
     lerp_rgba(start, end, frac)
 }
 
 #[inline(always)]
-pub fn linear_gradient_v_rgba(start: color::Rgba8888, end: color::Rgba8888, y: i32, cy: i32, r: i32) -> color::Rgba8888 {
+pub fn linear_gradient_v_rgba(
+    start: color::Rgba8888,
+    end: color::Rgba8888,
+    y: i32,
+    cy: i32,
+    r: i32,
+) -> color::Rgba8888 {
     let frac = (((y - (cy - r)) * 255) / (r * 2)).clamp(0, 255) as u8;
     lerp_rgba(start, end, frac)
 }

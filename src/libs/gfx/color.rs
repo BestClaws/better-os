@@ -1,5 +1,3 @@
-
-
 /// Primary color type for the public API.
 /// Stored as 0xRRGGBBAA (RGBA8888 format).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
@@ -19,12 +17,12 @@ impl Rgba8888 {
     }
 
     /// Common predefined colors (opaque unless specified)
-    pub const BLACK:      Self = Self::rgb(0,   0,   0);
-    pub const WHITE:      Self = Self::rgb(255, 255, 255);
-    pub const RED:        Self = Self::rgb(255, 0,   0);
-    pub const GREEN:      Self = Self::rgb(0,   255, 0);
-    pub const BLUE:       Self = Self::rgb(0,   0,   255);
-    pub const TRANSPARENT:Self = Self::rgba(0,  0,   0,   0);
+    pub const BLACK: Self = Self::rgb(0, 0, 0);
+    pub const WHITE: Self = Self::rgb(255, 255, 255);
+    pub const RED: Self = Self::rgb(255, 0, 0);
+    pub const GREEN: Self = Self::rgb(0, 255, 0);
+    pub const BLUE: Self = Self::rgb(0, 0, 255);
+    pub const TRANSPARENT: Self = Self::rgba(0, 0, 0, 0);
 
     /// Converts to raw u32 for internal use
     #[inline]

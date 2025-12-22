@@ -1,6 +1,6 @@
+use crate::util::math::primitives::Rect;
 use alloc::vec;
 use alloc::vec::Vec as AllocVec;
-use crate::util::math::primitives::Rect;
 
 pub fn extract_region_buffer(
     full_buffer: &[u8],
@@ -18,12 +18,11 @@ pub fn extract_region_buffer(
     let full_bytes_per_row = full_width as usize * bytes_per_pixel;
     let region_bytes_per_row = region_width as usize * bytes_per_pixel;
     for row in 0..region_height as usize {
-        let src_start = ((region_y as usize + row) * full_bytes_per_row) + (region_x as usize * bytes_per_pixel);
+        let src_start = ((region_y as usize + row) * full_bytes_per_row)
+            + (region_x as usize * bytes_per_pixel);
         let dst_start = row * region_bytes_per_row;
         region_buffer[dst_start..dst_start + region_bytes_per_row]
             .copy_from_slice(&full_buffer[src_start..src_start + region_bytes_per_row]);
     }
     region_buffer
 }
-
-

@@ -1,19 +1,19 @@
 use alloc::boxed::Box;
 use defmt::{debug, warn};
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::Channel,
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
 use embassy_time::{Duration, Timer, WithTimeout};
 
 use crate::system::hal::button::{AsyncButton, ButtonState};
 use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
 use crate::system::hal::touch::AsyncTouch;
-use crate::system::input::types::{HighLevelEvent, KeyAction, KeyCode, KeyEvent, MotionEvent, PointerSample, TouchAction};
-use crate::system::kernel::config::resources::{FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, FRAME_SCALE_FACTOR};
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::input::types::{
+    HighLevelEvent, KeyAction, KeyCode, KeyEvent, MotionEvent, PointerSample, TouchAction,
+};
+use crate::system::kernel::config::resources::{
+    FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR,
+};
 use crate::system::ui::compositor::UICompositor;
+use crate::system::ui::window_manager::WindowManager;
 
 /// Consolidated input service.
 ///
@@ -33,10 +33,12 @@ pub static SUI_ACK_CH: Channel<CriticalSectionRawMutex, bool, 64> = Channel::new
 const ENCODER_COOLDOWN_MS: u64 = 200;
 const TOUCH_POLL_MS: u64 = 10;
 const TOUCH_COALESCE_TAXICAB_THRESHOLD: i32 = 1; // dx+dy >= 1 pixel
-const DISPATCH_ACK_TIMEOUT_MS: u64 = 100;
+const DISPATCH_ACK_TIMEOUT_MS: u64 = 250;
 
 #[embassy_executor::task]
-pub async fn button_reader_task(button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>) {
+pub async fn button_reader_task(
+    button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>,
+) {
     loop {
         let state = {
             let mut b = button.lock().await;
@@ -44,9 +46,18 @@ pub async fn button_reader_task(button: &'static Mutex<CriticalSectionRawMutex, 
         };
 
         let event = match state {
-            ButtonState::Down => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Down }),
-            ButtonState::Up => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Up }),
-            ButtonState::Repeat => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Repeat }),
+            ButtonState::Down => HighLevelEvent::Key(KeyEvent {
+                code: KeyCode::Ok,
+                action: KeyAction::Down,
+            }),
+            ButtonState::Up => HighLevelEvent::Key(KeyEvent {
+                code: KeyCode::Ok,
+                action: KeyAction::Up,
+            }),
+            ButtonState::Repeat => HighLevelEvent::Key(KeyEvent {
+                code: KeyCode::Ok,
+                action: KeyAction::Repeat,
+            }),
         };
 
         INPUT_EVENTS_CH.send(event).await;
@@ -54,7 +65,9 @@ pub async fn button_reader_task(button: &'static Mutex<CriticalSectionRawMutex, 
 }
 
 #[embassy_executor::task]
-pub async fn encoder_reader_task(encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>) {
+pub async fn encoder_reader_task(
+    encoder: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncEncoder>>,
+) {
     loop {
         let Ok(state) = ({
             let mut e = encoder.lock().await;
@@ -66,8 +79,14 @@ pub async fn encoder_reader_task(encoder: &'static Mutex<CriticalSectionRawMutex
 
         let event = match state {
             // Map both directions to OK Down to keep single-button semantics minimal
-            EncoderState::Ccw => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Down }),
-            EncoderState::Cw => HighLevelEvent::Key(KeyEvent { code: KeyCode::Ok, action: KeyAction::Down }),
+            EncoderState::Ccw => HighLevelEvent::Key(KeyEvent {
+                code: KeyCode::Ok,
+                action: KeyAction::Down,
+            }),
+            EncoderState::Cw => HighLevelEvent::Key(KeyEvent {
+                code: KeyCode::Ok,
+                action: KeyAction::Down,
+            }),
         };
         INPUT_EVENTS_CH.send(event).await;
         Timer::after(Duration::from_millis(ENCODER_COOLDOWN_MS)).await; // cooldown
@@ -76,7 +95,9 @@ pub async fn encoder_reader_task(encoder: &'static Mutex<CriticalSectionRawMutex
 
 /// Converts raw xyz polling into MotionEvent DOWN/MOVE/UP with bounds/clamping and coalescing.
 #[embassy_executor::task]
-pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>) {
+pub async fn touch_reader_task(
+    touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>,
+) {
     use embassy_time::Instant;
     let mut was_pressed = false;
     let mut last_x: i32 = 0;
@@ -96,16 +117,31 @@ pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Bo
         let mut xi = (x as u32 / FRAME_SCALE_FACTOR) as i32;
         let mut yi = (y as u32 / FRAME_SCALE_FACTOR) as i32;
 
-        if xi < 0 { xi = 0; }
-        if yi < 0 { yi = 0; }
-        if xi >= FRAME_BUFFER_WIDTH as i32 { xi = FRAME_BUFFER_WIDTH as i32 - 1; }
-        if yi >= FRAME_BUFFER_HEIGHT as i32 { yi = FRAME_BUFFER_HEIGHT as i32 - 1; }
+        if xi < 0 {
+            xi = 0;
+        }
+        if yi < 0 {
+            yi = 0;
+        }
+        if xi >= FRAME_BUFFER_WIDTH as i32 {
+            xi = FRAME_BUFFER_WIDTH as i32 - 1;
+        }
+        if yi >= FRAME_BUFFER_HEIGHT as i32 {
+            yi = FRAME_BUFFER_HEIGHT as i32 - 1;
+        }
 
         let hle = if pressed && !was_pressed {
             Some(HighLevelEvent::Motion(MotionEvent {
                 action: TouchAction::Down,
                 primary_pointer_id: 0,
-                pointers: [Some(PointerSample { id: 0, x: xi, y: yi }), None],
+                pointers: [
+                    Some(PointerSample {
+                        id: 0,
+                        x: xi,
+                        y: yi,
+                    }),
+                    None,
+                ],
             }))
         } else if pressed && was_pressed {
             let dx = (xi - last_x).abs();
@@ -114,14 +150,30 @@ pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Bo
                 Some(HighLevelEvent::Motion(MotionEvent {
                     action: TouchAction::Move,
                     primary_pointer_id: 0,
-                    pointers: [Some(PointerSample { id: 0, x: xi, y: yi }), None],
+                    pointers: [
+                        Some(PointerSample {
+                            id: 0,
+                            x: xi,
+                            y: yi,
+                        }),
+                        None,
+                    ],
                 }))
-            } else { None }
+            } else {
+                None
+            }
         } else if !pressed && was_pressed {
             Some(HighLevelEvent::Motion(MotionEvent {
                 action: TouchAction::Up,
                 primary_pointer_id: 0,
-                pointers: [Some(PointerSample { id: 0, x: last_x, y: last_y }), None],
+                pointers: [
+                    Some(PointerSample {
+                        id: 0,
+                        x: last_x,
+                        y: last_y,
+                    }),
+                    None,
+                ],
             }))
         } else {
             None
@@ -133,13 +185,21 @@ pub async fn touch_reader_task(touch: &'static Mutex<CriticalSectionRawMutex, Bo
 
         // Log touch performance issues (every 2 seconds max)
         if read_duration.as_millis() > 20 || (pressed && last_log_time.elapsed().as_secs() >= 2) {
-            defmt::debug!("Touch read: {}ms, pressed={}, pos=({},{})",
-                read_duration.as_millis(), pressed, xi, yi);
+            defmt::debug!(
+                "Touch read: {}ms, pressed={}, pos=({},{})",
+                read_duration.as_millis(),
+                pressed,
+                xi,
+                yi
+            );
             last_log_time = Instant::now();
         }
 
         was_pressed = pressed;
-        if pressed { last_x = xi; last_y = yi; }
+        if pressed {
+            last_x = xi;
+            last_y = yi;
+        }
 
         Timer::after(Duration::from_millis(TOUCH_POLL_MS)).await;
     }
@@ -152,7 +212,7 @@ pub async fn input_dispatcher_task(
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
 ) {
     use embassy_time::Instant;
-    
+
     loop {
         let dispatch_start = Instant::now();
         let event = INPUT_EVENTS_CH.receive().await;
@@ -165,12 +225,13 @@ pub async fn input_dispatcher_task(
         let consumed = match SUI_ACK_CH
             .receive()
             .with_timeout(Duration::from_millis(DISPATCH_ACK_TIMEOUT_MS))
-            .await {
+            .await
+        {
             Ok(val) => val,
             Err(_) => {
                 defmt::info!("SUI ACK timeout after {}ms", DISPATCH_ACK_TIMEOUT_MS);
                 false
-            },
+            }
         };
         let ack_duration = ack_start.elapsed();
 
@@ -190,13 +251,15 @@ pub async fn input_dispatcher_task(
             warn!("No focused window to receive input");
         }
         let total_duration = dispatch_start.elapsed();
-        
+
         // Log slow event processing
         if total_duration.as_millis() > 50 || ack_duration.as_millis() > 30 {
-            defmt::info!("Input dispatch slow: total={}ms, ack={}ms, consumed={}", 
-                total_duration.as_millis(), ack_duration.as_millis(), consumed);
+            defmt::info!(
+                "Input dispatch slow: total={}ms, ack={}ms, consumed={}",
+                total_duration.as_millis(),
+                ack_duration.as_millis(),
+                consumed
+            );
         }
     }
 }
-
-

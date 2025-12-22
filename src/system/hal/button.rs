@@ -1,11 +1,10 @@
 use alloc::boxed::Box;
 use core::cmp::PartialEq;
-use
-embedded_hal::digital::InputPin;
+use embedded_hal::digital::InputPin;
 // v1.0.0
-use embedded_hal_async::digital::Wait;
 use async_trait::async_trait;
 use defmt::Format;
+use embedded_hal_async::digital::Wait;
 // v1.0.0
 use embassy_time::{Duration, Instant, WithTimeout};
 
@@ -30,17 +29,16 @@ pub trait AsyncButton {
     async fn next(&mut self) -> ButtonState;
 }
 
-
-
 #[async_trait(?Send)]
 impl<P: InputPin + Wait> AsyncButton for ButtonDriver<P> {
     async fn next(&mut self) -> ButtonState {
-
         loop {
             // repeat after 100ms
-            let result = self.pin
+            let result = self
+                .pin
                 .wait_for_any_edge()
-                .with_timeout(Duration::from_millis(100)).await;
+                .with_timeout(Duration::from_millis(100))
+                .await;
             let current_high = self.pin.is_high().unwrap();
             let now = Instant::now();
 
@@ -48,23 +46,25 @@ impl<P: InputPin + Wait> AsyncButton for ButtonDriver<P> {
                 Ok(Ok(_)) => {
                     if current_high {
                         self.last_state = ButtonState::Up;
-                        return ButtonState::Up
+                        return ButtonState::Up;
                     } else {
                         self.last_falling_edge = now;
                         self.last_state = ButtonState::Down;
-                        return ButtonState::Down
+                        return ButtonState::Down;
                     }
-                },
+                }
 
                 Ok(Err(_)) => {
                     // Error waiting for pin state change
                     defmt::error!("Error waiting for pin state change");
-                },
+                }
 
                 Err(_) => {
                     // Timeout, no state change detected
                     // Emit periodic repeat while button is held beyond threshold.
-                    if self.last_state == ButtonState::Down && self.last_falling_edge < Instant::now() - Duration::from_secs(1) {
+                    if self.last_state == ButtonState::Down
+                        && self.last_falling_edge < Instant::now() - Duration::from_secs(1)
+                    {
                         return ButtonState::Repeat;
                     } else {
                         continue;
@@ -73,9 +73,6 @@ impl<P: InputPin + Wait> AsyncButton for ButtonDriver<P> {
             }
         }
     }
-
-
-
 }
 #[derive(Debug, Format, PartialEq)]
 pub(crate) enum ButtonState {

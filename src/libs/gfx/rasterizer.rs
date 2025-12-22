@@ -63,7 +63,11 @@ pub struct Rgb565Rasterizer {
 
 impl Rgb565Rasterizer {
     pub fn new(width: usize, height: usize) -> Self {
-        Self { buffer: vec![0u8; width * height * 2], width, height }
+        Self {
+            buffer: vec![0u8; width * height * 2],
+            width,
+            height,
+        }
     }
 
     pub fn clear(&mut self) {
@@ -74,25 +78,41 @@ impl Rgb565Rasterizer {
         }
     }
 
-    pub fn buffer(&self) -> &[u8] { &self.buffer }
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
 }
 
 impl Rasterizer for Rgb565Rasterizer {
-    fn width(&self) -> usize { self.width }
-    fn height(&self) -> usize { self.height }
-    fn buffer_mut(&mut self) -> &mut [u8] { &mut self.buffer }
+    fn width(&self) -> usize {
+        self.width
+    }
+    fn height(&self) -> usize {
+        self.height
+    }
+    fn buffer_mut(&mut self) -> &mut [u8] {
+        &mut self.buffer
+    }
     fn mark_dirty(&mut self, _min_x: i32, _min_y: i32, _max_x: i32, _max_y: i32) {}
 
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
-        if coverage == 0 { return; }
-        if x < 0 || y < 0 { return; }
+        if coverage == 0 {
+            return;
+        }
+        if x < 0 || y < 0 {
+            return;
+        }
         let w = self.width as i32;
         let h = self.height as i32;
-        if x >= w || y >= h { return; }
+        if x >= w || y >= h {
+            return;
+        }
 
         let (fg_rgb565, a) = rgba8888_to_rgb565_and_alpha(color.to_u32());
         let eff = ((coverage as u32 * a as u32) / 255) as u8;
-        if eff == 0 { return; }
+        if eff == 0 {
+            return;
+        }
 
         let idx = ((y as usize) * self.width + (x as usize)) * 2;
         let bg = ((self.buffer[idx] as u16) << 8) | self.buffer[idx + 1] as u16;
@@ -102,7 +122,9 @@ impl Rasterizer for Rgb565Rasterizer {
     }
 
     fn blend_hspan(&mut self, x: i32, y: i32, colors: &[Rgba8888], coverages: Option<&[u8]>) {
-        if colors.is_empty() { return; }
+        if colors.is_empty() {
+            return;
+        }
         let len = colors.len() as i32;
         let mut f = |i: usize| {
             let cov = coverages.and_then(|c| c.get(i)).copied().unwrap_or(255);
@@ -111,11 +133,21 @@ impl Rasterizer for Rgb565Rasterizer {
         self.blend_hspan_with(x, y, len, &mut f);
     }
 
-    fn blend_hspan_with(&mut self, x: i32, y: i32, len: i32, mut f: impl FnMut(usize) -> (Rgba8888, u8)) {
-        if len <= 0 { return; }
+    fn blend_hspan_with(
+        &mut self,
+        x: i32,
+        y: i32,
+        len: i32,
+        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+    ) {
+        if len <= 0 {
+            return;
+        }
         let w = self.width as i32;
         let h = self.height as i32;
-        if y < 0 || y >= h { return; }
+        if y < 0 || y >= h {
+            return;
+        }
         let start = x.max(0);
         let end = (x + len - 1).min(w - 1);
         let skip = (start - x) as usize;
@@ -126,11 +158,21 @@ impl Rasterizer for Rgb565Rasterizer {
         }
     }
 
-    fn blend_vspan_with(&mut self, x: i32, y: i32, len: i32, mut f: impl FnMut(usize) -> (Rgba8888, u8)) {
-        if len <= 0 { return; }
+    fn blend_vspan_with(
+        &mut self,
+        x: i32,
+        y: i32,
+        len: i32,
+        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+    ) {
+        if len <= 0 {
+            return;
+        }
         let w = self.width as i32;
         let h = self.height as i32;
-        if x < 0 || x >= w { return; }
+        if x < 0 || x >= w {
+            return;
+        }
         let start = y.max(0);
         let end = (y + len - 1).min(h - 1);
         let skip = (start - y) as usize;
@@ -142,7 +184,9 @@ impl Rasterizer for Rgb565Rasterizer {
     }
 
     fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgba8888) {
-        if w <= 0 || h <= 0 { return; }
+        if w <= 0 || h <= 0 {
+            return;
+        }
         let x0 = x.max(0);
         let y0 = y.max(0);
         let x1 = (x + w - 1).min(self.width as i32 - 1);

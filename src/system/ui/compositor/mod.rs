@@ -8,15 +8,16 @@
 //! - `input`: SUI gesture consumer task and command channel
 //! - `region`: helpers for sub-buffer extraction
 
-pub mod core;
-pub mod blitter;
-pub mod strategy;
 pub mod animation;
+pub mod blitter;
+pub mod core;
 pub mod region;
+pub mod strategy;
 
-pub use core::UICompositor;
 pub use animation::TransitionDirection;
+pub use animation::{
+    ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig, FadeAnimation,
+    SlideZoomAnimation, WindowAnimation,
+};
 pub use blitter::SurfaceBlitter;
-pub use animation::{AnimationConfig, WindowAnimation, SlideZoomAnimation, FadeAnimation,
-    ease_in_out_cubic, ease_in_out_circular, ease_out_bounce};
-
+pub use core::UICompositor;

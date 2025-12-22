@@ -5,11 +5,18 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::ui::compositor::{animation::{AnimationConfig, TransitionDirection, ease_in_out_cubic, ease_in_out_circular, ease_out_bounce}, core::UICompositor};
-use crate::system::services::input_srv::{SUI_EVENT_CH, SUI_ACK_CH};
+use crate::system::kernel::config::resources::FRAME_BUFFER_WIDTH;
+use crate::system::services::input_srv::{SUI_ACK_CH, SUI_EVENT_CH};
+use crate::system::ui::compositor::{
+    animation::{
+        ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig,
+        TransitionDirection,
+    },
+    core::UICompositor,
+};
 // CriticalSectionRawMutex already imported above
-use crate::system::ui::window_manager::WindowManager;
 use crate::system::ui::display::Display;
+use crate::system::ui::window_manager::WindowManager;
 // PixelFormat is determined via Display facade; no direct use here
 
 /// Service loop timing constants
@@ -62,40 +69,35 @@ pub async fn ui_compositor_service(
         info!("Compositor initialized with smooth animations");
     }
 
-    // System UI gesture consumption is integrated below.
-
-    // Main service loop
-    let mut edge_swipe = EdgeSwipeRecognizer::new();
+    // Main service loop focuses on rendering; gesture handling runs in a dedicated task.
     let mut frame_count = 0u32;
     let mut last_perf_log = Instant::now();
-    
+
     loop {
         let frame_start = Instant::now();
 
-        // Process System UI events with a short idle to keep frames flowing
-        let sui_start = Instant::now();
-        let handled_sui_events = handle_system_ui_events(compositor, window_manager, &mut edge_swipe).await;
-        let sui_duration = sui_start.elapsed();
-        
-        if !handled_sui_events {
-            // Idle refresh for dynamic content updates
-            Timer::after(Duration::from_millis(0)).await;
-            let redraw_start = Instant::now();
-            let mut compositor_mut = compositor.lock().await;
-            if let Some(focused_handle) = compositor_mut.focused_window_handle() {
-                compositor_mut.request_redraw(focused_handle);
-            }
-            let mut wm_mut = window_manager.lock().await;
-            compositor_mut.process_redraws(&mut wm_mut).await;
-            let redraw_duration = redraw_start.elapsed();
-            
-            // Log slow frame processing (every 5 seconds max)
-            frame_count += 1;
-            if redraw_duration.as_millis() > 50 || (frame_count % 300 == 0 && last_perf_log.elapsed().as_secs() >= 5) {
-                defmt::info!("Compositor frame: redraw={}ms, sui={}ms, total={}ms", 
-                    redraw_duration.as_millis(), sui_duration.as_millis(), frame_start.elapsed().as_millis());
-                last_perf_log = Instant::now();
-            }
+        // Idle refresh for dynamic content updates
+        Timer::after(Duration::from_millis(0)).await;
+        let redraw_start = Instant::now();
+        let mut compositor_mut = compositor.lock().await;
+        if let Some(focused_handle) = compositor_mut.focused_window_handle() {
+            compositor_mut.request_redraw(focused_handle);
+        }
+        let mut wm_mut = window_manager.lock().await;
+        compositor_mut.process_redraws(&mut wm_mut).await;
+        let redraw_duration = redraw_start.elapsed();
+
+        // Log slow frame processing (every 5 seconds max)
+        frame_count += 1;
+        if redraw_duration.as_millis() > 50
+            || (frame_count % 300 == 0 && last_perf_log.elapsed().as_secs() >= 5)
+        {
+            defmt::info!(
+                "Compositor frame: redraw={}ms, total={}ms",
+                redraw_duration.as_millis(),
+                frame_start.elapsed().as_millis()
+            );
+            last_perf_log = Instant::now();
         }
 
         // Maintain consistent frame timing
@@ -118,15 +120,31 @@ struct EdgeSwipeRecognizer {
     from_left: bool,
     from_right: bool,
     fired: bool,
+    frame_width: i32,
 }
 
 impl EdgeSwipeRecognizer {
     const EDGE_THRESHOLD: i32 = 24;
     const MIN_SWIPE_DISTANCE: i32 = 60;
     const MIN_SWIPE_ANGLE_TOLERANCE: i32 = 20;
+    const MOVE_EDGE_BUFFER: i32 = 12;
 
-    fn new() -> Self {
-        Self { tracking: false, start_x: 0, start_y: 0, from_left: false, from_right: false, fired: false }
+    fn new(initial_frame_width: i32) -> Self {
+        Self {
+            tracking: false,
+            start_x: 0,
+            start_y: 0,
+            from_left: false,
+            from_right: false,
+            fired: false,
+            frame_width: initial_frame_width,
+        }
+    }
+
+    fn calibrate_frame_width(&mut self, width: i32) {
+        if width > 0 {
+            self.frame_width = width;
+        }
     }
 
     fn reset(&mut self) {
@@ -135,21 +153,46 @@ impl EdgeSwipeRecognizer {
     }
 
     /// Process a motion sample; returns (consumed, optional transition)
-    fn process_motion(&mut self, x: i32, y: i32, action: crate::system::input::types::TouchAction, frame_w: i32) -> (bool, Option<TransitionDirection>) {
+    fn process_motion(
+        &mut self,
+        x: i32,
+        y: i32,
+        action: crate::system::input::types::TouchAction,
+    ) -> (bool, Option<TransitionDirection>) {
         use crate::system::input::types::TouchAction;
+        let frame_w = self.frame_width;
+        if frame_w <= 0 {
+            return (false, None);
+        }
+
+        let right_edge_start = (frame_w - 1).saturating_sub(Self::EDGE_THRESHOLD);
+        let gesture_margin = Self::EDGE_THRESHOLD + Self::MOVE_EDGE_BUFFER;
+        let right_move_start = (frame_w - 1).saturating_sub(gesture_margin);
+
         match action {
             TouchAction::Down => {
                 self.reset();
                 self.from_left = x <= Self::EDGE_THRESHOLD;
-                self.from_right = x >= (frame_w - Self::EDGE_THRESHOLD);
+                self.from_right = x >= right_edge_start;
                 if self.from_left || self.from_right {
                     self.tracking = true;
                     self.start_x = x;
                     self.start_y = y;
+                    return (true, None);
                 }
                 (false, None)
             }
             TouchAction::Move => {
+                if !self.tracking {
+                    self.from_left = x <= gesture_margin;
+                    self.from_right = x >= right_move_start;
+                    if self.from_left || self.from_right {
+                        self.tracking = true;
+                        self.start_x = x;
+                        self.start_y = y;
+                    }
+                }
+
                 if self.tracking && !self.fired {
                     let dx = x - self.start_x;
                     let dy = (y - self.start_y).abs();
@@ -163,79 +206,90 @@ impl EdgeSwipeRecognizer {
                         }
                     }
                 }
-                (false, None)
+
+                (self.tracking, None)
             }
             TouchAction::Up => {
+                let was_tracking = self.tracking;
                 self.reset();
-                (false, None)
+                (was_tracking, None)
             }
         }
     }
 }
 
-/// Consume System UI events (gestures) and drive window transitions.
-/// Returns true if any SUI event was processed.
-/// Process System UI input stream and drive transitions. Returns true if any SUI event was handled.
-async fn handle_system_ui_events(
+#[embassy_executor::task]
+pub async fn system_ui_gesture_task(
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
-    recognizer: &mut EdgeSwipeRecognizer,
-) -> bool {
+) {
     use crate::system::input::types::{HighLevelEvent, MotionEvent};
 
-    let mut processed_any = false;
-    let mut event_count = 0;
+    let mut recognizer = EdgeSwipeRecognizer::new(FRAME_BUFFER_WIDTH as i32);
 
-    // Try non-blocking receive on SUI_EVENT_CH to keep frame cadence
-    while let Ok(ev) = SUI_EVENT_CH.try_receive() {
-        event_count += 1;
+    if let Some(width) = {
+        let comp = compositor.lock().await;
+        comp.display_dimensions().map(|(w, _)| w as i32)
+    } {
+        recognizer.calibrate_frame_width(width);
+    }
+
+    loop {
+        let event = SUI_EVENT_CH.receive().await;
         let event_start = Instant::now();
         let mut consumed = false;
-        
-        if let HighLevelEvent::Motion(MotionEvent { action, pointers, .. }) = ev {
-            if let Some(p) = pointers[0] {
-                let frame_w = {
-                    let comp = compositor.lock().await; // brief lock to read dimensions
-                    comp.display_dimensions().map(|(w, _)| w as i32).unwrap_or(0)
-                };
-                let (was_consumed, transition) = recognizer.process_motion(p.x, p.y, action, frame_w);
-                consumed = was_consumed;
+        let mut transition = None;
 
-                if let Some(dir) = transition {
-                    processed_any = true;
-                    match dir {
-                        TransitionDirection::Next => {
-                            let mut comp = compositor.lock().await;
-                            let mut wm = window_manager.lock().await;
-                            comp.animate_to_next_window(&mut wm).await;
-                            request_redraw_focused_window(&mut comp).await;
-                            comp.process_redraws(&mut wm).await;
-                        }
-                        TransitionDirection::Previous => {
-                            let mut comp = compositor.lock().await;
-                            let mut wm = window_manager.lock().await;
-                            comp.animate_to_previous_window(&mut wm).await;
-                            request_redraw_focused_window(&mut comp).await;
-                            comp.process_redraws(&mut wm).await;
-                        }
-                    }
-                }
+        if let HighLevelEvent::Motion(MotionEvent {
+            action, pointers, ..
+        }) = event
+        {
+            if let Some(p) = pointers[0] {
+                let (was_consumed, detected_transition) =
+                    recognizer.process_motion(p.x, p.y, action);
+                consumed = was_consumed;
+                transition = detected_transition;
             }
+        }
+
+        SUI_ACK_CH.send(consumed).await;
+
+        if let Some(dir) = transition {
+            execute_transition(dir, compositor, window_manager).await;
         }
 
         let event_duration = event_start.elapsed();
         if event_duration.as_millis() > 20 {
-            defmt::info!("SUI event slow: {}ms, consumed={}", event_duration.as_millis(), consumed);
+            defmt::info!(
+                "SUI event slow: {}ms, consumed={}",
+                event_duration.as_millis(),
+                consumed
+            );
         }
-
-        SUI_ACK_CH.send(consumed).await;
     }
+}
 
-    if event_count > 5 {
-        defmt::info!("SUI processed {} events in batch", event_count);
+async fn execute_transition(
+    direction: TransitionDirection,
+    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
+) {
+    match direction {
+        TransitionDirection::Next => {
+            let mut comp = compositor.lock().await;
+            let mut wm = window_manager.lock().await;
+            comp.animate_to_next_window(&mut wm).await;
+            request_redraw_focused_window(&mut comp).await;
+            comp.process_redraws(&mut wm).await;
+        }
+        TransitionDirection::Previous => {
+            let mut comp = compositor.lock().await;
+            let mut wm = window_manager.lock().await;
+            comp.animate_to_previous_window(&mut wm).await;
+            request_redraw_focused_window(&mut comp).await;
+            comp.process_redraws(&mut wm).await;
+        }
     }
-
-    processed_any
 }
 
 /// Maintain consistent frame timing to prevent system overload
@@ -313,8 +367,12 @@ mod debug_utils {
             if self.frame_count % 60 == 0 {
                 let avg_time = self.average_frame_time();
                 let max_time = self.max_frame_time();
-                debug!("Performance: avg={}μs, max={}μs, fps≈{}",
-                       avg_time, max_time, 1_000_000 / avg_time);
+                debug!(
+                    "Performance: avg={}μs, max={}μs, fps≈{}",
+                    avg_time,
+                    max_time,
+                    1_000_000 / avg_time
+                );
             }
         }
 

@@ -2,8 +2,10 @@ use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
+use crate::system::hal::display::{
+    AsyncDisplay, DisplayCapabilities, DisplayResolution, PixelFormat,
+};
 use crate::util::math::primitives::Rect;
-use crate::system::hal::display::{AsyncDisplay, PixelFormat, DisplayResolution, DisplayCapabilities};
 
 /// UI-level Display facade that negotiates with the HAL driver
 /// and exposes logical framebuffer properties and draw methods.
@@ -26,7 +28,11 @@ impl Display {
             (caps, fmt, res)
         };
         let _ = caps; // reserved for future negotiation policy
-        Self { driver, pixel_format: chosen_format, resolution: chosen_resolution }
+        Self {
+            driver,
+            pixel_format: chosen_format,
+            resolution: chosen_resolution,
+        }
     }
 
     pub async fn driver_capabilities(&self) -> DisplayCapabilities {
@@ -34,10 +40,18 @@ impl Display {
         l.capabilities()
     }
 
-    pub fn pixel_format(&self) -> PixelFormat { self.pixel_format }
-    pub fn width(&self) -> u32 { self.resolution.logical.width }
-    pub fn height(&self) -> u32 { self.resolution.logical.height }
-    pub fn resolution(&self) -> DisplayResolution { self.resolution }
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.pixel_format
+    }
+    pub fn width(&self) -> u32 {
+        self.resolution.logical.width
+    }
+    pub fn height(&self) -> u32 {
+        self.resolution.logical.height
+    }
+    pub fn resolution(&self) -> DisplayResolution {
+        self.resolution
+    }
 
     pub fn set_resolution(&mut self, resolution: DisplayResolution) {
         self.resolution = resolution;
@@ -57,5 +71,3 @@ impl Display {
         l.draw_region(buffer, region).await;
     }
 }
-
-

@@ -1,7 +1,10 @@
 // file: src/shapes/circle.rs
 
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{aa_coverage, angle_in_range, linear_gradient_h_rgba, linear_gradient_v_rgba, radial_gradient_rgba_sq, Fill, Rasterizer};
+use crate::libs::gfx::{
+    aa_coverage, angle_in_range, linear_gradient_h_rgba, linear_gradient_v_rgba,
+    radial_gradient_rgba_sq, Fill, Rasterizer,
+};
 
 pub struct Circle {
     cx: i32,
@@ -149,22 +152,28 @@ pub(crate) fn draw_circle_or_arc<R: Rasterizer>(
                 let dx = x - cx;
                 let dist2 = dx * dx + dy2;
                 if dist2 > r_fill2_aa {
-                    return (Rgba8888::rgba(0,0,0,0), 0);
+                    return (Rgba8888::rgba(0, 0, 0, 0), 0);
                 }
                 if let Some((s, e)) = arc {
                     if !angle_in_range(dx, dy, s, e) {
-                        return (Rgba8888::rgba(0,0,0,0), 0);
+                        return (Rgba8888::rgba(0, 0, 0, 0), 0);
                     }
                 }
                 let opa = aa_coverage(dist2, r_fill);
                 if opa == 0 {
-                    return (Rgba8888::rgba(0,0,0,0), 0);
+                    return (Rgba8888::rgba(0, 0, 0, 0), 0);
                 }
                 let color = match fill {
                     Fill::Solid(c) => c,
-                    Fill::RadialGradient { inner, outer } => radial_gradient_rgba_sq(inner, outer, dist2, r_fill2),
-                    Fill::LinearGradientH { start, end } => linear_gradient_h_rgba(start, end, x, cx, r_fill),
-                    Fill::LinearGradientV { start, end } => linear_gradient_v_rgba(start, end, y, cy, r_fill),
+                    Fill::RadialGradient { inner, outer } => {
+                        radial_gradient_rgba_sq(inner, outer, dist2, r_fill2)
+                    }
+                    Fill::LinearGradientH { start, end } => {
+                        linear_gradient_h_rgba(start, end, x, cx, r_fill)
+                    }
+                    Fill::LinearGradientV { start, end } => {
+                        linear_gradient_v_rgba(start, end, y, cy, r_fill)
+                    }
                 };
                 (color, opa)
             });

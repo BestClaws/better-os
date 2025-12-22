@@ -1,8 +1,8 @@
 use core::ops::{Add, Sub};
 use defmt::Format;
-use micromath::F32Ext;
-use fixed::FixedI32;
 use fixed::types::extra::U16;
+use fixed::FixedI32;
+use micromath::F32Ext;
 
 #[derive(Copy, Clone, Debug, Format)]
 pub struct Vec3(pub f32, pub f32, pub f32);
@@ -47,7 +47,6 @@ impl Vec3 {
     }
 }
 
-
 /// A quaternion representing rotation
 #[derive(Copy, Clone, Debug, Format)]
 pub struct Quaternion {
@@ -56,7 +55,6 @@ pub struct Quaternion {
     pub y: f32,
     pub z: f32,
 }
-
 
 impl Quaternion {
     /// Rotates a vector by this quaternion
@@ -102,7 +100,6 @@ impl Quaternion {
             z: 0.0,
         }
     }
-
 }
 
 /// 2D point with sub-pixel precision using fixed-point coordinates
@@ -118,17 +115,22 @@ impl Point {
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
-    
+
     /// Zero point
     #[inline(always)]
     pub const fn zero() -> Self {
         Self { x: 0, y: 0 }
     }
-    
+
     /// Create from fixed-point coordinates
     #[inline(always)]
-    pub fn from_fixed(x: FixedI32<U16>, y: FixedI32<U16>) -> Self { Self { x: x.to_num(), y: y.to_num() } }
-    
+    pub fn from_fixed(x: FixedI32<U16>, y: FixedI32<U16>) -> Self {
+        Self {
+            x: x.to_num(),
+            y: y.to_num(),
+        }
+    }
+
     /// Distance squared to another point (avoids sqrt for performance)
     #[inline]
     pub fn distance_squared(self, other: Point) -> i32 {
@@ -136,7 +138,7 @@ impl Point {
         let dy = self.y - other.y;
         dx * dx + dy * dy
     }
-    
+
     /// Manhattan distance (faster than Euclidean)
     #[inline(always)]
     pub fn manhattan_distance(self, other: Point) -> i32 {
@@ -148,7 +150,10 @@ impl Add for Point {
     type Output = Self;
     #[inline(always)]
     fn add(self, other: Self) -> Self {
-        Self { x: self.x + other.x, y: self.y + other.y }
+        Self {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
     }
 }
 
@@ -156,7 +161,10 @@ impl Sub for Point {
     type Output = Self;
     #[inline(always)]
     fn sub(self, other: Self) -> Self {
-        Self { x: self.x - other.x, y: self.y - other.y }
+        Self {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
     }
 }
 
@@ -173,13 +181,16 @@ impl Size {
     pub const fn new(width: u32, height: u32) -> Self {
         Self { width, height }
     }
-    
+
     /// Zero size
     #[inline(always)]
     pub const fn zero() -> Self {
-        Self { width: 0, height: 0 }
+        Self {
+            width: 0,
+            height: 0,
+        }
     }
-    
+
     /// Area of the size
     #[inline(always)]
     pub const fn area(self) -> u32 {
@@ -200,7 +211,7 @@ impl Rect {
     pub const fn new(top_left: Point, size: Size) -> Self {
         Self { top_left, size }
     }
-    
+
     /// Create rectangle from coordinates
     #[inline(always)]
     pub const fn from_coords(x: i32, y: i32, width: u32, height: u32) -> Self {
@@ -209,7 +220,7 @@ impl Rect {
             size: Size::new(width, height),
         }
     }
-    
+
     /// Create rectangle from corner points
     #[inline(always)]
     pub const fn with_corners(top_left: Point, bottom_right: Point) -> Self {
@@ -220,19 +231,19 @@ impl Rect {
             size: Size::new(width, height),
         }
     }
-    
+
     /// Right edge coordinate
     #[inline(always)]
     pub const fn right(self) -> i32 {
         self.top_left.x + self.size.width as i32 - 1
     }
-    
+
     /// Bottom edge coordinate
     #[inline(always)]
     pub const fn bottom(self) -> i32 {
         self.top_left.y + self.size.height as i32 - 1
     }
-    
+
     /// Center point
     #[inline(always)]
     pub const fn center(self) -> Point {
@@ -241,7 +252,7 @@ impl Rect {
             self.top_left.y + self.size.height as i32 / 2,
         )
     }
-    
+
     /// Check if point is inside rectangle
     #[inline(always)]
     pub const fn contains_point(self, point: Point) -> bool {
@@ -250,7 +261,7 @@ impl Rect {
             && point.x <= self.right()
             && point.y <= self.bottom()
     }
-    
+
     /// Check if rectangle intersects with another
     #[inline]
     pub const fn intersects(self, other: Rect) -> bool {
@@ -259,19 +270,19 @@ impl Rect {
             && self.top_left.y <= other.bottom()
             && self.bottom() >= other.top_left.y
     }
-    
+
     /// Intersection with another rectangle
     #[inline]
     pub fn intersection(self, other: Rect) -> Option<Rect> {
         if !self.intersects(other) {
             return None;
         }
-        
+
         let left = self.top_left.x.max(other.top_left.x);
         let top = self.top_left.y.max(other.top_left.y);
         let right = self.right().min(other.right());
         let bottom = self.bottom().min(other.bottom());
-        
+
         if left <= right && top <= bottom {
             Some(Rect::from_coords(
                 left,

@@ -5,14 +5,14 @@
 
 mod arc;
 mod circle;
-mod rounded_rect;
 mod line;
+mod rounded_rect;
 mod text;
 
 pub use arc::Arc;
 pub use circle::Circle;
-pub use rounded_rect::RoundedRect;
 pub use line::Line;
+pub use rounded_rect::RoundedRect;
 pub use text::Text;
 pub trait Shape {
     fn draw<R: super::Rasterizer>(&self, rasterizer: &mut R);

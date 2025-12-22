@@ -1,9 +1,9 @@
+use crate::system::hal::touch::AsyncTouch;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use embassy_time::{Duration, Timer, Instant};
-use embedded_hal_async::spi::{SpiDevice, ErrorType};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_hal_async::digital::Wait;
-use crate::system::hal::touch::AsyncTouch;
+use embedded_hal_async::spi::{ErrorType, SpiDevice};
 
 // Thresholds and constants from the C++ code
 const Z_THRESHOLD: u16 = 400;
@@ -162,7 +162,8 @@ where
                     self.xraw = y;
                     self.yraw = 4095 - x;
                 }
-                _ => { // 3
+                _ => {
+                    // 3
                     self.xraw = 4095 - x;
                     self.yraw = 4095 - y;
                 }
@@ -175,8 +176,10 @@ where
     async fn check_irq_still_low(&mut self) -> bool {
         // Try to wait for high with very short timeout
         // If this succeeds quickly, it means IRQ already went high (no real touch)
-        match embassy_time::with_timeout(Duration::from_millis(2), self.pen_irq.wait_for_high()).await {
-            Ok(_) => true,  // IRQ went high quickly - false alarm
+        match embassy_time::with_timeout(Duration::from_millis(2), self.pen_irq.wait_for_high())
+            .await
+        {
+            Ok(_) => true,   // IRQ went high quickly - false alarm
             Err(_) => false, // IRQ still low - real touch
         }
     }

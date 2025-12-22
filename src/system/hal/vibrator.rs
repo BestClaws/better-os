@@ -6,4 +6,3 @@ use embassy_time::Duration;
 pub trait AsyncVibrator {
     async fn vibrate(&mut self, duration: Duration);
 }
-

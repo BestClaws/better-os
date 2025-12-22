@@ -1,11 +1,11 @@
-use alloc::boxed::Box;
-use embedded_hal_async::i2c::{I2c, SevenBitAddress};
-use async_trait::async_trait;
-use defmt::{info, warn, error, debug, Format};
-use embassy_time::Timer;
-use embedded_hal::i2c::ErrorType;
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::util::math::primitives::{Quaternion, Vec3};
+use alloc::boxed::Box;
+use async_trait::async_trait;
+use defmt::{debug, error, info, warn, Format};
+use embassy_time::Timer;
+use embedded_hal::i2c::ErrorType;
+use embedded_hal_async::i2c::{I2c, SevenBitAddress};
 
 // ============================================================================
 // CONSTANTS AND REGISTER DEFINITIONS
@@ -288,7 +288,8 @@ where
         }
 
         // Enable auto-increment addressing for efficient multi-byte reads
-        self.write_register(registers::CTRL1, register_bits::CTRL1_ADDR_AUTO_INCREMENT).await?;
+        self.write_register(registers::CTRL1, register_bits::CTRL1_ADDR_AUTO_INCREMENT)
+            .await?;
 
         Ok(())
     }
@@ -298,24 +299,30 @@ where
         let chip_id = self.read_register(registers::WHO_AM_I).await?;
 
         if chip_id != EXPECTED_CHIP_ID {
-            error!("Device ID mismatch: expected 0x{:02X}, got 0x{:02X}",
-                   EXPECTED_CHIP_ID, chip_id);
+            error!(
+                "Device ID mismatch: expected 0x{:02X}, got 0x{:02X}",
+                EXPECTED_CHIP_ID, chip_id
+            );
             return Err(Qmi8658Error::DeviceNotFound);
         }
 
         // Also read revision for future compatibility checks
-        self.revision_id = self.read_register(registers::REVISION).await
-            .unwrap_or(0);
+        self.revision_id = self.read_register(registers::REVISION).await.unwrap_or(0);
 
         info!("QMI8658C detected, revision: 0x{:02X}", self.revision_id);
         Ok(())
     }
 
     /// Configure accelerometer with specified range and output data rate
-    pub async fn configure_accelerometer(&mut self, range: AccelRange, odr: AccelODR)
-                                         -> Result<(), Qmi8658Error>
-    {
-        debug!("Configuring accelerometer: range={:?}, odr={:?}", range, odr);
+    pub async fn configure_accelerometer(
+        &mut self,
+        range: AccelRange,
+        odr: AccelODR,
+    ) -> Result<(), Qmi8658Error> {
+        debug!(
+            "Configuring accelerometer: range={:?}, odr={:?}",
+            range, odr
+        );
 
         // Temporarily disable accelerometer for configuration
         let was_enabled = self.accel_enabled;
@@ -386,7 +393,8 @@ where
 
         // Read all 6 bytes of accelerometer data in one transaction
         let mut buffer = [0u8; 6];
-        self.read_registers(registers::ACCEL_X_L, &mut buffer).await?;
+        self.read_registers(registers::ACCEL_X_L, &mut buffer)
+            .await?;
 
         // Convert little-endian bytes to signed 16-bit integers
         let x = i16::from_le_bytes([buffer[0], buffer[1]]);
@@ -413,7 +421,8 @@ where
     /// Returns temperature in degrees Celsius
     async fn read_temperature_celsius(&mut self) -> Result<f32, Qmi8658Error> {
         let mut buffer = [0u8; 2];
-        self.read_registers(registers::TEMPERATURE_L, &mut buffer).await?;
+        self.read_registers(registers::TEMPERATURE_L, &mut buffer)
+            .await?;
 
         // Temperature format: signed integer + fractional part
         // Formula from datasheet: temp = integer_part + (fractional_part / 256)
@@ -424,7 +433,8 @@ where
 
     /// Low-level register write operation with error handling
     async fn write_register(&mut self, register: u8, value: u8) -> Result<(), Qmi8658Error> {
-        self.i2c_bus.write(DEVICE_ADDRESS, &[register, value])
+        self.i2c_bus
+            .write(DEVICE_ADDRESS, &[register, value])
             .await
             .map_err(|_| Qmi8658Error::BusCommunication)
     }
@@ -432,21 +442,31 @@ where
     /// Low-level single register read with error handling
     async fn read_register(&mut self, register: u8) -> Result<u8, Qmi8658Error> {
         let mut buffer = [0u8; 1];
-        self.i2c_bus.write_read(DEVICE_ADDRESS, &[register], &mut buffer)
+        self.i2c_bus
+            .write_read(DEVICE_ADDRESS, &[register], &mut buffer)
             .await
             .map_err(|_| Qmi8658Error::BusCommunication)?;
         Ok(buffer[0])
     }
 
     /// Low-level multi-register read with error handling
-    async fn read_registers(&mut self, start_register: u8, buffer: &mut [u8]) -> Result<(), Qmi8658Error> {
-        self.i2c_bus.write_read(DEVICE_ADDRESS, &[start_register], buffer)
+    async fn read_registers(
+        &mut self,
+        start_register: u8,
+        buffer: &mut [u8],
+    ) -> Result<(), Qmi8658Error> {
+        self.i2c_bus
+            .write_read(DEVICE_ADDRESS, &[start_register], buffer)
             .await
             .map_err(|_| Qmi8658Error::BusCommunication)
     }
 
     /// Wait for data to become ready with timeout protection
-    async fn wait_for_data_ready(&mut self, check_accel: bool, check_gyro: bool) -> Result<(), Qmi8658Error> {
+    async fn wait_for_data_ready(
+        &mut self,
+        check_accel: bool,
+        check_gyro: bool,
+    ) -> Result<(), Qmi8658Error> {
         let start_time = embassy_time::Instant::now();
 
         loop {
@@ -498,7 +518,10 @@ where
         }
 
         // Configure accelerometer with safe defaults for space applications
-        if let Err(e) = self.configure_accelerometer(AccelRange::Range4G, AccelODR::Freq500Hz).await {
+        if let Err(e) = self
+            .configure_accelerometer(AccelRange::Range4G, AccelODR::Freq500Hz)
+            .await
+        {
             error!("Accelerometer configuration failed: {:?}", e);
             return Err(());
         }

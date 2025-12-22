@@ -1,11 +1,11 @@
+use crate::system::input::types::HighLevelEvent;
+use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
+use crate::system::resources::input_channels::CHANNEL_CAPACITY;
+use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
+use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
-use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::drawing_surface::DrawingSurface;
-use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
-use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
-use crate::system::resources::input_channels::CHANNEL_CAPACITY;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Format)]
 pub struct WindowHandle {
@@ -24,7 +24,12 @@ pub struct Window {
 
 impl Window {
     /// Create a new Window.
-    pub async fn new(width: u32, height: u32, id: usize, format: crate::system::hal::display::PixelFormat) -> Self {
+    pub async fn new(
+        width: u32,
+        height: u32,
+        id: usize,
+        format: crate::system::hal::display::PixelFormat,
+    ) -> Self {
         Self {
             fb: None,
             input_channel: None,
@@ -70,13 +75,21 @@ impl Window {
     }
 
     /// Return reference to the input channel sender.
-    pub async fn input_sender(&mut self) -> Option<Sender<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>> {
-        self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.sender(channel))
+    pub async fn input_sender(
+        &mut self,
+    ) -> Option<Sender<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>> {
+        self.input_channel
+            .as_ref()
+            .map(|channel| INPUT_CHANNEL_POOL.sender(channel))
     }
 
     /// Return reference to the input channel receiver.
-    pub fn input_receiver(&self) -> Option<Receiver<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>> {
-        self.input_channel.as_ref().map(|channel| INPUT_CHANNEL_POOL.receiver(channel))
+    pub fn input_receiver(
+        &self,
+    ) -> Option<Receiver<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY>> {
+        self.input_channel
+            .as_ref()
+            .map(|channel| INPUT_CHANNEL_POOL.receiver(channel))
     }
 
     /// Release held framebuffer and input channel.
@@ -92,5 +105,4 @@ impl Window {
         self.fb = None;
         self.input_channel = None;
     }
-
 }

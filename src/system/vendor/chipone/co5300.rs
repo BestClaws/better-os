@@ -1,16 +1,18 @@
 #![no_std]
 extern crate alloc;
 
+use crate::system::hal::display::{
+    AsyncDisplay, DisplayCapabilities, DisplayResolution, DisplaySize, Orientation, PixelFormat,
+};
+use crate::util::math::primitives::{Point, Rect, Size};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use async_trait::async_trait;
-use embedded_hal::digital::OutputPin;
-use embassy_time::{Duration, Instant, Timer};
-use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 use defmt::{debug, error, info};
-use crate::system::hal::display::{AsyncDisplay, DisplayCapabilities, DisplayResolution, DisplaySize, Orientation, PixelFormat};
-use crate::util::math::primitives::{Point, Rect, Size};
+use embassy_time::{Duration, Instant, Timer};
+use embedded_hal::digital::OutputPin;
+use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
 
 /// SH8601 Command Set
 pub mod commands {
@@ -98,7 +100,7 @@ pub struct Co5300<RST> {
 
 impl<RST> Co5300<RST>
 where
-    RST: OutputPin
+    RST: OutputPin,
 {
     pub fn new(
         qspi: SpiDmaBus<'static, esp_hal::Async>,
@@ -108,14 +110,33 @@ where
         pixel_format: PixelFormat,
     ) -> Self {
         debug!("Creating Co5300 driver");
-        let physical = DisplaySize { width: width as u32, height: height as u32 };
+        let physical = DisplaySize {
+            width: width as u32,
+            height: height as u32,
+        };
         // Default logical to 116x116 with scale=4 if panel dimensions fit; else fall back to 1x
         let (logical, scale) = if (width as u32) >= 116 * 4 && (height as u32) >= 116 * 4 {
-            (DisplaySize { width: 116, height: 116 }, 4u32)
+            (
+                DisplaySize {
+                    width: 116,
+                    height: 116,
+                },
+                4u32,
+            )
         } else {
-            (DisplaySize { width: width as u32, height: height as u32 }, 1u32)
+            (
+                DisplaySize {
+                    width: width as u32,
+                    height: height as u32,
+                },
+                1u32,
+            )
         };
-        let active_resolution = DisplayResolution { logical, physical, scale };
+        let active_resolution = DisplayResolution {
+            logical,
+            physical,
+            scale,
+        };
         Self {
             qspi,
             reset_pin,
@@ -143,7 +164,11 @@ where
     }
 
     /// Send a command with data via QSPI
-    async fn send_command_with_data(&mut self, cmd: u8, data: &[u8]) -> Result<(), esp_hal::spi::Error> {
+    async fn send_command_with_data(
+        &mut self,
+        cmd: u8,
+        data: &[u8],
+    ) -> Result<(), esp_hal::spi::Error> {
         let address_value = (cmd as u32) << 8;
 
         self.qspi.half_duplex_write(
@@ -164,7 +189,11 @@ where
         let mut chunks = pixels.chunks(DMA_CHUNK_SIZE).enumerate();
 
         while let Some((index, chunk)) = chunks.next() {
-            let addr_val = if index == 0 { ramwr_addr_val } else { ramwrc_addr_val };
+            let addr_val = if index == 0 {
+                ramwr_addr_val
+            } else {
+                ramwrc_addr_val
+            };
 
             self.qspi.half_duplex_write(
                 DataMode::Quad,
@@ -190,7 +219,13 @@ where
     }
 
     /// Set display region for drawing
-    async fn set_window(&mut self, x_start: u16, y_start: u16, x_end: u16, y_end: u16) -> Result<(), esp_hal::spi::Error> {
+    async fn set_window(
+        &mut self,
+        x_start: u16,
+        y_start: u16,
+        x_end: u16,
+        y_end: u16,
+    ) -> Result<(), esp_hal::spi::Error> {
         let x_start = x_start + self.x_gap;
         let x_end = x_end + self.x_gap;
         let y_start = y_start + self.y_gap;
@@ -204,7 +239,8 @@ where
                 ((x_end - 1) >> 8) as u8,
                 ((x_end - 1) & 0xFF) as u8,
             ],
-        ).await?;
+        )
+        .await?;
 
         self.send_command_with_data(
             commands::PASET,
@@ -214,7 +250,8 @@ where
                 ((y_end - 1) >> 8) as u8,
                 ((y_end - 1) & 0xFF) as u8,
             ],
-        ).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -226,12 +263,17 @@ where
         let region_width = region.size.width as u16;
         let region_height = region.size.height as u16;
 
-        if let Err(_) = self.set_window(
-            region_x,
-            region_y,
-            region_x + region_width,
-            region_y + region_height
-        ).await { return; }
+        if let Err(_) = self
+            .set_window(
+                region_x,
+                region_y,
+                region_x + region_width,
+                region_y + region_height,
+            )
+            .await
+        {
+            return;
+        }
 
         let t0 = Instant::now();
         // No scaling work in scale=1 path
@@ -274,14 +316,20 @@ where
         for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
             let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
 
-            if let Err(_) = self.set_window(
-                display_x,
-                display_y + y_chunk_start,
-                display_x + display_width as u16,
-                display_y + y_chunk_start + chunk_height
-            ).await { return; }
+            if let Err(_) = self
+                .set_window(
+                    display_x,
+                    display_y + y_chunk_start,
+                    display_x + display_width as u16,
+                    display_y + y_chunk_start + chunk_height,
+                )
+                .await
+            {
+                return;
+            }
 
-            let mut chunk_buffer: Vec<u8> = vec![0u8; (scaled_width as usize) * (chunk_height as usize) * 2];
+            let mut chunk_buffer: Vec<u8> =
+                vec![0u8; (scaled_width as usize) * (chunk_height as usize) * 2];
 
             let t_scale = Instant::now();
             for row in 0..chunk_height as usize {
@@ -297,7 +345,10 @@ where
             scaling_us += t_scale.elapsed().as_micros() as u64;
 
             let t_tx = Instant::now();
-            if let Err(_) = self.send_pixels(&chunk_buffer).await { error!("Failed to send pixels for draw_region chunk (generic)"); return; }
+            if let Err(_) = self.send_pixels(&chunk_buffer).await {
+                error!("Failed to send pixels for draw_region chunk (generic)");
+                return;
+            }
             transfer_us += t_tx.elapsed().as_micros() as u64;
         }
 
@@ -338,12 +389,17 @@ where
         for y_chunk_start in (0..display_height as u16).step_by(CHUNK_HEIGHT as usize) {
             let chunk_height = core::cmp::min(CHUNK_HEIGHT, display_height as u16 - y_chunk_start);
 
-            if let Err(_) = self.set_window(
-                display_x,
-                display_y + y_chunk_start,
-                display_x + display_width as u16,
-                display_y + y_chunk_start + chunk_height
-            ).await { return; }
+            if let Err(_) = self
+                .set_window(
+                    display_x,
+                    display_y + y_chunk_start,
+                    display_x + display_width as u16,
+                    display_y + y_chunk_start + chunk_height,
+                )
+                .await
+            {
+                return;
+            }
 
             let t_scale = Instant::now();
             unsafe {
@@ -358,7 +414,9 @@ where
                         current_src_row = src_row;
                         let src_row_ptr = src_ptr.add(src_row * bytes_per_src_row);
                         for src_col in 0..(region_width as usize) {
-                            let pixel: u16 = core::ptr::read_unaligned(src_row_ptr.add(src_col * 2) as *const u16);
+                            let pixel: u16 = core::ptr::read_unaligned(
+                                src_row_ptr.add(src_col * 2) as *const u16,
+                            );
                             let pixel_u64 = (pixel as u64)
                                 | ((pixel as u64) << 16)
                                 | ((pixel as u64) << 32)
@@ -378,14 +436,15 @@ where
             scaling_us += t_scale.elapsed().as_micros() as u64;
 
             let t_tx = Instant::now();
-            let chunk_bytes_len = (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
+            let chunk_bytes_len =
+                (row_u64s * (chunk_height as usize)) * core::mem::size_of::<u64>();
             let chunk_bytes: &[u8] = unsafe {
-                core::slice::from_raw_parts(
-                    chunk_buffer.as_ptr() as *const u8,
-                    chunk_bytes_len,
-                )
+                core::slice::from_raw_parts(chunk_buffer.as_ptr() as *const u8, chunk_bytes_len)
             };
-            if let Err(_) = self.send_pixels(chunk_bytes).await { error!("Failed to send pixels for draw_region chunk (scale4)"); return; }
+            if let Err(_) = self.send_pixels(chunk_bytes).await {
+                error!("Failed to send pixels for draw_region chunk (scale4)");
+                return;
+            }
             transfer_us += t_tx.elapsed().as_micros() as u64;
         }
 
@@ -419,34 +478,45 @@ where
             Timer::after(Duration::from_millis(80)).await;
 
             self.send_command_with_data(commands::C4, &[0x80]).await?;
-            self.send_command_with_data(commands::WRCTRLD1, &[0x20]).await?;
+            self.send_command_with_data(commands::WRCTRLD1, &[0x20])
+                .await?;
             Timer::after(Duration::from_millis(1)).await;
 
             self.send_command_with_data(commands::C63, &[0xFF]).await?;
             Timer::after(Duration::from_millis(1)).await;
 
-            self.send_command_with_data(commands::WRDISBV, &[0x00]).await?;
+            self.send_command_with_data(commands::WRDISBV, &[0x00])
+                .await?;
             Timer::after(Duration::from_millis(1)).await;
 
             self.send_command(commands::DISPON).await?;
             Timer::after(Duration::from_millis(10)).await;
 
-            self.send_command_with_data(commands::WRDISBV, &[0xFF]).await?;
+            self.send_command_with_data(commands::WRDISBV, &[0xFF])
+                .await?;
 
             // Vendor-specific initialization
-            self.send_command_with_data(commands::TESCAN, &[0x00, 0xC8]).await?;
+            self.send_command_with_data(commands::TESCAN, &[0x00, 0xC8])
+                .await?;
             self.send_command_with_data(commands::TEON, &[0x00]).await?;
-            self.send_command_with_data(commands::WRCTRLD1, &[0x20]).await?;
+            self.send_command_with_data(commands::WRCTRLD1, &[0x20])
+                .await?;
             Timer::after(Duration::from_millis(25)).await;
 
             // Set pixel format and MADCTL
-            self.send_command_with_data(commands::MADCTL, &[0x00]).await?;
-            self.send_command_with_data(commands::COLMOD, &[chipone_colmod_value(self.pixel_format)]).await?;
+            self.send_command_with_data(commands::MADCTL, &[0x00])
+                .await?;
+            self.send_command_with_data(
+                commands::COLMOD,
+                &[chipone_colmod_value(self.pixel_format)],
+            )
+            .await?;
 
             self.send_command(commands::DISPON).await?;
 
             Ok::<(), esp_hal::spi::Error>(())
-        }.await;
+        }
+        .await;
 
         match init_result {
             Ok(_) => debug!("Display initialization complete"),
@@ -493,12 +563,15 @@ where
                 scaled_height - y_chunk_start
             };
 
-            if let Err(_) = self.set_window(
-                display_start_x,
-                display_start_y + y_chunk_start,
-                display_start_x + scaled_width,
-                display_start_y + y_chunk_start + chunk_height
-            ).await {
+            if let Err(_) = self
+                .set_window(
+                    display_start_x,
+                    display_start_y + y_chunk_start,
+                    display_start_x + scaled_width,
+                    display_start_y + y_chunk_start + chunk_height,
+                )
+                .await
+            {
                 return;
             }
 
@@ -534,10 +607,13 @@ where
         );
     }
 
-        async fn set_brightness(&mut self, value: u8) {
+    async fn set_brightness(&mut self, value: u8) {
         debug!("Setting brightness to {}", value);
 
-        if let Err(_) = self.send_command_with_data(commands::WRDISBV, &[value]).await {
+        if let Err(_) = self
+            .send_command_with_data(commands::WRDISBV, &[value])
+            .await
+        {
             error!("Failed to set brightness");
         }
     }
@@ -580,9 +656,39 @@ where
         const PHYS_W: u32 = 466;
         const PHYS_H: u32 = 466;
         const SUPPORTED: &[DisplayResolution] = &[
-            DisplayResolution { logical: DisplaySize { width: 466, height: 466 }, physical: DisplaySize { width: PHYS_W, height: PHYS_H }, scale: 1 },
-            DisplayResolution { logical: DisplaySize { width: 233, height: 233 }, physical: DisplaySize { width: PHYS_W, height: PHYS_H }, scale: 2 },
-            DisplayResolution { logical: DisplaySize { width: 116, height: 116 }, physical: DisplaySize { width: PHYS_W, height: PHYS_H }, scale: 4 },
+            DisplayResolution {
+                logical: DisplaySize {
+                    width: 466,
+                    height: 466,
+                },
+                physical: DisplaySize {
+                    width: PHYS_W,
+                    height: PHYS_H,
+                },
+                scale: 1,
+            },
+            DisplayResolution {
+                logical: DisplaySize {
+                    width: 233,
+                    height: 233,
+                },
+                physical: DisplaySize {
+                    width: PHYS_W,
+                    height: PHYS_H,
+                },
+                scale: 2,
+            },
+            DisplayResolution {
+                logical: DisplaySize {
+                    width: 116,
+                    height: 116,
+                },
+                physical: DisplaySize {
+                    width: PHYS_W,
+                    height: PHYS_H,
+                },
+                scale: 4,
+            },
         ];
         DisplayCapabilities {
             supported_formats: &[PixelFormat::Rgb565],
@@ -600,8 +706,22 @@ where
             s if s < 4 => 2,
             _ => 4,
         };
-        let physical = DisplaySize { width: self.width as u32, height: self.height as u32 };
-        let logical = if scale == 1 { physical } else { DisplaySize { width: physical.width / scale, height: physical.height / scale } };
-        self.active_resolution = DisplayResolution { logical, physical, scale };
+        let physical = DisplaySize {
+            width: self.width as u32,
+            height: self.height as u32,
+        };
+        let logical = if scale == 1 {
+            physical
+        } else {
+            DisplaySize {
+                width: physical.width / scale,
+                height: physical.height / scale,
+            }
+        };
+        self.active_resolution = DisplayResolution {
+            logical,
+            physical,
+            scale,
+        };
     }
 }

@@ -1,8 +1,8 @@
 // file: src/shapes/arc.rs
 
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{Fill, Rasterizer};
 use crate::libs::gfx::shapes::circle::draw_circle_or_arc;
+use crate::libs::gfx::{Fill, Rasterizer};
 
 pub struct Arc {
     cx: i32,
@@ -17,13 +17,7 @@ pub struct Arc {
 }
 
 impl Arc {
-    pub fn new(
-        cx: i32,
-        cy: i32,
-        radius: i32,
-        start_deg: i32,
-        end_deg: i32,
-    ) -> Self {
+    pub fn new(cx: i32, cy: i32, radius: i32, start_deg: i32, end_deg: i32) -> Self {
         Self {
             cx,
             cy,
@@ -71,6 +65,16 @@ impl Arc {
 
 impl super::Shape for Arc {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
-        draw_circle_or_arc(rasterizer, self.cx, self.cy, self.radius, self.stroke_width, self.stroke_color, self.stroke_alpha, self.fill, Some((self.start_deg, self.end_deg)));
+        draw_circle_or_arc(
+            rasterizer,
+            self.cx,
+            self.cy,
+            self.radius,
+            self.stroke_width,
+            self.stroke_color,
+            self.stroke_alpha,
+            self.fill,
+            Some((self.start_deg, self.end_deg)),
+        );
     }
 }

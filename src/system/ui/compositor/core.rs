@@ -10,16 +10,16 @@ use alloc::vec::Vec as AllocVec;
 use defmt::{debug, warn};
 use embassy_time::{Duration, Instant, Timer};
 
+use super::animation::{AnimationConfig, SlideZoomAnimation, TransitionDirection, WindowAnimation};
+use super::blitter::SurfaceBlitter;
+use super::region::extract_region_buffer;
+use super::strategy::UpdateStrategy;
 use crate::libs::gfx::color::Rgba8888;
 use crate::system::ui::display::Display;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::window_manager::WindowManager;
 use crate::util::math::primitives::Rect;
-use super::animation::{AnimationConfig, SlideZoomAnimation, TransitionDirection, WindowAnimation};
-use super::blitter::SurfaceBlitter;
-use super::strategy::UpdateStrategy;
-use super::region::extract_region_buffer;
 
 const MAX_WINDOWS: usize = 8;
 const MAX_REDRAW_REQUESTS: usize = 4;
@@ -60,10 +60,15 @@ impl UICompositor {
     }
 
     /// Update animation parameters.
-    pub fn set_animation_config(&mut self, config: AnimationConfig) { self.animation_config = config; }
+    pub fn set_animation_config(&mut self, config: AnimationConfig) {
+        self.animation_config = config;
+    }
 
     pub async fn register_window(&mut self, wm: &mut WindowManager, handle: WindowHandle) {
-        if self.windows_order.len() >= MAX_WINDOWS { warn!("Compositor window order full"); return; }
+        if self.windows_order.len() >= MAX_WINDOWS {
+            warn!("Compositor window order full");
+            return;
+        }
         self.windows_order.push(handle).ok();
         if self.windows_order.len() == 1 {
             self.current_index = 0;
@@ -73,7 +78,9 @@ impl UICompositor {
 
     fn current_prev_next(&self) -> Option<(WindowHandle, WindowHandle, WindowHandle)> {
         let n = self.windows_order.len();
-        if n == 0 { return None; }
+        if n == 0 {
+            return None;
+        }
         let cur = self.windows_order[self.current_index];
         let prev = self.windows_order[(self.current_index + n - 1) % n];
         let next = self.windows_order[(self.current_index + 1) % n];
@@ -95,7 +102,9 @@ impl UICompositor {
 
     /// Process pending redraws; compose and present with an optimized strategy.
     pub async fn process_redraws(&mut self, wm: &mut WindowManager) {
-        if self.pending_redraws.is_empty() { return; }
+        if self.pending_redraws.is_empty() {
+            return;
+        }
         let render_start = Instant::now();
 
         if self.display_service.is_some() {
@@ -112,13 +121,17 @@ impl UICompositor {
 
             // Compute before any mutable borrows
             let frame_area = width * height;
-            let (has_dirty, dirty_regions) = if let Some((cur, _prev, _next)) = self.current_prev_next() {
-                let regs = self.collect_dirty_regions(wm, cur);
-                (!regs.is_empty(), regs)
-            } else { (false, heapless::Vec::new()) };
+            let (has_dirty, dirty_regions) =
+                if let Some((cur, _prev, _next)) = self.current_prev_next() {
+                    let regs = self.collect_dirty_regions(wm, cur);
+                    (!regs.is_empty(), regs)
+                } else {
+                    (false, heapless::Vec::new())
+                };
 
             if has_dirty {
-                self.compose_frame_optimized(wm, &mut composite_surface).await;
+                self.compose_frame_optimized(wm, &mut composite_surface)
+                    .await;
 
                 {
                     // Re-borrow display immutably only for drawing
@@ -130,35 +143,69 @@ impl UICompositor {
                         UpdateStrategy::Partial(regions) => {
                             for region in regions.iter() {
                                 let region_buffer = extract_region_buffer(
-                                    composite_surface.buffer(), region, width, height, composite_surface.bytes_per_pixel());
+                                    composite_surface.buffer(),
+                                    region,
+                                    width,
+                                    height,
+                                    composite_surface.bytes_per_pixel(),
+                                );
                                 service.draw_region(&region_buffer, *region).await;
                             }
                         }
                     }
                 }
-                if let Some((cur, _p, _n)) = self.current_prev_next() { self.clear_window_dirty_regions(wm, cur); }
+                if let Some((cur, _p, _n)) = self.current_prev_next() {
+                    self.clear_window_dirty_regions(wm, cur);
+                }
             }
         }
 
         self.pending_redraws.clear();
-        debug!("Frame rendered in {} μs", render_start.elapsed().as_micros());
+        debug!(
+            "Frame rendered in {} μs",
+            render_start.elapsed().as_micros()
+        );
     }
 
-    pub fn focused_window_handle(&self) -> Option<WindowHandle> { self.current_prev_next().map(|(c,_,_)| c) }
-    pub fn is_window_focused(&self, handle: WindowHandle) -> bool { self.focused_window_handle().map(|h| h == handle).unwrap_or(false) }
+    pub fn focused_window_handle(&self) -> Option<WindowHandle> {
+        self.current_prev_next().map(|(c, _, _)| c)
+    }
+    pub fn is_window_focused(&self, handle: WindowHandle) -> bool {
+        self.focused_window_handle()
+            .map(|h| h == handle)
+            .unwrap_or(false)
+    }
 
     /// Returns display width/height if a display is attached.
     pub fn display_dimensions(&self) -> Option<(u32, u32)> {
-        self.display_service.as_ref().map(|d| (d.width(), d.height()))
+        self.display_service
+            .as_ref()
+            .map(|d| (d.width(), d.height()))
     }
 
-    pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) { self.animate_window_transition(wm, TransitionDirection::Next).await; }
-    pub async fn animate_to_previous_window(&mut self, wm: &mut WindowManager) { self.animate_window_transition(wm, TransitionDirection::Previous).await; }
+    pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) {
+        self.animate_window_transition(wm, TransitionDirection::Next)
+            .await;
+    }
+    pub async fn animate_to_previous_window(&mut self, wm: &mut WindowManager) {
+        self.animate_window_transition(wm, TransitionDirection::Previous)
+            .await;
+    }
 
-    async fn animate_window_transition(&mut self, wm: &mut WindowManager, direction: TransitionDirection) {
-        let n = self.windows_order.len(); if n < 2 { return; }
+    async fn animate_window_transition(
+        &mut self,
+        wm: &mut WindowManager,
+        direction: TransitionDirection,
+    ) {
+        let n = self.windows_order.len();
+        if n < 2 {
+            return;
+        }
         let animation = SlideZoomAnimation::default();
-        let dst_idx = match direction { TransitionDirection::Previous => (self.current_index + n - 1) % n, TransitionDirection::Next => (self.current_index + 1) % n };
+        let dst_idx = match direction {
+            TransitionDirection::Previous => (self.current_index + n - 1) % n,
+            TransitionDirection::Next => (self.current_index + 1) % n,
+        };
         self.current_index = dst_idx;
         self.apply_active_triplet(wm).await;
         self.execute_animation(wm, &animation, direction).await;
@@ -179,14 +226,17 @@ impl UICompositor {
             surface.attach_buffer(&mut composition_buffer);
 
             let (cur, prev, next) = self.current_prev_next().unwrap();
-            let (source_h, target_h) = match direction { TransitionDirection::Previous => (next, cur), TransitionDirection::Next => (prev, cur) };
+            let (source_h, target_h) = match direction {
+                TransitionDirection::Previous => (next, cur),
+                TransitionDirection::Next => (prev, cur),
+            };
 
             for step in 0..=self.animation_config.steps {
                 let progress = step as f32 / self.animation_config.steps as f32;
                 let eased_progress = (self.animation_config.easing_fn)(progress);
                 let frame = animation.animate_frame(eased_progress, direction, width);
 
-                surface.clear(Rgba8888::rgba(0,0,0,255));
+                surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let _ = wm.with_surface(source_h, |src| {
                     SurfaceBlitter::copy_full(&mut surface, src, frame.source_x, frame.source_y);
                 });
@@ -200,19 +250,35 @@ impl UICompositor {
         }
     }
 
-    fn collect_dirty_regions(&mut self, wm: &mut WindowManager, handle: WindowHandle) -> heapless::Vec<Rect, 8> {
+    fn collect_dirty_regions(
+        &mut self,
+        wm: &mut WindowManager,
+        handle: WindowHandle,
+    ) -> heapless::Vec<Rect, 8> {
         let mut out = heapless::Vec::new();
-        let _ = wm.with_surface(handle, |surface| { for r in surface.dirty_regions() { let _ = out.push(*r); } });
+        let _ = wm.with_surface(handle, |surface| {
+            for r in surface.dirty_regions() {
+                let _ = out.push(*r);
+            }
+        });
         out
     }
 
     fn clear_window_dirty_regions(&mut self, wm: &mut WindowManager, handle: WindowHandle) {
-        let _ = wm.with_surface(handle, |surface| { surface.flush(); });
+        let _ = wm.with_surface(handle, |surface| {
+            surface.flush();
+        });
     }
 
-    async fn compose_frame_optimized<'a>(&mut self, wm: &mut WindowManager, output_surface: &mut DrawingSurface<'a>) {
-        output_surface.clear(Rgba8888::rgba(0,0,0,255));
-        if self.windows_order.is_empty() { return; }
+    async fn compose_frame_optimized<'a>(
+        &mut self,
+        wm: &mut WindowManager,
+        output_surface: &mut DrawingSurface<'a>,
+    ) {
+        output_surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+        if self.windows_order.is_empty() {
+            return;
+        }
         if let Some((cur, _prev, _next)) = self.current_prev_next() {
             let regions = self.collect_dirty_regions(wm, cur);
             if !regions.is_empty() {
@@ -225,4 +291,3 @@ impl UICompositor {
         }
     }
 }
-

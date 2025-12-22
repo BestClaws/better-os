@@ -40,8 +40,12 @@ impl Line {
 
 impl super::Shape for Line {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
-        if self.alpha == 0 { return; }
-        if self.width <= 0 { return; }
+        if self.alpha == 0 {
+            return;
+        }
+        if self.width <= 0 {
+            return;
+        }
 
         // Combine intrinsic color alpha with stroke alpha multiplier
         let cu = self.color.to_u32();
@@ -50,7 +54,9 @@ impl super::Shape for Line {
         let b = ((cu >> 8) & 0xFF) as u8;
         let a = (cu & 0xFF) as u8;
         let eff_a = ((a as u32 * self.alpha as u32) / 255) as u8;
-        if eff_a == 0 { return; }
+        if eff_a == 0 {
+            return;
+        }
         let stroke_rgba = Rgba8888::rgba(r, g, b, eff_a);
 
         let x1 = self.x1;
@@ -117,9 +123,13 @@ impl super::Shape for Line {
         if adx != 0 && ady != 0 {
             // Helpers
             #[inline(always)]
-            fn rfpart(x: f32) -> f32 { 1.0 - (x - floorf(x)) }
+            fn rfpart(x: f32) -> f32 {
+                1.0 - (x - floorf(x))
+            }
             #[inline(always)]
-            fn fpart(x: f32) -> f32 { x - floorf(x) }
+            fn fpart(x: f32) -> f32 {
+                x - floorf(x)
+            }
 
             let mut x0 = x1 as f32;
             let mut y0 = y1 as f32;
@@ -176,10 +186,20 @@ impl super::Shape for Line {
                     let c_bot = (fpart(intery) * 255.0) as i32;
                     if steep {
                         rasterizer.blend_pixel(ipart_y, x, stroke_rgba, c_top.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(ipart_y + 1, x, stroke_rgba, c_bot.clamp(0, 255) as u8);
+                        rasterizer.blend_pixel(
+                            ipart_y + 1,
+                            x,
+                            stroke_rgba,
+                            c_bot.clamp(0, 255) as u8,
+                        );
                     } else {
                         rasterizer.blend_pixel(x, ipart_y, stroke_rgba, c_top.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(x, ipart_y + 1, stroke_rgba, c_bot.clamp(0, 255) as u8);
+                        rasterizer.blend_pixel(
+                            x,
+                            ipart_y + 1,
+                            stroke_rgba,
+                            c_bot.clamp(0, 255) as u8,
+                        );
                     }
                     intery += gradient;
                 }
@@ -218,26 +238,76 @@ impl super::Shape for Line {
                 let cov_bot0 = (rfpart(y_bot) * 255.0) as i32;
                 let cov_bot1 = (fpart(y_bot) * 255.0) as i32;
                 if steep {
-                    rasterizer.blend_pixel(y_top_i, xpxl1, stroke_rgba, cov_top0.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(y_top_i + 1, xpxl1, stroke_rgba, cov_top1.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(y_bot_i, xpxl1, stroke_rgba, cov_bot0.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(y_bot_i + 1, xpxl1, stroke_rgba, cov_bot1.clamp(0, 255) as u8);
+                    rasterizer.blend_pixel(
+                        y_top_i,
+                        xpxl1,
+                        stroke_rgba,
+                        cov_top0.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        y_top_i + 1,
+                        xpxl1,
+                        stroke_rgba,
+                        cov_top1.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        y_bot_i,
+                        xpxl1,
+                        stroke_rgba,
+                        cov_bot0.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        y_bot_i + 1,
+                        xpxl1,
+                        stroke_rgba,
+                        cov_bot1.clamp(0, 255) as u8,
+                    );
                     // Core between edges (steep: device y = xpxl1, span along device x)
                     let x_core_start = y_top_i + 1;
                     let x_core_end = y_bot_i;
                     if x_core_end >= x_core_start {
-                        rasterizer.blend_hspan_with(x_core_start, xpxl1, x_core_end - x_core_start + 1, |_: usize| (stroke_rgba, 255));
+                        rasterizer.blend_hspan_with(
+                            x_core_start,
+                            xpxl1,
+                            x_core_end - x_core_start + 1,
+                            |_: usize| (stroke_rgba, 255),
+                        );
                     }
                 } else {
-                    rasterizer.blend_pixel(xpxl1, y_top_i, stroke_rgba, cov_top0.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(xpxl1, y_top_i + 1, stroke_rgba, cov_top1.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(xpxl1, y_bot_i, stroke_rgba, cov_bot0.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(xpxl1, y_bot_i + 1, stroke_rgba, cov_bot1.clamp(0, 255) as u8);
+                    rasterizer.blend_pixel(
+                        xpxl1,
+                        y_top_i,
+                        stroke_rgba,
+                        cov_top0.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        xpxl1,
+                        y_top_i + 1,
+                        stroke_rgba,
+                        cov_top1.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        xpxl1,
+                        y_bot_i,
+                        stroke_rgba,
+                        cov_bot0.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        xpxl1,
+                        y_bot_i + 1,
+                        stroke_rgba,
+                        cov_bot1.clamp(0, 255) as u8,
+                    );
                     // Core between edges
                     let y_core_start = y_top_i + 1;
                     let y_core_end = y_bot_i;
                     if y_core_end >= y_core_start {
-                        rasterizer.blend_vspan_with(xpxl1, y_core_start, y_core_end - y_core_start + 1, |_: usize| (stroke_rgba, 255));
+                        rasterizer.blend_vspan_with(
+                            xpxl1,
+                            y_core_start,
+                            y_core_end - y_core_start + 1,
+                            |_: usize| (stroke_rgba, 255),
+                        );
                     }
                 }
 
@@ -256,26 +326,76 @@ impl super::Shape for Line {
                     let cov_bot1 = (fpart(y_bot) * 255.0) as i32;
 
                     if steep {
-                        rasterizer.blend_pixel(y_top_i, x, stroke_rgba, cov_top0.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(y_top_i + 1, x, stroke_rgba, cov_top1.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(y_bot_i, x, stroke_rgba, cov_bot0.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(y_bot_i + 1, x, stroke_rgba, cov_bot1.clamp(0, 255) as u8);
+                        rasterizer.blend_pixel(
+                            y_top_i,
+                            x,
+                            stroke_rgba,
+                            cov_top0.clamp(0, 255) as u8,
+                        );
+                        rasterizer.blend_pixel(
+                            y_top_i + 1,
+                            x,
+                            stroke_rgba,
+                            cov_top1.clamp(0, 255) as u8,
+                        );
+                        rasterizer.blend_pixel(
+                            y_bot_i,
+                            x,
+                            stroke_rgba,
+                            cov_bot0.clamp(0, 255) as u8,
+                        );
+                        rasterizer.blend_pixel(
+                            y_bot_i + 1,
+                            x,
+                            stroke_rgba,
+                            cov_bot1.clamp(0, 255) as u8,
+                        );
 
                         let x_core_start = y_top_i + 1;
                         let x_core_end = y_bot_i;
                         if x_core_end >= x_core_start {
-                            rasterizer.blend_hspan_with(x_core_start, x, x_core_end - x_core_start + 1, |_: usize| (stroke_rgba, 255));
+                            rasterizer.blend_hspan_with(
+                                x_core_start,
+                                x,
+                                x_core_end - x_core_start + 1,
+                                |_: usize| (stroke_rgba, 255),
+                            );
                         }
                     } else {
-                        rasterizer.blend_pixel(x, y_top_i, stroke_rgba, cov_top0.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(x, y_top_i + 1, stroke_rgba, cov_top1.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(x, y_bot_i, stroke_rgba, cov_bot0.clamp(0, 255) as u8);
-                        rasterizer.blend_pixel(x, y_bot_i + 1, stroke_rgba, cov_bot1.clamp(0, 255) as u8);
+                        rasterizer.blend_pixel(
+                            x,
+                            y_top_i,
+                            stroke_rgba,
+                            cov_top0.clamp(0, 255) as u8,
+                        );
+                        rasterizer.blend_pixel(
+                            x,
+                            y_top_i + 1,
+                            stroke_rgba,
+                            cov_top1.clamp(0, 255) as u8,
+                        );
+                        rasterizer.blend_pixel(
+                            x,
+                            y_bot_i,
+                            stroke_rgba,
+                            cov_bot0.clamp(0, 255) as u8,
+                        );
+                        rasterizer.blend_pixel(
+                            x,
+                            y_bot_i + 1,
+                            stroke_rgba,
+                            cov_bot1.clamp(0, 255) as u8,
+                        );
 
                         let y_core_start = y_top_i + 1;
                         let y_core_end = y_bot_i;
                         if y_core_end >= y_core_start {
-                            rasterizer.blend_vspan_with(x, y_core_start, y_core_end - y_core_start + 1, |_: usize| (stroke_rgba, 255));
+                            rasterizer.blend_vspan_with(
+                                x,
+                                y_core_start,
+                                y_core_end - y_core_start + 1,
+                                |_: usize| (stroke_rgba, 255),
+                            );
                         }
                     }
 
@@ -292,24 +412,74 @@ impl super::Shape for Line {
                 let cov_bot20 = (rfpart(y_bot2) * 255.0) as i32;
                 let cov_bot21 = (fpart(y_bot2) * 255.0) as i32;
                 if steep {
-                    rasterizer.blend_pixel(y_top2_i, xpxl2, stroke_rgba, cov_top20.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(y_top2_i + 1, xpxl2, stroke_rgba, cov_top21.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(y_bot2_i, xpxl2, stroke_rgba, cov_bot20.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(y_bot2_i + 1, xpxl2, stroke_rgba, cov_bot21.clamp(0, 255) as u8);
+                    rasterizer.blend_pixel(
+                        y_top2_i,
+                        xpxl2,
+                        stroke_rgba,
+                        cov_top20.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        y_top2_i + 1,
+                        xpxl2,
+                        stroke_rgba,
+                        cov_top21.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        y_bot2_i,
+                        xpxl2,
+                        stroke_rgba,
+                        cov_bot20.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        y_bot2_i + 1,
+                        xpxl2,
+                        stroke_rgba,
+                        cov_bot21.clamp(0, 255) as u8,
+                    );
                     let x_core_start = y_top2_i + 1;
                     let x_core_end = y_bot2_i;
                     if x_core_end >= x_core_start {
-                        rasterizer.blend_hspan_with(x_core_start, xpxl2, x_core_end - x_core_start + 1, |_: usize| (stroke_rgba, 255));
+                        rasterizer.blend_hspan_with(
+                            x_core_start,
+                            xpxl2,
+                            x_core_end - x_core_start + 1,
+                            |_: usize| (stroke_rgba, 255),
+                        );
                     }
                 } else {
-                    rasterizer.blend_pixel(xpxl2, y_top2_i, stroke_rgba, cov_top20.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(xpxl2, y_top2_i + 1, stroke_rgba, cov_top21.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(xpxl2, y_bot2_i, stroke_rgba, cov_bot20.clamp(0, 255) as u8);
-                    rasterizer.blend_pixel(xpxl2, y_bot2_i + 1, stroke_rgba, cov_bot21.clamp(0, 255) as u8);
+                    rasterizer.blend_pixel(
+                        xpxl2,
+                        y_top2_i,
+                        stroke_rgba,
+                        cov_top20.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        xpxl2,
+                        y_top2_i + 1,
+                        stroke_rgba,
+                        cov_top21.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        xpxl2,
+                        y_bot2_i,
+                        stroke_rgba,
+                        cov_bot20.clamp(0, 255) as u8,
+                    );
+                    rasterizer.blend_pixel(
+                        xpxl2,
+                        y_bot2_i + 1,
+                        stroke_rgba,
+                        cov_bot21.clamp(0, 255) as u8,
+                    );
                     let y_core_start = y_top2_i + 1;
                     let y_core_end = y_bot2_i;
                     if y_core_end >= y_core_start {
-                        rasterizer.blend_vspan_with(xpxl2, y_core_start, y_core_end - y_core_start + 1, |_: usize| (stroke_rgba, 255));
+                        rasterizer.blend_vspan_with(
+                            xpxl2,
+                            y_core_start,
+                            y_core_end - y_core_start + 1,
+                            |_: usize| (stroke_rgba, 255),
+                        );
                     }
                 }
             }

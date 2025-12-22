@@ -1,6 +1,9 @@
+use crate::system::hal::imu::AsyncGyroAccelerometer;
+use crate::system::hal::radio::AsyncRadio;
+use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
+use crate::util::math::primitives::Vec3;
 use alloc::boxed::Box;
 use alloc::string::ToString;
-use trouble_host::prelude::*;
 use bt_hci::uuid::{appearance, BluetoothUuid16};
 use defmt::{info, warn, Debug2Format};
 use embassy_futures::join::join;
@@ -8,22 +11,19 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
-use trouble_host::{peripheral, Address, BleHostError, Controller, Error, Host, HostResources, PacketPool};
-use trouble_host::advertise::{AdStructure, Advertisement, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE};
+use trouble_host::advertise::{
+    AdStructure, Advertisement, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
+};
 use trouble_host::gap::{GapConfig, PeripheralConfig};
 use trouble_host::gatt::{GattConnection, GattConnectionEvent, GattEvent};
 use trouble_host::peripheral::Peripheral;
-use trouble_host::prelude::{gatt_server, gatt_service, AttributeHandle, DefaultPacketPool, Runner};
-use crate::system::hal::imu::AsyncGyroAccelerometer;
-use crate::system::hal::radio::AsyncRadio;
-use crate::system::services::gyro_accel_srv::ORIENTATION_CHANNEL;
-use crate::util::math::primitives::Vec3;
-
-
-
-
-
-
+use trouble_host::prelude::*;
+use trouble_host::prelude::{
+    gatt_server, gatt_service, AttributeHandle, DefaultPacketPool, Runner,
+};
+use trouble_host::{
+    peripheral, Address, BleHostError, Controller, Error, Host, HostResources, PacketPool,
+};
 
 use embassy_futures::select::select;
 use trouble_host::prelude::*;
@@ -51,9 +51,6 @@ struct BatteryService {
     #[characteristic(uuid = "408813df-5dd4-1f87-ec11-cdb001100000", write, read, notify)]
     status: bool,
 }
-
-
-
 
 /// This is a background task that is required to run forever alongside any other BLE tasks.
 ///
@@ -83,7 +80,10 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
 ///
 /// This function will handle the GATT events and process them.
 /// This is how we interact with read and write requests.
-async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnection<'_, '_, P>) -> Result<(), Error> {
+async fn gatt_events_task<P: PacketPool>(
+    server: &Server<'_>,
+    conn: &GattConnection<'_, '_, P>,
+) -> Result<(), Error> {
     let level = server.battery_service.level;
     let reason = loop {
         match conn.next().await {
@@ -93,12 +93,18 @@ async fn gatt_events_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnect
                     GattEvent::Read(event) => {
                         if event.handle() == level.handle {
                             let value = server.get(&level);
-                            info!("[gatt] Read Event to Level Characteristic: {:?}", Debug2Format(&value));
+                            info!(
+                                "[gatt] Read Event to Level Characteristic: {:?}",
+                                Debug2Format(&value)
+                            );
                         }
                     }
                     GattEvent::Write(event) => {
                         if event.handle() == level.handle {
-                            info!("[gatt] Write Event to Level Characteristic: {:?}", event.data());
+                            info!(
+                                "[gatt] Write Event to Level Characteristic: {:?}",
+                                event.data()
+                            );
                         }
                     }
                     _ => {}
@@ -176,38 +182,24 @@ async fn custom_task<C: Controller, P: PacketPool>(
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 #[embassy_executor::task]
 pub(crate) async fn radio_service(
     radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>,
 ) {
-
     let mut radio_g = radio.lock().await;
     let stack = radio_g.get_stack().await;
-    let Host { mut peripheral, mut runner, ..} = stack.build();
-
-
-
-
+    let Host {
+        mut peripheral,
+        mut runner,
+        ..
+    } = stack.build();
 
     info!("Starting advertising and GATT service");
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
         name: "TrouBLE",
         appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
     }))
-        .unwrap();
+    .unwrap();
 
     let _ = join(ble_task(runner), async {
         loop {
@@ -228,12 +220,5 @@ pub(crate) async fn radio_service(
             }
         }
     })
-        .await;
-
-
+    .await;
 }
-
-
-
-
-

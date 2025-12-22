@@ -1,9 +1,9 @@
-pub(crate) mod encoder;
-pub(crate) mod display;
-pub(crate) mod button;
-pub(crate) mod battery;
 pub(crate) mod ambience;
+pub(crate) mod battery;
+pub(crate) mod button;
+pub(crate) mod display;
+pub(crate) mod encoder;
 pub(crate) mod imu;
 pub(crate) mod radio;
-pub(crate) mod vibrator;
 pub(crate) mod touch;
+pub(crate) mod vibrator;

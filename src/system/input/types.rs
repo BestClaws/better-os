@@ -53,5 +53,3 @@ pub enum HighLevelEvent {
     Key(KeyEvent),
     Motion(MotionEvent),
 }
-
-

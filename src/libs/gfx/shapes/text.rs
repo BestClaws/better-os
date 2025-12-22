@@ -2,7 +2,7 @@
 // Fixed version - keeps original structure as much as possible, fixes lifetime issue
 
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::font::{FONT_6X8, FONT_WIDTH, FONT_HEIGHT};
+use crate::libs::gfx::font::{FONT_6X8, FONT_HEIGHT, FONT_WIDTH};
 use crate::libs::gfx::Rasterizer;
 
 /// Text shape that supports temporary strings by being lifetime-generic
@@ -45,7 +45,9 @@ impl<'a> super::Shape for Text<'a> {
         let b = ((c >> 8) & 0xFF) as u8;
         let a = (c & 0xFF) as u8;
         let eff_a = ((a as u32 * self.alpha as u32) / 255) as u8;
-        if eff_a == 0 { return; }
+        if eff_a == 0 {
+            return;
+        }
         let fg_rgba = Rgba8888::rgba(r, g, b, eff_a);
 
         let width = rasterizer.width() as i32;

@@ -1,22 +1,25 @@
 //! Simplified Analog Watch Application using new gfx API
 
-use alloc::format;
-use crate::system::app::app_context::AppContext;
-use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::shapes::{Shape, Line, Text};
+use crate::libs::gfx::shapes::{Line, Shape, Text};
 use crate::libs::gfx::{Circle, RoundedRect};
+use crate::system::app::app_context::AppContext;
+use crate::system::ui::drawing_surface::DrawingSurface;
+use alloc::format;
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
-use libm::{cosf, sinf, roundf};
+use libm::{cosf, roundf, sinf};
 
 #[embassy_executor::task]
 pub async fn watch_app(ctx: AppContext) {
     info!("Starting watch app");
     let start = Instant::now();
     loop {
-        if !ctx.is_focused().await { Timer::after(Duration::from_millis(100)).await; continue; }
+        if !ctx.is_focused().await {
+            Timer::after(Duration::from_millis(100)).await;
+            continue;
+        }
         let draw_start = Instant::now();
         ctx.draw(|surface: &mut DrawingSurface| {
             let width = surface.width() as i32;
@@ -30,7 +33,10 @@ pub async fn watch_app(ctx: AppContext) {
             // Bezel
             Circle::new(cx, cy, bezel_r)
                 .stroke(1, Rgba8888::rgba(200, 200, 200, 255))
-                .fill_radial(Rgba8888::rgba(12, 13, 18, 150), Rgba8888::rgba(108, 19, 24, 150))
+                .fill_radial(
+                    Rgba8888::rgba(12, 13, 18, 150),
+                    Rgba8888::rgba(108, 19, 24, 150),
+                )
                 .draw(surface);
 
             // Time since app start (monotonic). Drives the clock hands.
@@ -40,8 +46,8 @@ pub async fn watch_app(ctx: AppContext) {
 
             // Fractions for analog hands
             let s = secs_f % 60.0;
-            let m = (secs_f / 60.0) % 60.0;      // includes seconds fraction
-            let h = (secs_f / 3600.0) % 12.0;    // includes minutes fraction
+            let m = (secs_f / 60.0) % 60.0; // includes seconds fraction
+            let h = (secs_f / 3600.0) % 12.0; // includes minutes fraction
 
             let tau = core::f32::consts::PI * 2.0;
             let up_offset = -core::f32::consts::FRAC_PI_2; // 12 o'clock at top
@@ -76,21 +82,23 @@ pub async fn watch_app(ctx: AppContext) {
 
             // Center cap
             Circle::new(cx, cy, 2)
-                .fill_solid( Rgba8888::rgba(255, 255, 255, 255))
+                .fill_solid(Rgba8888::rgba(255, 255, 255, 255))
                 .draw(surface);
 
-
-            RoundedRect::new(cx - 25, cy + 10, 52, 16, 5,5,5,5)
-                .fill_linear_h(Rgba8888::rgba(255, 255, 255, 155), Rgba8888::rgba(255, 255, 0, 155))
+            RoundedRect::new(cx - 25, cy + 10, 52, 16, 5, 5, 5, 5)
+                .fill_linear_h(
+                    Rgba8888::rgba(255, 255, 255, 155),
+                    Rgba8888::rgba(255, 255, 0, 155),
+                )
                 .stroke(1, Rgba8888::rgba(255, 255, 255, 255))
                 .draw(surface);
-
 
             let time_str = format!("01:39");
             Text::new(cx - 20 as i32, cy + 15 as i32, &time_str)
                 .color(Rgba8888::rgba(0, 0, 0, 255))
                 .draw(surface);
-        }).await;
+        })
+        .await;
         let t = draw_start.elapsed();
         info!("watch frame: {}us", t.as_micros());
         Timer::after(Duration::from_millis(1)).await;

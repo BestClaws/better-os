@@ -1,10 +1,9 @@
-
 use crate::system::input::types::HighLevelEvent;
-use crate::system::ui::drawing_surface::DrawingSurface;
+use crate::system::input::types::{MotionEvent, TouchAction};
 use crate::system::ui::compositor::UICompositor;
+use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::window::WindowHandle;
 use crate::system::ui::window_manager::WindowManager;
-use crate::system::input::types::{MotionEvent, TouchAction};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 // migrated away from two_d Canvas2D; apps use gfx::Rasterizer directly
@@ -53,6 +52,4 @@ impl AppContext {
         let mut wm = self.window_manager.lock().await;
         let _ = wm.with_surface(self.handle, f);
     }
-
-   
 }

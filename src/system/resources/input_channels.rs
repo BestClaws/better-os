@@ -1,13 +1,13 @@
+use crate::system::input::types::HighLevelEvent;
 use core::sync::atomic::{AtomicU8, Ordering};
 use defmt::info;
+use embassy_sync::semaphore::Semaphore;
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::{Channel, Sender, Receiver},
+    channel::{Channel, Receiver, Sender},
     semaphore::GreedySemaphore,
 };
-use embassy_sync::semaphore::Semaphore;
 use embassy_time::Timer;
-use crate::system::input::types::HighLevelEvent;
 
 pub const MAX_CHANNELS: usize = 8;
 pub const CHANNEL_CAPACITY: usize = 16;
@@ -34,15 +34,13 @@ pub struct InputChannelPool {
 
 impl InputChannelPool {
     pub const fn new() -> Self {
- 
         Self {
             // initialized: AtomicU8::new(0),
             status: AtomicU8::new(0),
             permits: GreedySemaphore::new(MAX_CHANNELS),
-            channels: [const { Channel::new()}; MAX_CHANNELS],
+            channels: [const { Channel::new() }; MAX_CHANNELS],
         }
     }
-    
 
     pub fn try_allocate(&self) -> Option<InputChannelHandle> {
         for id in 0..MAX_CHANNELS {
@@ -67,13 +65,17 @@ impl InputChannelPool {
         self.permits.release(1);
     }
 
-    pub fn sender(&self, handle: &InputChannelHandle) ->  Sender<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY> {
+    pub fn sender(
+        &self,
+        handle: &InputChannelHandle,
+    ) -> Sender<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY> {
         self.channels[handle.id].sender()
     }
 
-    pub fn receiver(&self, handle: &InputChannelHandle) -> Receiver<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY> {
+    pub fn receiver(
+        &self,
+        handle: &InputChannelHandle,
+    ) -> Receiver<CriticalSectionRawMutex, HighLevelEvent, CHANNEL_CAPACITY> {
         self.channels[handle.id].receiver()
     }
 }
-
-

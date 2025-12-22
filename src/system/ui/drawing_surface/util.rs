@@ -41,5 +41,3 @@ pub fn intersects_or_touches(a: &Rect, b: &Rect) -> bool {
 
     !(ax1 <= bx0t || ax0 >= bx1t || ay1 <= by0t || ay0 >= by1t)
 }
-
-

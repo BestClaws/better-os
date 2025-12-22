@@ -1,15 +1,15 @@
 use crate::system::app::app_context::AppContext;
+use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 
+use crate::apps::gfx_bench::gfx_bench_app;
+use crate::apps::rect::rect_app;
+use crate::apps::watch_app::watch_app;
+use defmt::{debug, error, info, warn, Format};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use defmt::{debug, error, info, warn, Format};
-use crate::apps::watch_app::watch_app;
-use crate::apps::gfx_bench::gfx_bench_app;
-use crate::apps::rect::rect_app;
 
 /// Application registry for system apps
 ///
@@ -63,7 +63,10 @@ pub async fn app_spawner_service(
 
     // Spawn each registered system application
     for app_descriptor in SYSTEM_APPS {
-        debug!("Spawning app: {} (id={})", app_descriptor.name, app_descriptor.id);
+        debug!(
+            "Spawning app: {} (id={})",
+            app_descriptor.name, app_descriptor.id
+        );
 
         match spawn_application(&spawner, compositor, window_manager, app_descriptor).await {
             Ok(_) => {
@@ -76,8 +79,10 @@ pub async fn app_spawner_service(
         }
     }
 
-    info!("Application spawning complete: {}/{} apps started",
-          successful_apps, total_apps);
+    info!(
+        "Application spawning complete: {}/{} apps started",
+        successful_apps, total_apps
+    );
 
     if successful_apps == 0 {
         error!("CRITICAL: No applications successfully started!");
@@ -98,12 +103,12 @@ async fn spawn_application(
         compositor,
         window_manager,
         app_descriptor.id,
-        app_descriptor.name
-    ).await?;
+        app_descriptor.name,
+    )
+    .await?;
 
     // Spawn the application task
-    (app_descriptor.spawn_fn)(*spawner, app_context)
-        .map_err(AppSpawnError::TaskSpawnFailed)?;
+    (app_descriptor.spawn_fn)(*spawner, app_context).map_err(AppSpawnError::TaskSpawnFailed)?;
 
     Ok(())
 }
@@ -136,7 +141,9 @@ pub async fn create_application_context(
     // Register window into compositor order
     let mut comp_lock = compositor.lock().await;
     let mut wm_for_register = window_manager.lock().await;
-    comp_lock.register_window(&mut wm_for_register, window_handle).await;
+    comp_lock
+        .register_window(&mut wm_for_register, window_handle)
+        .await;
     // Kick the compositor to render the first frame for this window soon
     comp_lock.request_redraw(window_handle);
 
@@ -158,31 +165,38 @@ pub enum AppSpawnError {
 // Application spawn functions
 // These wrapper functions provide type safety and error handling
 
-
 // fn spawn_gfx_perf_bench_adaptive_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
 //     spawner.spawn(gfx_perf_bench_adaptive_app(context))
 // }
 
-fn spawn_watch_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+fn spawn_watch_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(watch_app(context))
 }
 
-fn spawn_gfx_bench_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+fn spawn_gfx_bench_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(gfx_bench_app(context))
 }
 
-fn spawn_rect_app(spawner: Spawner, context: AppContext) -> Result<(), embassy_executor::SpawnError> {
+fn spawn_rect_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(rect_app(context))
 }
-
 
 /// Utility functions for application management
 impl AppDescriptor {
     /// Get application info as formatted string
     pub fn info(&self) -> heapless::String<64> {
         let mut info = heapless::String::new();
-        use heapless::String;
         use core::fmt::Write;
+        use heapless::String;
 
         write!(&mut info, "{} (id={})", self.name, self.id).ok();
         info
@@ -229,15 +243,11 @@ impl DynamicAppSpawner {
         let app_id = self.next_app_id;
         self.next_app_id += 1;
 
-        let context = create_application_context(
-            self.compositor,
-            self.window_manager,
-            app_id,
-            app_name,
-        ).await?;
+        let context =
+            create_application_context(self.compositor, self.window_manager, app_id, app_name)
+                .await?;
 
-        spawn_fn(*spawner, context)
-            .map_err(|e| AppSpawnError::TaskSpawnFailed(e.into()))?;
+        spawn_fn(*spawner, context).map_err(|e| AppSpawnError::TaskSpawnFailed(e.into()))?;
 
         info!("Dynamic app spawned: {} (id={})", app_name, app_id);
         Ok(app_id)
@@ -281,11 +291,7 @@ mod health_monitor {
         }
 
         /// Restart crashed application if restart limit not exceeded
-        pub async fn restart_app_if_needed(
-            &mut self,
-            app_id: usize,
-            max_restarts: u32,
-        ) -> bool {
+        pub async fn restart_app_if_needed(&mut self, app_id: usize, max_restarts: u32) -> bool {
             let restart_count = self.restart_count.get(&app_id).copied().unwrap_or(0);
 
             if restart_count < max_restarts {

@@ -1,10 +1,10 @@
 use alloc::vec::Vec;
 
+use super::util::{clip_rect, intersects_or_touches, union_rect};
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::{Point, Rect, Size};
-use super::util::{clip_rect, intersects_or_touches, union_rect};
 
 /// Pixel operation function pointers cached per format for hot paths.
 pub struct PixelOps {
@@ -48,7 +48,9 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 };
                 let (fg_rgb565, a_src) = rgba8888_to_rgb565_and_alpha(c.to_u32());
                 let eff = ((coverage as u32 * a_src as u32) / 255) as u8;
-                if eff == 0 { return; }
+                if eff == 0 {
+                    return;
+                }
                 let out = blend_rgb565(bg_raw, fg_rgb565, eff);
                 unsafe {
                     core::ptr::write_unaligned(buf.as_mut_ptr().add(idx) as *mut u16, out.to_be());
@@ -60,14 +62,20 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 let be = raw.to_be();
                 unsafe {
                     let len = dst.len();
-                    if len == 0 { return; }
+                    if len == 0 {
+                        return;
+                    }
                     // Write the first pixel (2 bytes)
                     core::ptr::write_unaligned(dst.as_mut_ptr() as *mut u16, be);
                     let mut filled = 2; // bytes filled
-                    // Exponentially copy the written block to fill the buffer quickly.
+                                        // Exponentially copy the written block to fill the buffer quickly.
                     while filled < len {
                         let copy_len = core::cmp::min(filled, len - filled);
-                        core::ptr::copy_nonoverlapping(dst.as_ptr(), dst.as_mut_ptr().add(filled), copy_len);
+                        core::ptr::copy_nonoverlapping(
+                            dst.as_ptr(),
+                            dst.as_mut_ptr().add(filled),
+                            copy_len,
+                        );
                         filled += copy_len;
                     }
                 }
@@ -84,7 +92,9 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
             debug_assert!(false, "Unsupported PixelFormat not implemented in PixelOps");
             fn noop_set(_: &mut [u8], _: usize, _: Rgba8888) {}
             fn noop_blend(_: &mut [u8], _: usize, _: Rgba8888, _: u8) {}
-            fn noop_get(_: &[u8], _: usize) -> Rgba8888 { Rgba8888::rgba(0, 0, 0, 255) }
+            fn noop_get(_: &[u8], _: usize) -> Rgba8888 {
+                Rgba8888::rgba(0, 0, 0, 255)
+            }
             fn noop_row(_: &mut [u8], _: Rgba8888) {}
             PixelOps {
                 bpp: 1,
@@ -310,9 +320,13 @@ impl<'a> DrawingSurface<'a> {
 
     #[inline(always)]
     pub(crate) fn get_pixel_internal(&self, x: i32, y: i32) -> Rgba8888 {
-        if x < 0 || y < 0 { return Rgba8888::rgba(0, 0, 0, 255); }
+        if x < 0 || y < 0 {
+            return Rgba8888::rgba(0, 0, 0, 255);
+        }
         let (x, y) = (x as u32, y as u32);
-        if x >= self.width || y >= self.height { return Rgba8888::rgba(0, 0, 0, 255); }
+        if x >= self.width || y >= self.height {
+            return Rgba8888::rgba(0, 0, 0, 255);
+        }
         let idx = self.pixel_byte_index(x, y);
         (self.ops.get_pixel)(self.buf(), idx)
     }

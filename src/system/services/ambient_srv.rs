@@ -1,9 +1,9 @@
+use crate::system::hal::ambience::AsyncAmbientSensor;
 use alloc::boxed::Box;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
-use crate::system::hal::ambience::AsyncAmbientSensor;
 
 pub const AMBIENT_CHANNEL_SIZE: usize = 4;
 

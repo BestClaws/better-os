@@ -1,8 +1,8 @@
+use crate::system::hal::touch::AsyncTouch;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c::{I2c, SevenBitAddress};
-use crate::system::hal::touch::AsyncTouch;
 
 // FT5336 registers and masks from Zephyr code
 const REG_TD_STATUS: u8 = 0x02;
@@ -66,7 +66,7 @@ where
     async fn update(&mut self) {
         use embassy_time::Instant;
         let start = Instant::now();
-        
+
         Timer::after(POLL_PERIOD).await;
 
         // Read number of touch points
@@ -89,15 +89,22 @@ where
         }
 
         self.pressed_old = pressed;
-        
+
         let duration = start.elapsed();
         if duration.as_millis() > 15 {
-            defmt::debug!("Touch update slow: {}ms, points={}, pressed={}", duration.as_millis(), points, pressed);
+            defmt::debug!(
+                "Touch update slow: {}ms, points={}, pressed={}",
+                duration.as_millis(),
+                points,
+                pressed
+            );
         }
     }
 
     /// Suspend the controller (hibernate mode)
-    pub async fn suspend(&mut self) -> Result<(), <I2C as embedded_hal_async::i2c::ErrorType>::Error> {
+    pub async fn suspend(
+        &mut self,
+    ) -> Result<(), <I2C as embedded_hal_async::i2c::ErrorType>::Error> {
         self.i2c.write(ADDR, &[REG_G_PMODE, PMOD_HIBERNATE]).await
     }
 }
