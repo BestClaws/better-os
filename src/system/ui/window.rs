@@ -20,7 +20,6 @@ pub struct Window {
     height: u32,
     id: usize,
     surface: Option<DrawingSurface<'static>>,
-    suspended: bool,
 }
 
 impl Window {
@@ -38,7 +37,6 @@ impl Window {
             height,
             id,
             surface: Some(DrawingSurface::new_unattached(width, height, format)),
-            suspended: false,
         }
     }
 
@@ -49,28 +47,11 @@ impl Window {
         }
         self.fb = Some(fb);
         self.input_channel = Some(ic);
-        self.suspended = false;
     }
 
     /// Return a mutable reference to the drawing surface option.
     pub fn surface(&mut self) -> &mut Option<DrawingSurface<'static>> {
         &mut self.surface
-    }
-
-    pub fn suspend(&mut self) {
-        self.suspended = true;
-    }
-
-    pub fn resume(&mut self) {
-        self.suspended = false;
-    }
-
-    pub fn is_suspended(&self) -> bool {
-        self.suspended
-    }
-
-    pub fn has_resources(&self) -> bool {
-        self.fb.is_some()
     }
 
     /// Return this window’s handle.
@@ -123,6 +104,5 @@ impl Window {
         INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());
         self.fb = None;
         self.input_channel = None;
-        self.suspended = false;
     }
 }

@@ -109,7 +109,6 @@ impl WindowManager {
                                         }
                                     }
                                     window.set_resources(fb, ic).await;
-                                    window.resume();
                                 }
                                 None => {
                                     warn!(
@@ -132,14 +131,7 @@ impl WindowManager {
     /// Check if the window currently holds resources.
     pub fn is_active(&self, handle: WindowHandle) -> bool {
         self.get_window(handle)
-            .map(|w| w.has_resources() && !w.is_suspended())
-            .unwrap_or(false)
-    }
-
-    /// Check whether the window still has framebuffer resources attached.
-    pub fn has_resources(&self, handle: WindowHandle) -> bool {
-        self.get_window(handle)
-            .map(|w| w.has_resources())
+            .map(|w| w.framebuffer_id().is_some())
             .unwrap_or(false)
     }
 
@@ -155,38 +147,6 @@ impl WindowManager {
             Some(f(surface))
         } else {
             None
-        }
-    }
-
-    /// Provide mutable access to a window's drawing surface for app-level rendering.
-    pub fn with_surface_for_app<R>(
-        &mut self,
-        handle: WindowHandle,
-        f: impl FnOnce(&mut DrawingSurface) -> R,
-    ) -> Option<R> {
-        let window = self.get_window_mut(handle)?;
-        if window.is_suspended() || !window.has_resources() {
-            return None;
-        }
-        let surface_opt = window.surface();
-        if let Some(surface) = surface_opt.as_mut() {
-            Some(f(surface))
-        } else {
-            None
-        }
-    }
-
-    /// Suspend a window from app-driven drawing while retaining resources.
-    pub fn suspend_window(&mut self, handle: WindowHandle) {
-        if let Some(window) = self.get_window_mut(handle) {
-            window.suspend();
-        }
-    }
-
-    /// Resume app-driven drawing for the specified window.
-    pub fn resume_window(&mut self, handle: WindowHandle) {
-        if let Some(window) = self.get_window_mut(handle) {
-            window.resume();
         }
     }
 
