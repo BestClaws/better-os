@@ -218,7 +218,7 @@ impl UICompositor {
         if !self.ensure_transition_surfaces(wm, source, target).await {
             return;
         }
-        self.begin_transition_session(direction, source, target);
+        self.begin_transition_session(wm, direction, source, target);
         let animation = SlideZoomAnimation::default();
         self.render_transition_frame(
             wm,
@@ -244,7 +244,7 @@ impl UICompositor {
         if !self.ensure_transition_surfaces(wm, source, target).await {
             return;
         }
-        self.begin_transition_session(direction, source, target);
+        self.begin_transition_session(wm, direction, source, target);
         let animation = SlideZoomAnimation::default();
         self.run_transition_animation(
             wm,
@@ -260,7 +260,7 @@ impl UICompositor {
         self.current_index = dst_idx;
         self.apply_active_triplet(wm).await;
         self.request_redraw(target);
-        self.end_transition_session();
+        self.end_transition_session(wm);
     }
 
     /// Revert an in-progress transition by animating back to the resting state.
@@ -276,7 +276,7 @@ impl UICompositor {
         if !self.ensure_transition_surfaces(wm, source, target).await {
             return;
         }
-        self.begin_transition_session(direction, source, target);
+        self.begin_transition_session(wm, direction, source, target);
         let animation = SlideZoomAnimation::default();
         self.run_transition_animation(
             wm,
@@ -292,7 +292,7 @@ impl UICompositor {
         if let Some((current, _prev, _next)) = self.current_prev_next() {
             self.request_redraw(current);
         }
-        self.end_transition_session();
+        self.end_transition_session(wm);
     }
 
     async fn ensure_transition_surfaces(
@@ -301,16 +301,16 @@ impl UICompositor {
         source: WindowHandle,
         target: WindowHandle,
     ) -> bool {
-        let source_ready = wm.is_active(source);
-        let target_ready = wm.is_active(target);
+        let source_ready = wm.has_resources(source);
+        let target_ready = wm.has_resources(target);
         if source_ready && target_ready {
             return true;
         }
 
         self.apply_active_triplet(wm).await;
 
-        let post_source_ready = wm.is_active(source);
-        let post_target_ready = wm.is_active(target);
+        let post_source_ready = wm.has_resources(source);
+        let post_target_ready = wm.has_resources(target);
         if !(post_source_ready && post_target_ready) {
             warn!("Transition surfaces missing resources");
         }
@@ -319,19 +319,27 @@ impl UICompositor {
 
     fn begin_transition_session(
         &mut self,
+        wm: &mut WindowManager,
         direction: TransitionDirection,
         source: WindowHandle,
         target: WindowHandle,
     ) {
-        self.active_transition = Some(TransitionSession {
-            direction,
-            source,
-            target,
-        });
+        if self.active_transition.is_none() {
+            wm.suspend_window(source);
+            wm.suspend_window(target);
+            self.active_transition = Some(TransitionSession {
+                direction,
+                source,
+                target,
+            });
+        }
     }
 
-    fn end_transition_session(&mut self) {
-        self.active_transition = None;
+    fn end_transition_session(&mut self, wm: &mut WindowManager) {
+        if let Some(session) = self.active_transition.take() {
+            wm.resume_window(session.source);
+            wm.resume_window(session.target);
+        }
     }
 
     fn transition_in_progress(&self) -> bool {

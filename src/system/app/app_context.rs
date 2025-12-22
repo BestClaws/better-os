@@ -50,6 +50,6 @@ impl AppContext {
 
     pub async fn draw(&self, f: impl FnOnce(&mut DrawingSurface) + Send) {
         let mut wm = self.window_manager.lock().await;
-        let _ = wm.with_surface(self.handle, f);
+        let _ = wm.with_surface_for_app(self.handle, f);
     }
 }

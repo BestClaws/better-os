@@ -21,12 +21,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         id: 1,
         spawn_fn: spawn_gfx_bench_app,
     },
-AppDescriptor {
+    AppDescriptor {
         name: "Watch",
         id: 2,
         spawn_fn: spawn_watch_app,
     },
-
     AppDescriptor {
         name: "Rect",
         id: 3,
