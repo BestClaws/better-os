@@ -12,8 +12,8 @@ pub struct AnimationConfig {
 impl Default for AnimationConfig {
     fn default() -> Self {
         Self {
-            steps: 8,
-            frame_delay_ms: 25,
+            steps: 5,
+            frame_delay_ms: 8,
             easing_fn: ease_in_out_cubic,
         }
     }

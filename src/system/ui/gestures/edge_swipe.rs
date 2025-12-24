@@ -1,3 +1,5 @@
+use core::mem;
+
 use crate::system::input::types::TouchAction;
 use crate::system::ui::compositor::animation::TransitionDirection;
 
@@ -21,85 +23,155 @@ pub enum SwipeGestureUpdate {
     },
 }
 
-/// Tracks edge-originating gestures and converts them into compositor transitions.
-///
-/// The recognizer is edge-agnostic and can be extended to support additional
-/// system gestures (top notification shade, bottom quick settings, etc.).
+/// Tunable parameters controlling how aggressively edge swipes are detected and
+/// how far the pointer must travel before the compositor reaches 100% progress.
+#[derive(Clone, Copy, Debug)]
+pub struct SwipeConfig {
+    /// Logical pixels near the edge that are reserved for swipe initiation.
+    pub edge_band: i32,
+    /// Additional hysteresis applied after a gesture starts, keeping it latched
+    /// to the edge even if the finger strays slightly inward.
+    pub reentry_slop: i32,
+    /// Horizontal distance (in logical pixels) required to report 100% progress.
+    pub completion_pixels: f32,
+    /// Maximum vertical drift tolerated before the gesture is cancelled.
+    pub vertical_tolerance: i32,
+    /// Minimum delta required before a new preview update is emitted.
+    pub progress_epsilon: f32,
+    /// Progress fraction required to convert a release into a commit.
+    pub commit_fraction: f32,
+}
+
+impl Default for SwipeConfig {
+    fn default() -> Self {
+        Self {
+            edge_band: 20,
+            reentry_slop: 18,
+            completion_pixels: 80.0,
+            vertical_tolerance: 32,
+            progress_epsilon: 0.01,
+            commit_fraction: 0.35,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FrameMetrics {
+    width: i32,
+    height: i32,
+}
+
+impl FrameMetrics {
+    fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.max(0),
+            height: height.max(0),
+        }
+    }
+
+    fn update(&mut self, width: i32, height: i32) {
+        if width > 0 {
+            self.width = width;
+        }
+        if height > 0 {
+            self.height = height;
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.width > 0 && self.height > 0
+    }
+}
+
 #[derive(Debug)]
 pub struct EdgeSwipeRecognizer {
-    tracking: bool,
+    config: SwipeConfig,
+    metrics: FrameMetrics,
+    state: SwipeState,
+}
+
+#[derive(Debug)]
+enum SwipeState {
+    Idle,
+    Tracking(GestureSession),
+}
+
+#[derive(Debug)]
+struct GestureSession {
     start_x: i32,
     start_y: i32,
-    active_edge: Option<SwipeEdge>,
-    active_direction: Option<TransitionDirection>,
+    direction: TransitionDirection,
     last_progress: f32,
-    frame_width: i32,
-    frame_height: i32,
+}
+
+impl GestureSession {
+    fn new(start_x: i32, start_y: i32, _edge: SwipeEdge, direction: TransitionDirection) -> Self {
+        Self {
+            start_x,
+            start_y,
+            direction,
+            last_progress: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SwipeEdge {
     Left,
     Right,
-    // Reserved for future use
     Top,
     Bottom,
 }
 
 impl EdgeSwipeRecognizer {
-    const EDGE_THRESHOLD: i32 = 24;
-    const MOVE_EDGE_BUFFER: i32 = 12;
-    const MIN_HORIZONTAL_SWIPE: i32 = 60;
-    const MAX_VERTICAL_DEVIATION: i32 = 20;
-
+    /// Create a new recognizer with default configuration.
     pub fn new(frame_width: i32, frame_height: i32) -> Self {
+        Self::with_config(frame_width, frame_height, SwipeConfig::default())
+    }
+
+    /// Create a recognizer using an explicit configuration.
+    pub fn with_config(frame_width: i32, frame_height: i32, config: SwipeConfig) -> Self {
         Self {
-            tracking: false,
-            start_x: 0,
-            start_y: 0,
-            active_edge: None,
-            active_direction: None,
-            last_progress: 0.0,
-            frame_width,
-            frame_height,
+            config,
+            metrics: FrameMetrics::new(frame_width, frame_height),
+            state: SwipeState::Idle,
         }
     }
 
+    /// Update the gesture configuration at runtime.
+    pub fn set_config(&mut self, config: SwipeConfig) {
+        self.config = config;
+        self.reset();
+    }
+
+    /// Update cached framebuffer dimensions.
     pub fn calibrate_frame_size(&mut self, width: i32, height: i32) {
-        if width > 0 {
-            self.frame_width = width;
-        }
-        if height > 0 {
-            self.frame_height = height;
-        }
+        self.metrics.update(width, height);
     }
 
+    /// Consume a single pointer sample and emit an optional swipe update.
     pub fn process_sample(
         &mut self,
         x: i32,
         y: i32,
         action: TouchAction,
     ) -> (bool, Option<SwipeGestureUpdate>) {
-        if self.frame_width <= 0 || self.frame_height <= 0 {
+        if !self.metrics.is_valid() {
             return (false, None);
         }
 
         match action {
             TouchAction::Down => self.handle_down(x, y),
             TouchAction::Move => self.handle_move(x, y),
-            TouchAction::Up => self.handle_up(),
+            TouchAction::Up => self.handle_up(x, y),
         }
     }
 
     fn handle_down(&mut self, x: i32, y: i32) -> (bool, Option<SwipeGestureUpdate>) {
-        self.reset_tracking();
-        self.active_edge = self.detect_edge(x, y, Self::EDGE_THRESHOLD);
-        if let Some(edge) = self.active_edge {
+        self.reset();
+        if let Some(edge) = self.detect_edge(x, y, self.config.edge_band) {
             if let Some(direction) = edge.to_direction() {
-                self.start_x = x;
-                self.start_y = y;
-                self.tracking = true;
-                self.active_direction = Some(direction);
+                self.state = SwipeState::Tracking(GestureSession::new(x, y, edge, direction));
                 return (true, None);
             }
         }
@@ -107,108 +179,122 @@ impl EdgeSwipeRecognizer {
     }
 
     fn handle_move(&mut self, x: i32, y: i32) -> (bool, Option<SwipeGestureUpdate>) {
-        if !self.tracking {
-            self.active_edge =
-                self.detect_edge(x, y, Self::EDGE_THRESHOLD + Self::MOVE_EDGE_BUFFER);
-            if let Some(edge) = self.active_edge {
-                if let Some(direction) = edge.to_direction() {
-                    self.start_x = x;
-                    self.start_y = y;
-                    self.tracking = true;
-                    self.active_direction = Some(direction);
+        match &mut self.state {
+            SwipeState::Idle => {
+                let hysteresis = self.config.edge_band + self.config.reentry_slop;
+                if let Some(edge) = self.detect_edge(x, y, hysteresis) {
+                    if let Some(direction) = edge.to_direction() {
+                        self.state =
+                            SwipeState::Tracking(GestureSession::new(x, y, edge, direction));
+                        return (true, None);
+                    }
+                }
+                (false, None)
+            }
+            SwipeState::Tracking(session) => {
+                if (y - session.start_y).abs() > self.config.vertical_tolerance {
+                    let progress = session.last_progress;
+                    let direction = session.direction;
+                    self.reset();
+                    return (
+                        true,
+                        Some(SwipeGestureUpdate::Cancel {
+                            direction,
+                            progress,
+                        }),
+                    );
+                }
+
+                let progress = Self::compute_progress(self.config, x, session);
+                if (progress - session.last_progress).abs() < self.config.progress_epsilon {
                     return (true, None);
                 }
+                session.last_progress = progress;
+                (
+                    true,
+                    Some(SwipeGestureUpdate::Preview {
+                        direction: session.direction,
+                        progress,
+                    }),
+                )
             }
-            return (false, None);
         }
-
-        let Some(direction) = self.active_direction else {
-            return (true, None);
-        };
-
-        let dy = (y - self.start_y).abs();
-        if dy > Self::MAX_VERTICAL_DEVIATION {
-            let progress = self.last_progress;
-            let cmd = SwipeGestureUpdate::Cancel {
-                direction,
-                progress,
-            };
-            self.reset_tracking();
-            return (true, Some(cmd));
-        }
-
-        let progress = self.compute_progress(x, direction);
-        self.last_progress = progress;
-        (
-            true,
-            Some(SwipeGestureUpdate::Preview {
-                direction,
-                progress,
-            }),
-        )
     }
 
-    fn handle_up(&mut self) -> (bool, Option<SwipeGestureUpdate>) {
-        if !self.tracking {
-            return (false, None);
+    fn handle_up(&mut self, x: i32, y: i32) -> (bool, Option<SwipeGestureUpdate>) {
+        let mut state = SwipeState::Idle;
+        mem::swap(&mut self.state, &mut state);
+        match state {
+            SwipeState::Idle => (false, None),
+            SwipeState::Tracking(mut session) => {
+                if (y - session.start_y).abs() > self.config.vertical_tolerance {
+                    let direction = session.direction;
+                    self.reset();
+                    return (
+                        true,
+                        Some(SwipeGestureUpdate::Cancel {
+                            direction,
+                            progress: session.last_progress,
+                        }),
+                    );
+                }
+
+                let final_progress = Self::compute_progress(self.config, x, &session);
+                session.last_progress = final_progress;
+                let direction = session.direction;
+                let threshold = self.commit_threshold();
+                let update = if final_progress >= threshold {
+                    SwipeGestureUpdate::Commit {
+                        direction,
+                        progress: final_progress,
+                    }
+                } else {
+                    SwipeGestureUpdate::Cancel {
+                        direction,
+                        progress: final_progress,
+                    }
+                };
+                self.reset();
+                (true, Some(update))
+            }
         }
-
-        let direction = self.active_direction.unwrap_or(TransitionDirection::Next);
-        let progress = self.last_progress;
-        let threshold = self.commit_threshold();
-        let command = if progress >= threshold {
-            SwipeGestureUpdate::Commit {
-                direction,
-                progress,
-            }
-        } else {
-            SwipeGestureUpdate::Cancel {
-                direction,
-                progress,
-            }
-        };
-
-        self.reset_tracking();
-        (true, Some(command))
     }
 
     fn detect_edge(&self, x: i32, y: i32, threshold: i32) -> Option<SwipeEdge> {
-        let right_start = (self.frame_width - 1).saturating_sub(threshold);
-        let bottom_start = (self.frame_height - 1).saturating_sub(threshold);
+        if threshold <= 0 {
+            return None;
+        }
+        let right_band = (self.metrics.width - 1).saturating_sub(threshold);
+        let bottom_band = (self.metrics.height - 1).saturating_sub(threshold);
 
         if x <= threshold {
             Some(SwipeEdge::Left)
-        } else if x >= right_start {
+        } else if x >= right_band {
             Some(SwipeEdge::Right)
         } else if y <= threshold {
             Some(SwipeEdge::Top)
-        } else if y >= bottom_start {
+        } else if y >= bottom_band {
             Some(SwipeEdge::Bottom)
         } else {
             None
         }
     }
 
-    fn reset_tracking(&mut self) {
-        self.tracking = false;
-        self.active_edge = None;
-        self.active_direction = None;
-        self.last_progress = 0.0;
-    }
-
-    fn compute_progress(&self, x: i32, direction: TransitionDirection) -> f32 {
-        let width = self.frame_width.max(1) as f32;
-        let dx = x - self.start_x;
-        let raw = match direction {
-            TransitionDirection::Next => dx as f32 / width,
-            TransitionDirection::Previous => (-dx) as f32 / width,
+    fn compute_progress(config: SwipeConfig, x: i32, session: &GestureSession) -> f32 {
+        let travelled = match session.direction {
+            TransitionDirection::Next => (x - session.start_x) as f32,
+            TransitionDirection::Previous => (session.start_x - x) as f32,
         };
-        raw.clamp(0.0, 1.0)
+        let normalized = travelled / config.completion_pixels.max(1.0);
+        normalized.clamp(0.0, 1.0)
     }
 
     fn commit_threshold(&self) -> f32 {
-        let width = self.frame_width.max(1) as f32;
-        (Self::MIN_HORIZONTAL_SWIPE as f32 / width).clamp(0.0, 1.0)
+        self.config.commit_fraction.clamp(0.0, 1.0)
+    }
+
+    fn reset(&mut self) {
+        self.state = SwipeState::Idle;
     }
 }
 

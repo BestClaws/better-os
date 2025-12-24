@@ -5,7 +5,6 @@
 //! - The compositor never performs color conversion; it composes buffers with identical BPP.
 //! - `bytes_per_pixel()` is queried from `DrawingSurface` to remain format-agnostic.
 
-use alloc::vec;
 use alloc::vec::Vec as AllocVec;
 use defmt::{debug, warn};
 use embassy_time::{Duration, Instant, Timer};
@@ -16,6 +15,7 @@ use super::blitter::SurfaceBlitter;
 use super::region::extract_region_buffer;
 use super::strategy::UpdateStrategy;
 use crate::libs::gfx::color::Rgba8888;
+use crate::system::hal::display::PixelFormat;
 use crate::system::ui::display::Display;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::window::WindowHandle;
@@ -24,6 +24,29 @@ use crate::util::math::primitives::Rect;
 
 const MAX_WINDOWS: usize = 8;
 const MAX_REDRAW_REQUESTS: usize = 4;
+
+/// Growable framebuffer reused by the compositor to avoid per-frame heap churn.
+struct ScratchFrame {
+    buffer: AllocVec<u8>,
+}
+
+impl ScratchFrame {
+    fn new() -> Self {
+        Self {
+            buffer: AllocVec::new(),
+        }
+    }
+
+    fn acquire(&mut self, width: u32, height: u32, format: PixelFormat) -> &mut [u8] {
+        let required = (width as usize) * (height as usize) * format.bytes_per_pixel();
+        if self.buffer.len() < required {
+            self.buffer.resize(required, 0);
+        }
+        let slice = &mut self.buffer[..required];
+        slice.fill(0);
+        slice
+    }
+}
 
 #[derive(Clone, Copy)]
 struct TransitionSession {
@@ -49,6 +72,7 @@ pub struct UICompositor {
     pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
     animation_config: AnimationConfig,
     active_transition: Option<TransitionSession>,
+    scratch: ScratchFrame,
 }
 
 impl UICompositor {
@@ -61,6 +85,7 @@ impl UICompositor {
             pending_redraws: heapless::Vec::new(),
             animation_config: AnimationConfig::default(),
             active_transition: None,
+            scratch: ScratchFrame::new(),
         }
     }
 
@@ -120,57 +145,57 @@ impl UICompositor {
         }
         let render_start = Instant::now();
 
-        if self.display_service.is_some() {
-            // Snapshot immutable display properties, then release the borrow
-            let (width, height, pixfmt) = {
-                let s = self.display_service.as_ref().unwrap();
-                (s.width(), s.height(), s.pixel_format())
-            };
+        let Some((width, height, pixel_format)) = self
+            .display_service
+            .as_ref()
+            .map(|display| (display.width(), display.height(), display.pixel_format()))
+        else {
+            return;
+        };
+        let frame_area = width * height;
 
-            let fb_size = (width as usize) * (height as usize) * pixfmt.bytes_per_pixel();
-            let mut frame_buffer = vec![0u8; fb_size];
-            let mut composite_surface = DrawingSurface::new_unattached(width, height, pixfmt);
-            composite_surface.attach_buffer(&mut frame_buffer);
+        let mut dirty_regions = heapless::Vec::<Rect, 8>::new();
+        let mut active_window = None;
+        if let Some((cur, _prev, _next)) = self.current_prev_next() {
+            dirty_regions = self.collect_dirty_regions(wm, cur);
+            if !dirty_regions.is_empty() {
+                active_window = Some(cur);
+            }
+        }
 
-            // Compute before any mutable borrows
-            let frame_area = width * height;
-            let (has_dirty, dirty_regions) =
-                if let Some((cur, _prev, _next)) = self.current_prev_next() {
-                    let regs = self.collect_dirty_regions(wm, cur);
-                    (!regs.is_empty(), regs)
-                } else {
-                    (false, heapless::Vec::new())
+        if let Some(source_handle) = active_window {
+            let scratch = self.scratch.acquire(width, height, pixel_format);
+            let mut composite_surface = DrawingSurface::new_unattached(width, height, pixel_format);
+            composite_surface.attach_buffer(scratch);
+            composite_surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+
+            Self::blit_window_regions(wm, &mut composite_surface, source_handle, &dirty_regions);
+
+            {
+                let Some(display) = self.display_service.as_ref() else {
+                    return;
                 };
-
-            if has_dirty {
-                self.compose_frame_optimized(wm, &mut composite_surface)
-                    .await;
-
-                {
-                    // Re-borrow display immutably only for drawing
-                    let service = self.display_service.as_ref().unwrap();
-                    match super::strategy::determine_update_strategy(frame_area, &dirty_regions) {
-                        UpdateStrategy::FullScreen => {
-                            service.draw_full(composite_surface.buffer()).await;
-                        }
-                        UpdateStrategy::Partial(regions) => {
-                            for region in regions.iter() {
-                                let region_buffer = extract_region_buffer(
-                                    composite_surface.buffer(),
-                                    region,
-                                    width,
-                                    height,
-                                    composite_surface.bytes_per_pixel(),
-                                );
-                                service.draw_region(&region_buffer, *region).await;
-                            }
+                match super::strategy::determine_update_strategy(frame_area, &dirty_regions) {
+                    UpdateStrategy::FullScreen => {
+                        display.draw_full(composite_surface.buffer()).await;
+                    }
+                    UpdateStrategy::Partial(regions) => {
+                        for region in regions.iter() {
+                            let region_buffer = extract_region_buffer(
+                                composite_surface.buffer(),
+                                region,
+                                width,
+                                height,
+                                composite_surface.bytes_per_pixel(),
+                            );
+                            display.draw_region(&region_buffer, *region).await;
                         }
                     }
                 }
-                if let Some((cur, _p, _n)) = self.current_prev_next() {
-                    self.clear_window_dirty_regions(wm, cur);
-                }
             }
+
+            drop(composite_surface);
+            self.clear_window_dirty_regions(wm, source_handle);
         }
 
         self.pending_redraws.clear();
@@ -370,20 +395,18 @@ impl UICompositor {
         source: WindowHandle,
         target: WindowHandle,
     ) {
-        let (width, height, pixel_format, fb_size) = match self.display_service.as_ref() {
-            Some(service) => {
-                let width = service.width();
-                let height = service.height();
-                let pixel_format = service.pixel_format();
-                let fb_size = service.framebuffer_size(width, height);
-                (width, height, pixel_format, fb_size)
-            }
+        let display = match self.display_service.as_ref() {
+            Some(service) => service,
             None => return,
         };
+        let width = display.width();
+        let height = display.height();
+        let pixel_format = display.pixel_format();
 
-        let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
+        let scratch = self.scratch.acquire(width, height, pixel_format);
         let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
-        surface.attach_buffer(&mut composition_buffer);
+        surface.attach_buffer(scratch);
+        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
 
         Self::compose_transition_frame(
             wm,
@@ -396,9 +419,7 @@ impl UICompositor {
             target,
         );
 
-        if let Some(service) = self.display_service.as_ref() {
-            service.draw_full(surface.buffer()).await;
-        }
+        display.draw_full(surface.buffer()).await;
     }
 
     async fn run_transition_animation(
@@ -411,22 +432,22 @@ impl UICompositor {
         start_progress: f32,
         end_progress: f32,
     ) {
-        let (width, height, pixel_format, fb_size) = match self.display_service.as_ref() {
-            Some(service) => {
-                let width = service.width();
-                let height = service.height();
-                let pixel_format = service.pixel_format();
-                let fb_size = service.framebuffer_size(width, height);
-                (width, height, pixel_format, fb_size)
-            }
+        let display = match self.display_service.as_ref() {
+            Some(service) => service,
             None => return,
         };
-
-        let mut composition_buffer: AllocVec<u8> = vec![0u8; fb_size];
-        let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
-        surface.attach_buffer(&mut composition_buffer);
+        let width = display.width();
+        let height = display.height();
+        let pixel_format = display.pixel_format();
 
         let steps = self.animation_config.steps.max(1) as i32;
+        let frame_delay = self.animation_config.frame_delay_ms;
+        let easing = self.animation_config.easing_fn;
+
+        let scratch = self.scratch.acquire(width, height, pixel_format);
+        let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
+        surface.attach_buffer(scratch);
+        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
         let mut start_idx = ((start_progress.clamp(0.0, 1.0)) * steps as f32).round() as i32;
         let mut end_idx = ((end_progress.clamp(0.0, 1.0)) * steps as f32).round() as i32;
         start_idx = start_idx.clamp(0, steps);
@@ -436,7 +457,7 @@ impl UICompositor {
 
         loop {
             let normalized = current_idx as f32 / steps as f32;
-            let eased = (self.animation_config.easing_fn)(normalized);
+            let eased = easing(normalized);
             Self::compose_transition_frame(
                 wm,
                 &mut surface,
@@ -447,15 +468,13 @@ impl UICompositor {
                 source,
                 target,
             );
-            if let Some(service) = self.display_service.as_ref() {
-                service.draw_full(surface.buffer()).await;
-            }
+            display.draw_full(surface.buffer()).await;
 
             if current_idx == end_idx {
                 break;
             }
 
-            Timer::after(Duration::from_millis(self.animation_config.frame_delay_ms)).await;
+            Timer::after(Duration::from_millis(frame_delay)).await;
             current_idx += step_delta;
         }
     }
@@ -499,25 +518,19 @@ impl UICompositor {
             surface.flush();
         });
     }
-
-    async fn compose_frame_optimized<'a>(
-        &mut self,
+    fn blit_window_regions<'a>(
         wm: &mut WindowManager,
         output_surface: &mut DrawingSurface<'a>,
+        source: WindowHandle,
+        regions: &[Rect],
     ) {
-        output_surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-        if self.windows_order.is_empty() {
+        if regions.is_empty() {
             return;
         }
-        if let Some((cur, _prev, _next)) = self.current_prev_next() {
-            let regions = self.collect_dirty_regions(wm, cur);
-            if !regions.is_empty() {
-                for r in regions.iter() {
-                    let _ = wm.with_surface(cur, |surface| {
-                        SurfaceBlitter::copy_region(output_surface, surface, *r, 0, 0);
-                    });
-                }
+        let _ = wm.with_surface(source, |surface| {
+            for region in regions {
+                SurfaceBlitter::copy_region(output_surface, surface, *region, 0, 0);
             }
-        }
+        });
     }
 }

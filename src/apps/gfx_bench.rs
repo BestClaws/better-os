@@ -345,4 +345,3 @@ pub async fn gfx_bench_app(context: AppContext) {
         Timer::after(Duration::from_millis(20)).await;
     }
 }
-
