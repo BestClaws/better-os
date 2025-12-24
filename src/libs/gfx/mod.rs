@@ -9,11 +9,13 @@ pub mod fill;
 mod font;
 pub mod rasterizer;
 pub mod shapes;
+pub mod three_d;
 
 pub use fill::Fill;
 pub use rasterizer::Rasterizer;
 pub use rasterizer::Rgb565Rasterizer;
 pub use shapes::{Arc, Circle, RoundedRect, Shape};
+pub use three_d::{draw_model, parse_binary_stl, Model, Quaternion, RenderOptions, StlError, Vec3};
 
 pub const BLACK: u16 = 0x0000;
 

@@ -3,6 +3,7 @@ use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::window_manager::WindowManager;
 
+use crate::apps::arrow::arrow_app;
 use crate::apps::gfx_bench::gfx_bench_app;
 use crate::apps::rect::rect_app;
 use crate::apps::watch_app::watch_app;
@@ -30,6 +31,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         name: "Rect",
         id: 3,
         spawn_fn: spawn_rect_app,
+    },
+    AppDescriptor {
+        name: "3D Arrow",
+        id: 4,
+        spawn_fn: spawn_arrow_app,
     },
 ];
 
@@ -188,6 +194,13 @@ fn spawn_rect_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(rect_app(context))
+}
+
+fn spawn_arrow_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(arrow_app(context))
 }
 
 /// Utility functions for application management
