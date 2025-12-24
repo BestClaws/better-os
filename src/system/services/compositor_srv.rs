@@ -66,14 +66,21 @@ pub async fn ui_compositor_service(
 
         // Idle refresh for dynamic content updates.
         Timer::after(Duration::from_millis(0)).await;
-        let redraw_start = Instant::now();
-        let mut compositor_mut = compositor.lock().await;
-        if let Some(focused_handle) = compositor_mut.focused_window_handle() {
-            compositor_mut.request_redraw(focused_handle);
-        }
-        let mut wm_mut = window_manager.lock().await;
-        compositor_mut.process_redraws(&mut wm_mut).await;
-        let redraw_duration = redraw_start.elapsed();
+
+        let redraw_duration = {
+            let redraw_start = Instant::now();
+            let mut compositor_mut = compositor.lock().await;
+            if let Some(focused_handle) = compositor_mut.focused_window_handle() {
+                compositor_mut.request_redraw(focused_handle);
+            }
+
+            {
+                let mut wm_mut = window_manager.lock().await;
+                compositor_mut.process_redraws(&mut wm_mut).await;
+            }
+
+            redraw_start.elapsed()
+        };
 
         frame_count += 1;
         if redraw_duration.as_millis() > 50

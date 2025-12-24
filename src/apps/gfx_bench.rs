@@ -299,12 +299,6 @@ pub async fn gfx_bench_app(context: AppContext) {
     info!("Starting bench app");
 
     let configs = generate_all_test_permutations();
-    if configs.is_empty() {
-        info!("No benchmark configurations generated; bench idle");
-        loop {
-            Timer::after(Duration::from_millis(500)).await;
-        }
-    }
 
     let mut next_cfg = 0usize;
 

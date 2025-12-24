@@ -86,6 +86,6 @@ pub async fn arrow_app(context: AppContext) {
             .await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(70)).await;
+        Timer::after(Duration::from_millis(1)).await;
     }
 }

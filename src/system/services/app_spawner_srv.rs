@@ -17,24 +17,24 @@ use embassy_sync::mutex::Mutex;
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
-    AppDescriptor {
-        name: "GFX Benchmark",
-        id: 2,
-        spawn_fn: spawn_gfx_bench_app,
-    },
-    AppDescriptor {
-        name: "Watch",
-        id: 1,
-        spawn_fn: spawn_watch_app,
-    },
-    AppDescriptor {
-        name: "Rect",
-        id: 3,
-        spawn_fn: spawn_rect_app,
-    },
+    // AppDescriptor {
+    //     name: "GFX Benchmark",
+    //     id: 2,
+    //     spawn_fn: spawn_gfx_bench_app,
+    // },
+    // AppDescriptor {
+    //     name: "Watch",
+    //     id: 1,
+    //     spawn_fn: spawn_watch_app,
+    // },
+    // AppDescriptor {
+    //     name: "Rect",
+    //     id: 3,
+    //     spawn_fn: spawn_rect_app,
+    // },
     AppDescriptor {
         name: "3D Arrow",
-        id: 4,
+        id: 1,
         spawn_fn: spawn_arrow_app,
     },
 ];
