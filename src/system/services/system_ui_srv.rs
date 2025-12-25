@@ -8,7 +8,9 @@ use crate::system::input::types::{HighLevelEvent, MotionEvent};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::compositor::{animation::TransitionDirection, UICompositor};
 use crate::system::ui::input::bus::SystemUiInputBus;
-use crate::system::ui::input::gestures::edge_swipe::{EdgeSwipeRecognizer, SwipeGestureUpdate};
+use crate::system::ui::input::gestures::{
+    EdgeSwipeRecognizer, PointerEvent, PointerGesture, SwipeGestureUpdate,
+};
 use crate::system::ui::windowing::WindowManager;
 
 static FRAME_WIDTH_HINT: AtomicI32 = AtomicI32::new(FRAME_BUFFER_WIDTH as i32);
@@ -52,10 +54,9 @@ pub async fn system_ui_gesture_task(
         }) = event
         {
             if let Some(pointer) = pointers[0] {
-                let (was_consumed, maybe_update) =
-                    recognizer.process_sample(pointer.x, pointer.y, action);
-                consumed = was_consumed;
-                swipe_update = maybe_update;
+                let result = recognizer.observe(PointerEvent::new(pointer, action));
+                consumed = result.consumed;
+                swipe_update = result.update;
             }
         }
 
