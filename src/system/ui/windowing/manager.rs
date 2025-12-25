@@ -1,13 +1,13 @@
 use defmt::{debug, warn};
 
+use super::window::{Window, WindowHandle};
 use crate::system::hal::display::PixelFormat;
 use crate::system::input::types::HighLevelEvent;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use crate::system::ui::window::{Window, WindowHandle};
 
-/// Maximum supported windows in the system. Matches former compositor limit.
+/// Maximum supported windows in the system. Matches the compositor limit.
 const MAX_WINDOWS: usize = 8;
 
 /// Manages windows and their scarce resources (framebuffers and input channels).
@@ -61,7 +61,6 @@ impl WindowManager {
         if let Some(idx) = self.index_of(handle) {
             let mut window = self.windows.swap_remove(idx);
             if window.framebuffer_id().is_some() {
-                // Ensure resources are returned
                 window.relax();
             }
             debug!("Window destroyed: {:?}", handle);
@@ -93,32 +92,29 @@ impl WindowManager {
                 if window.framebuffer_id().is_none() {
                     debug!("Allocating resources for active window {:?}", handle);
                     match FRAMEBUFFER_POOL.allocate().await {
-                        Some(fb) => {
-                            match INPUT_CHANNEL_POOL.allocate().await {
-                                Some(ic) => {
-                                    // Ensure surface exists and is configured with negotiated format
-                                    // Configure/create surface without violating Rust borrow rules
-                                    let (w, h) = (window.width(), window.height());
-                                    let s_ref = window.surface();
-                                    match s_ref {
-                                        slot @ None => {
-                                            *slot = Some(crate::system::ui::drawing_surface::DrawingSurface::new_unattached(w, h, self.default_format));
-                                        }
-                                        Some(surface) => {
-                                            surface.reconfigure(w, h, self.default_format);
-                                        }
+                        Some(fb) => match INPUT_CHANNEL_POOL.allocate().await {
+                            Some(ic) => {
+                                let (w, h) = (window.width(), window.height());
+                                let surface_slot = window.surface();
+                                match surface_slot {
+                                    slot @ None => {
+                                        *slot = Some(DrawingSurface::new_unattached(
+                                            w,
+                                            h,
+                                            self.default_format,
+                                        ));
                                     }
-                                    window.set_resources(fb, ic).await;
+                                    Some(surface) => {
+                                        surface.reconfigure(w, h, self.default_format);
+                                    }
                                 }
-                                None => {
-                                    warn!(
-                                        "Input channel allocation failed for window {:?}",
-                                        handle
-                                    );
-                                    FRAMEBUFFER_POOL.release(&fb);
-                                }
+                                window.set_resources(fb, ic).await;
                             }
-                        }
+                            None => {
+                                warn!("Input channel allocation failed for window {:?}", handle);
+                                FRAMEBUFFER_POOL.release(&fb);
+                            }
+                        },
                         None => {
                             warn!("Framebuffer allocation failed for window {:?}", handle);
                         }
@@ -143,11 +139,7 @@ impl WindowManager {
     ) -> Option<R> {
         let window = self.get_window_mut(handle)?;
         let surface_opt = window.surface();
-        if let Some(surface) = surface_opt.as_mut() {
-            Some(f(surface))
-        } else {
-            None
-        }
+        surface_opt.as_mut().map(f)
     }
 
     /// Get a single pending input event for the window, if any.

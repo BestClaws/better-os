@@ -7,6 +7,7 @@
 
 mod dispatcher;
 mod readers;
+mod router;
 
 pub use dispatcher::input_dispatcher_task;
 pub use readers::{button_reader_task, encoder_reader_task, touch_reader_task};

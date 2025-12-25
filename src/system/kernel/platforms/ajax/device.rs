@@ -9,7 +9,7 @@ use crate::system::hal::radio::AsyncRadio;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
 use crate::system::kernel::platform::PlatformDevice;
-use crate::system::ui::window::WindowHandle;
+use crate::system::ui::windowing::WindowHandle;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;

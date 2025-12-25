@@ -7,12 +7,12 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::system::hal::button::{AsyncButton, ButtonState};
 use crate::system::hal::encoder::{AsyncEncoder, EncoderState};
 use crate::system::hal::touch::AsyncTouch;
-use crate::system::input::bus;
 use crate::system::input::devices::{
     button::map_state as map_button_state,
     encoder::map_state as map_encoder_state,
     touch::{TouchProcessor, TouchSample},
 };
+use crate::system::input::RawInputQueue;
 use crate::system::kernel::config::resources::{
     FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR,
 };
@@ -88,7 +88,7 @@ pub async fn touch_reader_task(
 }
 
 async fn dispatch_raw_event(event: crate::system::input::types::HighLevelEvent) {
-    bus::raw_events().send(event).await;
+    RawInputQueue::push(event).await;
 }
 
 fn log_touch_metrics(

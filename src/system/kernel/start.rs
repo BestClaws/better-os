@@ -14,7 +14,7 @@ use crate::system::services::input;
 use crate::system::services::system_ui_srv::system_ui_gesture_task;
 use crate::system::services::vibrator_srv;
 use crate::system::ui::compositor::UICompositor;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::windowing::WindowManager;
 
 use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
 use crate::system::services::radio_service::radio_service;

@@ -11,7 +11,7 @@ use crate::system::ui::compositor::{
     UICompositor,
 };
 use crate::system::ui::display::Display;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::windowing::WindowManager;
 
 /// Target cadence for the compositor loop (~60 FPS).
 const MIN_FRAME_TIME_MS: u64 = 16;

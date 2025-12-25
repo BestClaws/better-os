@@ -2,9 +2,10 @@ use defmt::{debug, info, warn};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Instant, WithTimeout};
 
-use crate::system::input::{bus, types::HighLevelEvent};
+use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::compositor::UICompositor;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::input::bus::SystemUiInputBus;
+use crate::system::ui::windowing::WindowManager;
 
 /// Handles the fan-out of high-level input events to the System UI and focused app windows.
 pub struct InputRouter {
@@ -54,9 +55,9 @@ impl InputRouter {
 
     async fn deliver_to_system_ui(&self, event: HighLevelEvent) -> (bool, Duration) {
         let ack_start = Instant::now();
-        bus::system_ui_events().send(event).await;
+        SystemUiInputBus::events().send(event).await;
 
-        let ack_result = bus::system_ui_acknowledgements()
+        let ack_result = SystemUiInputBus::acknowledgements()
             .receive()
             .with_timeout(self.ack_timeout)
             .await;

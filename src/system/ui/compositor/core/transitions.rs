@@ -7,8 +7,7 @@ use super::super::blitter::SurfaceBlitter;
 use super::state::{TransitionSession, UICompositor};
 use crate::libs::gfx::color::Rgba8888;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use crate::system::ui::window::WindowHandle;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::windowing::{WindowHandle, WindowManager};
 
 impl UICompositor {
     pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) {

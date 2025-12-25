@@ -3,8 +3,7 @@ use defmt::warn;
 
 use crate::system::hal::display::PixelFormat;
 use crate::system::ui::display::Display;
-use crate::system::ui::window::WindowHandle;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::windowing::{WindowHandle, WindowManager};
 
 use super::super::animation::AnimationConfig;
 

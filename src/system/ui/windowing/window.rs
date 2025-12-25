@@ -1,3 +1,4 @@
+use crate::system::hal::display::PixelFormat;
 use crate::system::input::types::HighLevelEvent;
 use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL};
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
@@ -23,13 +24,8 @@ pub struct Window {
 }
 
 impl Window {
-    /// Create a new Window.
-    pub async fn new(
-        width: u32,
-        height: u32,
-        id: usize,
-        format: crate::system::hal::display::PixelFormat,
-    ) -> Self {
+    /// Create a new window with the given logical dimensions and pixel format.
+    pub async fn new(width: u32, height: u32, id: usize, format: PixelFormat) -> Self {
         Self {
             fb: None,
             input_channel: None,
@@ -40,7 +36,7 @@ impl Window {
         }
     }
 
-    /// Set resources for the window.
+    /// Attach framebuffer and input channel resources.
     pub async fn set_resources(&mut self, fb: FrameBufferHandle, ic: InputChannelHandle) {
         if let Some(surface) = self.surface.as_mut() {
             surface.attach_buffer(FRAMEBUFFER_POOL.get_mut(&fb));
@@ -49,7 +45,7 @@ impl Window {
         self.input_channel = Some(ic);
     }
 
-    /// Return a mutable reference to the drawing surface option.
+    /// Return a mutable reference to the drawing surface slot.
     pub fn surface(&mut self) -> &mut Option<DrawingSurface<'static>> {
         &mut self.surface
     }
@@ -64,12 +60,12 @@ impl Window {
         self.fb.as_ref()
     }
 
-    /// Return this window’s raw width.
+    /// Return this window’s logical width.
     pub fn width(&self) -> u32 {
         self.width
     }
 
-    /// Return this window’s raw height.
+    /// Return this window’s logical height.
     pub fn height(&self) -> u32 {
         self.height
     }

@@ -1,6 +1,6 @@
-pub mod bus;
 pub mod devices;
-pub mod router;
+mod queue;
 pub mod types;
 
+pub use queue::RawInputQueue;
 pub use types::*;

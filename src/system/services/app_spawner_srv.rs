@@ -1,7 +1,7 @@
 use crate::system::app::app_context::AppContext;
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::compositor::UICompositor;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::windowing::WindowManager;
 
 use crate::apps::arrow::arrow_app;
 use crate::apps::gfx_bench::gfx_bench_app;

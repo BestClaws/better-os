@@ -4,8 +4,7 @@ use embassy_time::Instant;
 use super::state::UICompositor;
 use crate::libs::gfx::color::Rgba8888;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use crate::system::ui::window::WindowHandle;
-use crate::system::ui::window_manager::WindowManager;
+use crate::system::ui::windowing::{WindowHandle, WindowManager};
 use crate::util::math::primitives::Rect;
 
 use super::super::blitter::SurfaceBlitter;
