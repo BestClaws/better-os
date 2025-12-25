@@ -6,6 +6,7 @@ use crate::system::ui::window_manager::WindowManager;
 use crate::apps::arrow::arrow_app;
 use crate::apps::gfx_bench::gfx_bench_app;
 use crate::apps::rect::rect_app;
+use crate::apps::text_demo::text_demo_app;
 use crate::apps::watch_app::watch_app;
 use defmt::{debug, error, info, warn, Format};
 use embassy_executor::Spawner;
@@ -21,6 +22,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         name: "GFX Benchmark",
         id: 2,
         spawn_fn: spawn_gfx_bench_app,
+    },
+    AppDescriptor {
+        name: "Text Demo",
+        id: 4,
+        spawn_fn: spawn_text_demo_app,
     },
     AppDescriptor {
         name: "Watch",
@@ -194,6 +200,13 @@ fn spawn_rect_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(rect_app(context))
+}
+
+fn spawn_text_demo_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(text_demo_app(context))
 }
 
 fn spawn_arrow_app(

@@ -6,12 +6,13 @@ use crate::system::hal::display::AsyncDisplay;
 
 pub(crate) mod color;
 pub mod fill;
-mod font;
+pub mod font;
 pub mod rasterizer;
 pub mod shapes;
 pub mod three_d;
 
 pub use fill::Fill;
+pub use font::{font_for_size, Charset, FontSize, MonoFont, DEFAULT_CHARSETS};
 pub use rasterizer::Rasterizer;
 pub use rasterizer::Rgb565Rasterizer;
 pub use shapes::{Arc, Circle, RoundedRect, Shape};
