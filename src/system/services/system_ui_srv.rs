@@ -1,21 +1,15 @@
 use core::sync::atomic::{AtomicI32, Ordering};
 
 use defmt::info;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
-use embassy_sync::mutex::Mutex;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::Instant;
 
+use crate::system::input::bus;
 use crate::system::input::types::{HighLevelEvent, MotionEvent};
 use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
-use crate::system::ui::compositor::{animation::TransitionDirection, core::UICompositor};
+use crate::system::ui::compositor::{animation::TransitionDirection, UICompositor};
 use crate::system::ui::gestures::edge_swipe::{EdgeSwipeRecognizer, SwipeGestureUpdate};
 use crate::system::ui::window_manager::WindowManager;
-
-/// Dispatcher → System UI consumer (events for gesture/UI handling)
-pub static SUI_EVENT_CH: Channel<CriticalSectionRawMutex, HighLevelEvent, 64> = Channel::new();
-/// System UI → dispatcher (per-event consumed acknowledgement)
-pub static SUI_ACK_CH: Channel<CriticalSectionRawMutex, bool, 64> = Channel::new();
 
 static FRAME_WIDTH_HINT: AtomicI32 = AtomicI32::new(FRAME_BUFFER_WIDTH as i32);
 static FRAME_HEIGHT_HINT: AtomicI32 = AtomicI32::new(FRAME_BUFFER_HEIGHT as i32);
@@ -48,7 +42,7 @@ pub async fn system_ui_gesture_task(
             last_dims = dims;
         }
 
-        let event = SUI_EVENT_CH.receive().await;
+        let event = bus::system_ui_events().receive().await;
         let event_start = Instant::now();
         let mut consumed = false;
         let mut swipe_update = None;
@@ -65,7 +59,7 @@ pub async fn system_ui_gesture_task(
             }
         }
 
-        SUI_ACK_CH.send(consumed).await;
+        bus::system_ui_acknowledgements().send(consumed).await;
 
         if let Some(update) = swipe_update {
             handle_swipe_update(update, compositor, window_manager).await;

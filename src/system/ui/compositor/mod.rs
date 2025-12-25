@@ -5,7 +5,6 @@
 //! - `blitter`: high-performance surface blits (format-agnostic via BPP)
 //! - `strategy`: update strategy selection helpers
 //! - `animation`: animation traits, configs, and easing functions
-//! - `input`: SUI gesture consumer task and command channel
 //! - `region`: helpers for sub-buffer extraction
 
 pub mod animation;

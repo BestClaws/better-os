@@ -163,7 +163,13 @@ fn draw_progress(
         return;
     }
 
-    surface.fill_rect(bar_x, bar_y, bar_width, bar_height, Rgba8888::rgba(28, 32, 42, 220));
+    surface.fill_rect(
+        bar_x,
+        bar_y,
+        bar_width,
+        bar_height,
+        Rgba8888::rgba(28, 32, 42, 220),
+    );
     let filled = ((stage_progress.clamp(0.0, 1.0) * bar_width as f32) + 0.5) as i32;
     let filled = filled.clamp(0, bar_width);
     if filled > 0 {

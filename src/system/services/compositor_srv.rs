@@ -8,7 +8,7 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::services::system_ui_srv::update_display_metrics;
 use crate::system::ui::compositor::{
     animation::{ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig},
-    core::UICompositor,
+    UICompositor,
 };
 use crate::system::ui::display::Display;
 use crate::system::ui::window_manager::WindowManager;
