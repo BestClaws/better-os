@@ -28,7 +28,17 @@ pub enum ScanStatus {
     Running,
     Stopping,
     AlreadyRunning,
+    BlockedByPeripheral,
     Failed(BluetoothError),
+}
+
+/// High-level lifecycle for the embedded GATT service.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GattServiceStatus {
+    Idle,
+    Advertising,
+    Connected,
+    Error,
 }
 
 /// Bluetooth events emitted by the background service.
@@ -36,6 +46,9 @@ pub enum ScanStatus {
 pub enum BluetoothEvent {
     ScanStatus(ScanStatus),
     DeviceDiscovered(DiscoveredDevice),
+    GattServiceStatus(GattServiceStatus),
+    GattValueSent(u8),
+    GattValueReceived(u8),
 }
 
 /// Description of a discovered Bluetooth device.
