@@ -1,8 +1,12 @@
-use core::cmp;
-
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::font::{font_for_size, Charset, FontSize, MonoFont};
+use crate::libs::gfx::compat::color::IntoEgRgb;
+use crate::libs::gfx::compat::draw_target::RasterizerDrawTarget;
 use crate::libs::gfx::Rasterizer;
+use embedded_graphics::geometry::Point as EgPoint;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::text::{Baseline as EgBaseline, Text as EgText};
+use embedded_graphics::Drawable;
 
 /// Text shape with configurable font and per-instance styling.
 pub struct Text<'a> {
@@ -77,87 +81,20 @@ impl<'a> Text<'a> {
 impl<'a> super::Shape for Text<'a> {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
         let packed = self.color.to_u32();
-        let r = ((packed >> 24) & 0xFF) as u8;
-        let g = ((packed >> 16) & 0xFF) as u8;
-        let b = ((packed >> 8) & 0xFF) as u8;
         let a = (packed & 0xFF) as u8;
 
         let effective_alpha = ((a as u32 * self.alpha as u32) / 255) as u8;
         if effective_alpha == 0 {
             return;
         }
+        let mut target = RasterizerDrawTarget::new(rasterizer, effective_alpha);
 
-        let fg = Rgba8888::rgba(r, g, b, effective_alpha);
-        let width = rasterizer.width() as i32;
-        let height = rasterizer.height() as i32;
+        let text_color = self.color.into_rgb888();
+        let style = MonoTextStyle::new(self.font.embedded(), text_color);
 
-        let advance = i32::from(self.font.advance());
-        let spacing = i32::from(self.font.letter_spacing());
-        let line_step = match self.letter_spacing_override {
-            Some(adj) => i32::from(self.font.height()) + i32::from(cmp::max(adj, 0)),
-            None => self.font.line_advance(),
-        };
+        let top_left = EgPoint::new(self.x, self.y);
+        let _ = EgText::with_baseline(self.text, top_left, style, EgBaseline::Top).draw(&mut target);
 
-        let mut pen_x = self.x;
-        let mut pen_y = self.y;
-        let mut any_drawn = false;
-        let mut min_drawn_x = i32::MAX;
-        let mut max_drawn_x = i32::MIN;
-        let mut min_drawn_y = i32::MAX;
-        let mut max_drawn_y = i32::MIN;
-
-        for ch in self.text.chars() {
-            match ch {
-                '\r' => continue,
-                '\n' => {
-                    pen_x = self.x;
-                    pen_y += line_step;
-                    continue;
-                }
-                _ => {}
-            }
-
-            let glyph = self.font.glyph(ch);
-            let glyph_width = glyph.width() as i32;
-            let glyph_height = glyph.height() as i32;
-            let mut glyph_has_ink = false;
-
-            for gy in 0..glyph_height {
-                let py = pen_y + gy;
-                if py < 0 || py >= height {
-                    continue;
-                }
-
-                for gx in 0..glyph_width {
-                    let px = pen_x + gx;
-                    if px < 0 || px >= width {
-                        continue;
-                    }
-
-                    if glyph.is_pixel_inked(gx as u8, gy as u8) {
-                        rasterizer.blend_pixel(px, py, fg, 255);
-                        glyph_has_ink = true;
-                    }
-                }
-            }
-
-            if glyph_has_ink {
-                any_drawn = true;
-                min_drawn_x = min_drawn_x.min(pen_x);
-                max_drawn_x = max_drawn_x.max(pen_x + glyph_width - 1);
-                min_drawn_y = min_drawn_y.min(pen_y);
-                max_drawn_y = max_drawn_y.max(pen_y + glyph_height - 1);
-            }
-
-            pen_x += advance + spacing;
-        }
-
-        if any_drawn {
-            let min_x = min_drawn_x.max(0);
-            let max_x = max_drawn_x.min(width - 1);
-            let min_y = min_drawn_y.max(0);
-            let max_y = max_drawn_y.min(height - 1);
-            rasterizer.mark_dirty(min_x, min_y, max_x, max_y);
-        }
+        target.finish();
     }
 }

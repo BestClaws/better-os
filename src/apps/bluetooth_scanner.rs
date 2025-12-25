@@ -2,14 +2,17 @@ use core::fmt::Write;
 
 use crate::libs::bluetooth::{bluetooth, BluetoothEvent, DiscoveredDevice, ScanStatus};
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::font::{font_for_size, FontSize, DEFAULT_CHARSETS};
-use crate::libs::gfx::shapes::{Shape, Text};
-use crate::libs::gfx::Rasterizer;
+use crate::libs::gfx::{Rasterizer, SurfaceDrawTarget};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{warn, Debug2Format};
 use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Ticker};
+use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_6X9};
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::pixelcolor::Rgb888;
+use embedded_graphics::prelude::*;
+use embedded_graphics::text::Text as EgText;
 use heapless::{String, Vec};
 
 const MAX_LISTED_DEVICES: usize = 12;
@@ -83,44 +86,53 @@ fn draw_interface(surface: &mut DrawingSurface, status: ScanStatus, devices: &Ve
     let height = surface.height() as i32;
     surface.fill_rect(0, 0, width, height, Rgba8888::rgba(20, 26, 34, 255));
 
-    let title_font = font_for_size(FontSize::Medium).with_charsets(DEFAULT_CHARSETS);
-    let status_font = font_for_size(FontSize::Small).with_charsets(DEFAULT_CHARSETS);
-    let entry_font = font_for_size(FontSize::Small).with_charsets(DEFAULT_CHARSETS);
+    let title_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(220, 235, 255));
+    let status_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(150, 195, 255));
+    let entry_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(210, 220, 235));
+    let placeholder_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(120, 140, 160));
 
-    Text::new(16, 24, "Bluetooth Scanner")
-        .font(title_font)
-        .color(Rgba8888::rgba(220, 235, 255, 255))
-        .draw(surface);
+    let title_height = title_style.font.character_size.height as i32;
+    let status_height = status_style.font.character_size.height as i32;
+    let entry_height = entry_style.font.character_size.height as i32;
+
+    let heading_x = 8;
+    let heading_y = 14;
+    let line_height = entry_height + 2;
 
     let status_text = format_status(status);
-    Text::new(16, 24 + title_font.line_advance(), status_text.as_str())
-        .font(status_font)
-        .color(Rgba8888::rgba(150, 195, 255, 220))
-        .draw(surface);
 
-    let mut cursor_y = 24 + title_font.line_advance() + status_font.line_advance() + 10;
-    let line_height = entry_font.line_advance();
+    {
+        let mut target = SurfaceDrawTarget::new(surface);
 
-    for (idx, device) in devices.iter().enumerate().take(MAX_LISTED_DEVICES) {
-        if cursor_y + line_height >= height - 16 {
-            break;
+        let _ = EgText::new("Bluetooth Scanner", Point::new(heading_x, heading_y), title_style)
+            .draw(&mut target);
+
+        let status_y = heading_y + title_height + 2;
+        let _ = EgText::new(status_text.as_str(), Point::new(heading_x, status_y), status_style)
+            .draw(&mut target);
+
+        let mut cursor_y = heading_y + title_height + status_height + 4;
+
+        for (idx, device) in devices.iter().enumerate().take(MAX_LISTED_DEVICES) {
+            if cursor_y + entry_height >= height - 8 {
+                break;
+            }
+            let line = format_device_line(idx, device);
+            let _ = EgText::new(line.as_str(), Point::new(heading_x, cursor_y), entry_style)
+                .draw(&mut target);
+            cursor_y += line_height;
         }
-        let line = format_device_line(idx, device);
-        Text::new(16, cursor_y, line.as_str())
-            .font(entry_font)
-            .color(Rgba8888::rgba(210, 220, 235, 240))
-            .draw(surface);
-        cursor_y += line_height;
-    }
 
-    if devices.is_empty() {
-        Text::new(16, cursor_y, "No devices discovered yet")
-            .font(entry_font)
-            .color(Rgba8888::rgba(120, 140, 160, 200))
-            .draw(surface);
+        if devices.is_empty() {
+            let _ = EgText::new(
+                "No devices discovered yet",
+                Point::new(heading_x, cursor_y),
+                placeholder_style,
+            )
+            .draw(&mut target);
+        }
     }
 }
-
 fn format_status(status: ScanStatus) -> String<48> {
     let mut s = String::new();
     match status {

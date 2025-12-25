@@ -5,6 +5,7 @@
 use crate::system::hal::display::AsyncDisplay;
 
 pub(crate) mod color;
+pub mod compat;
 pub mod fill;
 pub mod font;
 pub mod rasterizer;
@@ -12,6 +13,9 @@ pub mod shapes;
 pub mod three_d;
 
 pub use fill::Fill;
+pub use compat::color::{IntoEgRgb, IntoRgba8888};
+pub use compat::draw_target::RasterizerDrawTarget;
+pub use compat::surface::SurfaceDrawTarget;
 pub use font::{font_for_size, Charset, FontSize, MonoFont, DEFAULT_CHARSETS};
 pub use rasterizer::Rasterizer;
 pub use rasterizer::Rgb565Rasterizer;

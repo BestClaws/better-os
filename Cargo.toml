@@ -33,6 +33,8 @@ bt-hci = { version = "0.6" }
 
 heapless = { version = "0.9", features = ["defmt"] }
 
+embedded-graphics = { version = "0.8.1", default-features = false }
+
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 defmt = "1.0.1"
