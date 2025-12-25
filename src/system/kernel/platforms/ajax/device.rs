@@ -131,12 +131,12 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
     let button = ButtonDriver::new(button_pin);
 
-    // let radio_driver = RadioDriver::new(peripherals.BT);
+    let radio_driver = RadioDriver::new(peripherals.BT);
 
     PlatformDevice {
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
-        // radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
+        radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
         gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(accel)))),
         button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
     }

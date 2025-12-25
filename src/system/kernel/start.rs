@@ -16,8 +16,8 @@ use crate::system::services::vibrator_srv;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
+use crate::system::services::bluetooth_service::bluetooth_service;
 use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
-use crate::system::services::radio_service::radio_service;
 use crate::system::services::vibrator_srv::vibrator_service;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -85,8 +85,13 @@ pub(crate) fn start(spawner: Spawner) {
         ))
         .unwrap();
 
-    // info!("[{}s] spawned radio  service", Instant::now().as_millis() as f32 / 1000f32);
-    // spawner.spawn(radio_service(device.radio.unwrap())).unwrap();
+    if let Some(radio) = device.radio {
+        info!(
+            "[{}s] spawned bluetooth service",
+            Instant::now().as_millis() as f32 / 1000f32
+        );
+        spawner.spawn(bluetooth_service(radio)).unwrap();
+    }
 
     // Spawn app spawner service
     info!(

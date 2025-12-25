@@ -17,7 +17,7 @@ esp-hal = { version = "1.0.0", features = [ "unstable", "esp32c6", "rt", "defmt"
 esp-alloc = { version = "0.9.0" }
 esp-radio = { version = "0.17.0", features = [ "unstable", "ble", "esp32c6", "defmt" ] }
 esp-rtos = { version = "0.2.0", features = ["esp32c6", "esp-radio", "embassy", "defmt"] }
-trouble-host = { version = "0.5.0", features = ["default-packet-pool-mtu-255", "derive"] }
+trouble-host = { version = "0.5.0", features = ["default-packet-pool-mtu-255", "derive", "scan"] }
 static_cell = "2.1.1"
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c6"] }
 

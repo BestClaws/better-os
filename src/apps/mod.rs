@@ -1,3 +1,4 @@
+pub(crate) mod bluetooth_scanner;
 pub(crate) mod arrow;
 pub(crate) mod gfx_bench;
 pub(crate) mod rect;

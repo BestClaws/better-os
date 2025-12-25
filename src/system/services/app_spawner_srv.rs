@@ -4,6 +4,7 @@ use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
 use crate::apps::arrow::arrow_app;
+use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::gfx_bench::gfx_bench_app;
 use crate::apps::rect::rect_app;
 use crate::apps::text_demo::text_demo_app;
@@ -18,6 +19,11 @@ use embassy_sync::mutex::Mutex;
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
+    AppDescriptor {
+        name: "Bluetooth Scanner",
+        id: 5,
+        spawn_fn: spawn_bluetooth_scanner_app,
+    },
     AppDescriptor {
         name: "GFX Benchmark",
         id: 2,
@@ -214,6 +220,13 @@ fn spawn_arrow_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(arrow_app(context))
+}
+
+fn spawn_bluetooth_scanner_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(bluetooth_scanner_app(context))
 }
 
 /// Utility functions for application management
