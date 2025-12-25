@@ -1,8 +1,10 @@
 mod manager;
+pub mod scan;
 mod types;
 mod util;
 
 pub use manager::{bluetooth, Bluetooth, BluetoothEvents};
+pub use scan::ScanEventHandler;
 pub use types::{
     BlePacket, BluetoothError, BluetoothEvent, DeviceName, DiscoveredDevice, GattServiceStatus,
     ScanStatus, BLE_PACKET_CAPACITY,

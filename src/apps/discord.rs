@@ -1,7 +1,7 @@
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::rasterizer::Rasterizer;
 use crate::libs::gfx::{Circle, RoundedRect, Shape, SurfaceDrawTarget};
-use crate::libs::http_bridge::{self, HttpBridgeError};
+use crate::libs::http_bridge::{HttpBridgeError, HttpClient};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
@@ -22,6 +22,7 @@ const MAX_DISPLAY_CHARS: usize = 36;
 #[task]
 pub async fn discord_app(ctx: AppContext) {
     info!("Starting Discord bridge app");
+    let client = HttpClient::new();
     let mut messages = [
         placeholder_message(),
         placeholder_message(),
@@ -43,13 +44,13 @@ pub async fn discord_app(ctx: AppContext) {
 
         ticker.next().await;
 
-        match http_bridge::send_get(POLL_PATH).await {
+        match client.get(POLL_PATH).send().await {
             Ok(response) => {
                 if !connected {
                     connected = true;
                     needs_redraw = true;
                 }
-                if update_messages(&mut messages, response.body.as_slice()) {
+                if update_messages(&mut messages, response.body()) {
                     needs_redraw = true;
                 }
                 last_error = None;
@@ -143,7 +144,8 @@ fn draw_interface(
 
     {
         let mut target = SurfaceDrawTarget::new(surface);
-        let _ = EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
+        let _ =
+            EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
     }
 
     let status_text = if connected { "online" } else { "offline" };
@@ -155,19 +157,29 @@ fn draw_interface(
     let status_box_x = cx - status_box_width / 2;
     let status_box_y = title_y + FONT_5X8.character_size.height as i32 + 6;
 
-    RoundedRect::new(status_box_x, status_box_y, status_box_width, status_box_height, 8, 8, 8, 8)
-        .fill_linear_h(
-            Rgba8888::rgba(96, 108, 224, 210),
-            Rgba8888::rgba(68, 74, 116, 210),
-        )
-        .stroke(1, Rgba8888::rgba(28, 32, 48, 200))
-        .draw(surface);
+    RoundedRect::new(
+        status_box_x,
+        status_box_y,
+        status_box_width,
+        status_box_height,
+        8,
+        8,
+        8,
+        8,
+    )
+    .fill_linear_h(
+        Rgba8888::rgba(96, 108, 224, 210),
+        Rgba8888::rgba(68, 74, 116, 210),
+    )
+    .stroke(1, Rgba8888::rgba(28, 32, 48, 200))
+    .draw(surface);
 
     {
         let mut target = SurfaceDrawTarget::new(surface);
         let text_x = cx - status_width / 2;
         let text_y = status_box_y + (status_box_height - status_char_h) / 2 + 1;
-        let _ = EgText::new(status_text, Point::new(text_x, text_y), status_style).draw(&mut target);
+        let _ =
+            EgText::new(status_text, Point::new(text_x, text_y), status_style).draw(&mut target);
     }
 
     let content_top = status_box_y + status_box_height + 4;
