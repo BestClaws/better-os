@@ -2,15 +2,11 @@ use crate::system::hal::radio::AsyncRadio;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use bt_hci::controller::ExternalController;
-use core::time::Duration;
 use defmt::info;
-use esp_hal::rng::Rng;
-use esp_hal::{peripherals::BT, timer::timg::Timer};
+use esp_hal::peripherals::BT;
 use esp_radio::ble::controller::BleConnector;
-use esp_radio::Controller;
-use static_cell::StaticCell;
 use trouble_host::prelude::{DefaultPacketPool, Peripheral, Runner};
-use trouble_host::{peripheral, Address, Host, HostResources, Stack};
+use trouble_host::{Address, Host, HostResources, Stack};
 // TODO: hard assuming we are using ADC1, bad. even for a driver.
 
 const CONNECTIONS_MAX: usize = 1;
@@ -18,16 +14,12 @@ const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 2;
 
 pub struct RadioDriver {
-    timer: Option<Timer<'static>>,
     bt: Option<BT<'static>>,
 }
 
 impl RadioDriver {
-    pub fn new(timer: Timer<'static>, bt: BT<'static>) -> Self {
-        Self {
-            timer: Some(timer),
-            bt: Some(bt),
-        }
+    pub fn new(bt: BT<'static>) -> Self {
+        Self { bt: Some(bt) }
     }
 }
 
@@ -36,14 +28,10 @@ impl AsyncRadio for RadioDriver {
     async fn get_stack(
         &mut self,
     ) -> Stack<ExternalController<BleConnector<'static>, 20>, DefaultPacketPool> {
-        let timer = self.timer.take().unwrap();
         let bt = self.bt.take().unwrap();
-        esp_radio_preempt_baremetal::init(timer);
 
-        static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
-        let radio = RADIO.init(esp_radio::init().unwrap());
-
-        let connector = BleConnector::new(radio, bt);
+        let connector =
+            BleConnector::new(bt, Default::default()).expect("failed to initialize BLE connector");
         let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
         let address = Address::random([0xC0, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);

@@ -34,12 +34,12 @@ use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::gpio::{AnyPin, Level, Output, OutputConfig};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::peripherals::ADC1;
 use esp_hal::spi::master::{Config, Spi};
 use esp_hal::spi::Mode;
 use esp_hal::time::Rate;
 use esp_hal::timer::systimer::SystemTimer;
-use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_buffers, Async, Blocking};
 use esp_hal::{
     gpio::{Input, InputConfig, Pull},
@@ -73,8 +73,13 @@ pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn Async
 pub(crate) fn init_device() -> PlatformDevice<'static> {
     let peripherals = mcu::init();
     let system_timer = SystemTimer::new(peripherals.SYSTIMER);
+    let sw_interrupts = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     let st_alarm = system_timer.alarm0;
-    crate::system::kernel::platforms::ajax::async_runtime::init(st_alarm);
+    let SoftwareInterruptControl {
+        software_interrupt0: sw_int0,
+        ..
+    } = sw_interrupts;
+    crate::system::kernel::platforms::ajax::async_runtime::init(st_alarm, sw_int0);
 
     let i2c = I2c::new(
         peripherals.I2C0,
@@ -126,10 +131,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
     let button = ButtonDriver::new(button_pin);
 
-    // let timer_group_0 = TimerGroup::new(peripherals.TIMG0);
-    // let timer_group_0_timer_0 = timer_group_0.timer0;
-    //
-    // let radio_driver = RadioDriver::new(timer_group_0_timer_0, peripherals.BT);
+    // let radio_driver = RadioDriver::new(peripherals.BT);
 
     PlatformDevice {
         touch: Some(TOUCH.init(Mutex::new(Box::new(touch)))),
