@@ -40,11 +40,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 4,
     //     spawn_fn: spawn_text_demo_app,
     // },
-    // AppDescriptor {
-    //     name: "Watch",
-    //     id: 1,
-    //     spawn_fn: spawn_watch_app,
-    // },
+    AppDescriptor {
+        name: "Watch",
+        id: 1,
+        spawn_fn: spawn_watch_app,
+    },
     // AppDescriptor {
     //     name: "Rect",
     //     id: 3,
