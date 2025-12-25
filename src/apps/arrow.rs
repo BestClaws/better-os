@@ -5,7 +5,7 @@ use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
 
-const STL_DATA: &[u8] = include_bytes!("../assets/arrow2.stl");
+const STL_DATA: &[u8] = include_bytes!("../assets/geofix.stl");
 
 #[embassy_executor::task]
 pub async fn arrow_app(context: AppContext) {
@@ -37,10 +37,10 @@ pub async fn arrow_app(context: AppContext) {
         enable_lighting: true,
         enable_depth_sorting: true,
         enable_near_clipping: true,
-        enable_frustum_clipping: false,
+        enable_frustum_clipping: true,
         enable_wireframe: false,
         enable_shading: true,
-        enable_antialiasing: false,
+        enable_antialiasing: true,
         antialiasing_factor: 1,
         edge_only_antialiasing: true,
     };
@@ -86,6 +86,6 @@ pub async fn arrow_app(context: AppContext) {
             .await;
 
         context.request_redraw().await;
-        Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_millis(16)).await;
     }
 }
