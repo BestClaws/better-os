@@ -1,10 +1,16 @@
-use heapless::String;
+use heapless::{String, Vec};
 
 /// Maximum UTF-8 bytes stored for a device name.
 pub const MAX_DEVICE_NAME_LEN: usize = 32;
 
 /// Heap-allocated string used for device names without relying on a system allocator.
 pub type DeviceName = String<MAX_DEVICE_NAME_LEN>;
+
+/// Maximum bytes transferred per BLE packet over the GATT bridge.
+pub const BLE_PACKET_CAPACITY: usize = 128;
+
+/// Packet type used for BLE channel payloads.
+pub type BlePacket = Vec<u8, BLE_PACKET_CAPACITY>;
 
 /// Commands issued to the Bluetooth service task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,6 +44,9 @@ pub enum GattServiceStatus {
     Idle,
     Advertising,
     Connected,
+    SendingRequest,
+    AwaitingResponse,
+    ResponseComplete,
     Error,
 }
 
@@ -47,8 +56,8 @@ pub enum BluetoothEvent {
     ScanStatus(ScanStatus),
     DeviceDiscovered(DiscoveredDevice),
     GattServiceStatus(GattServiceStatus),
-    GattValueSent(u8),
-    GattValueReceived(u8),
+    GattValueSent(BlePacket),
+    GattValueReceived(BlePacket),
 }
 
 /// Description of a discovered Bluetooth device.
@@ -61,7 +70,11 @@ pub struct DiscoveredDevice {
 
 impl DiscoveredDevice {
     pub fn new(address: [u8; 6], name: Option<DeviceName>, rssi: i8) -> Self {
-        Self { address, name, rssi }
+        Self {
+            address,
+            name,
+            rssi,
+        }
     }
 
     pub fn name(&self) -> Option<&str> {

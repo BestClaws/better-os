@@ -1,7 +1,7 @@
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::font::{font_for_size, Charset, FontSize, MonoFont};
 use crate::libs::gfx::compat::color::IntoEgRgb;
 use crate::libs::gfx::compat::draw_target::RasterizerDrawTarget;
+use crate::libs::gfx::font::{font_for_size, Charset, FontSize, MonoFont};
 use crate::libs::gfx::Rasterizer;
 use embedded_graphics::geometry::Point as EgPoint;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -93,7 +93,8 @@ impl<'a> super::Shape for Text<'a> {
         let style = MonoTextStyle::new(self.font.embedded(), text_color);
 
         let top_left = EgPoint::new(self.x, self.y);
-        let _ = EgText::with_baseline(self.text, top_left, style, EgBaseline::Top).draw(&mut target);
+        let _ =
+            EgText::with_baseline(self.text, top_left, style, EgBaseline::Top).draw(&mut target);
 
         target.finish();
     }

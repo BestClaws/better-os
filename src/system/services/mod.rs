@@ -2,10 +2,10 @@
 pub(crate) mod ambient_srv;
 pub(crate) mod app_spawner_srv;
 pub(crate) mod battery_srv;
+pub(crate) mod bluetooth_service;
 pub(crate) mod compositor_srv;
 pub(crate) mod gyro_accel_srv;
 pub(crate) mod input;
-pub(crate) mod bluetooth_service;
 pub(crate) mod system_ui_srv;
 pub(crate) mod vibrator_srv;
 // display_service replaced by system::ui::display facade

@@ -12,10 +12,10 @@ pub mod rasterizer;
 pub mod shapes;
 pub mod three_d;
 
-pub use fill::Fill;
 pub use compat::color::{IntoEgRgb, IntoRgba8888};
 pub use compat::draw_target::RasterizerDrawTarget;
 pub use compat::surface::SurfaceDrawTarget;
+pub use fill::Fill;
 pub use font::{font_for_size, Charset, FontSize, MonoFont, DEFAULT_CHARSETS};
 pub use rasterizer::Rasterizer;
 pub use rasterizer::Rgb565Rasterizer;

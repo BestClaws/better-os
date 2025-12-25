@@ -11,18 +11,9 @@ use heapless::Vec;
 use trouble_host::prelude::*;
 
 use crate::libs::bluetooth::{
-    command_receiver,
-    event_sender,
-    parse_device_name,
-    BluetoothCommand,
-    BluetoothError,
-    BluetoothEvent,
-    CommandReceiver,
-    DeviceName,
-    DiscoveredDevice,
-    EventSender,
-    GattServiceStatus,
-    ScanStatus,
+    command_receiver, event_sender, parse_device_name, BlePacket, BluetoothCommand, BluetoothError,
+    BluetoothEvent, CommandReceiver, DeviceName, DiscoveredDevice, EventSender, GattServiceStatus,
+    ScanStatus, BLE_PACKET_CAPACITY,
 };
 use crate::system::hal::radio::AsyncRadio;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -39,18 +30,41 @@ enum GattControl {
 static GATT_CONTROL: Signal<CriticalSectionRawMutex, GattControl> = Signal::new();
 static GATT_ACK: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-/// BLE random value service definition (vendor specific UUIDs).
+const HTTP_DEVICE_NAME: &str = "Better HTTP";
+const HTTP_SERVICE_NAME: &str = "BLE HTTP Bridge";
+const HTTP_REQUEST_CHAR_NAME: &str = "HTTP Request Channel";
+const HTTP_RESPONSE_CHAR_NAME: &str = "HTTP Response Channel";
+const HTTP_REQUEST_PAYLOAD: &[u8] =
+    b"GET / HTTP/1.1\r\nHost: ble-http.local\r\nConnection: close\r\n\r\n";
+const RESPONSE_BUFFER_CAPACITY: usize = 512;
+const HTTP_NOTIFY_CHUNK: usize = 20;
+
+/// BLE HTTP bridge service definition (vendor specific UUIDs).
 #[gatt_server]
-struct RandomServiceServer {
-    random: RandomValueService,
+struct HttpBridgeServer {
+    http: HttpBridgeService,
 }
 
+/// GATT service implementing the `BLE HTTP Bridge`.
 #[gatt_service(uuid = "408813df-3469-4f19-9d01-7c87f7f04001")]
-struct RandomValueService {
-    #[characteristic(uuid = "408813df-3469-4f19-9d01-7c87f7f04002", read, notify, value = 0)]
-    outbound: u8,
-    #[characteristic(uuid = "408813df-3469-4f19-9d01-7c87f7f04003", read, write, notify, value = 0)]
-    inbound: u8,
+struct HttpBridgeService {
+    /// `HTTP Request Channel` characteristic.
+    #[characteristic(
+        uuid = "408813df-3469-4f19-9d01-7c87f7f04002",
+        read,
+        notify,
+        value = BlePacket::new(),
+    )]
+    request: BlePacket,
+    /// `HTTP Response Channel` characteristic.
+    #[characteristic(
+        uuid = "408813df-3469-4f19-9d01-7c87f7f04003",
+        read,
+        write,
+        notify,
+        value = BlePacket::new(),
+    )]
+    response: BlePacket,
 }
 
 #[embassy_executor::task]
@@ -207,7 +221,8 @@ pub(crate) async fn bluetooth_service(
             }
         }
     };
-    let gatt_task = random_gatt_service(peripheral);
+
+    let gatt_task = http_gatt_service(peripheral);
 
     join(runner_task, async {
         join(control_task, gatt_task).await;
@@ -261,12 +276,11 @@ impl ScanEventHandler {
             if seen.is_full() {
                 let _ = seen.remove(0);
             }
-            seen
-                .push(KnownDevice {
-                    addr,
-                    name: name.clone(),
-                })
-                .ok();
+            seen.push(KnownDevice {
+                addr,
+                name: name.clone(),
+            })
+            .ok();
             self.emit_device(addr, name, rssi);
         }
     }
@@ -287,44 +301,57 @@ impl EventHandler for ScanEventHandler {
     }
 }
 
-async fn random_gatt_service<'stack, C>(
-    mut peripheral: Peripheral<'stack, C, DefaultPacketPool>,
-)
+async fn http_gatt_service<'stack, C>(mut peripheral: Peripheral<'stack, C, DefaultPacketPool>)
 where
     C: Controller,
 {
-    let mut status_events = event_sender();
-    let _ = status_events
-        .try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Idle));
+    let status_events = event_sender();
+    let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Idle));
 
-    let mut server = RandomServiceServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name: "Better Random",
+    let mut server = HttpBridgeServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+        name: HTTP_DEVICE_NAME,
         appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
     }))
     .unwrap();
+    info!("[gatt] {} ready", HTTP_SERVICE_NAME);
 
     loop {
         gatt_acquire_exclusive().await;
 
-        let _ = status_events
-            .try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Advertising));
+        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+            GattServiceStatus::Advertising,
+        ));
+        info!(
+            "[gatt] advertising {} as {}",
+            HTTP_SERVICE_NAME, HTTP_DEVICE_NAME
+        );
 
-        let advertise_result = advertise_random(&mut peripheral, &server).await;
-
-        match advertise_result {
+        match advertise_http(&mut peripheral, &server).await {
             Ok(conn) => {
-                let _ = status_events
-                    .try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Connected));
+                info!("[gatt] {} connected", HTTP_SERVICE_NAME);
+                let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                    GattServiceStatus::Connected,
+                ));
 
-                let outbound = server.random.outbound;
-                let inbound = server.random.inbound;
-                let notify_sender = event_sender();
-                let inbound_sender = event_sender();
+                let session_status = event_sender();
+                let tx_events = event_sender();
+                let rx_events = event_sender();
 
-                let notify_task = notify_random_values(outbound, &conn, notify_sender);
-                let inbound_task = handle_random_writes(inbound, &conn, inbound_sender);
-
-                let _ = select(notify_task, inbound_task).await;
+                if let Err(err) = http_client_session(
+                    &server.http.request,
+                    &server.http.response,
+                    &conn,
+                    session_status,
+                    tx_events,
+                    rx_events,
+                )
+                .await
+                {
+                    warn!("[gatt] HTTP session error: {:?}", Debug2Format(&err));
+                    let _ = status_events
+                        .try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Error));
+                    Timer::after_millis(500).await;
+                }
             }
             Err(err) => {
                 warn!("[gatt] advertising failed: {:?}", Debug2Format(&err));
@@ -334,57 +361,135 @@ where
             }
         }
 
-        let _ = status_events
-            .try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Idle));
+        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Idle));
         gatt_release_exclusive().await;
     }
 }
 
-async fn notify_random_values(
-    characteristic: Characteristic<u8>,
+async fn http_client_session(
+    request_char: &Characteristic<BlePacket>,
+    response_char: &Characteristic<BlePacket>,
     conn: &GattConnection<'_, '_, DefaultPacketPool>,
-    events: EventSender,
-) {
-    let mut generator = Lfsr::new(0xACE1);
+    status_events: EventSender,
+    tx_events: EventSender,
+    rx_events: EventSender,
+) -> Result<(), Error> {
+    let mut response_buffer: Vec<u8, RESPONSE_BUFFER_CAPACITY> = Vec::new();
+    let mut reported_complete = false;
+    let mut notifications_enabled = request_char.cccd_handle.map(|_| false).unwrap_or(true);
+    let mut request_in_flight = false;
+    let mut should_send_request = notifications_enabled;
+
+    async fn start_http_request(
+        request_char: &Characteristic<BlePacket>,
+        conn: &GattConnection<'_, '_, DefaultPacketPool>,
+        status_events: &EventSender,
+        tx_events: &EventSender,
+        response_buffer: &mut Vec<u8, RESPONSE_BUFFER_CAPACITY>,
+        reported_complete: &mut bool,
+        request_in_flight: &mut bool,
+    ) -> Result<(), Error> {
+        response_buffer.clear();
+        *reported_complete = false;
+        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+            GattServiceStatus::SendingRequest,
+        ));
+        send_http_request(request_char, conn, tx_events).await?;
+        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+            GattServiceStatus::AwaitingResponse,
+        ));
+        *request_in_flight = true;
+        Ok(())
+    }
 
     loop {
-        let value = generator.next();
-
-        match characteristic.notify(conn, &value).await {
-            Ok(()) => {
-                let _ = events.try_send(BluetoothEvent::GattValueSent(value));
-            }
-            Err(err) => {
-                warn!("[gatt] notify failed: {:?}", Debug2Format(&err));
-                break;
-            }
+        if should_send_request && notifications_enabled && !request_in_flight {
+            start_http_request(
+                request_char,
+                conn,
+                &status_events,
+                &tx_events,
+                &mut response_buffer,
+                &mut reported_complete,
+                &mut request_in_flight,
+            )
+            .await?;
+            should_send_request = false;
         }
 
-        Timer::after_secs(2).await;
-    }
-}
-
-async fn handle_random_writes(
-    inbound: Characteristic<u8>,
-    conn: &GattConnection<'_, '_, DefaultPacketPool>,
-    events: EventSender,
-) {
-    loop {
         match conn.next().await {
             GattConnectionEvent::Disconnected { reason } => {
                 info!("[gatt] disconnected: {:?}", reason);
+                if !response_buffer.is_empty() && !reported_complete {
+                    let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                        GattServiceStatus::ResponseComplete,
+                    ));
+                }
                 break;
             }
             GattConnectionEvent::Gatt { event } => {
-                match &event {
-                    GattEvent::Write(write) => {
-                        if write.handle() == inbound.handle {
-                            if let Some(value) = write.data().first().copied() {
-                                let _ = events.try_send(BluetoothEvent::GattValueReceived(value));
+                if let GattEvent::Write(write) = &event {
+                    if Some(write.handle()) == request_char.cccd_handle {
+                        let enabled = write
+                            .data()
+                            .first()
+                            .map(|flags| flags & 0x01 != 0)
+                            .unwrap_or(false);
+                        notifications_enabled = enabled;
+
+                        debug!(
+                            "[gatt] {} notifications {}",
+                            HTTP_REQUEST_CHAR_NAME,
+                            if notifications_enabled {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            }
+                        );
+
+                        if notifications_enabled && !request_in_flight {
+                            should_send_request = true;
+                        } else if !notifications_enabled {
+                            request_in_flight = false;
+                            response_buffer.clear();
+                            reported_complete = false;
+                            should_send_request = false;
+                            let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                                GattServiceStatus::Connected,
+                            ));
+                        }
+                    } else if write.handle() == response_char.handle {
+                        debug!(
+                            "[gatt] received {} chunk ({} bytes)",
+                            HTTP_RESPONSE_CHAR_NAME,
+                            write.data().len()
+                        );
+                        if response_buffer.extend_from_slice(write.data()).is_err() {
+                            warn!("[gatt] response truncated (buffer full)");
+                        }
+
+                        match BlePacket::from_slice(write.data()) {
+                            Ok(packet) => {
+                                let _ =
+                                    rx_events.try_send(BluetoothEvent::GattValueReceived(packet));
+                            }
+                            Err(_) => {
+                                let mut packet = BlePacket::new();
+                                let copy_len = write.data().len().min(BLE_PACKET_CAPACITY);
+                                packet.extend_from_slice(&write.data()[..copy_len]).ok();
+                                let _ =
+                                    rx_events.try_send(BluetoothEvent::GattValueReceived(packet));
                             }
                         }
+
+                        if !reported_complete {
+                            let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                                GattServiceStatus::ResponseComplete,
+                            ));
+                            reported_complete = true;
+                            request_in_flight = false;
+                        }
                     }
-                    _ => {}
                 }
 
                 if let Ok(reply) = event.accept() {
@@ -394,11 +499,41 @@ async fn handle_random_writes(
             _ => {}
         }
     }
+
+    Ok(())
 }
 
-async fn advertise_random<'values, 'server, C>(
+async fn send_http_request(
+    request_char: &Characteristic<BlePacket>,
+    conn: &GattConnection<'_, '_, DefaultPacketPool>,
+    events: &EventSender,
+) -> Result<(), Error> {
+    let mut chunk_index = 0u32;
+    for chunk in HTTP_REQUEST_PAYLOAD.chunks(HTTP_NOTIFY_CHUNK) {
+        let mut packet = BlePacket::new();
+        if packet.extend_from_slice(chunk).is_err() {
+            warn!("[gatt] request chunk truncated");
+            packet.extend_from_slice(&chunk[..BLE_PACKET_CAPACITY]).ok();
+        }
+
+        debug!(
+            "[gatt] sending {} chunk #{} ({} bytes)",
+            HTTP_REQUEST_CHAR_NAME,
+            chunk_index,
+            packet.len()
+        );
+        let event_packet = packet.clone();
+        request_char.notify(conn, &packet).await?;
+        let _ = events.try_send(BluetoothEvent::GattValueSent(event_packet));
+        chunk_index = chunk_index.saturating_add(1);
+    }
+
+    Ok(())
+}
+
+async fn advertise_http<'values, 'server, C>(
     peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
-    server: &'server RandomServiceServer<'values>,
+    server: &'server HttpBridgeServer<'values>,
 ) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>>
 where
     C: Controller,
@@ -407,7 +542,7 @@ where
     let len = AdStructure::encode_slice(
         &[
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-            AdStructure::CompleteLocalName(b"Better Random"),
+            AdStructure::CompleteLocalName(HTTP_DEVICE_NAME.as_bytes()),
         ],
         &mut adv_data,
     )?;
@@ -423,28 +558,8 @@ where
         .await?;
 
     let conn = advertiser.accept().await?.with_attribute_server(server)?;
-    info!("[gatt] connection established");
+    info!("[gatt] {} connection established", HTTP_SERVICE_NAME);
     Ok(conn)
-}
-
-struct Lfsr {
-    state: u16,
-}
-
-impl Lfsr {
-    const fn new(seed: u16) -> Self {
-        Self { state: if seed == 0 { 0xACE1 } else { seed } }
-    }
-
-    fn next(&mut self) -> u8 {
-        if self.state == 0 {
-            self.state = 0xACE1;
-        }
-
-        let bit = ((self.state >> 0) ^ (self.state >> 2) ^ (self.state >> 3) ^ (self.state >> 5)) & 1;
-        self.state = (self.state >> 1) | (bit << 15);
-        (self.state & 0xFF) as u8
-    }
 }
 
 async fn gatt_acquire_exclusive() {

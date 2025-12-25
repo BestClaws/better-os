@@ -36,11 +36,11 @@ pub mod draw_target {
     use super::color::IntoRgba8888;
     use crate::libs::gfx::color::Rgba8888;
     use crate::libs::gfx::rasterizer::Rasterizer;
+    use core::convert::Infallible;
     use embedded_graphics::geometry::{OriginDimensions, Size};
     use embedded_graphics::pixelcolor::Rgb888;
     use embedded_graphics::prelude::DrawTarget;
     use embedded_graphics::{geometry::Point, Pixel};
-    use core::convert::Infallible;
 
     /// Adapter implementing `DrawTarget` on top of the project rasterizer.
     pub struct RasterizerDrawTarget<'a, R: Rasterizer> {
@@ -121,11 +121,11 @@ pub mod surface {
     use super::color::IntoRgba8888;
     use crate::system::ui::drawing_surface::surface::DrawingSurface;
     use crate::util::math::primitives::{Point as UiPoint, Rect as UiRect};
+    use core::convert::Infallible;
     use embedded_graphics::geometry::{OriginDimensions, Point, Size};
     use embedded_graphics::pixelcolor::Rgb888;
     use embedded_graphics::prelude::DrawTarget;
     use embedded_graphics::Pixel;
-    use core::convert::Infallible;
 
     /// Adapter exposing `DrawingSurface` as an embedded-graphics `DrawTarget`.
     pub struct SurfaceDrawTarget<'a, 'b> {

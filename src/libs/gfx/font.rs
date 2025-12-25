@@ -38,7 +38,11 @@ pub struct MonoFont {
 
 impl MonoFont {
     pub const fn new(font: EgMonoFont<'static>, letter_spacing: i8) -> Self {
-        let spacing = if letter_spacing < 0 { 0 } else { letter_spacing as u32 };
+        let spacing = if letter_spacing < 0 {
+            0
+        } else {
+            letter_spacing as u32
+        };
         Self {
             font: EgMonoFont {
                 character_spacing: spacing,
@@ -58,7 +62,11 @@ impl MonoFont {
     }
 
     pub const fn with_letter_spacing(self, letter_spacing: i8) -> Self {
-        let spacing = if letter_spacing < 0 { 0 } else { letter_spacing as u32 };
+        let spacing = if letter_spacing < 0 {
+            0
+        } else {
+            letter_spacing as u32
+        };
         Self {
             font: EgMonoFont {
                 character_spacing: spacing,

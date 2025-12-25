@@ -28,17 +28,13 @@ pub fn bluetooth() -> Bluetooth {
 impl Bluetooth {
     /// Request the Bluetooth stack to begin scanning for nearby devices.
     pub async fn start_scan(&self) -> Result<(), BluetoothError> {
-        COMMAND_CHANNEL
-            .send(BluetoothCommand::StartScan)
-            .await;
+        COMMAND_CHANNEL.send(BluetoothCommand::StartScan).await;
         Ok(())
     }
 
     /// Request the Bluetooth stack to stop any active scan session.
     pub async fn stop_scan(&self) -> Result<(), BluetoothError> {
-        COMMAND_CHANNEL
-            .send(BluetoothCommand::StopScan)
-            .await;
+        COMMAND_CHANNEL.send(BluetoothCommand::StopScan).await;
         Ok(())
     }
 

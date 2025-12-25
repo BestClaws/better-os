@@ -4,12 +4,8 @@ mod util;
 
 pub use manager::{bluetooth, Bluetooth, BluetoothEvents};
 pub use types::{
-	BluetoothError,
-	BluetoothEvent,
-	DeviceName,
-	DiscoveredDevice,
-	GattServiceStatus,
-	ScanStatus,
+    BlePacket, BluetoothError, BluetoothEvent, DeviceName, DiscoveredDevice, GattServiceStatus,
+    ScanStatus, BLE_PACKET_CAPACITY,
 };
 
 pub(crate) use manager::{command_receiver, event_sender, CommandReceiver, EventSender};
