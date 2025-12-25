@@ -15,6 +15,11 @@ use crate::libs::bluetooth::{
     BluetoothEvent, CommandReceiver, DeviceName, DiscoveredDevice, EventSender, GattServiceStatus,
     ScanStatus, BLE_PACKET_CAPACITY,
 };
+use crate::libs::http_bridge::{
+    deliver_error, deliver_response, discard_pending_request, has_inflight_request,
+    request_receiver as http_request_receiver, set_connection_state, HttpBridgeError,
+    HttpRequestBuffer, HttpRequestReceiver, HttpResponseBuffer,
+};
 use crate::system::hal::radio::AsyncRadio;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -34,8 +39,6 @@ const HTTP_DEVICE_NAME: &str = "Better HTTP";
 const HTTP_SERVICE_NAME: &str = "BLE HTTP Bridge";
 const HTTP_REQUEST_CHAR_NAME: &str = "HTTP Request Channel";
 const HTTP_RESPONSE_CHAR_NAME: &str = "HTTP Response Channel";
-const HTTP_REQUEST_PAYLOAD: &[u8] =
-    b"GET / HTTP/1.1\r\nHost: ble-http.local\r\nConnection: close\r\n\r\n";
 const RESPONSE_BUFFER_CAPACITY: usize = 512;
 const HTTP_NOTIFY_CHUNK: usize = 20;
 
@@ -315,6 +318,8 @@ where
     .unwrap();
     info!("[gatt] {} ready", HTTP_SERVICE_NAME);
 
+    let mut request_rx = http_request_receiver();
+
     loop {
         gatt_acquire_exclusive().await;
 
@@ -332,6 +337,7 @@ where
                 let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
                     GattServiceStatus::Connected,
                 ));
+                set_connection_state(true);
 
                 let session_status = event_sender();
                 let tx_events = event_sender();
@@ -344,14 +350,26 @@ where
                     session_status,
                     tx_events,
                     rx_events,
+                    &mut request_rx,
                 )
                 .await
                 {
                     warn!("[gatt] HTTP session error: {:?}", Debug2Format(&err));
                     let _ = status_events
                         .try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Error));
-                    Timer::after_millis(500).await;
                 }
+
+                set_connection_state(false);
+
+                if has_inflight_request() {
+                    deliver_error(HttpBridgeError::Disconnected);
+                }
+
+                while discard_pending_request(&mut request_rx) {
+                    deliver_error(HttpBridgeError::Disconnected);
+                }
+
+                Timer::after_millis(500).await;
             }
             Err(err) => {
                 warn!("[gatt] advertising failed: {:?}", Debug2Format(&err));
@@ -361,6 +379,7 @@ where
             }
         }
 
+        set_connection_state(false);
         let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(GattServiceStatus::Idle));
         gatt_release_exclusive().await;
     }
@@ -373,143 +392,209 @@ async fn http_client_session(
     status_events: EventSender,
     tx_events: EventSender,
     rx_events: EventSender,
+    request_rx: &mut HttpRequestReceiver,
 ) -> Result<(), Error> {
     let mut response_buffer: Vec<u8, RESPONSE_BUFFER_CAPACITY> = Vec::new();
     let mut reported_complete = false;
     let mut notifications_enabled = request_char.cccd_handle.map(|_| false).unwrap_or(true);
     let mut request_in_flight = false;
-    let mut should_send_request = notifications_enabled;
-
-    async fn start_http_request(
-        request_char: &Characteristic<BlePacket>,
-        conn: &GattConnection<'_, '_, DefaultPacketPool>,
-        status_events: &EventSender,
-        tx_events: &EventSender,
-        response_buffer: &mut Vec<u8, RESPONSE_BUFFER_CAPACITY>,
-        reported_complete: &mut bool,
-        request_in_flight: &mut bool,
-    ) -> Result<(), Error> {
-        response_buffer.clear();
-        *reported_complete = false;
-        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
-            GattServiceStatus::SendingRequest,
-        ));
-        send_http_request(request_char, conn, tx_events).await?;
-        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
-            GattServiceStatus::AwaitingResponse,
-        ));
-        *request_in_flight = true;
-        Ok(())
-    }
+    let mut pending_request: Option<HttpRequestBuffer> = None;
 
     loop {
-        if should_send_request && notifications_enabled && !request_in_flight {
-            start_http_request(
+        if notifications_enabled && !request_in_flight && pending_request.is_none() {
+            match select(request_rx.receive(), conn.next()).await {
+                Either::First(request) => {
+                    pending_request = Some(request);
+                    response_buffer.clear();
+                    reported_complete = false;
+                }
+                Either::Second(event) => {
+                    if handle_connection_event(
+                        event,
+                        request_char,
+                        response_char,
+                        &status_events,
+                        &rx_events,
+                        &mut response_buffer,
+                        &mut reported_complete,
+                        &mut request_in_flight,
+                        &mut notifications_enabled,
+                    )
+                    .await?
+                    {
+                        break;
+                    }
+                    continue;
+                }
+            }
+        } else {
+            let event = conn.next().await;
+            if handle_connection_event(
+                event,
                 request_char,
-                conn,
+                response_char,
                 &status_events,
-                &tx_events,
+                &rx_events,
                 &mut response_buffer,
                 &mut reported_complete,
                 &mut request_in_flight,
+                &mut notifications_enabled,
             )
-            .await?;
-            should_send_request = false;
-        }
-
-        match conn.next().await {
-            GattConnectionEvent::Disconnected { reason } => {
-                info!("[gatt] disconnected: {:?}", reason);
-                if !response_buffer.is_empty() && !reported_complete {
-                    let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
-                        GattServiceStatus::ResponseComplete,
-                    ));
-                }
+            .await?
+            {
                 break;
             }
-            GattConnectionEvent::Gatt { event } => {
-                if let GattEvent::Write(write) = &event {
-                    if Some(write.handle()) == request_char.cccd_handle {
-                        let enabled = write
-                            .data()
-                            .first()
-                            .map(|flags| flags & 0x01 != 0)
-                            .unwrap_or(false);
-                        notifications_enabled = enabled;
+            continue;
+        }
 
-                        debug!(
-                            "[gatt] {} notifications {}",
-                            HTTP_REQUEST_CHAR_NAME,
-                            if notifications_enabled {
-                                "enabled"
-                            } else {
-                                "disabled"
-                            }
-                        );
-
-                        if notifications_enabled && !request_in_flight {
-                            should_send_request = true;
-                        } else if !notifications_enabled {
-                            request_in_flight = false;
-                            response_buffer.clear();
-                            reported_complete = false;
-                            should_send_request = false;
-                            let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
-                                GattServiceStatus::Connected,
-                            ));
-                        }
-                    } else if write.handle() == response_char.handle {
-                        debug!(
-                            "[gatt] received {} chunk ({} bytes)",
-                            HTTP_RESPONSE_CHAR_NAME,
-                            write.data().len()
-                        );
-                        if response_buffer.extend_from_slice(write.data()).is_err() {
-                            warn!("[gatt] response truncated (buffer full)");
-                        }
-
-                        match BlePacket::from_slice(write.data()) {
-                            Ok(packet) => {
-                                let _ =
-                                    rx_events.try_send(BluetoothEvent::GattValueReceived(packet));
-                            }
-                            Err(_) => {
-                                let mut packet = BlePacket::new();
-                                let copy_len = write.data().len().min(BLE_PACKET_CAPACITY);
-                                packet.extend_from_slice(&write.data()[..copy_len]).ok();
-                                let _ =
-                                    rx_events.try_send(BluetoothEvent::GattValueReceived(packet));
-                            }
-                        }
-
-                        if !reported_complete {
-                            let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
-                                GattServiceStatus::ResponseComplete,
-                            ));
-                            reported_complete = true;
-                            request_in_flight = false;
-                        }
-                    }
-                }
-
-                if let Ok(reply) = event.accept() {
-                    reply.send().await;
-                }
+        if let Some(request) = pending_request.take() {
+            let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                GattServiceStatus::SendingRequest,
+            ));
+            if let Err(err) =
+                send_http_request(request_char, conn, &tx_events, request.as_slice()).await
+            {
+                warn!(
+                    "[gatt] failed to send HTTP request: {:?}",
+                    Debug2Format(&err)
+                );
+                deliver_error(HttpBridgeError::Internal);
+                return Err(err);
             }
-            _ => {}
+            let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                GattServiceStatus::AwaitingResponse,
+            ));
+            request_in_flight = true;
         }
     }
 
+    if pending_request.is_some() {
+        deliver_error(HttpBridgeError::Disconnected);
+    }
+
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn handle_connection_event(
+    event: GattConnectionEvent<'_, '_, DefaultPacketPool>,
+    request_char: &Characteristic<BlePacket>,
+    response_char: &Characteristic<BlePacket>,
+    status_events: &EventSender,
+    rx_events: &EventSender,
+    response_buffer: &mut Vec<u8, RESPONSE_BUFFER_CAPACITY>,
+    reported_complete: &mut bool,
+    request_in_flight: &mut bool,
+    notifications_enabled: &mut bool,
+) -> Result<bool, Error> {
+    match event {
+        GattConnectionEvent::Disconnected { reason } => {
+            info!("[gatt] disconnected: {:?}", reason);
+            if *request_in_flight {
+                deliver_error(HttpBridgeError::Disconnected);
+            }
+            if !response_buffer.is_empty() && !*reported_complete {
+                let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                    GattServiceStatus::ResponseComplete,
+                ));
+            }
+            *request_in_flight = false;
+            response_buffer.clear();
+            *reported_complete = false;
+            return Ok(true);
+        }
+        GattConnectionEvent::Gatt { event } => {
+            if let GattEvent::Write(write) = &event {
+                if Some(write.handle()) == request_char.cccd_handle {
+                    let enabled = write
+                        .data()
+                        .first()
+                        .map(|flags| flags & 0x01 != 0)
+                        .unwrap_or(false);
+                    *notifications_enabled = enabled;
+
+                    debug!(
+                        "[gatt] {} notifications {}",
+                        HTTP_REQUEST_CHAR_NAME,
+                        if *notifications_enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
+
+                    if !*notifications_enabled {
+                        *request_in_flight = false;
+                        response_buffer.clear();
+                        *reported_complete = false;
+                        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                            GattServiceStatus::Connected,
+                        ));
+                    }
+                } else if write.handle() == response_char.handle {
+                    debug!(
+                        "[gatt] received {} chunk ({} bytes)",
+                        HTTP_RESPONSE_CHAR_NAME,
+                        write.data().len()
+                    );
+
+                    if response_buffer.extend_from_slice(write.data()).is_err() {
+                        warn!("[gatt] response truncated (buffer full)");
+                    }
+
+                    match BlePacket::from_slice(write.data()) {
+                        Ok(packet) => {
+                            let _ = rx_events.try_send(BluetoothEvent::GattValueReceived(packet));
+                        }
+                        Err(_) => {
+                            let mut packet = BlePacket::new();
+                            let copy_len = write.data().len().min(BLE_PACKET_CAPACITY);
+                            packet.extend_from_slice(&write.data()[..copy_len]).ok();
+                            let _ = rx_events.try_send(BluetoothEvent::GattValueReceived(packet));
+                        }
+                    }
+
+                    if !*reported_complete {
+                        let mut delivered: HttpResponseBuffer = HttpResponseBuffer::new();
+                        let copy_len = response_buffer.len().min(delivered.capacity());
+                        delivered
+                            .extend_from_slice(&response_buffer[..copy_len])
+                            .ok();
+                        if response_buffer.len() > delivered.capacity() {
+                            warn!(
+                                "[gatt] delivered response truncated ({} / {})",
+                                copy_len,
+                                response_buffer.len()
+                            );
+                        }
+                        deliver_response(delivered);
+                        let _ = status_events.try_send(BluetoothEvent::GattServiceStatus(
+                            GattServiceStatus::ResponseComplete,
+                        ));
+                        *reported_complete = true;
+                        *request_in_flight = false;
+                    }
+                }
+            }
+
+            if let Ok(reply) = event.accept() {
+                reply.send().await;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(false)
 }
 
 async fn send_http_request(
     request_char: &Characteristic<BlePacket>,
     conn: &GattConnection<'_, '_, DefaultPacketPool>,
     events: &EventSender,
+    payload: &[u8],
 ) -> Result<(), Error> {
     let mut chunk_index = 0u32;
-    for chunk in HTTP_REQUEST_PAYLOAD.chunks(HTTP_NOTIFY_CHUNK) {
+    for chunk in payload.chunks(HTTP_NOTIFY_CHUNK) {
         let mut packet = BlePacket::new();
         if packet.extend_from_slice(chunk).is_err() {
             warn!("[gatt] request chunk truncated");
