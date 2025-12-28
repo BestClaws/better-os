@@ -5,12 +5,13 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 
 use crate::system::hal::display::AsyncDisplay;
-use crate::system::services::system_ui_srv::update_display_metrics;
+use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::ui::compositor::{
     animation::{ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig},
     UICompositor,
 };
 use crate::system::ui::display::Display;
+use crate::system::ui::display_metrics;
 use crate::system::ui::windowing::WindowManager;
 
 /// Target cadence for the compositor loop (~60 FPS).
@@ -37,16 +38,20 @@ pub async fn ui_compositor_service(
     {
         let mut compositor_mut = compositor.lock().await;
         let display_facade: Display = Display::init(display).await;
-        let width = display_facade.width();
-        let height = display_facade.height();
+        let resolution = display_facade.resolution();
         let negotiated_pixel_format = display_facade.pixel_format();
-        compositor_mut.attach_display_service(display_facade);
-        update_display_metrics(width, height);
+        FRAMEBUFFER_POOL.configure(
+            resolution.logical.width,
+            resolution.logical.height,
+            negotiated_pixel_format.bytes_per_pixel(),
+        );
+        display_metrics::update(resolution);
 
         {
             let mut wm_mut = window_manager.lock().await;
-            wm_mut.set_default_pixel_format(negotiated_pixel_format);
+            wm_mut.update_display_config(resolution, negotiated_pixel_format);
         }
+        compositor_mut.attach_display_service(display_facade);
 
         let animation_config = AnimationConfig {
             steps: 5,

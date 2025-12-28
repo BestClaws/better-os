@@ -1,5 +1,4 @@
 use crate::system::app::app_context::AppContext;
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
@@ -14,6 +13,7 @@ use defmt::{debug, error, info, warn, Format};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Timer};
 
 /// Application registry for system apps
 ///
@@ -81,6 +81,8 @@ pub async fn app_spawner_service(
     spawner: Spawner,
 ) {
     info!("Starting application spawner service");
+
+    wait_for_display_config(window_manager).await;
 
     let mut successful_apps = 0;
     let total_apps = SYSTEM_APPS.len();
@@ -155,7 +157,7 @@ pub async fn create_application_context(
     let window_handle = {
         let mut wm_lock = window_manager.lock().await;
         let handle = wm_lock
-            .create_window(FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, app_id)
+            .create_window(app_id)
             .await
             .ok_or(AppSpawnError::WindowAllocationFailed)?;
         debug!("Window created for {}: {:?}", app_name, handle);
@@ -175,6 +177,21 @@ pub async fn create_application_context(
     let app_context = AppContext::new(window_handle, app_id, app_name, compositor, window_manager);
 
     Ok(app_context)
+}
+
+async fn wait_for_display_config(
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
+) {
+    loop {
+        let ready = {
+            let wm = window_manager.lock().await;
+            wm.has_display_config()
+        };
+        if ready {
+            break;
+        }
+        Timer::after(Duration::from_millis(10)).await;
+    }
 }
 
 /// Errors that can occur during application spawning

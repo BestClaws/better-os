@@ -153,12 +153,18 @@ fn draw_time_badge(
     let max_y = height - badge_height - 8;
     let badge_y = proposed_y.min(max_y.max(0));
 
-    RoundedRect::new(badge_x - 4, badge_y - 4, badge_width + 8, badge_height + 8, 12, 12, 12, 12)
-        .fill_radial(
-            Rgba8888::rgba(255, 232, 64, 40),
-            Rgba8888::rgba(0, 0, 0, 0),
-        )
-        .draw(surface);
+    RoundedRect::new(
+        badge_x - 4,
+        badge_y - 4,
+        badge_width + 8,
+        badge_height + 8,
+        12,
+        12,
+        12,
+        12,
+    )
+    .fill_radial(Rgba8888::rgba(255, 232, 64, 40), Rgba8888::rgba(0, 0, 0, 0))
+    .draw(surface);
 
     RoundedRect::new(badge_x, badge_y, badge_width, badge_height, 10, 10, 10, 10)
         .fill_linear_h(Rgba8888::rgba(0, 0, 0, 128), Rgba8888::rgba(0, 0, 0, 128))

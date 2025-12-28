@@ -45,6 +45,15 @@ impl Window {
         self.input_channel = Some(ic);
     }
 
+    /// Update the logical dimensions and pixel format of the window surface.
+    pub fn update_surface(&mut self, width: u32, height: u32, format: PixelFormat) {
+        self.width = width;
+        self.height = height;
+        if let Some(surface) = self.surface.as_mut() {
+            surface.reconfigure(width, height, format);
+        }
+    }
+
     /// Return a mutable reference to the drawing surface slot.
     pub fn surface(&mut self) -> &mut Option<DrawingSurface<'static>> {
         &mut self.surface

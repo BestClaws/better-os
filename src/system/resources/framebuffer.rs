@@ -1,12 +1,10 @@
-#![allow(unused)]
-
-use crate::system::kernel::config::resources::{FRAME_BUFFER_COUNT, FRAME_BUFFER_SIZE};
+use crate::system::kernel::config::resources::MAX_FRAME_BUFFERS;
+use alloc::vec::Vec;
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicU8, Ordering};
-use defmt::{info, println};
+use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use defmt::println;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::semaphore::{GreedySemaphore, Semaphore};
-use embassy_time::Timer;
 
 /// Global singleton framebuffer pool.
 pub static FRAMEBUFFER_POOL: FrameBufferPool = FrameBufferPool::new();
@@ -36,7 +34,8 @@ impl FrameBufferHandle {
 /// Each buffer is wrapped in `UnsafeCell` to allow interior mutability.
 pub struct FrameBufferPool {
     // Array of raw buffers — one per slot, each with exclusive access guaranteed via handle
-    buffers: [UnsafeCell<[u8; FRAME_BUFFER_SIZE]>; FRAME_BUFFER_COUNT],
+    buffers: [UnsafeCell<Vec<u8>>; MAX_FRAME_BUFFERS],
+    buffer_len: AtomicUsize,
 
     // Bitmap tracking which slots are in use (1 bit per buffer)
     status: AtomicU8,
@@ -49,16 +48,42 @@ impl FrameBufferPool {
     /// Construct a new buffer pool with all buffers zero-initialized and free.
     pub const fn new() -> Self {
         Self {
-            buffers: [const { UnsafeCell::new([0; FRAME_BUFFER_SIZE]) }; FRAME_BUFFER_COUNT], // Safe because it's Copy + const init
+            buffers: [const { UnsafeCell::new(Vec::new()) }; MAX_FRAME_BUFFERS],
+            buffer_len: AtomicUsize::new(0),
             status: AtomicU8::new(0), // All buffers initially free
-            permits: GreedySemaphore::new(FRAME_BUFFER_COUNT), // All permits available
+            permits: GreedySemaphore::new(MAX_FRAME_BUFFERS), // All permits available
         }
+    }
+
+    /// Configure buffers for the negotiated logical framebuffer layout.
+    ///
+    /// # Panics
+    /// Panics if buffers are currently allocated or if the computed size overflows.
+    pub fn configure(&self, width: u32, height: u32, bytes_per_pixel: usize) {
+        let in_use = self.status.load(Ordering::Acquire);
+        assert!(
+            in_use == 0,
+            "Cannot reconfigure framebuffer pool while buffers are allocated"
+        );
+
+        let required = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|v| v.checked_mul(bytes_per_pixel))
+            .expect("Framebuffer size overflow");
+        assert!(required > 0, "Framebuffer dimensions must be non-zero");
+
+        for buffer in self.buffers.iter() {
+            // SAFETY: exclusive because configure is only called when no buffers are allocated.
+            let vec = unsafe { &mut *buffer.get() };
+            vec.resize(required, 0);
+        }
+        self.buffer_len.store(required, Ordering::Release);
     }
 
     /// Attempt to allocate a buffer slot non-blocking-ly.
     /// Returns `Some(FrameBufferHandle)` if successful, or `None` if all are taken.
     pub fn _try_allocate(&self) -> Option<FrameBufferHandle> {
-        for id in 0..FRAME_BUFFER_COUNT {
+        for id in 0..MAX_FRAME_BUFFERS {
             let mask = 1 << id;
             let prev = self.status.fetch_or(mask, Ordering::AcqRel);
 
@@ -98,10 +123,18 @@ impl FrameBufferPool {
     /// - This is guaranteed by the pool’s allocation system, which issues a single valid
     ///   `FrameBufferHandle` per slot and prevents duplication or aliasing.
     #[allow(clippy::mut_from_ref)]
-    pub fn get_mut(&self, handle: &FrameBufferHandle) -> &mut [u8; FRAME_BUFFER_SIZE] {
+    pub fn get_mut(&self, handle: &FrameBufferHandle) -> &mut [u8] {
         // SAFETY: Access is gated by handle ownership — only one valid mutable reference
         // should exist at any time, and `UnsafeCell` permits interior mutability.
-        unsafe { &mut *self.buffers[handle.id].get() }
+        let len = self.buffer_len.load(Ordering::Acquire);
+        assert!(len > 0, "FrameBufferPool not configured");
+        unsafe {
+            let vec = &mut *self.buffers[handle.id].get();
+            if vec.len() < len {
+                vec.resize(len, 0);
+            }
+            &mut vec[..len]
+        }
     }
 }
 

@@ -27,7 +27,7 @@ impl TouchProcessor {
         Self {
             frame_width: frame_width as i32,
             frame_height: frame_height as i32,
-            scale_factor,
+            scale_factor: scale_factor.max(1),
             coalesce_threshold,
             was_pressed: false,
             last_pointer: None,
@@ -38,6 +38,10 @@ impl TouchProcessor {
     pub fn update_dimensions(&mut self, width: u32, height: u32) {
         self.frame_width = width as i32;
         self.frame_height = height as i32;
+    }
+
+    pub fn update_scale_factor(&mut self, scale_factor: u32) {
+        self.scale_factor = scale_factor.max(1);
     }
 
     /// Process one raw touch sample. If the sample results in a state transition or a meaningful

@@ -4,6 +4,7 @@ extern crate alloc;
 use crate::system::hal::display::{
     AsyncDisplay, DisplayCapabilities, DisplayResolution, DisplaySize, Orientation, PixelFormat,
 };
+use crate::system::kernel::config::resources::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use crate::util::math::primitives::{Point, Rect, Size};
 use alloc::boxed::Box;
 use alloc::vec;
@@ -651,15 +652,16 @@ where
     }
 
     fn capabilities(&self) -> DisplayCapabilities {
-        // Provide common modes: 466x466 (1x), 233x233 (2x), 116x116 (4x)
-        // Physical is fixed: panel size.
-        const PHYS_W: u32 = 466;
-        const PHYS_H: u32 = 466;
+        // Provide common modes: 466x466 (1x), 232x232 (2x), 116x116 (4x) with a 2px border.
+        const PHYS_W: u32 = DISPLAY_WIDTH;
+        const PHYS_H: u32 = DISPLAY_HEIGHT;
+        const LOGICAL_SCALE2: u32 = (DISPLAY_WIDTH / 2) - 1; // leaves a 1px gutter on each side
+        const LOGICAL_SCALE4: u32 = DISPLAY_WIDTH / 4;
         const SUPPORTED: &[DisplayResolution] = &[
             DisplayResolution {
                 logical: DisplaySize {
-                    width: 466,
-                    height: 466,
+                    width: DISPLAY_WIDTH,
+                    height: DISPLAY_HEIGHT,
                 },
                 physical: DisplaySize {
                     width: PHYS_W,
@@ -669,8 +671,8 @@ where
             },
             DisplayResolution {
                 logical: DisplaySize {
-                    width: 233,
-                    height: 233,
+                    width: LOGICAL_SCALE2,
+                    height: LOGICAL_SCALE2,
                 },
                 physical: DisplaySize {
                     width: PHYS_W,
@@ -680,8 +682,8 @@ where
             },
             DisplayResolution {
                 logical: DisplaySize {
-                    width: 116,
-                    height: 116,
+                    width: LOGICAL_SCALE4,
+                    height: LOGICAL_SCALE4,
                 },
                 physical: DisplaySize {
                     width: PHYS_W,
@@ -699,29 +701,19 @@ where
     }
 
     fn set_resolution(&mut self, resolution: DisplayResolution) {
-        // Accept only supported scales: 1,2,4. Fallback to nearest.
-        let scale = match resolution.scale {
-            1 | 2 | 4 => resolution.scale,
-            s if s < 2 => 1,
-            s if s < 4 => 2,
-            _ => 4,
-        };
-        let physical = DisplaySize {
-            width: self.width as u32,
-            height: self.height as u32,
-        };
-        let logical = if scale == 1 {
-            physical
-        } else {
-            DisplaySize {
-                width: physical.width / scale,
-                height: physical.height / scale,
-            }
-        };
-        self.active_resolution = DisplayResolution {
-            logical,
-            physical,
-            scale,
-        };
+        let caps = self.capabilities();
+        let selected = caps
+            .supported_resolutions
+            .iter()
+            .copied()
+            .find(|mode| mode.logical == resolution.logical && mode.scale == resolution.scale)
+            .or_else(|| {
+                caps.supported_resolutions
+                    .iter()
+                    .copied()
+                    .find(|mode| mode.scale == resolution.scale)
+            })
+            .unwrap_or(caps.preferred_resolution);
+        self.active_resolution = selected;
     }
 }

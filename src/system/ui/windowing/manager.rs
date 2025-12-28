@@ -1,7 +1,7 @@
 use defmt::{debug, warn};
 
 use super::window::{Window, WindowHandle};
-use crate::system::hal::display::PixelFormat;
+use crate::system::hal::display::{DisplayResolution, PixelFormat};
 use crate::system::input::types::HighLevelEvent;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::resources::input_channels::INPUT_CHANNEL_POOL;
@@ -19,40 +19,70 @@ const MAX_WINDOWS: usize = 8;
 /// - Track one-shot initial paint requests for pre-active (next/previous) windows
 pub struct WindowManager {
     windows: heapless::Vec<Window, MAX_WINDOWS>,
-    default_format: PixelFormat,
+    display_format: PixelFormat,
+    logical_width: u32,
+    logical_height: u32,
 }
 
 impl WindowManager {
-    /// Create a new empty window manager with a default PixelFormat.
+    /// Create a new empty window manager with a fallback PixelFormat.
     pub fn new(default_format: PixelFormat) -> Self {
         Self {
             windows: heapless::Vec::new(),
-            default_format,
+            display_format: default_format,
+            logical_width: 0,
+            logical_height: 0,
         }
     }
 
-    /// Update the default PixelFormat. Existing active windows are unaffected until
-    /// the next activation cycle.
-    pub fn set_default_pixel_format(&mut self, format: PixelFormat) {
-        self.default_format = format;
+    pub fn has_display_config(&self) -> bool {
+        self.logical_width > 0 && self.logical_height > 0
     }
 
-    /// Create a new window and add it to the manager.
-    pub async fn create_window(
-        &mut self,
-        width: u32,
-        height: u32,
-        id: usize,
-    ) -> Option<WindowHandle> {
+    pub fn logical_dimensions(&self) -> Option<(u32, u32)> {
+        self.has_display_config()
+            .then_some((self.logical_width, self.logical_height))
+    }
+
+    pub fn display_format(&self) -> PixelFormat {
+        self.display_format
+    }
+
+    /// Update negotiated display configuration and propagate to existing windows.
+    pub fn update_display_config(&mut self, resolution: DisplayResolution, format: PixelFormat) {
+        self.display_format = format;
+        self.logical_width = resolution.logical.width;
+        self.logical_height = resolution.logical.height;
+
+        for window in self.windows.iter_mut() {
+            window.update_surface(self.logical_width, self.logical_height, self.display_format);
+        }
+    }
+
+    /// Create a new window and add it to the manager using the negotiated dimensions.
+    pub async fn create_window(&mut self, id: usize) -> Option<WindowHandle> {
+        if !self.has_display_config() {
+            warn!("WindowManager lacks display metrics; refusing to create window");
+            return None;
+        }
         if self.windows.len() >= MAX_WINDOWS {
             warn!("WindowManager capacity reached; cannot create more windows");
             return None;
         }
 
-        let window = Window::new(width, height, id, self.default_format).await;
+        let window = Window::new(
+            self.logical_width,
+            self.logical_height,
+            id,
+            self.display_format,
+        )
+        .await;
         let handle = window.handle();
         self.windows.push(window).ok()?;
-        debug!("Window created: id={}, size={}x{}", id, width, height);
+        debug!(
+            "Window created: id={}, size={}x{}",
+            id, self.logical_width, self.logical_height
+        );
         Some(handle)
     }
 
@@ -101,11 +131,11 @@ impl WindowManager {
                                         *slot = Some(DrawingSurface::new_unattached(
                                             w,
                                             h,
-                                            self.default_format,
+                                            self.display_format,
                                         ));
                                     }
                                     Some(surface) => {
-                                        surface.reconfigure(w, h, self.default_format);
+                                        surface.reconfigure(w, h, self.display_format);
                                     }
                                 }
                                 window.set_resources(fb, ic).await;

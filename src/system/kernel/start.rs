@@ -28,7 +28,8 @@ pub static WINDOW_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, WindowManag
 
 pub(crate) fn start(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
-    esp_alloc::heap_allocator!(size: 180 * 1024);
+    // Increase heap size to account for dynamic framebuffer allocation.
+    esp_alloc::heap_allocator!(size: 256 * 1024);
 
     let device = platforms::ajax::device::init_device();
 

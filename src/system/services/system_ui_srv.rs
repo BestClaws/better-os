@@ -1,47 +1,46 @@
-use core::sync::atomic::{AtomicI32, Ordering};
-
 use defmt::info;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::Instant;
+use embassy_time::{Duration, Instant, Timer};
 
 use crate::system::input::types::{HighLevelEvent, MotionEvent};
-use crate::system::kernel::config::resources::{FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH};
 use crate::system::ui::compositor::{animation::TransitionDirection, UICompositor};
+use crate::system::ui::display_metrics;
 use crate::system::ui::input::bus::SystemUiInputBus;
 use crate::system::ui::input::gestures::{
     EdgeSwipeRecognizer, PointerEvent, PointerGesture, SwipeGestureUpdate,
 };
 use crate::system::ui::windowing::WindowManager;
 
-static FRAME_WIDTH_HINT: AtomicI32 = AtomicI32::new(FRAME_BUFFER_WIDTH as i32);
-static FRAME_HEIGHT_HINT: AtomicI32 = AtomicI32::new(FRAME_BUFFER_HEIGHT as i32);
-
-/// Update the logical framebuffer dimensions used for gesture heuristics.
-pub fn update_display_metrics(width: u32, height: u32) {
-    FRAME_WIDTH_HINT.store(width as i32, Ordering::Relaxed);
-    FRAME_HEIGHT_HINT.store(height as i32, Ordering::Relaxed);
-}
-
-fn current_dimensions() -> (i32, i32) {
-    (
-        FRAME_WIDTH_HINT.load(Ordering::Relaxed),
-        FRAME_HEIGHT_HINT.load(Ordering::Relaxed),
-    )
-}
-
 #[embassy_executor::task]
 pub async fn system_ui_gesture_task(
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
 ) {
-    let mut last_dims = current_dimensions();
-    let mut recognizer = EdgeSwipeRecognizer::new(last_dims.0, last_dims.1);
+    let mut last_metrics = loop {
+        if let Some(metrics) = display_metrics::metrics() {
+            break metrics;
+        }
+        Timer::after(Duration::from_millis(10)).await;
+    };
+    let mut recognizer = EdgeSwipeRecognizer::new(
+        last_metrics.logical_width as i32,
+        last_metrics.logical_height as i32,
+    );
 
     loop {
-        let dims = current_dimensions();
-        if dims != last_dims {
-            recognizer.calibrate_frame_size(dims.0, dims.1);
-            last_dims = dims;
+        let metrics = match display_metrics::metrics() {
+            Some(m) => m,
+            None => {
+                Timer::after(Duration::from_millis(10)).await;
+                continue;
+            }
+        };
+        if metrics.logical_width != last_metrics.logical_width
+            || metrics.logical_height != last_metrics.logical_height
+        {
+            recognizer
+                .calibrate_frame_size(metrics.logical_width as i32, metrics.logical_height as i32);
+            last_metrics = metrics;
         }
 
         let event = SystemUiInputBus::events().receive().await;

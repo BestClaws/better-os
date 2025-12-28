@@ -13,9 +13,7 @@ use crate::system::input::devices::{
     touch::{TouchProcessor, TouchSample},
 };
 use crate::system::input::RawInputQueue;
-use crate::system::kernel::config::resources::{
-    FRAME_BUFFER_HEIGHT, FRAME_BUFFER_WIDTH, FRAME_SCALE_FACTOR,
-};
+use crate::system::ui::display_metrics;
 
 const ENCODER_COOLDOWN_MS: u64 = 200;
 const TOUCH_POLL_MS: u64 = 10;
@@ -57,15 +55,41 @@ pub async fn encoder_reader_task(
 pub async fn touch_reader_task(
     touch: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>,
 ) {
+    let mut metrics = loop {
+        if let Some(current) = display_metrics::metrics() {
+            if current.logical_width > 0 && current.logical_height > 0 {
+                break current;
+            }
+        }
+        Timer::after(Duration::from_millis(TOUCH_POLL_MS)).await;
+    };
+
     let mut processor = TouchProcessor::new(
-        FRAME_BUFFER_WIDTH,
-        FRAME_BUFFER_HEIGHT,
-        FRAME_SCALE_FACTOR,
+        metrics.logical_width,
+        metrics.logical_height,
+        metrics.scale,
         TOUCH_COALESCE_THRESHOLD,
     );
     let mut last_log = Instant::now();
 
     loop {
+        let current = match display_metrics::metrics() {
+            Some(m) => m,
+            None => {
+                Timer::after(Duration::from_millis(TOUCH_POLL_MS)).await;
+                continue;
+            }
+        };
+        if current.logical_width != metrics.logical_width
+            || current.logical_height != metrics.logical_height
+        {
+            processor.update_dimensions(current.logical_width, current.logical_height);
+        }
+        if current.scale != metrics.scale {
+            processor.update_scale_factor(current.scale);
+        }
+        metrics = current;
+
         let read_start = Instant::now();
         let sample = {
             let mut touch = touch.lock().await;
