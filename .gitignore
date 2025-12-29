@@ -22,3 +22,5 @@ esp-hal/
 /embedded-graphics/
 /extras/tools/venv/
 /venv/
+
+/references/
