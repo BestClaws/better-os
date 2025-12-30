@@ -39,6 +39,26 @@ pub mod commands {
     pub const C63: u8 = 0x63;
 }
 
+const CO5300_SUPPORTED_FORMATS: [PixelFormat; 1] = [PixelFormat::Rgb565];
+const CO5300_SUPPORTED_RESOLUTIONS: [DisplayResolution; 3] = [
+    DisplayResolution {
+        logical: DisplaySize::new(464, 464),
+        physical: DisplaySize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT),
+        scale: 1,
+    },
+    DisplayResolution {
+        logical: DisplaySize::new(232, 232),
+        physical: DisplaySize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT),
+        scale: 2,
+    },
+    DisplayResolution {
+        logical: DisplaySize::new(116, 116),
+        physical: DisplaySize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT),
+        scale: 4,
+    },
+];
+const CO5300_PREFERRED_MODE_INDEX: usize = 2;
+
 /// Map unified PixelFormat to Chipone COLMOD register value
 fn chipone_colmod_value(fmt: PixelFormat) -> u8 {
     match fmt {
@@ -111,43 +131,26 @@ where
         pixel_format: PixelFormat,
     ) -> Self {
         debug!("Creating Co5300 driver");
-        let physical = DisplaySize {
-            width: width as u32,
-            height: height as u32,
-        };
-        // Default logical to 116x116 with scale=4 if panel dimensions fit; else fall back to 1x
-        let (logical, scale) = if (width as u32) >= 116 * 4 && (height as u32) >= 116 * 4 {
-            (
-                DisplaySize {
-                    width: 116,
-                    height: 116,
-                },
-                4u32,
-            )
-        } else {
-            (
-                DisplaySize {
-                    width: width as u32,
-                    height: height as u32,
-                },
-                1u32,
-            )
-        };
-        let active_resolution = DisplayResolution {
-            logical,
-            physical,
-            scale,
-        };
+        let active_resolution = CO5300_SUPPORTED_RESOLUTIONS[CO5300_PREFERRED_MODE_INDEX];
+        let (x_gap, y_gap) = Self::calculate_gaps(active_resolution);
         Self {
             qspi,
             reset_pin,
             width,
             height,
-            x_gap: 6, // Default gap from original code
-            y_gap: 0,
+            x_gap,
+            y_gap,
             pixel_format,
             active_resolution,
         }
+    }
+
+    fn calculate_gaps(resolution: DisplayResolution) -> (u16, u16) {
+        let used_width = resolution.logical.width.saturating_mul(resolution.scale);
+        let used_height = resolution.logical.height.saturating_mul(resolution.scale);
+        let gap_x = ((resolution.physical.width.saturating_sub(used_width)) / 2) as u16;
+        let gap_y = ((resolution.physical.height.saturating_sub(used_height)) / 2) as u16;
+        (gap_x, gap_y)
     }
 
     /// Send a command via QSPI
@@ -652,51 +655,11 @@ where
     }
 
     fn capabilities(&self) -> DisplayCapabilities {
-        // Provide common modes: 466x466 (1x), 232x232 (2x), 116x116 (4x) with a 2px border.
-        const PHYS_W: u32 = DISPLAY_WIDTH;
-        const PHYS_H: u32 = DISPLAY_HEIGHT;
-        const LOGICAL_SCALE2: u32 = (DISPLAY_WIDTH / 2) - 1; // leaves a 1px gutter on each side
-        const LOGICAL_SCALE4: u32 = DISPLAY_WIDTH / 4;
-        const SUPPORTED: &[DisplayResolution] = &[
-            DisplayResolution {
-                logical: DisplaySize {
-                    width: DISPLAY_WIDTH,
-                    height: DISPLAY_HEIGHT,
-                },
-                physical: DisplaySize {
-                    width: PHYS_W,
-                    height: PHYS_H,
-                },
-                scale: 1,
-            },
-            DisplayResolution {
-                logical: DisplaySize {
-                    width: LOGICAL_SCALE2,
-                    height: LOGICAL_SCALE2,
-                },
-                physical: DisplaySize {
-                    width: PHYS_W,
-                    height: PHYS_H,
-                },
-                scale: 2,
-            },
-            DisplayResolution {
-                logical: DisplaySize {
-                    width: LOGICAL_SCALE4,
-                    height: LOGICAL_SCALE4,
-                },
-                physical: DisplaySize {
-                    width: PHYS_W,
-                    height: PHYS_H,
-                },
-                scale: 4,
-            },
-        ];
         DisplayCapabilities {
-            supported_formats: &[PixelFormat::Rgb565],
+            supported_formats: &CO5300_SUPPORTED_FORMATS,
             preferred_format: PixelFormat::Rgb565,
-            supported_resolutions: SUPPORTED,
-            preferred_resolution: SUPPORTED[2], // default to 116x116 @ 4x
+            supported_resolutions: &CO5300_SUPPORTED_RESOLUTIONS,
+            preferred_resolution: CO5300_SUPPORTED_RESOLUTIONS[CO5300_PREFERRED_MODE_INDEX],
         }
     }
 
@@ -715,5 +678,8 @@ where
             })
             .unwrap_or(caps.preferred_resolution);
         self.active_resolution = selected;
+        let (x_gap, y_gap) = Self::calculate_gaps(selected);
+        self.x_gap = x_gap;
+        self.y_gap = y_gap;
     }
 }

@@ -10,7 +10,7 @@ use crate::system::ui::compositor::{
     animation::{ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig},
     UICompositor,
 };
-use crate::system::ui::display::Display;
+use crate::system::ui::display::{Display, DisplayService};
 use crate::system::ui::display_metrics;
 use crate::system::ui::windowing::WindowManager;
 
@@ -37,7 +37,7 @@ pub async fn ui_compositor_service(
     // Attach display, configure compositor defaults, and publish dimensions to the UI layer.
     {
         let mut compositor_mut = compositor.lock().await;
-        let display_facade: Display = Display::init(display).await;
+        let display_facade: Display = DisplayService::new(display).initialize().await;
         let resolution = display_facade.resolution();
         let negotiated_pixel_format = display_facade.pixel_format();
         FRAMEBUFFER_POOL.configure(

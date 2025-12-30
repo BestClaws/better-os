@@ -20,8 +20,7 @@ const MAX_WINDOWS: usize = 8;
 pub struct WindowManager {
     windows: heapless::Vec<Window, MAX_WINDOWS>,
     display_format: PixelFormat,
-    logical_width: u32,
-    logical_height: u32,
+    default_resolution: Option<DisplayResolution>,
 }
 
 impl WindowManager {
@@ -30,18 +29,21 @@ impl WindowManager {
         Self {
             windows: heapless::Vec::new(),
             display_format: default_format,
-            logical_width: 0,
-            logical_height: 0,
+            default_resolution: None,
         }
     }
 
     pub fn has_display_config(&self) -> bool {
-        self.logical_width > 0 && self.logical_height > 0
+        self.default_resolution.is_some()
     }
 
-    pub fn logical_dimensions(&self) -> Option<(u32, u32)> {
-        self.has_display_config()
-            .then_some((self.logical_width, self.logical_height))
+    pub fn default_resolution(&self) -> Option<DisplayResolution> {
+        self.default_resolution
+    }
+
+    pub fn default_dimensions(&self) -> Option<(u32, u32)> {
+        self.default_resolution
+            .map(|resolution| (resolution.logical.width, resolution.logical.height))
     }
 
     pub fn display_format(&self) -> PixelFormat {
@@ -50,39 +52,72 @@ impl WindowManager {
 
     /// Update negotiated display configuration and propagate to existing windows.
     pub fn update_display_config(&mut self, resolution: DisplayResolution, format: PixelFormat) {
+        let previous_default = self.default_resolution;
         self.display_format = format;
-        self.logical_width = resolution.logical.width;
-        self.logical_height = resolution.logical.height;
+        self.default_resolution = Some(resolution);
+
+        let previous_dims = previous_default.map(|res| (res.logical.width, res.logical.height));
+        let negotiated_dims = (resolution.logical.width, resolution.logical.height);
 
         for window in self.windows.iter_mut() {
-            window.update_surface(self.logical_width, self.logical_height, self.display_format);
+            let current_dims = (window.width(), window.height());
+            let adopt_negotiated = match previous_dims {
+                None => true,
+                Some(prev) => current_dims == prev,
+            };
+            let (target_w, target_h) = if adopt_negotiated {
+                negotiated_dims
+            } else {
+                current_dims
+            };
+            window.update_surface(target_w, target_h, self.display_format);
         }
     }
 
     /// Create a new window and add it to the manager using the negotiated dimensions.
     pub async fn create_window(&mut self, id: usize) -> Option<WindowHandle> {
-        if !self.has_display_config() {
-            warn!("WindowManager lacks display metrics; refusing to create window");
+        let default = match self.default_resolution() {
+            Some(res) => res,
+            None => {
+                warn!("WindowManager lacks display metrics; refusing to create window");
+                return None;
+            }
+        };
+        self.create_window_with_size(id, default.logical.width, default.logical.height)
+            .await
+    }
+
+    /// Create a new window using caller-provided logical dimensions.
+    pub async fn create_window_with_size(
+        &mut self,
+        id: usize,
+        mut width: u32,
+        mut height: u32,
+    ) -> Option<WindowHandle> {
+        if width == 0 || height == 0 {
+            warn!(
+                "Refusing to create window id={} with zero dimension ({}x{})",
+                id,
+                width,
+                height
+            );
             return None;
         }
+
         if self.windows.len() >= MAX_WINDOWS {
             warn!("WindowManager capacity reached; cannot create more windows");
             return None;
         }
 
-        let window = Window::new(
-            self.logical_width,
-            self.logical_height,
-            id,
-            self.display_format,
-        )
-        .await;
+        if let Some(default) = self.default_resolution {
+            width = width.min(default.logical.width);
+            height = height.min(default.logical.height);
+        }
+
+        let window = Window::new(width, height, id, self.display_format).await;
         let handle = window.handle();
         self.windows.push(window).ok()?;
-        debug!(
-            "Window created: id={}, size={}x{}",
-            id, self.logical_width, self.logical_height
-        );
+        debug!("Window created: id={}, size={}x{}", id, width, height);
         Some(handle)
     }
 
@@ -191,6 +226,32 @@ impl WindowManager {
             } else {
                 Err(())
             }
+        } else {
+            Err(())
+        }
+    }
+
+    /// Resize a window to new logical dimensions while preserving pixel format.
+    pub fn resize_window(
+        &mut self,
+        handle: WindowHandle,
+        mut width: u32,
+        mut height: u32,
+    ) -> Result<(), ()> {
+        if width == 0 || height == 0 {
+            return Err(());
+        }
+
+        if let Some(default) = self.default_resolution {
+            width = width.min(default.logical.width);
+            height = height.min(default.logical.height);
+        }
+
+        let format = self.display_format;
+
+        if let Some(window) = self.get_window_mut(handle) {
+            window.update_surface(width, height, format);
+            Ok(())
         } else {
             Err(())
         }

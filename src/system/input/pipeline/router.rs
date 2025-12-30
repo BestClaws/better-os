@@ -7,15 +7,15 @@ use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::input::bus::SystemUiInputBus;
 use crate::system::ui::windowing::WindowManager;
 
-/// Handles the fan-out of high-level input events to the System UI and focused app windows.
-pub struct InputRouter {
+/// Routes high-level input events between the system UI and focused application windows.
+pub struct EventRouter {
     compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
     window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
     ack_timeout: Duration,
 }
 
-impl InputRouter {
-    const DEFAULT_ACK_TIMEOUT_MS: u64 = 250;
+impl EventRouter {
+    pub const DEFAULT_ACK_TIMEOUT_MS: u64 = 250;
 
     pub fn new(
         compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
@@ -28,8 +28,16 @@ impl InputRouter {
         }
     }
 
-    /// Dispatch an event to the System UI first; if unconsumed, forward it to the focused window.
-    pub async fn dispatch(&self, event: HighLevelEvent) {
+    pub fn with_ack_timeout(mut self, ack_timeout: Duration) -> Self {
+        self.ack_timeout = ack_timeout;
+        self
+    }
+
+    pub fn ack_timeout(&self) -> Duration {
+        self.ack_timeout
+    }
+
+    pub async fn route(&self, event: HighLevelEvent) {
         let dispatch_start = Instant::now();
         let (consumed, ack_duration) = self.deliver_to_system_ui(event).await;
 
@@ -66,10 +74,8 @@ impl InputRouter {
         match ack_result {
             Ok(consumed) => (consumed, ack_duration),
             Err(_) => {
-                warn!(
-                    "System UI ACK timeout after {}ms",
-                    Self::DEFAULT_ACK_TIMEOUT_MS
-                );
+                let timeout_ms = self.ack_timeout.as_millis() as u64;
+                warn!("System UI ACK timeout after {}ms", timeout_ms);
                 (false, ack_duration)
             }
         }

@@ -1,8 +1,8 @@
 use crate::system::input::types::HighLevelEvent;
-use crate::system::input::types::{MotionEvent, TouchAction};
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
+use crate::system::hal::display::DisplayResolution;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 // migrated away from two_d Canvas2D; apps use gfx::Rasterizer directly
@@ -50,5 +50,15 @@ impl AppContext {
     pub async fn draw(&self, f: impl FnOnce(&mut DrawingSurface) + Send) {
         let mut wm = self.window_manager.lock().await;
         let _ = wm.with_surface(self.handle, f);
+    }
+
+    pub async fn resize_window(&self, width: u32, height: u32) -> Result<(), ()> {
+        let mut wm = self.window_manager.lock().await;
+        wm.resize_window(self.handle, width, height)
+    }
+
+    pub async fn default_window_resolution(&self) -> Option<DisplayResolution> {
+        let wm = self.window_manager.lock().await;
+        wm.default_resolution()
     }
 }
