@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c::{I2c, SevenBitAddress};
+use embedded_hal::digital::OutputPin;
 
 // FT5336 registers and masks from Zephyr code
 const REG_TD_STATUS: u8 = 0x02;
@@ -31,25 +32,40 @@ impl TSPoint {
 }
 
 /// Driver for the FT5336 touch controller (polling mode only)
-pub struct FT5336<I2C> {
+pub struct FT5336<I2C, RST> {
     i2c: I2C,
+    reset_pin: Option<RST>,
     xraw: u16,
     yraw: u16,
     pressed_old: bool,
 }
 
-impl<I2C> FT5336<I2C>
+impl<I2C, RST> FT5336<I2C, RST>
 where
     I2C: I2c,
+    RST: OutputPin,
 {
-    /// Create a new FT5336 driver instance
-    pub fn new(i2c: I2C) -> Self {
+    /// Create a new FT5336 driver instance with optional reset pin
+    pub fn new(i2c: I2C, reset_pin: Option<RST>) -> Self {
         Self {
             i2c,
+            reset_pin,
             xraw: 0,
             yraw: 0,
             pressed_old: false,
         }
+    }
+
+    /// Initialize the touch controller with hardware reset if available
+    pub async fn init(&mut self) -> Result<(), ()> {
+        if let Some(ref mut rst) = self.reset_pin {
+            // Perform hardware reset
+            rst.set_low().map_err(|_| ())?;
+            Timer::after(Duration::from_millis(10)).await;
+            rst.set_high().map_err(|_| ())?;
+            Timer::after(Duration::from_millis(300)).await;
+        }
+        Ok(())
     }
 
     /// Get current touch point
@@ -110,9 +126,10 @@ where
 }
 
 #[async_trait(?Send)]
-impl<I2C> AsyncTouch for FT5336<I2C>
+impl<I2C, RST> AsyncTouch for FT5336<I2C, RST>
 where
     I2C: I2c,
+    RST: OutputPin,
 {
     async fn read_xyz(&mut self) -> (u16, u16, u16) {
         self.update().await;

@@ -1,6 +1,6 @@
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::{Circle, RoundedRect, Shape, SurfaceDrawTarget};
+use crate::libs::gfx::{RoundedRect, Shape, SurfaceDrawTarget};
 use crate::libs::http_bridge::{HttpBridgeError, HttpClient};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -118,29 +118,23 @@ fn draw_interface(
 ) {
     let width = surface.width() as i32;
     let height = surface.height() as i32;
-    surface.fill_rect(0, 0, width, height, Rgba8888::rgba(10, 13, 20, 255));
+    
+    // Clean gradient background
+    surface.fill_rect(0, 0, width, height, Rgba8888::rgba(24, 25, 28, 255));
 
-    let cx = width / 2;
-    let cy = height / 2;
-    let radius = (width.min(height) / 2) - 2;
+    // Simple, clean header
+    let header_height = 22;
+    surface.fill_rect(0, 0, width, header_height, Rgba8888::rgba(32, 34, 37, 255));
+    surface.fill_rect(0, header_height, width, 1, Rgba8888::rgba(0, 0, 0, 60));
 
-    Circle::new(cx, cy, radius)
-        .fill_radial(
-            Rgba8888::rgba(56, 62, 82, 255),
-            Rgba8888::rgba(18, 22, 30, 255),
-        )
-        .stroke(2, Rgba8888::rgba(88, 101, 242, 220))
-        .stroke_alpha(180)
-        .draw(surface);
+    let title_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(242, 243, 245));
+    let message_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(219, 222, 225));
 
-    let title_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(214, 218, 255));
-    let status_style = MonoTextStyle::new(&FONT_4X6, Rgb888::new(172, 180, 198));
-    let message_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(235, 238, 242));
-
+    // Centered title
     let title_text = "Discord";
     let title_width = title_text.len() as i32 * FONT_5X8.character_size.width as i32;
-    let title_x = cx - title_width / 2;
-    let title_y = cy - radius + 12;
+    let title_x = (width - title_width) / 2;
+    let title_y = 7;
 
     {
         let mut target = SurfaceDrawTarget::new(surface);
@@ -148,67 +142,37 @@ fn draw_interface(
             EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
     }
 
-    let status_text = if connected { "online" } else { "offline" };
-    let status_char_w = FONT_4X6.character_size.width as i32;
-    let status_char_h = FONT_4X6.character_size.height as i32;
-    let status_width = status_text.len() as i32 * status_char_w;
-    let status_box_width = status_width + 12;
-    let status_box_height = status_char_h + 6;
-    let status_box_x = cx - status_box_width / 2;
-    let status_box_y = title_y + FONT_5X8.character_size.height as i32 + 6;
+    // Small status dot
+    let dot_size = 6;
+    let dot_x = width - 10;
+    let dot_y = (header_height - dot_size) / 2;
+    
+    RoundedRect::new(dot_x, dot_y, dot_size, dot_size, 3, 3, 3, 3)
+        .fill_solid(if connected {
+            Rgba8888::rgba(67, 181, 129, 255)
+        } else {
+            Rgba8888::rgba(128, 132, 142, 255)
+        })
+        .draw(surface);
 
-    RoundedRect::new(
-        status_box_x,
-        status_box_y,
-        status_box_width,
-        status_box_height,
-        8,
-        8,
-        8,
-        8,
-    )
-    .fill_linear_h(
-        Rgba8888::rgba(96, 108, 224, 210),
-        Rgba8888::rgba(68, 74, 116, 210),
-    )
-    .stroke(1, Rgba8888::rgba(28, 32, 48, 200))
-    .draw(surface);
-
-    {
-        let mut target = SurfaceDrawTarget::new(surface);
-        let text_x = cx - status_width / 2;
-        let text_y = status_box_y + (status_box_height - status_char_h) / 2 + 1;
-        let _ =
-            EgText::new(status_text, Point::new(text_x, text_y), status_style).draw(&mut target);
-    }
-
-    let content_top = status_box_y + status_box_height + 4;
-    let content_diameter = radius * 2;
-    let bubble_width = (content_diameter - 48).max(40);
-    let bubble_height = 18;
-    let bubble_spacing = 5;
-    let left_x = cx - radius + 14;
-    let right_x = cx + radius - bubble_width - 14;
+    // Clean message list
+    let content_top = header_height + 6;
+    let padding = 4;
+    let message_width = width - (padding * 2);
+    let message_height = 22;
+    let message_spacing = 2;
 
     for (idx, message) in messages.iter().enumerate() {
-        let align_right = idx % 2 == 1;
-        let x = if align_right { right_x } else { left_x };
-        let y = content_top + idx as i32 * (bubble_height + bubble_spacing);
+        let x = padding;
+        let y = content_top + idx as i32 * (message_height + message_spacing);
 
-        RoundedRect::new(x, y, bubble_width, bubble_height, 10, 10, 10, 10)
-            .fill_linear_h(
-                if align_right {
-                    Rgba8888::rgba(70, 78, 140, 235)
-                } else {
-                    Rgba8888::rgba(58, 64, 92, 230)
-                },
-                Rgba8888::rgba(38, 42, 58, 220),
-            )
-            .stroke(1, Rgba8888::rgba(25, 28, 40, 255))
+        // Clean message bubble
+        RoundedRect::new(x, y, message_width, message_height, 8, 8, 8, 8)
+            .fill_solid(Rgba8888::rgba(43, 45, 49, 255))
             .draw(surface);
 
-        let text_x = x + 8;
-        let text_y = y + 5;
+        let text_x = x + 6;
+        let text_y = y + 7;
         {
             let mut text_target = SurfaceDrawTarget::new(surface);
             let _ = EgText::new(message.as_str(), Point::new(text_x, text_y), message_style)

@@ -24,10 +24,10 @@ pub struct SwipeConfig {
 impl Default for SwipeConfig {
     fn default() -> Self {
         Self {
-            edge_band: 20,
-            reentry_slop: 18,
-            completion_pixels: 80.0,
-            vertical_tolerance: 32,
+            edge_band: 12,           // Reduced from 20 for narrower display (410px physical)
+            reentry_slop: 10,        // Reduced from 18 proportionally
+            completion_pixels: 60.0, // Reduced from 80.0 for narrower display
+            vertical_tolerance: 40,  // Increased from 32 for taller display (502px physical)
             progress_epsilon: 0.01,
             commit_fraction: 0.35,
         }

@@ -22,7 +22,7 @@ use embassy_time::{Duration, Timer};
 const SYSTEM_APPS: &[AppDescriptor] = &[
     AppDescriptor {
         name: "Discord",
-        id: 6,
+        id: 2,
         spawn_fn: spawn_discord_app,
     },
     // AppDescriptor {
@@ -30,11 +30,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 5,
     //     spawn_fn: spawn_bluetooth_scanner_app,
     // },
-    // AppDescriptor {
-    //     name: "GFX Benchmark",
-    //     id: 2,
-    //     spawn_fn: spawn_gfx_bench_app,
-    // },
+    AppDescriptor {
+        name: "GFX Benchmark",
+        id: 1,
+        spawn_fn: spawn_gfx_bench_app,
+    },
     // AppDescriptor {
     //     name: "Text Demo",
     //     id: 4,

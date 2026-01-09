@@ -86,8 +86,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
     )
     .unwrap()
-    .with_sda(peripherals.GPIO18)
-    .with_scl(peripherals.GPIO8)
+    .with_sda(peripherals.GPIO8)
+    .with_scl(peripherals.GPIO7)
     .into_async();
 
     let i2c = Mutex::new(i2c);
@@ -97,7 +97,10 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
         I2cDevice::new(i2c);
 
-    let touch = FT5336::new(i2c_1);
+    // Touch reset pin
+    let touch_reset_pin = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
+
+    let mut touch = FT5336::new(i2c_1, Some(touch_reset_pin));
     let accel = Qmi8658C::new(i2c_2);
 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(16384);
@@ -111,21 +114,21 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
             .with_mode(Mode::_0),
     )
     .unwrap()
-    .with_sio0(peripherals.GPIO4)
-    .with_sio1(peripherals.GPIO5)
-    .with_sio2(peripherals.GPIO6)
-    .with_sio3(peripherals.GPIO7)
-    .with_cs(peripherals.GPIO10)
-    .with_sck(peripherals.GPIO11)
+    .with_sio0(peripherals.GPIO1)
+    .with_sio1(peripherals.GPIO2)
+    .with_sio2(peripherals.GPIO3)
+    .with_sio3(peripherals.GPIO4)
+    .with_cs(peripherals.GPIO5)
+    .with_sck(peripherals.GPIO0)
     .with_dma(peripherals.DMA_CH0)
     .with_buffers(dma_rx_buf, dma_tx_buf)
     .into_async();
 
     // Reset pin
-    let reset_pin = Output::new(peripherals.GPIO3, Level::High, OutputConfig::default());
+    let reset_pin = Output::new(peripherals.GPIO11, Level::High, OutputConfig::default());
 
     // Initialize Co5300 driver
-    let mut display = Co5300::new(lcd_spi, reset_pin, 466, 466, PixelFormat::Rgb565);
+    let mut display = Co5300::new(lcd_spi, reset_pin, 410, 502, PixelFormat::Rgb565);
 
     let button_pin = Input::new(peripherals.GPIO9, InputConfig::default());
 
