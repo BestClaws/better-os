@@ -3,7 +3,6 @@ use crate::libs::gfx::rasterizer::Rasterizer;
 use crate::libs::gfx::{RoundedRect, Shape, SurfaceDrawTarget};
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
-use crate::system::services::hps_service::wait_for_hps_ready;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_executor::task;
@@ -24,11 +23,6 @@ const MAX_DISPLAY_CHARS: usize = 36;
 pub async fn discord_app(ctx: AppContext) {
     info!("Starting Posts viewer app");
     
-    // Wait for HPS service to be ready before starting
-    info!("Posts: Waiting for HPS service to be ready...");
-    wait_for_hps_ready().await;
-    info!("Posts: HPS service is ready!");
-    
     let client = http::Client::new();
     let mut messages = [
         placeholder_message(),
@@ -41,50 +35,28 @@ pub async fn discord_app(ctx: AppContext) {
 
     info!("Posts: Entering main loop");
     loop {
-        if needs_redraw {
-            if ctx.is_focused().await {
-                info!("Posts: Drawing interface");
-                ctx.draw(|surface| draw_interface(surface, &messages, connected))
-                    .await;
-                needs_redraw = false;
-            }
+        if needs_redraw && ctx.is_focused().await {
+            info!("Posts: Drawing interface");
+            ctx.draw(|surface| draw_interface(surface, &messages, connected))
+                .await;
+            needs_redraw = false;
         }
 
-        info!("Posts: Waiting for ticker...");
         ticker.next().await;
-        info!("Posts: Ticker fired, making request");
 
-        // Make HTTPS GET request to jsonplaceholder API
-        // Use the clean reqwest-like API!
-        info!("Posts: Sending HTTPS GET request to {}", API_URL);
         match client.get_secure(API_URL).send().await {
             Ok(response) => {
                 if !connected {
-                    info!("Posts: Connection established!");
                     connected = true;
                     needs_redraw = true;
                 }
                 
-                info!("Posts: Got HTTP {} response, {} bytes", 
-                    response.status(), response.content_length());
-                
                 if response.is_success() {
-                    // Parse JSON and extract post titles
-                    info!("Posts: Parsing response body...");
                     if let Ok(text) = response.text() {
-                        // Count total posts in JSON
-                        let post_count = text.matches("\"title\":").count();
-                        info!("Posts: Received {} bytes with {} posts", text.len(), post_count);
-                        
                         if update_messages_from_posts(&mut messages, text.as_bytes()) {
-                            info!("Posts: Messages updated, requesting redraw");
                             needs_redraw = true;
-                        } else {
-                            info!("Posts: No changes to messages");
                         }
                     }
-                } else {
-                    warn!("Posts: HTTP error: {}", response.status());
                 }
             }
             Err(err) => {
@@ -93,9 +65,6 @@ pub async fn discord_app(ctx: AppContext) {
                     connected = false;
                     needs_redraw = true;
                 }
-                
-                // Back off more if disconnected - don't spam connection attempts
-                info!("Posts: Waiting 10s before retry...");
                 embassy_time::Timer::after(Duration::from_secs(10)).await;
             }
         }
@@ -181,13 +150,19 @@ fn draw_interface(
     let width = surface.width() as i32;
     let height = surface.height() as i32;
     
-    // Clean gradient background
-    surface.fill_rect(0, 0, width, height, Rgba8888::rgba(24, 25, 28, 255));
+    // Clean gradient background - use RoundedRect with 0 radius instead of fill_rect
+    RoundedRect::new(0, 0, width, height, 0, 0, 0, 0)
+        .fill_solid(Rgba8888::rgba(24, 25, 28, 255))
+        .draw(surface);
 
-    // Simple, clean header
+    // Simple, clean header - use RoundedRect with 0 radius instead of fill_rect
     let header_height = 22;
-    surface.fill_rect(0, 0, width, header_height, Rgba8888::rgba(32, 34, 37, 255));
-    surface.fill_rect(0, header_height, width, 1, Rgba8888::rgba(0, 0, 0, 60));
+    RoundedRect::new(0, 0, width, header_height, 0, 0, 0, 0)
+        .fill_solid(Rgba8888::rgba(32, 34, 37, 255))
+        .draw(surface);
+    RoundedRect::new(0, header_height, width, 1, 0, 0, 0, 0)
+        .fill_solid(Rgba8888::rgba(0, 0, 0, 60))
+        .draw(surface);
 
     let title_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(242, 243, 245));
     let message_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(219, 222, 225));
@@ -197,12 +172,6 @@ fn draw_interface(
     let title_width = title_text.len() as i32 * FONT_5X8.character_size.width as i32;
     let title_x = (width - title_width) / 2;
     let title_y = 7;
-
-    {
-        let mut target = SurfaceDrawTarget::new(surface);
-        let _ =
-            EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
-    }
 
     // Small status dot
     let dot_size = 6;
@@ -240,5 +209,12 @@ fn draw_interface(
             let _ = EgText::new(message.as_str(), Point::new(text_x, text_y), message_style)
                 .draw(&mut text_target);
         }
+    }
+
+    // Draw title text last to avoid surface state issues
+    {
+        let mut target = SurfaceDrawTarget::new(surface);
+        let _ =
+            EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
     }
 }
