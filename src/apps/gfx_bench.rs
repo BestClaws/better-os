@@ -197,7 +197,8 @@ fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
                 CornerType::Large => (20, 20, 20, 20),
                 CornerType::Asymmetric => (12, 4, 16, 0),
             };
-            let mut rr = RoundedRect::new(left, top, half_w, half_h, tl, tr, bl, br);
+            let mut rr = RoundedRect::new(left, top, half_w, half_h)
+                .corners(tl, tr, bl, br);
             if let Some(stroke) = config.stroke_type {
                 rr = rr.stroke(
                     match stroke {
@@ -210,19 +211,19 @@ fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
             }
             if let Some(fill) = config.fill_type {
                 rr = match fill {
-                    FillType::Solid => rr.fill_solid(Rgba8888::rgba(30, 30, 30, alpha)),
-                    FillType::LinearH => rr.fill_linear_h(
+                    FillType::Solid => rr.fill(Fill::solid(Rgba8888::rgba(30, 30, 30, alpha))),
+                    FillType::LinearH => rr.fill(Fill::linear_horizontal(
                         Rgba8888::rgba(255, 0, 0, alpha),
                         Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::LinearV => rr.fill_linear_v(
+                    )),
+                    FillType::LinearV => rr.fill(Fill::linear_vertical(
                         Rgba8888::rgba(0, 255, 0, alpha),
                         Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::Radial => rr.fill_radial(
+                    )),
+                    FillType::Radial => rr.fill(Fill::radial(
                         Rgba8888::rgba(255, 255, 255, alpha),
                         Rgba8888::rgba(30, 30, 30, alpha),
-                    ),
+                    )),
                 };
             }
             rr.draw(surface);
@@ -242,19 +243,19 @@ fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
             }
             if let Some(fill) = config.fill_type {
                 circle = match fill {
-                    FillType::Solid => circle.fill_solid(Rgba8888::rgba(200, 120, 40, alpha)),
-                    FillType::LinearH => circle.fill_linear_h(
+                    FillType::Solid => circle.fill(Fill::solid(Rgba8888::rgba(200, 120, 40, alpha))),
+                    FillType::LinearH => circle.fill(Fill::linear_horizontal(
                         Rgba8888::rgba(255, 0, 0, alpha),
                         Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::LinearV => circle.fill_linear_v(
+                    )),
+                    FillType::LinearV => circle.fill(Fill::linear_vertical(
                         Rgba8888::rgba(0, 255, 0, alpha),
                         Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::Radial => circle.fill_radial(
+                    )),
+                    FillType::Radial => circle.fill(Fill::radial(
                         Rgba8888::rgba(255, 255, 255, alpha),
                         Rgba8888::rgba(30, 30, 30, alpha),
-                    ),
+                    )),
                 };
             }
             circle.draw(surface);
@@ -274,22 +275,23 @@ fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
         }
         ShapeType::Arc => {
             let radius = (half_w.min(half_h) / 2).max(4);
-            let mut arc = Arc::new(w / 2, h / 2, radius, 0, 180);
             let stroke = config.stroke_type.unwrap_or(StrokeType::Thin);
-            arc = arc.stroke(
-                match stroke {
-                    StrokeType::Thin => 1,
-                    StrokeType::Medium => 3,
-                    StrokeType::Thick => 6,
-                },
-                Rgba8888::rgba(255, 255, 255, alpha),
-            );
-            arc.draw(surface);
+            Arc::new(w / 2, h / 2, radius)
+                .angles(0, 180)
+                .stroke(
+                    match stroke {
+                        StrokeType::Thin => 1,
+                        StrokeType::Medium => 3,
+                        StrokeType::Thick => 6,
+                    },
+                    Rgba8888::rgba(255, 255, 255, alpha),
+                )
+                .draw(surface);
         }
         ShapeType::Text => {
-            let mut text = Text::new(w / 2 - 24, h / 2 + 10, "12:34");
-            text = text.color(Rgba8888::rgba(255, 255, 255, alpha));
-            text.draw(surface);
+            Text::new(w / 2 - 24, h / 2 + 10, "12:34")
+                .fill(Rgba8888::rgba(255, 255, 255, alpha))
+                .draw(surface);
         }
     }
 }
