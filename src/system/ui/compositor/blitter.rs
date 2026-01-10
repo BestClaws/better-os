@@ -60,11 +60,19 @@ impl SurfaceBlitter {
         dest_w: u32,
         dest_h: u32,
     ) {
-        debug_assert_eq!(dest.bytes_per_pixel(), source.bytes_per_pixel());
-        let bytes_per_pixel = dest.bytes_per_pixel();
+        debug_assert_eq!(dest.pixel_format(), source.pixel_format());
+        let format = dest.pixel_format();
+        let is_gray4 = matches!(format, crate::system::hal::display::PixelFormat::Gray4);
+        
+        if !is_gray4 && dest.bytes_per_pixel() == 1 {
+            // Safety check: if bytes_per_pixel is 1 but not Gray8, something is wrong
+            debug!("Warning: format={:?} bpp=1", format);
+        }
+        
         let dest_w_i = dest_w as i32;
         let dest_h_i = dest_h as i32;
         let src_w = source.width();
+        
         for sy in src_y0..src_y1 {
             let dy = sy as i32 + offset_y;
             if dy < 0 || dy >= dest_h_i {
@@ -82,15 +90,31 @@ impl SurfaceBlitter {
             if sx0 >= sx1 {
                 continue;
             }
-            let pixels = (sx1 - sx0) as usize;
-            let bytes = pixels * bytes_per_pixel;
-            let src_first_pixel = (sx0 + sy * src_w) as usize;
-            let dst_first_pixel = (clip_x0 as u32 + dy as u32 * dest_w) as usize;
-            let src_byte = src_first_pixel * bytes_per_pixel;
-            let dst_byte = dst_first_pixel * bytes_per_pixel;
-            let src_slice = &source.buffer()[src_byte..src_byte + bytes];
-            let dst_slice = &mut dest.buffer_mut()[dst_byte..dst_byte + bytes];
-            dst_slice.copy_from_slice(src_slice);
+            
+            if is_gray4 {
+                // Gray4: 2 pixels per byte, need pixel-by-pixel copy for unaligned cases
+                // For now, use pixel-by-pixel copy (can be optimized later for aligned cases)
+                for i in 0..(sx1 - sx0) {
+                    let src_x = sx0 + i;
+                    let dst_x = clip_x0 as u32 + i;
+                    let src_pixel_idx = (src_x + sy * src_w) as usize;
+                    let dst_pixel_idx = (dst_x + dy as u32 * dest_w) as usize;
+                    let pixel = source.get_pixel_at_index(src_pixel_idx);
+                    dest.set_pixel_at_index(dst_pixel_idx, pixel);
+                }
+            } else {
+                // Other formats: byte-aligned copy
+                let bytes_per_pixel = dest.bytes_per_pixel();
+                let pixels = (sx1 - sx0) as usize;
+                let bytes = pixels * bytes_per_pixel;
+                let src_first_pixel = (sx0 + sy * src_w) as usize;
+                let dst_first_pixel = (clip_x0 as u32 + dy as u32 * dest_w) as usize;
+                let src_byte = src_first_pixel * bytes_per_pixel;
+                let dst_byte = dst_first_pixel * bytes_per_pixel;
+                let src_slice = &source.buffer()[src_byte..src_byte + bytes];
+                let dst_slice = &mut dest.buffer_mut()[dst_byte..dst_byte + bytes];
+                dst_slice.copy_from_slice(src_slice);
+            }
         }
     }
 }

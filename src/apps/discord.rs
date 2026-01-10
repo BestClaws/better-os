@@ -155,8 +155,8 @@ fn draw_interface(
         .fill_solid(Rgba8888::rgba(24, 25, 28, 255))
         .draw(surface);
 
-    // Simple, clean header - use RoundedRect with 0 radius instead of fill_rect
-    let header_height = 22;
+    // Simple, clean header - scale based on height
+    let header_height = (height / 6).max(14).min(24);
     RoundedRect::new(0, 0, width, header_height, 0, 0, 0, 0)
         .fill_solid(Rgba8888::rgba(32, 34, 37, 255))
         .draw(surface);
@@ -164,21 +164,30 @@ fn draw_interface(
         .fill_solid(Rgba8888::rgba(0, 0, 0, 60))
         .draw(surface);
 
-    let title_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(242, 243, 245));
-    let message_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(219, 222, 225));
+    // Choose font based on resolution
+    let (title_font, message_font) = if width <= 110 {
+        (&FONT_4X6, &FONT_4X6)
+    } else {
+        (&FONT_5X8, &FONT_5X8)
+    };
+
+    let title_style = MonoTextStyle::new(title_font, Rgb888::new(242, 243, 245));
+    let message_style = MonoTextStyle::new(message_font, Rgb888::new(219, 222, 225));
 
     // Centered title
     let title_text = "Posts";
-    let title_width = title_text.len() as i32 * FONT_5X8.character_size.width as i32;
+    let char_width = title_font.character_size.width as i32;
+    let title_width = title_text.len() as i32 * char_width;
     let title_x = (width - title_width) / 2;
-    let title_y = 7;
+    let title_y = (header_height - title_font.character_size.height as i32) / 2 + title_font.baseline as i32;
 
-    // Small status dot
-    let dot_size = 6;
-    let dot_x = width - 10;
+    // Small status dot - scale with resolution
+    let dot_size = (width / 20).max(4).min(8);
+    let dot_x = width - dot_size - 4;
     let dot_y = (header_height - dot_size) / 2;
+    let dot_radius = dot_size / 2;
     
-    RoundedRect::new(dot_x, dot_y, dot_size, dot_size, 3, 3, 3, 3)
+    RoundedRect::new(dot_x, dot_y, dot_size, dot_size, dot_radius, dot_radius, dot_radius, dot_radius)
         .fill_solid(if connected {
             Rgba8888::rgba(67, 181, 129, 255)
         } else {
@@ -186,24 +195,26 @@ fn draw_interface(
         })
         .draw(surface);
 
-    // Clean message list
-    let content_top = header_height + 6;
-    let padding = 4;
+    // Clean message list - scale with resolution
+    let content_top = header_height + (height / 25).max(2).min(8);
+    let padding = (width / 30).max(2).min(6);
     let message_width = width - (padding * 2);
-    let message_height = 22;
-    let message_spacing = 2;
+    let message_height = (height / 6).max(14).min(24);
+    let message_spacing = (height / 60).max(1).min(4);
+    let corner_radius = (width / 30).max(3).min(10);
 
     for (idx, message) in messages.iter().enumerate() {
         let x = padding;
         let y = content_top + idx as i32 * (message_height + message_spacing);
 
         // Clean message bubble
-        RoundedRect::new(x, y, message_width, message_height, 8, 8, 8, 8)
+        RoundedRect::new(x, y, message_width, message_height, corner_radius, corner_radius, corner_radius, corner_radius)
             .fill_solid(Rgba8888::rgba(43, 45, 49, 255))
             .draw(surface);
 
-        let text_x = x + 6;
-        let text_y = y + 7;
+        let text_padding = (width / 40).max(2).min(8);
+        let text_x = x + text_padding;
+        let text_y = y + (message_height - message_font.character_size.height as i32) / 2 + message_font.baseline as i32;
         {
             let mut text_target = SurfaceDrawTarget::new(surface);
             let _ = EgText::new(message.as_str(), Point::new(text_x, text_y), message_style)

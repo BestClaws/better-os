@@ -1,3 +1,4 @@
+use crate::system::hal::display::PixelFormat;
 use crate::system::kernel::config::resources::MAX_FRAME_BUFFERS;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
@@ -59,17 +60,14 @@ impl FrameBufferPool {
     ///
     /// # Panics
     /// Panics if buffers are currently allocated or if the computed size overflows.
-    pub fn configure(&self, width: u32, height: u32, bytes_per_pixel: usize) {
+    pub fn configure(&self, width: u32, height: u32, format: PixelFormat) {
         let in_use = self.status.load(Ordering::Acquire);
         assert!(
             in_use == 0,
             "Cannot reconfigure framebuffer pool while buffers are allocated"
         );
 
-        let required = (width as usize)
-            .checked_mul(height as usize)
-            .and_then(|v| v.checked_mul(bytes_per_pixel))
-            .expect("Framebuffer size overflow");
+        let required = format.framebuffer_size(width, height);
         assert!(required > 0, "Framebuffer dimensions must be non-zero");
 
         for buffer in self.buffers.iter() {

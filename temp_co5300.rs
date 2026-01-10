@@ -212,16 +212,14 @@ const SUPPORTED_RESOLUTIONS: [DisplayResolution; 3] = [
 /// Mode 2 = 102×125 @ 4x scale (uses ~25KB instead of ~410KB for framebuffer)
 const PREFERRED_MODE_INDEX: usize = 2;
 
-/// Supported pixel formats (RGB565 and Gray4)
-const SUPPORTED_FORMATS: [PixelFormat; 2] = [PixelFormat::Rgb565, PixelFormat::Gray4];
+/// Supported pixel formats (currently only RGB565 fully tested)
+const SUPPORTED_FORMATS: [PixelFormat; 1] = [PixelFormat::Rgb565];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helper Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Convert PixelFormat enum to SH8601 COLMOD register value
-/// 
-/// Note: For Gray4 framebuffers, we use RGB565 display mode and convert during transfer to keep Quad-SPI
 #[inline]
 fn pixel_format_to_colmod(fmt: PixelFormat) -> u8 {
     match fmt {
@@ -229,7 +227,6 @@ fn pixel_format_to_colmod(fmt: PixelFormat) -> u8 {
         PixelFormat::Rgb888 => 0x77, // 24-bit/pixel RGB888
         PixelFormat::Rgb666 => 0x66, // 18-bit/pixel RGB666
         PixelFormat::Gray8 => 0x11,  // 8-bit/pixel grayscale
-        PixelFormat::Gray4 => 0x55,  // Gray4 framebuffer -> RGB565 display (convert during transfer, use Quad-SPI)
     }
 }
 
@@ -278,30 +275,43 @@ where
     /// # Parameters
     /// - `qspi`: DMA-enabled QSPI bus
     /// - `reset_pin`: GPIO pin for hardware reset
-    ///
-    /// Resolution and pixel format are configured later through capability negotiation.
+    /// - `width`: Physical display width (410)
+    /// - `height`: Physical display height (502)
+    /// - `pixel_format`: Pixel format (typically RGB565)
     pub fn new(
         qspi: SpiDmaBus<'static, esp_hal::Async>,
         reset_pin: RST,
+        width: u16,
+        height: u16,
+        pixel_format: PixelFormat,
     ) -> Self {
-        debug!("Creating CO5300 driver");
+        debug!("Creating CO5300 driver {}×{}", width, height);
         
-        // Initialize with native/default values
-        // These will be configured during capability negotiation
         let active_resolution = SUPPORTED_RESOLUTIONS[PREFERRED_MODE_INDEX];
         let (hw_x_offset, hw_y_offset, center_x_offset, center_y_offset) =
             RESOLUTION_OFFSETS[PREFERRED_MODE_INDEX];
 
+        debug!(
+            "Resolution: {}×{} @ {}× scale, Offsets: HW({},{}) Center({},{})",
+            active_resolution.logical.width,
+            active_resolution.logical.height,
+            active_resolution.scale,
+            hw_x_offset,
+            hw_y_offset,
+            center_x_offset,
+            center_y_offset
+        );
+
         Self {
             qspi,
             reset_pin,
-            width: 410,  // Native physical width
-            height: 502, // Native physical height
+            width,
+            height,
             hw_x_offset,
             hw_y_offset,
             center_x_offset,
             center_y_offset,
-            pixel_format: PixelFormat::Rgb565, // Native format
+            pixel_format,
             active_resolution,
         }
     }
@@ -616,95 +626,6 @@ where
         );
     }
 
-    /// Optimized 2× scaling for Gray4 framebuffers
-    ///
-    /// This hot path converts Gray4 to RGB565 while scaling 2×, using Quad-SPI for maximum bandwidth.
-    /// Optimized for 205×251 logical → 410×502 physical.
-    ///
-    /// # Strategy
-    /// 1. Read Gray4 pixels (2 per byte, packed nibbles)
-    /// 2. Expand each 4-bit gray to RGB565 grayscale
-    /// 3. Replicate each pixel 2×2 during expansion
-    async fn draw_scaled_2x_gray4(&mut self, buffer: &[u8], region: Rect) {
-        let x = region.top_left.x as u16;
-        let y = region.top_left.y as u16;
-        let w = region.size.width as u16;
-        let h = region.size.height as u16;
-
-        let scaled_w = w * 2;
-        let scaled_h = h * 2;
-        let display_x = x * 2;
-        let display_y = y * 2;
-
-        let mut chunk = vec![0u8; (scaled_w * SCALING_CHUNK_HEIGHT * 2) as usize]; // RGB565 = 2 bytes per pixel
-
-        let t0 = Instant::now();
-
-        for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
-            let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
-
-            if self
-                .set_window(
-                    display_x,
-                    display_y + y_chunk,
-                    display_x + scaled_w,
-                    display_y + y_chunk + chunk_h,
-                )
-                .await
-                .is_err()
-            {
-                error!("set_window failed");
-                return;
-            }
-
-            // Scale and convert Gray4→RGB565 for this chunk
-            let mut dst_idx = 0;
-            
-            for row in 0..chunk_h as usize {
-                let src_row = (row + y_chunk as usize) / 2;
-                
-                // Process one source row, writing to scaled output
-                for col in 0..w as usize {
-                    // Read Gray4 pixel
-                    let src_pixel_idx = src_row * w as usize + col;
-                    let byte_idx = src_pixel_idx / 2;
-                    let is_high = (src_pixel_idx & 1) == 0;
-                    let gray4 = if is_high {
-                        (buffer[byte_idx] >> 4) & 0x0F
-                    } else {
-                        buffer[byte_idx] & 0x0F
-                    } as u16;
-                    
-                    // Expand 4-bit to RGB565 grayscale
-                    let gray5 = (gray4 << 1) | (gray4 >> 3); // 4-bit to 5-bit
-                    let gray6 = (gray4 << 2) | (gray4 >> 2); // 4-bit to 6-bit
-                    let rgb565 = (gray5 << 11) | (gray6 << 5) | gray5;
-                    
-                    // Write pixel 2× horizontally (2× width scaling), RGB565 big-endian
-                    chunk[dst_idx] = (rgb565 >> 8) as u8;
-                    chunk[dst_idx + 1] = (rgb565 & 0xFF) as u8;
-                    chunk[dst_idx + 2] = (rgb565 >> 8) as u8;
-                    chunk[dst_idx + 3] = (rgb565 & 0xFF) as u8;
-                    dst_idx += 4;
-                }
-            }
-
-            let chunk_bytes = &chunk[0..(scaled_w * chunk_h * 2) as usize]; // RGB565 = 2 bytes/pixel
-            
-            if self.send_pixels(chunk_bytes).await.is_err() {
-                error!("Pixel transfer failed (scale 2× Gray4)");
-                return;
-            }
-        }
-
-        debug!(
-            "draw_scaled_2x_gray4: {}×{} in {}ms",
-            w,
-            h,
-            t0.elapsed().as_millis()
-        );
-    }
-
     /// Optimized 4× scaling using u64 operations
     ///
     /// This is the most optimized path, using wide (u64) operations to
@@ -917,18 +838,15 @@ where
 
     /// Draw a region of the framebuffer to the display
     ///
-    /// Only supports two optimized paths:
-    /// - Scale 2 + Gray4: Optimized Gray4→RGB565 2× scaling
-    /// - Scale 4 + RGB565: Optimized u64-based 4× scaling
+    /// Automatically selects the optimal rendering path based on scale factor:
+    /// - Scale 1: Direct transfer (fastest, most memory)
+    /// - Scale 4: Optimized u64-based scaling (default)
+    /// - Other: Generic nearest-neighbor scaling
     async fn draw_region(&mut self, buffer: &[u8], region: Rect) {
-        match (self.active_resolution.scale as u16, self.pixel_format) {
-            (2, PixelFormat::Gray4) => self.draw_scaled_2x_gray4(buffer, region).await,
-            (4, PixelFormat::Rgb565) => self.draw_scaled_4x_optimized(buffer, region).await,
-            _ => unimplemented!(
-                "Unsupported scale/format combination: {}× with {:?}. Only Gray4@2× and RGB565@4× are supported.",
-                self.active_resolution.scale,
-                self.pixel_format
-            ),
+        match self.active_resolution.scale as u16 {
+            1 => self.draw_unscaled(buffer, region).await,
+            4 => self.draw_scaled_4x_optimized(buffer, region).await,
+            scale => self.draw_scaled_generic(buffer, region, scale).await,
         }
     }
 
@@ -962,11 +880,6 @@ where
 
     fn native_pixel_format(&self) -> PixelFormat {
         PixelFormat::Rgb565
-    }
-
-    fn set_pixel_format(&mut self, format: PixelFormat) {
-        self.pixel_format = format;
-        debug!("Pixel format set to {:?}", format);
     }
 
     fn capabilities(&self) -> DisplayCapabilities {

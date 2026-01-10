@@ -120,19 +120,12 @@ impl Rasterizer for DrawingSurface<'_> {
             return;
         }
         let a = (color.to_u32() & 0xFF) as u8;
-        let bpp = self.bytes_per_pixel();
-        // Fast path for fully opaque fill: write rows directly using encode_row.
+        
+        // Fast path for fully opaque fill
         if a == 255 {
-            let row_px = (x1 - x0 + 1) as usize;
-            let row_bytes = row_px * bpp;
-            // Take immutable borrows first to avoid aliasing with `buffer_mut()`.
-            let encode = self.encode_row_fn();
-            let width = self.width() as usize;
-            let buf = self.buffer_mut();
+            // Use set_pixels_horizontal_internal for each row to properly handle all formats
             for py in y0..=y1 {
-                let start_byte = ((py as usize) * width + (x0 as usize)) * bpp;
-                let row_slice = &mut buf[start_byte..start_byte + row_bytes];
-                encode(row_slice, color);
+                self.set_pixels_horizontal_internal(x0, py, (x1 - x0 + 1) as u32, color);
             }
         } else {
             // Fallback to per-pixel blend for alpha < 255.

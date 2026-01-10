@@ -23,7 +23,7 @@ impl ScratchFrame {
     }
 
     pub fn acquire(&mut self, width: u32, height: u32, format: PixelFormat) -> &mut [u8] {
-        let required = (width as usize) * (height as usize) * format.bytes_per_pixel();
+        let required = format.framebuffer_size(width, height);
         if self.buffer.len() < required {
             self.buffer.resize(required, 0);
         }

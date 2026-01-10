@@ -128,7 +128,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let reset_pin = Output::new(peripherals.GPIO11, Level::High, OutputConfig::default());
 
     // Initialize Co5300 driver
-    let mut display = Co5300::new(lcd_spi, reset_pin, 410, 502, PixelFormat::Rgb565);
+    let mut display = Co5300::new(lcd_spi, reset_pin);
 
     let button_pin = Input::new(peripherals.GPIO9, InputConfig::default());
 

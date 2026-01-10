@@ -25,14 +25,8 @@ impl DisplayPreferences {
     }
 
     pub const fn default() -> Self {
-        const FORMATS: &[PixelFormat] = &[
-            PixelFormat::Gray4,
-            PixelFormat::Rgb565,
-        ];
-        const RESOLUTIONS: &[DisplaySize] = &[
-            DisplaySize::new(205, 251),
-            DisplaySize::new(102, 125),
-        ];
+        const FORMATS: &[PixelFormat] = &[PixelFormat::Rgb565];
+        const RESOLUTIONS: &[DisplaySize] = &[DisplaySize::new(116, 116)];
         Self::new(FORMATS, RESOLUTIONS)
     }
 
@@ -71,7 +65,6 @@ impl DisplayService {
             let caps = guard.capabilities();
             let format = negotiate_format(&self.preferences, &caps);
             let resolution = negotiate_resolution(&self.preferences, &caps);
-            guard.set_pixel_format(format);
             guard.set_resolution(resolution);
             (format, resolution)
         };
@@ -114,7 +107,7 @@ impl Display {
     }
 
     pub fn framebuffer_size(&self, width: u32, height: u32) -> usize {
-        self.pixel_format.framebuffer_size(width, height)
+        (width as usize) * (height as usize) * self.pixel_format.bytes_per_pixel()
     }
 
     pub async fn draw_full(&self, buffer: &[u8]) {

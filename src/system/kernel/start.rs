@@ -37,7 +37,7 @@ pub(crate) fn start(spawner: Spawner) {
     // Initialize the global compositor and window manager early
     let compositor_ref = COMPOSITOR.init(Mutex::new(UICompositor::new()));
     let window_manager_ref =
-        WINDOW_MANAGER.init(Mutex::new(WindowManager::new(PixelFormat::Rgb565)));
+        WINDOW_MANAGER.init(Mutex::new(WindowManager::new(PixelFormat::Gray4)));
 
     // Spawn input service tasks (readers + dispatcher)
     info!(

@@ -203,18 +203,6 @@ pub(crate) fn rgba8888_to_rgb565_and_alpha(color: u32) -> (u16, u8) {
 }
 
 #[inline(always)]
-pub(crate) fn rgba8888_to_gray4_and_alpha(color: u32) -> (u8, u8) {
-    let r = ((color >> 24) & 0xFF) as u32;
-    let g = ((color >> 16) & 0xFF) as u32;
-    let b = ((color >> 8) & 0xFF) as u32;
-    let a = (color & 0xFF) as u8;
-    // ITU-R BT.601 luma coefficients
-    let gray8 = ((r * 77 + g * 150 + b * 29) >> 8) as u8;
-    let gray4 = gray8 >> 4; // Convert 8-bit to 4-bit
-    (gray4, a)
-}
-
-#[inline(always)]
 pub fn angle_in_range(dx: i32, dy: i32, start: i32, end: i32) -> bool {
     let ang = fast_atan2_deg(dy, dx);
 

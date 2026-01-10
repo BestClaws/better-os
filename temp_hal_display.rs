@@ -9,7 +9,6 @@ pub enum PixelFormat {
     Rgb888,
     Rgb666,
     Gray8,
-    Gray4,
 }
 
 impl PixelFormat {
@@ -19,16 +18,6 @@ impl PixelFormat {
             PixelFormat::Rgb888 => 3,
             PixelFormat::Rgb666 => 3,
             PixelFormat::Gray8 => 1,
-            PixelFormat::Gray4 => 1, // Note: actual usage needs (width*height+1)/2
-        }
-    }
-    
-    /// Calculate actual framebuffer size in bytes for given dimensions
-    pub const fn framebuffer_size(&self, width: u32, height: u32) -> usize {
-        let pixels = (width as usize) * (height as usize);
-        match self {
-            PixelFormat::Gray4 => (pixels + 1) / 2, // 2 pixels per byte, round up
-            _ => pixels * self.bytes_per_pixel(),
         }
     }
 }
@@ -95,9 +84,6 @@ pub trait AsyncDisplay {
     fn native_pixel_format(&self) -> PixelFormat {
         PixelFormat::Rgb565
     }
-
-    /// Set the active pixel format for the driver
-    fn set_pixel_format(&mut self, format: PixelFormat);
 
     /// Report static capabilities of the display driver/panel.
     fn capabilities(&self) -> DisplayCapabilities;

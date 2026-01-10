@@ -7,6 +7,7 @@ use crate::apps::discord::discord_app;
 // TODO: Re-enable after HPS integration complete
 // use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::gfx_bench::gfx_bench_app;
+use crate::apps::gray_test::gray_test_app;
 use crate::apps::rect::rect_app;
 use crate::apps::text_demo::text_demo_app;
 use crate::apps::watch_app::watch_app;
@@ -21,7 +22,11 @@ use embassy_time::{Duration, Timer};
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
-    // TODO: Re-enable after HPS integration complete
+    // AppDescriptor {
+    //     name: "Gray Test",
+    //     id: 1,
+    //     spawn_fn: spawn_gray_test_app,
+    // },
     AppDescriptor {
         name: "Discord",
         id: 1,
@@ -32,21 +37,21 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 5,
     //     spawn_fn: spawn_bluetooth_scanner_app,
     // },
-    // AppDescriptor {
-    //     name: "GFX Benchmark",
-    //     id: 2,
-    //     spawn_fn: spawn_gfx_bench_app,
-    // },
+    AppDescriptor {
+        name: "GFX Benchmark",
+        id: 2,
+        spawn_fn: spawn_gfx_bench_app,
+    },
     // AppDescriptor {
     //     name: "Text Demo",
     //     id: 4,
     //     spawn_fn: spawn_text_demo_app,
     // },
-    // AppDescriptor {
-    //     name: "Watch",
-    //     id: 3,
-    //     spawn_fn: spawn_watch_app,
-    // },
+    AppDescriptor {
+        name: "Watch",
+        id: 3,
+        spawn_fn: spawn_watch_app,
+    },
     // AppDescriptor {
     //     name: "Rect",
     //     id: 3,
@@ -245,6 +250,13 @@ fn spawn_arrow_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(arrow_app(context))
+}
+
+fn spawn_gray_test_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(gray_test_app(context))
 }
 
 fn spawn_discord_app(

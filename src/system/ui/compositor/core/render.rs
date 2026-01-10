@@ -8,7 +8,7 @@ use crate::system::ui::windowing::{WindowHandle, WindowManager};
 use crate::util::math::primitives::Rect;
 
 use super::super::blitter::SurfaceBlitter;
-use super::super::region::extract_region_buffer;
+use super::super::region::extract_region_buffer_format;
 use super::super::strategy::{determine_update_strategy, UpdateStrategy};
 
 impl UICompositor {
@@ -52,12 +52,12 @@ impl UICompositor {
                     }
                     UpdateStrategy::Partial(regions) => {
                         for region in regions.iter() {
-                            let region_buffer = extract_region_buffer(
+                            let region_buffer = extract_region_buffer_format(
                                 composite_surface.buffer(),
                                 region,
                                 width,
                                 height,
-                                composite_surface.bytes_per_pixel(),
+                                pixel_format,
                             );
                             display.draw_region(&region_buffer, *region).await;
                         }
