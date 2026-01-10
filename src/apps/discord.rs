@@ -1,8 +1,11 @@
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::rasterizer::Rasterizer;
 use crate::libs::gfx::{RoundedRect, Shape, SurfaceDrawTarget};
-use crate::libs::http_bridge::{HttpBridgeError, HttpClient};
+use crate::libs::hps::client::HpsClient;
+use crate::libs::hps::types::{HttpMethod, HttpRequest};
+use crate::libs::hps::error::HpsError;
 use crate::system::app::app_context::AppContext;
+use crate::system::services::hps_service::wait_for_hps_ready;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_executor::task;
@@ -15,21 +18,27 @@ use embedded_graphics::text::Text as EgText;
 use heapless::String;
 
 const MESSAGE_CAPACITY: usize = 64;
-const POLL_INTERVAL_MS: u64 = 5_000;
-const POLL_PATH: &str = "/get";
+const POLL_INTERVAL_MS: u64 = 10_000;
+const API_URL: &str = "jsonplaceholder.typicode.com/posts";
 const MAX_DISPLAY_CHARS: usize = 36;
 
 #[task]
 pub async fn discord_app(ctx: AppContext) {
-    info!("Starting Discord bridge app");
-    let client = HttpClient::new();
+    info!("Starting Posts viewer app");
+    
+    // Wait for HPS service to be ready before starting
+    info!("Posts: Waiting for HPS service to be ready...");
+    wait_for_hps_ready().await;
+    info!("Posts: HPS service is ready!");
+    
+    let mut client = HpsClient::new();
     let mut messages = [
         placeholder_message(),
         placeholder_message(),
         placeholder_message(),
     ];
     let mut connected = false;
-    let mut last_error: Option<HttpBridgeError> = None;
+    let mut last_error: Option<HpsError> = None;
     let mut ticker = Ticker::every(Duration::from_millis(POLL_INTERVAL_MS));
     let mut needs_redraw = true;
 
@@ -44,43 +53,100 @@ pub async fn discord_app(ctx: AppContext) {
 
         ticker.next().await;
 
-        match client.get(POLL_PATH).send().await {
+        // Make HTTPS GET request to jsonplaceholder API
+        info!("Posts: Preparing HTTPS GET request to {}", API_URL);
+        let request = HttpRequest {
+            method: HttpMethod::GetSecure,
+            uri: API_URL,
+            headers: "",
+            body: &[],
+        };
+
+        info!("Posts: Sending request via HpsClient...");
+        match client.send_request(request).await {
             Ok(response) => {
                 if !connected {
+                    info!("Posts: Connection established!");
                     connected = true;
                     needs_redraw = true;
                 }
-                if update_messages(&mut messages, response.body()) {
-                    needs_redraw = true;
+                
+                info!("Posts: Got HTTP {} response, body length: {}", response.status_code, response.body.len());
+                
+                if response.is_success() {
+                    // Parse JSON and extract post titles
+                    info!("Posts: Parsing response body...");
+                    if update_messages_from_posts(&mut messages, &response.body) {
+                        info!("Posts: Messages updated, requesting redraw");
+                        needs_redraw = true;
+                    } else {
+                        info!("Posts: No changes to messages");
+                    }
+                } else {
+                    warn!("Posts: HTTP error: {}", response.status_code);
                 }
+                
                 last_error = None;
             }
             Err(err) => {
                 if last_error != Some(err) {
-                    warn!("discord poll failed: {}", err);
+                    warn!("HPS request failed: {:?}", err);
                     last_error = Some(err);
                 }
                 if connected {
                     connected = false;
                     needs_redraw = true;
                 }
+                
+                // Back off more if disconnected - don't spam connection attempts
+                info!("Posts: Waiting 10s before retry...");
+                embassy_time::Timer::after(Duration::from_secs(10)).await;
             }
         }
     }
 }
 
-fn update_messages(messages: &mut [String<MESSAGE_CAPACITY>; 3], body: &[u8]) -> bool {
+fn update_messages_from_posts(messages: &mut [String<MESSAGE_CAPACITY>; 3], body: &[u8]) -> bool {
     let text = core::str::from_utf8(body).unwrap_or("");
+    info!("Posts: Parsing {} bytes of JSON text", text.len());
     let mut changed = false;
-
-    for (idx, slot) in messages.iter_mut().enumerate() {
-        let line = text.lines().nth(idx).unwrap_or("...");
-        let sanitized = sanitize_line(line);
-        if slot.as_str() != sanitized.as_str() {
-            slot.clear();
-            slot.push_str(sanitized.as_str()).ok();
+    
+    // Simple JSON parsing - look for "title": "..." patterns
+    let mut post_count = 0;
+    
+    for line in text.lines() {
+        if post_count >= 3 {
+            break;
+        }
+        
+        // Look for "title": "some title here"
+        if let Some(title_start) = line.find("\"title\":") {
+            if let Some(first_quote) = line[title_start + 8..].find('"') {
+                let start = title_start + 8 + first_quote + 1;
+                if let Some(end_quote) = line[start..].find('"') {
+                    let title = &line[start..start + end_quote];
+                    let sanitized = sanitize_line(title);
+                    
+                    if messages[post_count].as_str() != sanitized.as_str() {
+                        messages[post_count].clear();
+                        messages[post_count].push_str(sanitized.as_str()).ok();
+                        changed = true;
+                    }
+                    
+                    post_count += 1;
+                }
+            }
+        }
+    }
+    
+    // If we found fewer than 3 posts, mark as changed if slots were not empty
+    while post_count < 3 {
+        if !messages[post_count].is_empty() && messages[post_count].as_str() != "..." {
+            messages[post_count].clear();
+            messages[post_count].push_str("...").ok();
             changed = true;
         }
+        post_count += 1;
     }
 
     changed
@@ -131,7 +197,7 @@ fn draw_interface(
     let message_style = MonoTextStyle::new(&FONT_5X8, Rgb888::new(219, 222, 225));
 
     // Centered title
-    let title_text = "Discord";
+    let title_text = "Posts";
     let title_width = title_text.len() as i32 * FONT_5X8.character_size.width as i32;
     let title_x = (width - title_width) / 2;
     let title_y = 7;

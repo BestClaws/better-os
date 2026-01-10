@@ -3,8 +3,9 @@ use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
 use crate::apps::arrow::arrow_app;
-use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::discord::discord_app;
+// TODO: Re-enable after HPS integration complete
+// use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::gfx_bench::gfx_bench_app;
 use crate::apps::rect::rect_app;
 use crate::apps::text_demo::text_demo_app;
@@ -20,9 +21,10 @@ use embassy_time::{Duration, Timer};
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
+    // TODO: Re-enable after HPS integration complete
     AppDescriptor {
         name: "Discord",
-        id: 2,
+        id: 1,
         spawn_fn: spawn_discord_app,
     },
     // AppDescriptor {
@@ -30,11 +32,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 5,
     //     spawn_fn: spawn_bluetooth_scanner_app,
     // },
-    AppDescriptor {
-        name: "GFX Benchmark",
-        id: 1,
-        spawn_fn: spawn_gfx_bench_app,
-    },
+    // AppDescriptor {
+    //     name: "GFX Benchmark",
+    //     id: 2,
+    //     spawn_fn: spawn_gfx_bench_app,
+    // },
     // AppDescriptor {
     //     name: "Text Demo",
     //     id: 4,
@@ -42,7 +44,7 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     // },
     // AppDescriptor {
     //     name: "Watch",
-    //     id: 1,
+    //     id: 3,
     //     spawn_fn: spawn_watch_app,
     // },
     // AppDescriptor {
@@ -52,7 +54,7 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     // },
     // AppDescriptor {
     //     name: "3D Arrow",
-    //     id: 1,
+    //     id: 4,
     //     spawn_fn: spawn_arrow_app,
     // },
 ];
@@ -245,19 +247,22 @@ fn spawn_arrow_app(
     spawner.spawn(arrow_app(context))
 }
 
-fn spawn_bluetooth_scanner_app(
-    spawner: Spawner,
-    context: AppContext,
-) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(bluetooth_scanner_app(context))
-}
-
 fn spawn_discord_app(
     spawner: Spawner,
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(discord_app(context))
 }
+
+// TODO: Re-enable after HPS integration complete
+/*
+fn spawn_bluetooth_scanner_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(bluetooth_scanner_app(context))
+}
+*/
 
 /// Utility functions for application management
 impl AppDescriptor {

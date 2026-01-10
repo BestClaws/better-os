@@ -1,5 +1,6 @@
 pub(crate) mod arrow;
-pub(crate) mod bluetooth_scanner;
+// TODO: Re-enable after HPS integration complete
+// pub(crate) mod bluetooth_scanner;
 pub(crate) mod discord;
 pub(crate) mod gfx_bench;
 pub(crate) mod rect;
