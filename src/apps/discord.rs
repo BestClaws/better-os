@@ -1,9 +1,7 @@
 use crate::libs::gfx::color::Rgba8888;
 use crate::libs::gfx::rasterizer::Rasterizer;
 use crate::libs::gfx::{RoundedRect, Shape, SurfaceDrawTarget};
-use crate::libs::hps::client::HpsClient;
-use crate::libs::hps::types::{HttpMethod, HttpRequest};
-use crate::libs::hps::error::HpsError;
+use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::services::hps_service::wait_for_hps_ready;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -19,7 +17,7 @@ use heapless::String;
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 10_000;
-const API_URL: &str = "jsonplaceholder.typicode.com/posts";
+const API_URL: &str = "https://jsonplaceholder.typicode.com/posts";
 const MAX_DISPLAY_CHARS: usize = 36;
 
 #[task]
@@ -31,14 +29,13 @@ pub async fn discord_app(ctx: AppContext) {
     wait_for_hps_ready().await;
     info!("Posts: HPS service is ready!");
     
-    let mut client = HpsClient::new();
+    let client = http::Client::new();
     let mut messages = [
         placeholder_message(),
         placeholder_message(),
         placeholder_message(),
     ];
     let mut connected = false;
-    let mut last_error: Option<HpsError> = None;
     let mut ticker = Ticker::every(Duration::from_millis(POLL_INTERVAL_MS));
     let mut needs_redraw = true;
 
@@ -54,16 +51,9 @@ pub async fn discord_app(ctx: AppContext) {
         ticker.next().await;
 
         // Make HTTPS GET request to jsonplaceholder API
-        info!("Posts: Preparing HTTPS GET request to {}", API_URL);
-        let request = HttpRequest {
-            method: HttpMethod::GetSecure,
-            uri: API_URL,
-            headers: "",
-            body: &[],
-        };
-
-        info!("Posts: Sending request via HpsClient...");
-        match client.send_request(request).await {
+        // Use the clean reqwest-like API!
+        info!("Posts: Sending HTTPS GET request to {}", API_URL);
+        match client.get_secure(API_URL).send().await {
             Ok(response) => {
                 if !connected {
                     info!("Posts: Connection established!");
@@ -71,28 +61,26 @@ pub async fn discord_app(ctx: AppContext) {
                     needs_redraw = true;
                 }
                 
-                info!("Posts: Got HTTP {} response, body length: {}", response.status_code, response.body.len());
+                info!("Posts: Got HTTP {} response, {} bytes", 
+                    response.status(), response.content_length());
                 
                 if response.is_success() {
                     // Parse JSON and extract post titles
                     info!("Posts: Parsing response body...");
-                    if update_messages_from_posts(&mut messages, &response.body) {
-                        info!("Posts: Messages updated, requesting redraw");
-                        needs_redraw = true;
-                    } else {
-                        info!("Posts: No changes to messages");
+                    if let Ok(text) = response.text() {
+                        if update_messages_from_posts(&mut messages, text.as_bytes()) {
+                            info!("Posts: Messages updated, requesting redraw");
+                            needs_redraw = true;
+                        } else {
+                            info!("Posts: No changes to messages");
+                        }
                     }
                 } else {
-                    warn!("Posts: HTTP error: {}", response.status_code);
+                    warn!("Posts: HTTP error: {}", response.status());
                 }
-                
-                last_error = None;
             }
             Err(err) => {
-                if last_error != Some(err) {
-                    warn!("HPS request failed: {:?}", err);
-                    last_error = Some(err);
-                }
+                warn!("HTTP request failed: {:?}", err);
                 if connected {
                     connected = false;
                     needs_redraw = true;

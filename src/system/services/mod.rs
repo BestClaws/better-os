@@ -2,11 +2,10 @@
 pub(crate) mod ambient_srv;
 pub(crate) mod app_spawner_srv;
 pub(crate) mod battery_srv;
-// TODO: Re-enable after HPS integration complete
-// pub(crate) mod bluetooth_service;
 pub(crate) mod compositor_srv;
 pub(crate) mod gyro_accel_srv;
 pub(crate) mod hps_service;
+pub(crate) mod http_service;
 pub(crate) mod input;
 pub(crate) mod system_ui_srv;
 pub(crate) mod vibrator_srv;

@@ -16,10 +16,9 @@ use crate::system::services::vibrator_srv;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
-// TODO: Re-enable after HPS integration complete
-// use crate::system::services::bluetooth_service::bluetooth_service;
 use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
 use crate::system::services::hps_service::hps_service;
+use crate::system::services::http_service::http_service;
 use crate::system::services::vibrator_srv::vibrator_service;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -94,6 +93,13 @@ pub(crate) fn start(spawner: Spawner) {
             Instant::now().as_millis() as f32 / 1000f32
         );
         spawner.spawn(hps_service(radio)).unwrap();
+        
+        // Spawn HTTP service (sits between HTTP client and HPS)
+        info!(
+            "[{}s] spawning HTTP service",
+            Instant::now().as_millis() as f32 / 1000f32
+        );
+        spawner.spawn(http_service()).unwrap();
     }
 
     // Spawn app spawner service
