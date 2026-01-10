@@ -7,11 +7,18 @@ use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::{Point, Rect, Size};
 
 /// Pixel operation function pointers cached per format for hot paths.
+///
+/// Note: `set_pixel` performs an opaque write, ignoring the alpha channel.
+/// Use `blend_pixel` for alpha-aware compositing with the background.
 pub struct PixelOps {
     pub bpp: usize,
+    /// Write pixel directly, ignoring alpha (opaque write)
     pub set_pixel: fn(buf: &mut [u8], pixel_idx: usize, color: Rgba8888),
+    /// Blend pixel with background using alpha and coverage
     pub blend_pixel: fn(buf: &mut [u8], pixel_idx: usize, color: Rgba8888, coverage: u8),
+    /// Read pixel from buffer
     pub get_pixel: fn(buf: &[u8], pixel_idx: usize) -> Rgba8888,
+    /// Fill buffer slice with solid color
     pub encode_row: fn(dst: &mut [u8], color: Rgba8888),
 }
 
@@ -365,80 +372,7 @@ impl<'a> DrawingSurface<'a> {
         (x + y * self.width) as usize
     }
 
-    // Format-specific fast paths for RGB565 (most common case)
-    #[inline(always)]
-    fn set_pixel_rgb565(&mut self, x: u32, y: u32, color: Rgba8888) {
-        let byte_idx = ((x + y * self.width) as usize) << 1; // * 2 via shift
-        let (raw, _) = rgba8888_to_rgb565_and_alpha(color.to_u32());
-        let buf = self.buf_mut();
-        unsafe {
-            let be = raw.to_be();
-            core::ptr::write_unaligned(buf.as_mut_ptr().add(byte_idx) as *mut u16, be);
-        }
-    }
-
-    #[inline(always)]
-    fn blend_pixel_rgb565(&mut self, x: u32, y: u32, color: Rgba8888, coverage: u8) {
-        let byte_idx = ((x + y * self.width) as usize) << 1;
-        let buf = self.buf_mut();
-        let bg_raw: u16 = unsafe {
-            let be = core::ptr::read_unaligned(buf.as_ptr().add(byte_idx) as *const u16);
-            u16::from_be(be)
-        };
-        let (fg_rgb565, a_src) = rgba8888_to_rgb565_and_alpha(color.to_u32());
-        let eff = ((coverage as u32 * a_src as u32) / 255) as u8;
-        if eff == 0 {
-            return;
-        }
-        let out = blend_rgb565(bg_raw, fg_rgb565, eff);
-        unsafe {
-            core::ptr::write_unaligned(buf.as_mut_ptr().add(byte_idx) as *mut u16, out.to_be());
-        }
-    }
-
-    // Format-specific fast paths for Gray4
-    #[inline(always)]
-    fn set_pixel_gray4(&mut self, x: u32, y: u32, color: Rgba8888) {
-        let pixel_idx = (x + y * self.width) as usize;
-        let (gray4, _) = rgba8888_to_gray4_and_alpha(color.to_u32());
-        let byte_idx = pixel_idx >> 1; // / 2 via shift
-        let is_high = (pixel_idx & 1) == 0;
-        let buf = self.buf_mut();
-        if is_high {
-            buf[byte_idx] = (buf[byte_idx] & 0x0F) | (gray4 << 4);
-        } else {
-            buf[byte_idx] = (buf[byte_idx] & 0xF0) | gray4;
-        }
-    }
-
-    #[inline(always)]
-    fn blend_pixel_gray4(&mut self, x: u32, y: u32, color: Rgba8888, coverage: u8) {
-        let pixel_idx = (x + y * self.width) as usize;
-        let byte_idx = pixel_idx >> 1;
-        let is_high = (pixel_idx & 1) == 0;
-        let buf = self.buf_mut();
-        let bg_gray4 = if is_high {
-            (buf[byte_idx] >> 4) & 0x0F
-        } else {
-            buf[byte_idx] & 0x0F
-        };
-        let (fg_gray4, a_src) = rgba8888_to_gray4_and_alpha(color.to_u32());
-        let eff = ((coverage as u32 * a_src as u32) / 255) as u8;
-        if eff == 0 {
-            return;
-        }
-        let bg8 = (bg_gray4 << 4) | bg_gray4;
-        let fg8 = (fg_gray4 << 4) | fg_gray4;
-        let blended8 = ((bg8 as u32 * (255 - eff) as u32 + fg8 as u32 * eff as u32) / 255) as u8;
-        let blended4 = blended8 >> 4;
-        if is_high {
-            buf[byte_idx] = (buf[byte_idx] & 0x0F) | (blended4 << 4);
-        } else {
-            buf[byte_idx] = (buf[byte_idx] & 0xF0) | blended4;
-        }
-    }
-
-    // Internal hot paths used by Rasterizer impl - dispatch to format-specific fast paths
+    // Internal hot paths used by Rasterizer impl
     #[inline(always)]
     pub(crate) fn set_pixel_internal(&mut self, x: i32, y: i32, color: Rgba8888) {
         if x < 0 || y < 0 {
@@ -448,15 +382,8 @@ impl<'a> DrawingSurface<'a> {
         if x >= self.width || y >= self.height {
             return;
         }
-        // Fast path dispatch based on format
-        match self.pixel_format {
-            PixelFormat::Rgb565 => self.set_pixel_rgb565(x, y, color),
-            PixelFormat::Gray4 => self.set_pixel_gray4(x, y, color),
-            _ => {
-                let pixel_idx = self.pixel_index(x, y);
-                (self.ops.set_pixel)(self.buf_mut(), pixel_idx, color);
-            }
-        }
+        let pixel_idx = self.pixel_index(x, y);
+        (self.ops.set_pixel)(self.buf_mut(), pixel_idx, color);
     }
 
     #[inline(always)]
@@ -468,15 +395,8 @@ impl<'a> DrawingSurface<'a> {
         if x >= self.width || y >= self.height {
             return;
         }
-        // Fast path dispatch based on format
-        match self.pixel_format {
-            PixelFormat::Rgb565 => self.blend_pixel_rgb565(x, y, color, coverage),
-            PixelFormat::Gray4 => self.blend_pixel_gray4(x, y, color, coverage),
-            _ => {
-                let pixel_idx = self.pixel_index(x, y);
-                (self.ops.blend_pixel)(self.buf_mut(), pixel_idx, color, coverage);
-            }
-        }
+        let pixel_idx = self.pixel_index(x, y);
+        (self.ops.blend_pixel)(self.buf_mut(), pixel_idx, color, coverage);
     }
 
     #[inline(always)]
