@@ -3,15 +3,24 @@
 use crate::libs::hps::types::{HttpResponse as HpsResponse, HttpStatusCode};
 use crate::libs::http::error::{Error, Result};
 use defmt::Format;
-use heapless::Vec;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// HTTP Response
 /// 
 /// Provides methods to access response data similar to reqwest::Response
-#[derive(Format)]
 pub struct Response {
     status_code: u16,
-    body: Vec<u8, 512>, // HPS max body size
+    headers: String, // Heap-allocated response headers
+    body: Vec<u8>,   // Heap-allocated response body
+}
+
+// Manual Format implementation since alloc::String doesn't implement defmt::Format
+impl defmt::Format for Response {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "Response {{ status: {}, headers_len: {}, body_len: {} }}", 
+            self.status_code, self.headers.len(), self.body.len())
+    }
 }
 
 impl Response {
@@ -19,7 +28,8 @@ impl Response {
     pub(crate) fn from_hps(hps_response: HpsResponse) -> Self {
         Self {
             status_code: hps_response.status_code,
-            body: hps_response.body,
+            headers: String::from(hps_response.headers.as_str()),
+            body: hps_response.body.to_vec(),
         }
     }
     
@@ -56,6 +66,25 @@ impl Response {
     /// Get the content length
     pub fn content_length(&self) -> usize {
         self.body.len()
+    }
+    
+    /// Get response headers as a string
+    pub fn headers(&self) -> &str {
+        self.headers.as_str()
+    }
+    
+    /// Get a specific header value by name (case-insensitive)
+    pub fn header(&self, name: &str) -> Option<&str> {
+        let name_lower = name.to_lowercase();
+        for line in self.headers.lines() {
+            if let Some(colon_pos) = line.find(':') {
+                let header_name = line[..colon_pos].trim().to_lowercase();
+                if header_name == name_lower {
+                    return Some(line[colon_pos + 1..].trim());
+                }
+            }
+        }
+        None
     }
     
     /// Parse response body as JSON

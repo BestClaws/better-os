@@ -16,8 +16,8 @@ use embedded_graphics::text::Text as EgText;
 use heapless::String;
 
 const MESSAGE_CAPACITY: usize = 64;
-const POLL_INTERVAL_MS: u64 = 10_000;
-const API_URL: &str = "https://jsonplaceholder.typicode.com/posts";
+const POLL_INTERVAL_MS: u64 = 5_000;  // Poll every 5 seconds
+const API_URL: &str = "https://jsonplaceholder.typicode.com/posts?_limit=3";  // Only fetch 3 posts
 const MAX_DISPLAY_CHARS: usize = 36;
 
 #[task]
@@ -39,16 +39,20 @@ pub async fn discord_app(ctx: AppContext) {
     let mut ticker = Ticker::every(Duration::from_millis(POLL_INTERVAL_MS));
     let mut needs_redraw = true;
 
+    info!("Posts: Entering main loop");
     loop {
         if needs_redraw {
             if ctx.is_focused().await {
+                info!("Posts: Drawing interface");
                 ctx.draw(|surface| draw_interface(surface, &messages, connected))
                     .await;
                 needs_redraw = false;
             }
         }
 
+        info!("Posts: Waiting for ticker...");
         ticker.next().await;
+        info!("Posts: Ticker fired, making request");
 
         // Make HTTPS GET request to jsonplaceholder API
         // Use the clean reqwest-like API!
@@ -68,6 +72,10 @@ pub async fn discord_app(ctx: AppContext) {
                     // Parse JSON and extract post titles
                     info!("Posts: Parsing response body...");
                     if let Ok(text) = response.text() {
+                        // Count total posts in JSON
+                        let post_count = text.matches("\"title\":").count();
+                        info!("Posts: Received {} bytes with {} posts", text.len(), post_count);
+                        
                         if update_messages_from_posts(&mut messages, text.as_bytes()) {
                             info!("Posts: Messages updated, requesting redraw");
                             needs_redraw = true;

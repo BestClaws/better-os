@@ -134,9 +134,11 @@ impl HttpStatusCode {
 }
 
 /// Maximum sizes per HPS v1.0 specification
-pub const MAX_URI_SIZE: usize = 512;
-pub const MAX_HEADERS_SIZE: usize = 512;
-pub const MAX_BODY_SIZE: usize = 512;
+/// Spec allows up to 512 bytes per characteristic, but we use larger buffers
+/// Total budget: 10KB across all characteristics
+pub const MAX_URI_SIZE: usize = 1024;      // 1KB for URLs
+pub const MAX_HEADERS_SIZE: usize = 4096;  // 4KB for request + response headers
+pub const MAX_BODY_SIZE: usize = 5120;     // 5KB for request + response body
 
 /// HTTP Request to be sent via HPS
 pub struct HttpRequest<'a> {

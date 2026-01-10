@@ -1,6 +1,6 @@
 // HTTP Client implementation
 
-use crate::libs::hps::types::{HttpMethod, HttpRequest as HpsRequest};
+use crate::libs::hps::types::{HttpMethod, HttpRequest as HpsRequest, MAX_URI_SIZE, MAX_HEADERS_SIZE, MAX_BODY_SIZE};
 use crate::libs::http::error::{Error, Result};
 use crate::libs::http::request::RequestBuilder;
 use crate::libs::http::response::Response;
@@ -90,23 +90,30 @@ impl Client {
     pub(crate) async fn send_request(&self, request: HpsRequest<'_>) -> Result<Response> {
         info!("HTTP Client: Sending {} request to {}", request.method, request.uri);
         
-        // Convert to owned types for channel
-        let method = request.method;
-        let uri = heapless::String::try_from(request.uri).map_err(|_| Error::InvalidUrl)?;
-        let headers = heapless::String::try_from(request.headers).map_err(|_| Error::InvalidUrl)?;
-        let body = heapless::Vec::from_slice(request.body).map_err(|_| Error::RequestTooLarge)?;
+        // Validate sizes
+        if request.uri.len() > MAX_URI_SIZE {
+            return Err(Error::InvalidUrl);
+        }
+        if request.headers.len() > MAX_HEADERS_SIZE {
+            return Err(Error::InvalidUrl);
+        }
+        if request.body.len() > MAX_BODY_SIZE {
+            return Err(Error::RequestTooLarge);
+        }
         
-        // Create service request
-        let service_request = crate::system::services::http_service::HttpServiceRequest {
-            method,
-            uri,
-            headers,
-            body,
+        // Create HpsRequest directly - no boxing needed!
+        // String and Vec are already heap-allocated internally
+        let hps_request = crate::system::services::hps_service::HpsRequest {
+            method: request.method,
+            uri: alloc::string::String::from(request.uri),
+            headers: alloc::string::String::from(request.headers),
+            body: request.body.to_vec(),
         };
         
-        // Send to service
+        info!("HTTP Client: Sending request through channel...");
+        // Send directly to service
         let tx = http_request_sender();
-        tx.send(service_request).await;
+        tx.send(hps_request).await;
         
         // Wait for response
         let rx = http_response_receiver();

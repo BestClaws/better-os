@@ -42,16 +42,12 @@ impl HpsClient {
             return Err(HpsError::BufferTooSmall);
         }
         
-        // Convert to owned types for channel
-        let uri = heapless::String::try_from(request.uri).map_err(|_| HpsError::BufferTooSmall)?;
-        let headers = heapless::String::try_from(request.headers).map_err(|_| HpsError::BufferTooSmall)?;
-        let body = heapless::Vec::from_slice(request.body).map_err(|_| HpsError::BufferTooSmall)?;
-        
+        // Create HpsRequest directly - no boxing needed
         let hps_request = crate::system::services::hps_service::HpsRequest {
             method: request.method,
-            uri,
-            headers,
-            body,
+            uri: alloc::string::String::from(request.uri),
+            headers: alloc::string::String::from(request.headers),
+            body: request.body.to_vec(),
         };
         
         // Send request to service task
@@ -73,9 +69,9 @@ impl HpsClient {
         // Send cancel request (using HttpMethod::Cancel)
         let cancel_request = crate::system::services::hps_service::HpsRequest {
             method: HttpMethod::Cancel,
-            uri: heapless::String::new(),
-            headers: heapless::String::new(),
-            body: heapless::Vec::new(),
+            uri: alloc::string::String::new(),
+            headers: alloc::string::String::new(),
+            body: alloc::vec::Vec::new(),
         };
         
         let request_tx = hps_request_sender();

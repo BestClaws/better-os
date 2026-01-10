@@ -292,18 +292,18 @@ class HPSServer:
             self.status_code = response.status_code
             logger.info(f"HTTP response: {self.status_code}")
             
-            # Store response headers (truncate to 512 bytes)
+            # Store response headers (truncate to 4096 bytes - MAX_HEADERS_SIZE)
             response_headers_str = '\n'.join([f"{k}: {v}" for k, v in response.headers.items()])
-            if len(response_headers_str) > 512:
-                self.response_headers = response_headers_str[:512]
+            if len(response_headers_str) > 4096:
+                self.response_headers = response_headers_str[:4096]
                 self.data_status = DATA_STATUS_HEADERS_RECEIVED | DATA_STATUS_HEADERS_TRUNCATED
             else:
                 self.response_headers = response_headers_str
                 self.data_status = DATA_STATUS_HEADERS_RECEIVED
             
-            # Store response body (truncate to 512 bytes)
-            if len(response.content) > 512:
-                self.response_body = response.content[:512]
+            # Store response body (truncate to 5120 bytes - MAX_BODY_SIZE)
+            if len(response.content) > 5120:
+                self.response_body = response.content[:5120]
                 self.data_status |= DATA_STATUS_BODY_RECEIVED | DATA_STATUS_BODY_TRUNCATED
             else:
                 self.response_body = response.content
@@ -321,7 +321,7 @@ class HPSServer:
             logger.error(f"HTTP request failed: {e}")
             self.status_code = 500
             self.response_headers = ""
-            self.response_body = str(e).encode('utf-8')[:512]
+            self.response_body = str(e).encode('utf-8')[:5120]
             self.data_status = DATA_STATUS_BODY_RECEIVED
             
     async def run(self):

@@ -5,24 +5,19 @@
 use defmt::info;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use crate::libs::hps::error::HpsError;
 use crate::libs::hps::types::{HttpMethod, HttpResponse, MAX_BODY_SIZE, MAX_HEADERS_SIZE, MAX_URI_SIZE};
-
-/// HTTP service request
-#[derive(Debug)]
-pub struct HttpServiceRequest {
-    pub method: HttpMethod,
-    pub uri: heapless::String<MAX_URI_SIZE>,
-    pub headers: heapless::String<MAX_HEADERS_SIZE>,
-    pub body: heapless::Vec<u8, MAX_BODY_SIZE>,
-}
+use crate::system::services::hps_service::HpsRequest;
 
 /// HTTP service response
 pub type HttpServiceResponse = Result<HttpResponse, HpsError>;
 
-/// Channel for HTTP requests (from apps via http::Client)
-static HTTP_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, HttpServiceRequest, 2> =
+/// Channel for HTTP requests (from apps via http::Client) - passes HpsRequest directly
+static HTTP_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, HpsRequest, 2> =
     Channel::new();
 
 /// Channel for HTTP responses (to apps via http::Client)
@@ -30,7 +25,7 @@ static HTTP_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, HttpServiceRespon
     Channel::new();
 
 /// Get sender for HTTP requests (used by libs/http/client.rs)
-pub fn http_request_sender() -> Sender<'static, CriticalSectionRawMutex, HttpServiceRequest, 2> {
+pub fn http_request_sender() -> Sender<'static, CriticalSectionRawMutex, HpsRequest, 2> {
     HTTP_REQUEST_CHANNEL.sender()
 }
 
@@ -56,21 +51,15 @@ pub(crate) async fn http_service() {
     info!("HTTP service ready, waiting for requests");
 
     loop {
-        // Wait for HTTP request from client
-        let http_request = request_rx.receive().await;
+        // Wait for HTTP request from client (already HpsRequest)
+        let hps_request = request_rx.receive().await;
+        
         info!(
-            "HTTP service: Got {} request to {}",
-            http_request.method, http_request.uri
+            "HTTP service: Forwarding {} request",
+            hps_request.method
         );
 
-        // Forward to HPS service
-        let hps_request = crate::system::services::hps_service::HpsRequest {
-            method: http_request.method,
-            uri: http_request.uri,
-            headers: http_request.headers,
-            body: http_request.body,
-        };
-
+        // Forward directly to HPS service
         hps_request_tx.send(hps_request).await;
 
         // Wait for HPS response
