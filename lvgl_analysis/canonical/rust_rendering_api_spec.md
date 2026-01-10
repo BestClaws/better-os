@@ -43,7 +43,7 @@ impl<'a> Layer<'a> {
 }
 ```
 
-### Point and Area Types
+### Point and Geometry Types
 
 ```rust
 #[derive(Debug, Clone, Copy)]
@@ -58,6 +58,16 @@ pub struct PointPrecise {
     pub y: f32,
 }
 
+// Primary Rust-style rectangle (position + size)
+#[derive(Debug, Clone, Copy)]
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+// LVGL-style area (two corners) - used internally for LVGL compatibility
 #[derive(Debug, Clone, Copy)]
 pub struct Area {
     pub x1: i32,
@@ -74,11 +84,42 @@ impl PointPrecise {
     pub fn new(x: f32, y: f32) -> Self;
 }
 
+impl Rect {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self;
+    pub fn from_coords(x1: i32, y1: i32, x2: i32, y2: i32) -> Self;
+    pub fn to_area(&self) -> Area;
+    pub fn contains(&self, point: Point) -> bool;
+}
+
 impl Area {
     pub fn new(x1: i32, y1: i32, x2: i32, y2: i32) -> Self;
     pub fn from_points(p1: Point, p2: Point) -> Self;
+    pub fn to_rect(&self) -> Rect;
     pub fn width(&self) -> i32;
     pub fn height(&self) -> i32;
+}
+
+// Conversions between Rect and Area
+impl From<Rect> for Area {
+    fn from(rect: Rect) -> Self {
+        Area {
+            x1: rect.x,
+            y1: rect.y,
+            x2: rect.x + rect.width,
+            y2: rect.y + rect.height,
+        }
+    }
+}
+
+impl From<Area> for Rect {
+    fn from(rect: Rect) -> Self {
+        Rect {
+            x: area.x1,
+            y: area.y1,
+            width: area.x2 - area.x1,
+            height: area.y2 - area.y1,
+        }
+    }
 }
 ```
 
@@ -325,7 +366,7 @@ impl Gradient {
 ```rust
 pub struct Fill<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     color: Color,
     gradient: Option<Gradient>,
     opacity: Opacity,
@@ -334,7 +375,7 @@ pub struct Fill<'a> {
 
 impl<'a> Fill<'a> {
     // Start drawing a fill
-    pub fn new(layer: &'a mut Layer<'a>, area: Area) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect) -> Self;
     
     // Fluent setters
     pub fn color(mut self, color: Color) -> Self;
@@ -349,7 +390,7 @@ impl<'a> Fill<'a> {
 
 // Usage extension on Layer
 impl<'a> Layer<'a> {
-    pub fn fill(&mut self, area: Area) -> Fill;
+    pub fn fill(&mut self, rect: Rect) -> Fill;
 }
 ```
 
@@ -369,7 +410,7 @@ pub enum BorderSide {
 
 pub struct Border<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     color: Color,
     width: i32,
     opacity: Opacity,
@@ -378,7 +419,7 @@ pub struct Border<'a> {
 }
 
 impl<'a> Border<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect) -> Self;
     
     // Fluent setters
     pub fn color(mut self, color: Color) -> Self;
@@ -399,7 +440,7 @@ impl<'a> Border<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn border(&mut self, area: Area) -> Border;
+    pub fn border(&mut self, rect: Rect) -> Border;
 }
 ```
 
@@ -408,7 +449,7 @@ impl<'a> Layer<'a> {
 ```rust
 pub struct BoxShadow<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     color: Color,
     width: i32,        // Blur radius
     spread: i32,       // Expand/contract shadow
@@ -420,7 +461,7 @@ pub struct BoxShadow<'a> {
 }
 
 impl<'a> BoxShadow<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect) -> Self;
     
     pub fn color(mut self, color: Color) -> Self;
     pub fn width(mut self, width: i32) -> Self;
@@ -436,16 +477,16 @@ impl<'a> BoxShadow<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn box_shadow(&mut self, area: Area) -> BoxShadow;
+    pub fn box_shadow(&mut self, rect: Rect) -> BoxShadow;
 }
 ```
 
 ### Complete Rectangle (All features combined)
 
 ```rust
-pub struct Rect<'a> {
+pub struct RectDraw<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     
     // Background
     bg_color: Color,
@@ -477,8 +518,8 @@ pub struct Rect<'a> {
     radius: i32,
 }
 
-impl<'a> Rect<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area) -> Self;
+impl<'a> RectDraw<'a> {
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect) -> Self;
     
     // Background
     pub fn bg_color(mut self, color: Color) -> Self;
@@ -513,7 +554,7 @@ impl<'a> Rect<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn rect(&mut self, area: Area) -> Rect;
+    pub fn rect(&mut self, rect: Rect) -> RectDraw;
 }
 ```
 
@@ -646,7 +687,7 @@ pub enum ImageSource {
 
 pub struct Image<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     src: ImageSource,
     
     // Transformations
@@ -676,7 +717,7 @@ pub struct Image<'a> {
 }
 
 impl<'a> Image<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area, src: ImageSource) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect, src: ImageSource) -> Self;
     
     // Transform
     pub fn rotation(mut self, degrees: f32) -> Self;
@@ -708,7 +749,7 @@ impl<'a> Image<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn image(&mut self, area: Area, src: ImageSource) -> Image;
+    pub fn image(&mut self, rect: Rect, src: ImageSource) -> Image;
 }
 ```
 
@@ -740,7 +781,7 @@ pub enum BaseDirection {
 
 pub struct Label<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     text: &'static str,
     font: &'static Font,
     color: Color,
@@ -771,7 +812,7 @@ pub struct Label<'a> {
 }
 
 impl<'a> Label<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area, text: &'static str) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect, text: &'static str) -> Self;
     
     // Basic
     pub fn font(mut self, font: &'static Font) -> Self;
@@ -812,7 +853,7 @@ impl<'a> Label<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn label(&mut self, area: Area, text: &'static str) -> Label;
+    pub fn label(&mut self, rect: Rect, text: &'static str) -> Label;
 }
 ```
 
@@ -983,14 +1024,14 @@ pub enum BlurQuality {
 
 pub struct Blur<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     blur_radius: i32,
     corner_radius: i32,
     quality: BlurQuality,
 }
 
 impl<'a> Blur<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect) -> Self;
     
     pub fn blur_radius(mut self, radius: i32) -> Self;
     pub fn corner_radius(mut self, radius: i32) -> Self;
@@ -1002,7 +1043,7 @@ impl<'a> Blur<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn blur(&mut self, area: Area) -> Blur;
+    pub fn blur(&mut self, rect: Rect) -> Blur;
 }
 ```
 
@@ -1011,12 +1052,12 @@ impl<'a> Layer<'a> {
 ```rust
 pub struct MaskRect<'a> {
     layer: &'a mut Layer<'a>,
-    area: Area,
+    rect: Rect,
     radius: i32,
 }
 
 impl<'a> MaskRect<'a> {
-    pub fn new(layer: &'a mut Layer<'a>, area: Area) -> Self;
+    pub fn new(layer: &'a mut Layer<'a>, rect: Rect) -> Self;
     
     pub fn radius(mut self, radius: i32) -> Self;
     
@@ -1024,7 +1065,7 @@ impl<'a> MaskRect<'a> {
 }
 
 impl<'a> Layer<'a> {
-    pub fn mask_rect(&mut self, area: Area) -> MaskRect;
+    pub fn mask_rect(&mut self, rect: Rect) -> MaskRect;
 }
 ```
 
@@ -1035,8 +1076,8 @@ impl<'a> Layer<'a> {
 ### Example 1: Simple Colored Rectangle
 
 ```rust
-fn draw_simple_rect(layer: &mut Layer) {
-    layer.fill(Area::new(10, 10, 100, 100))
+fn draw_simple_rect(layer: &mut Canvas) {
+    layer.fill(Rect::new(10, 10, 90, 90))
         .color(Color::RED)
         .opacity(Opacity::COVER)
         .draw();
@@ -1046,17 +1087,17 @@ fn draw_simple_rect(layer: &mut Layer) {
 ### Example 2: Rounded Rectangle with Border
 
 ```rust
-fn draw_rounded_rect_with_border(layer: &mut Layer) {
-    let area = Area::new(20, 20, 220, 120);
+fn draw_rounded_rect_with_border(layer: &mut Canvas) {
+    let rect = Rect::new(20, 20, 200, 100);
     
     // Fill
-    layer.fill(area)
+    layer.fill(rect)
         .color(Color::WHITE)
         .radius(10)
         .draw();
     
     // Border
-    layer.border(area)
+    layer.border(rect)
         .color(Color::BLUE)
         .width(3)
         .radius(10)
@@ -1067,14 +1108,14 @@ fn draw_rounded_rect_with_border(layer: &mut Layer) {
 ### Example 3: Gradient Rectangle
 
 ```rust
-fn draw_gradient_rect(layer: &mut Layer) {
+fn draw_gradient_rect(layer: &mut Canvas) {
     let gradient = Gradient::new()
         .vertical()
         .add_stop(Color::rgb(255, 100, 100), 0)
         .add_stop(Color::rgb(100, 100, 255), 255)
         .extend_pad();
     
-    layer.fill(Area::new(30, 30, 200, 150))
+    layer.fill(Rect::new(30, 30, 170, 120))
         .gradient(gradient)
         .radius(15)
         .draw();
@@ -1084,11 +1125,11 @@ fn draw_gradient_rect(layer: &mut Layer) {
 ### Example 4: Complex Rectangle with Shadow
 
 ```rust
-fn draw_card(layer: &mut Layer) {
-    let area = Area::new(50, 50, 250, 200);
+fn draw_card(layer: &mut Canvas) {
+    let rect = Rect::new(50, 50, 200, 150);
     
     // Shadow
-    layer.box_shadow(area)
+    layer.box_shadow(rect)
         .color(Color::BLACK)
         .width(10)
         .offset(5, 5)
@@ -1102,13 +1143,13 @@ fn draw_card(layer: &mut Layer) {
         Color::rgb(200, 200, 240)
     );
     
-    layer.fill(area)
+    layer.fill(rect)
         .gradient(gradient)
         .radius(12)
         .draw();
     
     // Border
-    layer.border(area)
+    layer.border(rect)
         .color(Color::rgb(100, 100, 200))
         .width(2)
         .radius(12)
@@ -1119,7 +1160,7 @@ fn draw_card(layer: &mut Layer) {
 ### Example 5: Dashed Line
 
 ```rust
-fn draw_dashed_line(layer: &mut Layer) {
+fn draw_dashed_line(layer: &mut Canvas) {
     layer.line_from_to(10.0, 50.0, 290.0, 50.0)
         .color(Color::GREEN)
         .width(3)
@@ -1132,7 +1173,7 @@ fn draw_dashed_line(layer: &mut Layer) {
 ### Example 6: Progress Arc
 
 ```rust
-fn draw_progress_arc(layer: &mut Layer, progress: u8) {
+fn draw_progress_arc(layer: &mut Canvas, progress: u8) {
     let center = Point::new(150, 150);
     
     // Background arc
@@ -1157,7 +1198,7 @@ fn draw_progress_arc(layer: &mut Layer, progress: u8) {
 ### Example 7: Triangle with Gradient
 
 ```rust
-fn draw_triangle_with_gradient(layer: &mut Layer) {
+fn draw_triangle_with_gradient(layer: &mut Canvas) {
     let gradient = Gradient::new()
         .linear(Point::new(100, 50), Point::new(200, 200))
         .add_stop(Color::RED, 0)
@@ -1178,10 +1219,10 @@ fn draw_triangle_with_gradient(layer: &mut Layer) {
 ### Example 8: Rotated Image
 
 ```rust
-fn draw_rotated_image(layer: &mut Layer) {
+fn draw_rotated_image(layer: &mut Canvas) {
     let src = ImageSource::File("image.png");
     
-    layer.image(Area::new(50, 50, 250, 250), src)
+    layer.image(Rect::new(50, 50, 200, 200), src)
         .rotation(45.0)
         .pivot(Point::new(150, 150))
         .opacity(Opacity::OPA_90)
@@ -1193,8 +1234,8 @@ fn draw_rotated_image(layer: &mut Layer) {
 ### Example 9: Styled Text
 
 ```rust
-fn draw_styled_text(layer: &mut Layer, font: &'static Font) {
-    layer.label(Area::new(20, 100, 280, 150), "Hello, Rust!")
+fn draw_styled_text(layer: &mut Canvas, font: &'static Font) {
+    layer.label(Rect::new(20, 100, 260, 50), "Hello, Rust!")
         .font(font)
         .color(Color::BLACK)
         .align_center()
@@ -1207,7 +1248,7 @@ fn draw_styled_text(layer: &mut Layer, font: &'static Font) {
 ### Example 10: Vector Path
 
 ```rust
-fn draw_vector_star(layer: &mut Layer) {
+fn draw_vector_star(layer: &mut Canvas) {
     let path = VectorPath::new()
         .move_to(150.0, 50.0)
         .line_to(180.0, 130.0)
@@ -1231,7 +1272,7 @@ fn draw_vector_star(layer: &mut Layer) {
 ### Example 11: Radial Gradient Circle
 
 ```rust
-fn draw_radial_gradient(layer: &mut Layer) {
+fn draw_radial_gradient(layer: &mut Canvas) {
     let center = Point::new(150, 150);
     
     let gradient = Gradient::new()
@@ -1240,7 +1281,7 @@ fn draw_radial_gradient(layer: &mut Layer) {
         .add_stop(Color::BLUE, 127)
         .add_stop(Color::rgb(0, 0, 100), 255);
     
-    layer.fill(Area::new(70, 70, 230, 230))
+    layer.fill(Rect::new(70, 70, 160, 160))
         .gradient(gradient)
         .circle()
         .draw();
@@ -1250,21 +1291,21 @@ fn draw_radial_gradient(layer: &mut Layer) {
 ### Example 12: Blurred Background
 
 ```rust
-fn draw_blurred_panel(layer: &mut Layer) {
+fn draw_blurred_panel(layer: &mut Canvas) {
     // Draw background content first
-    layer.fill(Area::new(0, 0, 300, 300))
+    layer.fill(Rect::new(0, 0, 300, 300))
         .color(Color::rgb(200, 100, 100))
         .draw();
     
     // Apply blur to a region
-    layer.blur(Area::new(50, 50, 250, 250))
+    layer.blur(Rect::new(50, 50, 200, 200))
         .blur_radius(10)
         .corner_radius(15)
         .quality(BlurQuality::Precision)
         .draw();
     
     // Draw panel on top
-    layer.fill(Area::new(50, 50, 250, 250))
+    layer.fill(Rect::new(50, 50, 200, 200))
         .color(Color::WHITE)
         .opacity(Opacity::OPA_60)
         .radius(15)
@@ -1275,7 +1316,7 @@ fn draw_blurred_panel(layer: &mut Layer) {
 ### Example 13: Complex UI Component
 
 ```rust
-fn draw_button(layer: &mut Layer, area: Area, text: &'static str, font: &'static Font, pressed: bool) {
+fn draw_button(layer: &mut Canvas, rect: Rect, text: &'static str, font: &'static Font, pressed: bool) {
     let color = if pressed {
         Color::rgb(80, 120, 200)
     } else {
@@ -1289,7 +1330,7 @@ fn draw_button(layer: &mut Layer, area: Area, text: &'static str, font: &'static
     
     // Shadow (only when not pressed)
     if !pressed {
-        layer.box_shadow(area)
+        layer.box_shadow(rect)
             .color(Color::BLACK)
             .width(8)
             .offset(0, 2)
@@ -1299,20 +1340,20 @@ fn draw_button(layer: &mut Layer, area: Area, text: &'static str, font: &'static
     }
     
     // Background
-    layer.fill(area)
+    layer.fill(rect)
         .gradient(gradient)
         .radius(8)
         .draw();
     
     // Border
-    layer.border(area)
+    layer.border(rect)
         .color(Color::rgb(50, 80, 150))
         .width(2)
         .radius(8)
         .draw();
     
     // Text
-    layer.label(area, text)
+    layer.label(rect, text)
         .font(font)
         .color(Color::WHITE)
         .align_center()
@@ -1332,10 +1373,12 @@ This specification defines a complete, fluent-style Rust API for rendering primi
 4. **Advanced Features**: Gradients, shadows, blurs, masks, transformations
 5. **Ergonomic API**: Convenient shortcuts and sensible defaults
 6. **Zero-cost Abstractions**: Designed to compile to efficient code
+7. **Rust-Idiomatic Types**: Uses `Layer` for drawing surface and `Rect` (x, y, width, height) for geometry with `Area` conversion for LVGL compatibility
 
 The API is designed to be:
 - **Intuitive**: Method names clearly indicate their purpose
 - **Composable**: Complex graphics built from simple primitives
 - **Flexible**: Support for both simple and advanced use cases
 - **Safe**: Rust's type system prevents common errors
+- **Idiomatic**: Rust-style `Rect` geometry with seamless LVGL Layer integration
 

@@ -1,6 +1,6 @@
 //! Gray test app - cycles through different gray levels
 
-use crate::libs::gfx::color::Rgba8888;
+use crate::libs::gfx::{Color, Layer};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
@@ -28,10 +28,11 @@ pub async fn gray_test_app(ctx: AppContext) {
     for (gray_val, name) in gray_levels.iter().cycle() {
         info!("Gray Test: Drawing {} - RGB({},{},{})", name, gray_val, gray_val, gray_val);
         
-        let color = Rgba8888::rgba(*gray_val, *gray_val, *gray_val, 255);
+        let color = Color::rgb(*gray_val, *gray_val, *gray_val);
         
         ctx.draw(|surface: &mut DrawingSurface| {
-            surface.clear(color);
+            let mut layer = Layer::from_draw_target(surface);
+            layer.clear(color);
         })
         .await;
         

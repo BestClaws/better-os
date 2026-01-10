@@ -49,7 +49,16 @@ impl AppContext {
 
     pub async fn draw(&self, f: impl FnOnce(&mut DrawingSurface) + Send) {
         let mut wm = self.window_manager.lock().await;
-        let _ = wm.with_surface(self.handle, f);
+        let _ = wm.with_surface(self.handle, |surface| {
+            f(surface);
+            // Mark entire surface as dirty after drawing
+            // This ensures Layer-based primitives that write directly to buffer
+            // get flushed by the compositor
+            surface.mark_dirty(crate::util::math::primitives::Rect::new(
+                crate::util::math::primitives::Point::zero(),
+                crate::util::math::primitives::Size::new(surface.width(), surface.height())
+            ));
+        });
     }
 
     pub async fn resize_window(&self, width: u32, height: u32) -> Result<(), ()> {

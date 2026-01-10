@@ -1,26 +1,65 @@
 #![allow(dead_code)]
 
-// file: src/lib.rs
+//! New GFX library based on LVGL rendering architecture
+//! 
+//! This is a pure 2D rendering API providing:
+//! - Format-agnostic DrawTarget trait
+//! - Layer-based rendering with coordinate mapping
+//! - Fluent builder API for primitives
+//! - Support for gradients, blending, and effects
+//!
+//! # Architecture
+//! 
+//! ```text
+//! Primitives (rect, circle, line) -> Layer -> DrawTarget -> Hardware
+//! ```
+//!
+//! # Example
+//! 
+//! ```ignore
+//! use gfx::{Layer, Color, Rect, Point};
+//! 
+//! let mut layer = Layer::from_draw_target(&mut display);
+//! 
+//! // Draw filled rectangle
+//! layer.fill(Rect::new(10, 10, 100, 50))
+//!     .color(Color::BLUE)
+//!     .draw();
+//! 
+//! // Draw circle
+//! layer.circle(Point::new(120, 120), 50)
+//!     .color(Color::RED)
+//!     .draw();
+//! ```
 
 use crate::system::hal::display::AsyncDisplay;
 
 pub(crate) mod color;
-pub mod compat;
-pub mod fill;
+pub mod core;
+pub mod draw_target;
 pub mod font;
-pub mod rasterizer;
-pub mod shapes;
-pub mod three_d;
+pub mod layer;
+pub mod primitives;
 
-pub use compat::color::{IntoEgRgb, IntoRgba8888};
-pub use compat::draw_target::RasterizerDrawTarget;
-pub use compat::surface::SurfaceDrawTarget;
-pub use fill::Fill;
+// Re-export core types
+pub use core::{
+    blend::{BlendDescriptor, BlendMode, BlendSource},
+    color::{Color, ColorAlpha, ColorFormat, Hsv, Opacity},
+    geometry::{Point, PointF, Rect},
+};
+
+// Re-export main abstractions
+pub use draw_target::{DrawTarget, OffscreenBuffer};
+pub use layer::Layer;
+
+// Re-export primitives
+pub use primitives::Fill;
+
+// Legacy font exports (still needed)
 pub use font::{font_for_size, Charset, FontSize, MonoFont, DEFAULT_CHARSETS};
-pub use rasterizer::Rasterizer;
-pub use rasterizer::Rgb565Rasterizer;
-pub use shapes::{Arc, Circle, RoundedRect, Shape};
-pub use three_d::{draw_model, parse_binary_stl, Model, Quaternion, RenderOptions, StlError, Vec3};
+
+// Legacy Rgba8888 for compatibility with existing non-gfx code (e.g., color conversions)
+pub use color::Rgba8888;
 
 pub const BLACK: u16 = 0x0000;
 

@@ -1,8 +1,21 @@
 use super::math::{Quaternion, Vec3};
 use super::model::{Model, MAX_TRIANGLES, MAX_VERTICES};
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer;
 use micromath::F32Ext;
+
+// 3D renderer writes directly to buffer - doesn't use gfx primitives
+// This is a low-level renderer that bypasses the Layer system
+trait DirectBufferAccess {
+    fn width(&self) -> usize;
+    fn height(&self) -> usize;
+    fn buffer_mut(&mut self) -> &mut [u8];
+}
+
+impl DirectBufferAccess for crate::system::ui::drawing_surface::DrawingSurface<'_> {
+    fn width(&self) -> usize { self.width() as usize }
+    fn height(&self) -> usize { self.height() as usize }
+    fn buffer_mut(&mut self) -> &mut [u8] { self.buffer_mut() }
+}
 
 /// Configuration for rendering the 3D model.
 /// All features can be toggled individually for performance vs quality trade-offs.
@@ -108,7 +121,7 @@ fn apply_antialiasing(base: Rgba8888, x: i32, y: i32, tri: &ScreenTriangle) -> R
     base
 }
 
-fn draw_filled_triangle<R: Rasterizer>(
+fn draw_filled_triangle<R: DirectBufferAccess>(
     rasterizer: &mut R,
     original: ScreenTriangle,
     color: Rgba8888,

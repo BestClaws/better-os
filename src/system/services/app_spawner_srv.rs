@@ -2,15 +2,19 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
-use crate::apps::arrow::arrow_app;
-use crate::apps::discord::discord_app;
+// TODO: Re-enable after migration to new gfx API
+// use crate::apps::arrow::arrow_app;
+// use crate::apps::discord::discord_app;
+// use crate::apps::gfx_bench::gfx_bench_app;
+// use crate::apps::text_demo::text_demo_app;
+// use crate::apps::watch_app::watch_app;
+
 // TODO: Re-enable after HPS integration complete
 // use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
-use crate::apps::gfx_bench::gfx_bench_app;
+
+// Migrated apps
 use crate::apps::gray_test::gray_test_app;
 use crate::apps::rect::rect_app;
-use crate::apps::text_demo::text_demo_app;
-use crate::apps::watch_app::watch_app;
 use defmt::{debug, error, info, warn, Format};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -22,45 +26,47 @@ use embassy_time::{Duration, Timer};
 /// This defines the core applications that are automatically spawned
 /// when the system starts. Each app gets its own window and context.
 const SYSTEM_APPS: &[AppDescriptor] = &[
-    // AppDescriptor {
-    //     name: "Gray Test",
-    //     id: 1,
-    //     spawn_fn: spawn_gray_test_app,
-    // },
     AppDescriptor {
-        name: "Discord",
+        name: "Gray Test",
         id: 1,
-        spawn_fn: spawn_discord_app,
+        spawn_fn: spawn_gray_test_app,
     },
-    // AppDescriptor {
-    //     name: "Bluetooth Scanner",
-    //     id: 5,
-    //     spawn_fn: spawn_bluetooth_scanner_app,
-    // },
     AppDescriptor {
-        name: "GFX Benchmark",
+        name: "Rect",
         id: 2,
-        spawn_fn: spawn_gfx_bench_app,
+        spawn_fn: spawn_rect_app,
     },
+    // TODO: Re-enable after migration to new gfx API
+    // AppDescriptor {
+    //     name: "Discord",
+    //     id: 3,
+    //     spawn_fn: spawn_discord_app,
+    // },
+    // AppDescriptor {
+    //     name: "GFX Benchmark",
+    //     id: 4,
+    //     spawn_fn: spawn_gfx_bench_app,
+    // },
     // AppDescriptor {
     //     name: "Text Demo",
-    //     id: 4,
+    //     id: 5,
     //     spawn_fn: spawn_text_demo_app,
     // },
-    AppDescriptor {
-        name: "Watch",
-        id: 3,
-        spawn_fn: spawn_watch_app,
-    },
     // AppDescriptor {
-    //     name: "Rect",
-    //     id: 3,
-    //     spawn_fn: spawn_rect_app,
+    //     name: "Watch",
+    //     id: 6,
+    //     spawn_fn: spawn_watch_app,
     // },
     // AppDescriptor {
     //     name: "3D Arrow",
-    //     id: 4,
+    //     id: 7,
     //     spawn_fn: spawn_arrow_app,
+    // },
+    // TODO: Re-enable after HPS integration complete
+    // AppDescriptor {
+    //     name: "Bluetooth Scanner",
+    //     id: 8,
+    //     spawn_fn: spawn_bluetooth_scanner_app,
     // },
 ];
 
@@ -217,19 +223,20 @@ pub enum AppSpawnError {
 //     spawner.spawn(gfx_perf_bench_adaptive_app(context))
 // }
 
-fn spawn_watch_app(
-    spawner: Spawner,
-    context: AppContext,
-) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(watch_app(context))
-}
+// TODO: Re-enable after migration to new gfx API
+// fn spawn_watch_app(
+//     spawner: Spawner,
+//     context: AppContext,
+// ) -> Result<(), embassy_executor::SpawnError> {
+//     spawner.spawn(watch_app(context))
+// }
 
-fn spawn_gfx_bench_app(
-    spawner: Spawner,
-    context: AppContext,
-) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(gfx_bench_app(context))
-}
+// fn spawn_gfx_bench_app(
+//     spawner: Spawner,
+//     context: AppContext,
+// ) -> Result<(), embassy_executor::SpawnError> {
+//     spawner.spawn(gfx_bench_app(context))
+// }
 
 fn spawn_rect_app(
     spawner: Spawner,
@@ -238,19 +245,19 @@ fn spawn_rect_app(
     spawner.spawn(rect_app(context))
 }
 
-fn spawn_text_demo_app(
-    spawner: Spawner,
-    context: AppContext,
-) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(text_demo_app(context))
-}
+// fn spawn_text_demo_app(
+//     spawner: Spawner,
+//     context: AppContext,
+// ) -> Result<(), embassy_executor::SpawnError> {
+//     spawner.spawn(text_demo_app(context))
+// }
 
-fn spawn_arrow_app(
-    spawner: Spawner,
-    context: AppContext,
-) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(arrow_app(context))
-}
+// fn spawn_arrow_app(
+//     spawner: Spawner,
+//     context: AppContext,
+// ) -> Result<(), embassy_executor::SpawnError> {
+//     spawner.spawn(arrow_app(context))
+// }
 
 fn spawn_gray_test_app(
     spawner: Spawner,
@@ -259,12 +266,12 @@ fn spawn_gray_test_app(
     spawner.spawn(gray_test_app(context))
 }
 
-fn spawn_discord_app(
-    spawner: Spawner,
-    context: AppContext,
-) -> Result<(), embassy_executor::SpawnError> {
-    spawner.spawn(discord_app(context))
-}
+// fn spawn_discord_app(
+//     spawner: Spawner,
+//     context: AppContext,
+// ) -> Result<(), embassy_executor::SpawnError> {
+//     spawner.spawn(discord_app(context))
+// }
 
 // TODO: Re-enable after HPS integration complete
 /*

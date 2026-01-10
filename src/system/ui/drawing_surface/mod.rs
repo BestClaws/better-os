@@ -3,8 +3,7 @@
 //! Space-grade 2D surface with built-in dirty region tracking and
 //! format-agnostic rasterization front-end. The surface stores pixels in the
 //! negotiated display `PixelFormat` (currently reference implementation: RGB565,
-//! hi,lo byte order) and exposes a `Rasterizer` API that accepts `Rgba8888` for
-//! algorithmic convenience.
+//! hi,lo byte order) and exposes both legacy `Rasterizer` API and new `DrawTarget` API.
 //!
 //! Key properties:
 //! - Negotiated format storage with per-format hot-path function pointers
@@ -16,6 +15,7 @@
 //! ```ignore
 //! use crate::system::hal::display::PixelFormat;
 //! use crate::system::ui::drawing_surface::DrawingSurface;
+//! use crate::libs::gfx::Layer;
 //!
 //! // Negotiated elsewhere:
 //! let width: u32 = 240;
@@ -27,11 +27,11 @@
 //! let mut surface = DrawingSurface::new_unattached(width, height, format);
 //! surface.attach_buffer(framebuffer);
 //!
-//! // Draw via Rasterizer API (RGBA8888 input)
-//! // surface.set_pixel(...);
+//! // Draw via new Layer API
+//! let mut layer = Layer::from_draw_target(&mut surface);
 //! ```
 
-pub mod raster_impl;
+pub mod draw_target_impl;
 pub mod surface;
 pub mod util;
 
