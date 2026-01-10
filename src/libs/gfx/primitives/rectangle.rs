@@ -2,8 +2,9 @@
 /// 
 /// Draws a filled rectangle with optional rounded corners.
 
-use super::super::core::{Color, ColorAlpha, Opacity, Rect};
+use super::super::core::{blend::{BlendDescriptor, BlendMode, BlendSource}, Color, ColorAlpha, Opacity, Rect};
 use super::super::layer::Layer;
+use super::super::draw_target::DrawTarget;
 
 /// Filled rectangle primitive
 pub struct Fill<'a, 'b> {
@@ -52,114 +53,27 @@ impl<'a, 'b> Fill<'a, 'b> {
     }
     
     /// Execute the draw operation
-    pub fn draw(mut self) {
-        // Basic implementation - just fill solid rect for now
-        // TODO: Implement rounded corners, gradients, etc.
-        
-        let color_alpha = self.color.with_alpha(self.opacity.value());
-        
-        // Simple rect fill - no rounding yet
-        let draw_rect = self.rect;
-        self.fill_rect_simple(self.rect, color_alpha);
-        
-        // Mark the drawn region as dirty so compositor knows to flush it
-        // This is a workaround - ideally Layer would track dirty regions
-        // For now, we'll mark the whole screen dirty after any draw
-        // TODO: Implement proper dirty region tracking in Layer
-    }
-    
-    /// Simple rectangle fill (no rounding)
-    fn fill_rect_simple(&mut self, rect: Rect, color: ColorAlpha) {
-        use super::super::core::ColorFormat;
-        
+    pub fn draw(self) {
         // Clip to layer bounds
         let clip = self.layer.clip_area();
-        let Some(clipped) = rect.intersection(clip) else {
+        let Some(clipped) = self.rect.intersection(clip) else {
             return; // Completely clipped out
         };
         
-        // Get format-specific pixel operation
-        match self.layer.color_format() {
-            ColorFormat::Rgb565 => self.fill_rect_rgb565(clipped, color),
-            _ => {
-                // Other formats not yet implemented - skip silently
-                // TODO: Implement fill for other formats
-            }
-        }
-    }
-    
-    /// Fill rectangle in RGB565 format - optimized following LVGL approach
-    fn fill_rect_rgb565(&mut self, rect: Rect, color: ColorAlpha) {
-        use super::super::blend_rgb565;
-        use super::super::core::Point;
+        // Create color with alpha
+        let color_alpha = ColorAlpha::from_color(self.color, self.opacity.value());
         
-        // Convert color to RGB565
-        let rgb565 = color.to_color().to_rgb565();
-        let alpha = color.a;
+        // Create blend descriptor
+        let blend_desc = BlendDescriptor::solid_fill(
+            clipped,
+            color_alpha,
+            BlendMode::Normal,
+        );
         
-        let layer_width = self.layer.width();
-        let buf_area = self.layer.buf_area();
+        // Use DrawTarget::blend() - the proper LVGL architecture
+        self.layer.blend(&blend_desc);
         
-        // Calculate buffer coordinates for top-left corner (ONCE, not per-pixel)
-        let Some(buf_start) = self.layer.screen_to_buffer(Point::new(rect.x, rect.y)) else {
-            return; // Completely outside buffer area
-        };
-        
-        if buf_start.x < 0 || buf_start.y < 0 {
-            return;
-        }
-        
-        let buf_x = buf_start.x as u32;
-        let buf_y = buf_start.y as u32;
-        
-        // Clamp dimensions to buffer bounds
-        let max_width = (layer_width - buf_x).min(rect.width);
-        let max_height = (self.layer.height() - buf_y).min(rect.height);
-        
-        if max_width == 0 || max_height == 0 {
-            return;
-        }
-        
-        let buffer = self.layer.buffer_mut();
-        
-        // LVGL optimization: Separate loops for opaque vs transparent
-        // This avoids branching in the hot inner loop
-        
-        if alpha == 255 {
-            // FAST PATH: Opaque fill - no blending needed
-            for y in 0..max_height {
-                let row_offset = ((buf_y + y) * layer_width + buf_x) as usize * 2;
-                
-                // Fill this row with solid color
-                for x in 0..max_width {
-                    let idx = row_offset + x as usize * 2;
-                    if idx + 1 < buffer.len() {
-                        // Write RGB565 in big-endian (hi, lo) format
-                        buffer[idx] = (rgb565 >> 8) as u8;
-                        buffer[idx + 1] = rgb565 as u8;
-                    }
-                }
-            }
-        } else if alpha > 0 {
-            // SLOW PATH: Alpha blending required
-            for y in 0..max_height {
-                let row_offset = ((buf_y + y) * layer_width + buf_x) as usize * 2;
-                
-                for x in 0..max_width {
-                    let idx = row_offset + x as usize * 2;
-                    if idx + 1 < buffer.len() {
-                        // Read background in big-endian format
-                        let bg = ((buffer[idx] as u16) << 8) | (buffer[idx + 1] as u16);
-                        // Blend
-                        let blended = blend_rgb565(bg, rgb565, alpha);
-                        // Write back
-                        buffer[idx] = (blended >> 8) as u8;
-                        buffer[idx + 1] = blended as u8;
-                    }
-                }
-            }
-        }
-        // If alpha == 0, nothing to draw (fully transparent)
+        // TODO: Add support for rounded corners using masks
     }
 }
 

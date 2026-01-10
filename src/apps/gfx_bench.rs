@@ -1,10 +1,6 @@
-#![no_std]
-
 extern crate alloc;
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer; // trait import so we can call fill_rect
-use crate::libs::gfx::shapes::{Line, Shape, Text};
-use crate::libs::gfx::{Arc, Circle, RoundedRect};
+use crate::libs::gfx::{Color, Layer, Opacity, Point, Rect};
+use crate::libs::gfx::primitives::{Arc, Border, BorderSide, Circle, Fill, Line, Triangle};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use alloc::vec::Vec;
@@ -13,19 +9,17 @@ use embassy_time::{Duration, Instant, Timer};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ShapeType {
-    RoundedRect,
+    Rect,
     Circle,
     Line,
     Arc,
-    Text,
+    Border,
+    Triangle,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum FillType {
     Solid,
-    LinearH,
-    LinearV,
-    Radial,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +35,6 @@ pub enum CornerType {
     Small,  // 2px
     Medium, // 8px
     Large,  // 20px
-    Asymmetric,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -49,7 +42,6 @@ pub enum AlphaType {
     Opaque,          // 255
     SemiTransparent, // 128
     LowAlpha,        // 64
-    VeryLowAlpha,    // 32
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -66,17 +58,17 @@ fn alpha_value(alpha: AlphaType) -> u8 {
         AlphaType::Opaque => 255,
         AlphaType::SemiTransparent => 128,
         AlphaType::LowAlpha => 64,
-        AlphaType::VeryLowAlpha => 32,
     }
 }
 
 fn shape_name(shape: ShapeType) -> &'static str {
     match shape {
-        ShapeType::RoundedRect => "RoundedRect",
+        ShapeType::Rect => "Rect",
         ShapeType::Circle => "Circle",
         ShapeType::Line => "Line",
         ShapeType::Arc => "Arc",
-        ShapeType::Text => "Text",
+        ShapeType::Border => "Border",
+        ShapeType::Triangle => "Triangle",
     }
 }
 
@@ -84,9 +76,6 @@ fn fill_name(fill: Option<FillType>) -> &'static str {
     match fill {
         None => "NoFill",
         Some(FillType::Solid) => "Solid",
-        Some(FillType::LinearH) => "LinearH",
-        Some(FillType::LinearV) => "LinearV",
-        Some(FillType::Radial) => "Radial",
     }
 }
 
@@ -106,7 +95,6 @@ fn corner_name(corner: Option<CornerType>) -> &'static str {
         Some(CornerType::Small) => "Small",
         Some(CornerType::Medium) => "Medium",
         Some(CornerType::Large) => "Large",
-        Some(CornerType::Asymmetric) => "Asym",
     }
 }
 
@@ -115,7 +103,6 @@ fn alpha_name(alpha: AlphaType) -> &'static str {
         AlphaType::Opaque => "Opaque",
         AlphaType::SemiTransparent => "Semi",
         AlphaType::LowAlpha => "Low",
-        AlphaType::VeryLowAlpha => "VeryLow",
     }
 }
 
@@ -123,24 +110,22 @@ fn generate_all_test_permutations() -> Vec<TestConfig> {
     let mut configs = Vec::new();
 
     let shapes = [
-        ShapeType::RoundedRect,
+        ShapeType::Rect,
         ShapeType::Circle,
         ShapeType::Line,
         ShapeType::Arc,
-        ShapeType::Text,
+        ShapeType::Border,
+        ShapeType::Triangle,
     ];
 
     let fills = [
         None,
         Some(FillType::Solid),
-        Some(FillType::LinearH),
-        Some(FillType::LinearV),
-        Some(FillType::Radial),
     ];
 
     let strokes = [None, Some(StrokeType::Thin), Some(StrokeType::Medium)];
 
-    let corners = [None, Some(CornerType::Large), Some(CornerType::Asymmetric)];
+    let corners = [None, Some(CornerType::Large)];
 
     let alphas = [AlphaType::Opaque, AlphaType::SemiTransparent];
 
@@ -149,17 +134,17 @@ fn generate_all_test_permutations() -> Vec<TestConfig> {
             for &stroke in &strokes {
                 for &corner in &corners {
                     for &alpha in &alphas {
+                        // Skip invalid combinations
                         if matches!(shape, ShapeType::Line | ShapeType::Arc) && fill.is_some() {
                             continue;
                         }
-                        if matches!(shape, ShapeType::Text) && (fill.is_some() || stroke.is_some())
-                        {
+                        if matches!(shape, ShapeType::Border) && fill.is_some() {
                             continue;
                         }
-                        if !matches!(shape, ShapeType::RoundedRect) && corner.is_some() {
+                        if !matches!(shape, ShapeType::Rect) && corner.is_some() {
                             continue;
                         }
-                        if fill.is_none() && stroke.is_none() && !matches!(shape, ShapeType::Text) {
+                        if fill.is_none() && stroke.is_none() {
                             continue;
                         }
 
@@ -180,127 +165,135 @@ fn generate_all_test_permutations() -> Vec<TestConfig> {
 }
 
 fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
-    let w = surface.width() as i32;
-    let h = surface.height() as i32;
-    let half_w = (w as f32 * 0.5) as i32;
-    let half_h = (h as f32 * 0.5) as i32;
-    let left = (w / 2) - half_w / 2;
-    let top = (h / 2) - half_h / 2;
-    let alpha = alpha_value(config.alpha_type);
+    let mut layer = Layer::from_draw_target(surface);
+    
+    let w = layer.width() as i32;
+    let h = layer.height() as i32;
+    let half_w = w / 2;
+    let half_h = h / 2;
+    let left = (w - half_w) / 2;
+    let top = (h - half_h) / 2;
+    let opacity = Opacity::new(alpha_value(config.alpha_type));
 
     match config.shape_type {
-        ShapeType::RoundedRect => {
-            let (tl, tr, bl, br) = match config.corner_type.unwrap_or(CornerType::Sharp) {
-                CornerType::Sharp => (0, 0, 0, 0),
-                CornerType::Small => (2, 2, 2, 2),
-                CornerType::Medium => (8, 8, 8, 8),
-                CornerType::Large => (20, 20, 20, 20),
-                CornerType::Asymmetric => (12, 4, 16, 0),
+        ShapeType::Rect => {
+            let radius = match config.corner_type.unwrap_or(CornerType::Sharp) {
+                CornerType::Sharp => 0,
+                CornerType::Small => 2,
+                CornerType::Medium => 8,
+                CornerType::Large => 20,
             };
-            let mut rr = RoundedRect::new(left, top, half_w, half_h)
-                .corners(tl, tr, bl, br);
+            
+            if config.fill_type.is_some() {
+                Fill::new(&mut layer, Rect::new(left, top, half_w as u32, half_h as u32))
+                    .color(Color::rgb(30, 30, 100))
+                    .opacity(opacity)
+                    .radius(radius)
+                    .draw();
+            }
+            
             if let Some(stroke) = config.stroke_type {
-                rr = rr.stroke(
-                    match stroke {
-                        StrokeType::Thin => 1,
-                        StrokeType::Medium => 3,
-                        StrokeType::Thick => 6,
-                    },
-                    Rgba8888::rgba(255, 255, 255, alpha),
-                );
-            }
-            if let Some(fill) = config.fill_type {
-                rr = match fill {
-                    FillType::Solid => rr.fill(Fill::solid(Rgba8888::rgba(30, 30, 30, alpha))),
-                    FillType::LinearH => rr.fill(Fill::linear_horizontal(
-                        Rgba8888::rgba(255, 0, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    )),
-                    FillType::LinearV => rr.fill(Fill::linear_vertical(
-                        Rgba8888::rgba(0, 255, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    )),
-                    FillType::Radial => rr.fill(Fill::radial(
-                        Rgba8888::rgba(255, 255, 255, alpha),
-                        Rgba8888::rgba(30, 30, 30, alpha),
-                    )),
-                };
-            }
-            rr.draw(surface);
-        }
-        ShapeType::Circle => {
-            let radius = (half_w.min(half_h) / 2).max(4);
-            let mut circle = Circle::new(w / 2, h / 2, radius);
-            if let Some(stroke) = config.stroke_type {
-                circle = circle.stroke(
-                    match stroke {
-                        StrokeType::Thin => 1,
-                        StrokeType::Medium => 3,
-                        StrokeType::Thick => 6,
-                    },
-                    Rgba8888::rgba(255, 255, 255, alpha),
-                );
-            }
-            if let Some(fill) = config.fill_type {
-                circle = match fill {
-                    FillType::Solid => circle.fill(Fill::solid(Rgba8888::rgba(200, 120, 40, alpha))),
-                    FillType::LinearH => circle.fill(Fill::linear_horizontal(
-                        Rgba8888::rgba(255, 0, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    )),
-                    FillType::LinearV => circle.fill(Fill::linear_vertical(
-                        Rgba8888::rgba(0, 255, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    )),
-                    FillType::Radial => circle.fill(Fill::radial(
-                        Rgba8888::rgba(255, 255, 255, alpha),
-                        Rgba8888::rgba(30, 30, 30, alpha),
-                    )),
-                };
-            }
-            circle.draw(surface);
-        }
-        ShapeType::Line => {
-            let mut line = Line::new(left, h / 2, left + half_w, h / 2);
-            let stroke = config.stroke_type.unwrap_or(StrokeType::Thin);
-            line = line.stroke(
-                match stroke {
+                let width = match stroke {
                     StrokeType::Thin => 1,
                     StrokeType::Medium => 3,
                     StrokeType::Thick => 6,
-                },
-                Rgba8888::rgba(255, 255, 255, alpha),
-            );
-            line.draw(surface);
+                };
+                Border::new(&mut layer, Rect::new(left, top, half_w as u32, half_h as u32))
+                    .color(Color::WHITE)
+                    .width(width)
+                    .opacity(opacity)
+                    .radius(radius)
+                    .draw();
+            }
+        }
+        ShapeType::Circle => {
+            let radius = (half_w.min(half_h) / 2).max(4) as u16;
+            
+            // Choose between fill or stroke (not both in this benchmark)
+            if config.fill_type.is_some() {
+                Circle::new(&mut layer, Point::new(w / 2, h / 2), radius)
+                    .color(Color::rgb(200, 120, 40))
+                    .opacity(opacity)
+                    .draw();
+            } else if let Some(stroke) = config.stroke_type {
+                let width = match stroke {
+                    StrokeType::Thin => 1,
+                    StrokeType::Medium => 3,
+                    StrokeType::Thick => 6,
+                };
+                Arc::new(&mut layer, Point::new(w / 2, h / 2), radius)
+                    .angles(0, 360)
+                    .color(Color::WHITE)
+                    .width(width)
+                    .opacity(opacity)
+                    .draw();
+            }
+        }
+        ShapeType::Line => {
+            let width = match config.stroke_type.unwrap_or(StrokeType::Thin) {
+                StrokeType::Thin => 1,
+                StrokeType::Medium => 3,
+                StrokeType::Thick => 6,
+            };
+            Line::new(
+                &mut layer,
+                crate::libs::gfx::core::geometry::PointF::new(left as f32, (h / 2) as f32),
+                crate::libs::gfx::core::geometry::PointF::new((left + half_w) as f32, (h / 2) as f32),
+            )
+            .color(Color::WHITE)
+            .width(width)
+            .opacity(opacity)
+            .draw();
         }
         ShapeType::Arc => {
-            let radius = (half_w.min(half_h) / 2).max(4);
-            let stroke = config.stroke_type.unwrap_or(StrokeType::Thin);
-            Arc::new(w / 2, h / 2, radius)
+            let radius = (half_w.min(half_h) / 2).max(4) as u16;
+            let width = match config.stroke_type.unwrap_or(StrokeType::Thin) {
+                StrokeType::Thin => 1,
+                StrokeType::Medium => 3,
+                StrokeType::Thick => 6,
+            };
+            Arc::new(&mut layer, Point::new(w / 2, h / 2), radius)
                 .angles(0, 180)
-                .stroke(
-                    match stroke {
-                        StrokeType::Thin => 1,
-                        StrokeType::Medium => 3,
-                        StrokeType::Thick => 6,
-                    },
-                    Rgba8888::rgba(255, 255, 255, alpha),
-                )
-                .draw(surface);
+                .color(Color::WHITE)
+                .width(width)
+                .opacity(opacity)
+                .draw();
         }
-        ShapeType::Text => {
-            Text::new(w / 2 - 24, h / 2 + 10, "12:34")
-                .fill(Rgba8888::rgba(255, 255, 255, alpha))
-                .draw(surface);
+        ShapeType::Border => {
+            let width = match config.stroke_type.unwrap_or(StrokeType::Thin) {
+                StrokeType::Thin => 1,
+                StrokeType::Medium => 3,
+                StrokeType::Thick => 6,
+            };
+            Border::new(&mut layer, Rect::new(left, top, half_w as u32, half_h as u32))
+                .color(Color::WHITE)
+                .width(width)
+                .opacity(opacity)
+                .draw();
+        }
+        ShapeType::Triangle => {
+            use crate::libs::gfx::core::geometry::PointF;
+            
+            let p1 = PointF::new((w / 2) as f32, (top + 20) as f32);
+            let p2 = PointF::new((left + half_w - 20) as f32, (top + half_h - 20) as f32);
+            let p3 = PointF::new((left + 20) as f32, (top + half_h - 20) as f32);
+            
+            if config.fill_type.is_some() {
+                Triangle::new(&mut layer, p1, p2, p3)
+                    .color(Color::rgb(100, 200, 100))
+                    .opacity(opacity)
+                    .draw();
+            }
         }
     }
 }
 
 #[embassy_executor::task]
 pub async fn gfx_bench_app(context: AppContext) {
-    info!("Starting bench app");
+    info!("Starting gfx_bench app");
 
     let configs = generate_all_test_permutations();
+    info!("Generated {} test configurations", configs.len());
 
     let mut next_cfg = 0usize;
 
@@ -316,13 +309,11 @@ pub async fn gfx_bench_app(context: AppContext) {
         let draw_start = Instant::now();
         context
             .draw(|surface: &mut DrawingSurface| {
-                surface.fill_rect(
-                    0,
-                    0,
-                    surface.width() as i32,
-                    surface.height() as i32,
-                    Rgba8888::rgba(0, 0, 0, 255),
-                );
+                // Clear background
+                let mut layer = Layer::from_draw_target(surface);
+                layer.clear(Color::BLACK);
+                
+                // Run test
                 execute_test(surface, cfg);
             })
             .await;

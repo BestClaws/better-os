@@ -190,6 +190,16 @@ impl ColorAlpha {
         }
     }
 
+    /// Create from RGB color with opacity value
+    pub const fn from_rgb(color: Color, opacity: Opacity) -> Self {
+        Self {
+            r: color.r,
+            g: color.g,
+            b: color.b,
+            a: opacity.value(),
+        }
+    }
+
     /// Get RGB part (drop alpha)
     pub const fn to_color(self) -> Color {
         Color {

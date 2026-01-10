@@ -8,7 +8,7 @@
 /// - Opacity
 /// - Compositing
 
-use super::core::{Color, ColorFormat, Opacity, Point, Rect};
+use super::core::{Color, ColorAlpha, ColorFormat, Opacity, Point, Rect};
 use super::draw_target::DrawTarget;
 
 /// A rendering layer with buffer and metadata
@@ -148,21 +148,15 @@ impl<'a> Layer<'a> {
     
     /// Clear layer to a color
     pub fn clear(&mut self, color: Color) {
-        // TODO: Implement efficient clear
-        // For now, just fill buffer with color
-        match self.color_format {
-            ColorFormat::Rgb565 => {
-                let rgb565 = color.to_rgb565();
-                for chunk in self.buffer.chunks_exact_mut(2) {
-                    chunk[0] = (rgb565 >> 8) as u8;
-                    chunk[1] = rgb565 as u8;
-                }
-            }
-            _ => {
-                // Other formats not yet implemented - skip silently
-                // TODO: Implement clear for other formats
-            }
-        }
+        // Use blend() for consistency - proper LVGL architecture
+        let clear_rect = Rect::new(0, 0, self.width, self.height);
+        let color_alpha = ColorAlpha::from_color(color, 255);
+        let blend_desc = super::core::blend::BlendDescriptor::solid_fill(
+            clear_rect,
+            color_alpha,
+            super::core::blend::BlendMode::Normal,
+        );
+        self.blend(&blend_desc);
     }
     
     /// Map screen coordinates to buffer coordinates
@@ -211,6 +205,135 @@ impl<'a> Layer<'a> {
     /// Get immutable buffer slice
     pub fn buffer(&self) -> &[u8] {
         self.buffer
+    }
+}
+
+// Implement DrawTarget for Layer to enable primitives to use blend()
+impl<'a> DrawTarget for Layer<'a> {
+    fn color_format(&self) -> ColorFormat {
+        self.color_format
+    }
+    
+    fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+    
+    fn buffer_mut(&mut self) -> &mut [u8] {
+        self.buffer
+    }
+    
+    fn buffer(&self) -> &[u8] {
+        self.buffer
+    }
+    
+    fn blend(&mut self, desc: &super::core::blend::BlendDescriptor) {
+        // Layer doesn't handle dirty regions - that's the responsibility
+        // of the underlying DrawingSurface
+        // For now, just dispatch to format-specific blending
+        
+        use super::core::blend::{BlendMode, BlendSource};
+        
+        // Clip to layer's clip area
+        let Some(clipped_rect) = desc.dest_rect.intersection(self.clip_area) else {
+            return; // Completely clipped
+        };
+        
+        // Map to buffer coordinates
+        use super::core::Point;
+        let Some(buf_start) = self.screen_to_buffer(Point::new(clipped_rect.x, clipped_rect.y)) else {
+            return; // Outside buffer area
+        };
+        
+        // For now, implement simple solid color fill
+        // TODO: Implement full blend functionality with masks, gradients, images
+        match &desc.source {
+            Some(BlendSource::SolidColor { color }) => {
+                self.blend_fill_simple(clipped_rect, *color, desc.opacity);
+            }
+            _ => {
+                // Other blend sources not yet implemented
+            }
+        }
+    }
+    
+    fn clear(&mut self, color: Color) {
+        self.clear(color);
+    }
+}
+
+impl<'a> Layer<'a> {
+    /// Simple solid color fill (internal helper for blend)
+    fn blend_fill_simple(&mut self, rect: Rect, color: ColorAlpha, opacity: Opacity) {
+        use super::core::{ColorFormat, Point};
+        
+        // Calculate effective opacity
+        let effective_opa = ((color.a as u16 * opacity.value() as u16) / 255) as u8;
+        
+        match self.color_format {
+            ColorFormat::Rgb565 => {
+                self.blend_fill_rgb565(rect, color, effective_opa);
+            }
+            _ => {
+                // Other formats not yet implemented
+            }
+        }
+    }
+    
+    /// RGB565 blend fill
+    fn blend_fill_rgb565(&mut self, rect: Rect, color: ColorAlpha, opacity: u8) {
+        use super::blend_rgb565;
+        use super::core::Point;
+        
+        // Map to buffer coordinates
+        let Some(buf_start) = self.screen_to_buffer(Point::new(rect.x, rect.y)) else {
+            return;
+        };
+        
+        if buf_start.x < 0 || buf_start.y < 0 {
+            return;
+        }
+        
+        let buf_x = buf_start.x as u32;
+        let buf_y = buf_start.y as u32;
+        
+        // Clamp to buffer bounds
+        let max_width = (self.width - buf_x).min(rect.width);
+        let max_height = (self.height - buf_y).min(rect.height);
+        
+        if max_width == 0 || max_height == 0 {
+            return;
+        }
+        
+        // Convert to RGB565
+        let rgb565 = color.to_color().to_rgb565();
+        
+        if opacity == 255 {
+            // Fast path: opaque
+            for y in 0..max_height {
+                let row_offset = ((buf_y + y) * self.width + buf_x) as usize * 2;
+                for x in 0..max_width {
+                    let idx = row_offset + x as usize * 2;
+                    if idx + 1 < self.buffer.len() {
+                        self.buffer[idx] = (rgb565 >> 8) as u8;
+                        self.buffer[idx + 1] = rgb565 as u8;
+                    }
+                }
+            }
+        } else if opacity > 0 {
+            // Slow path: alpha blending
+            for y in 0..max_height {
+                let row_offset = ((buf_y + y) * self.width + buf_x) as usize * 2;
+                for x in 0..max_width {
+                    let idx = row_offset + x as usize * 2;
+                    if idx + 1 < self.buffer.len() {
+                        let bg = ((self.buffer[idx] as u16) << 8) | (self.buffer[idx + 1] as u16);
+                        let blended = blend_rgb565(bg, rgb565, opacity);
+                        self.buffer[idx] = (blended >> 8) as u8;
+                        self.buffer[idx + 1] = blended as u8;
+                    }
+                }
+            }
+        }
     }
 }
 
