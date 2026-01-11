@@ -117,7 +117,7 @@ impl super::Shape for RoundedRect {
                     let mut outer_r: i32 = 0;
                     let mut inner_r: i32 = 0;
 
-                    if px <= x1 + self.radius_tl && py <= y1 + self.radius_tl {
+                    if self.radius_tl > 0 && px <= x1 + self.radius_tl && py <= y1 + self.radius_tl {
                         let cx = x1 + self.radius_tl;
                         let cy = y1 + self.radius_tl;
                         let dx = px - cx;
@@ -126,7 +126,7 @@ impl super::Shape for RoundedRect {
                         outer_r = self.radius_tl;
                         inner_r = inner_radius_tl;
                         in_corner = true;
-                    } else if px >= x2 - self.radius_tr && py <= y1 + self.radius_tr {
+                    } else if self.radius_tr > 0 && px >= x2 - self.radius_tr && py <= y1 + self.radius_tr {
                         let cx = x2 - self.radius_tr;
                         let cy = y1 + self.radius_tr;
                         let dx = px - cx;
@@ -135,7 +135,7 @@ impl super::Shape for RoundedRect {
                         outer_r = self.radius_tr;
                         inner_r = inner_radius_tr;
                         in_corner = true;
-                    } else if px <= x1 + self.radius_bl && py >= y2 - self.radius_bl {
+                    } else if self.radius_bl > 0 && px <= x1 + self.radius_bl && py >= y2 - self.radius_bl {
                         let cx = x1 + self.radius_bl;
                         let cy = y2 - self.radius_bl;
                         let dx = px - cx;
@@ -144,7 +144,7 @@ impl super::Shape for RoundedRect {
                         outer_r = self.radius_bl;
                         inner_r = inner_radius_bl;
                         in_corner = true;
-                    } else if px >= x2 - self.radius_br && py >= y2 - self.radius_br {
+                    } else if self.radius_br > 0 && px >= x2 - self.radius_br && py >= y2 - self.radius_br {
                         let cx = x2 - self.radius_br;
                         let cy = y2 - self.radius_br;
                         let dx = px - cx;
@@ -202,7 +202,7 @@ impl super::Shape for RoundedRect {
                     let mut dist2: i32 = 0;
                     let mut r: i32 = 0;
 
-                    if px <= x1 + self.radius_tl && py <= y1 + self.radius_tl {
+                    if self.radius_tl > 0 && px <= x1 + self.radius_tl && py <= y1 + self.radius_tl {
                         let cx = x1 + self.radius_tl;
                         let cy = y1 + self.radius_tl;
                         let dx = px - cx;
@@ -210,7 +210,7 @@ impl super::Shape for RoundedRect {
                         dist2 = dx * dx + dy * dy;
                         r = inner_radius_tl;
                         in_corner = true;
-                    } else if px >= x2 - self.radius_tr && py <= y1 + self.radius_tr {
+                    } else if self.radius_tr > 0 && px >= x2 - self.radius_tr && py <= y1 + self.radius_tr {
                         let cx = x2 - self.radius_tr;
                         let cy = y1 + self.radius_tr;
                         let dx = px - cx;
@@ -218,7 +218,7 @@ impl super::Shape for RoundedRect {
                         dist2 = dx * dx + dy * dy;
                         r = inner_radius_tr;
                         in_corner = true;
-                    } else if px <= x1 + self.radius_bl && py >= y2 - self.radius_bl {
+                    } else if self.radius_bl > 0 && px <= x1 + self.radius_bl && py >= y2 - self.radius_bl {
                         let cx = x1 + self.radius_bl;
                         let cy = y2 - self.radius_bl;
                         let dx = px - cx;
@@ -226,7 +226,7 @@ impl super::Shape for RoundedRect {
                         dist2 = dx * dx + dy * dy;
                         r = inner_radius_bl;
                         in_corner = true;
-                    } else if px >= x2 - self.radius_br && py >= y2 - self.radius_br {
+                    } else if self.radius_br > 0 && px >= x2 - self.radius_br && py >= y2 - self.radius_br {
                         let cx = x2 - self.radius_br;
                         let cy = y2 - self.radius_br;
                         let dx = px - cx;
