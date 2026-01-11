@@ -5,7 +5,7 @@ use crate::libs::http::error::{Error, Result};
 use crate::libs::http::request::RequestBuilder;
 use crate::libs::http::response::Response;
 use crate::system::services::http_service::{http_request_sender, http_response_receiver};
-use defmt::info;
+use defmt::{info, debug};
 
 /// HTTP Client
 /// 
@@ -88,7 +88,7 @@ impl Client {
     
     /// Send an HTTP request (internal method used by RequestBuilder)
     pub(crate) async fn send_request(&self, request: HpsRequest<'_>) -> Result<Response> {
-        info!("HTTP Client: Sending {} request to {}", request.method, request.uri);
+        debug!("HTTP Client: Sending {} request to {}", request.method, request.uri);
         
         // Validate sizes
         if request.uri.len() > MAX_URI_SIZE {
@@ -110,7 +110,7 @@ impl Client {
             body: request.body.to_vec(),
         };
         
-        info!("HTTP Client: Sending request through channel...");
+        debug!("HTTP Client: Sending request through channel...");
         // Send directly to service
         let tx = http_request_sender();
         tx.send(hps_request).await;

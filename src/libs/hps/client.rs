@@ -15,7 +15,7 @@ pub struct HpsClient {
 
 impl HpsClient {
     pub fn new() -> Self {
-        info!("HPS Client created (channel-based)");
+        debug!("HPS Client created (channel-based)");
         Self {}
     }
     
@@ -29,7 +29,7 @@ impl HpsClient {
     /// Send an HTTP request and wait for response
     /// This sends the request to hps_service task and waits for response
     pub async fn send_request(&mut self, request: HttpRequest<'_>) -> Result<HttpResponse, HpsError> {
-        info!("HPS: Sending {} request to {}", request.method, request.uri);
+        debug!("HPS: Sending {} request to {}", request.method, request.uri);
         
         // Validate sizes
         if request.uri.len() > MAX_URI_SIZE {
@@ -64,7 +64,7 @@ impl HpsClient {
     
     /// Cancel currently executing HTTP request
     pub async fn cancel_request(&mut self) -> Result<(), HpsError> {
-        info!("HPS: Canceling request");
+        debug!("HPS: Canceling request");
         
         // Send cancel request (using HttpMethod::Cancel)
         let cancel_request = crate::system::services::hps_service::HpsRequest {

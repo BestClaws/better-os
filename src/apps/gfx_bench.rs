@@ -6,6 +6,7 @@ use crate::libs::gfx::rasterizer::Rasterizer; // trait import so we can call fil
 use crate::libs::gfx::shapes::{Line, Shape, Text};
 use crate::libs::gfx::{Arc, Circle, RoundedRect};
 use crate::system::app::app_context::AppContext;
+use crate::system::input::types::{HighLevelEvent, TouchAction};
 use crate::system::ui::drawing_surface::DrawingSurface;
 use alloc::vec::Vec;
 use defmt::info;
@@ -335,7 +336,18 @@ pub async fn gfx_bench_app(context: AppContext) {
             alpha_name(cfg.alpha_type),
             elapsed.as_micros()
         );
+        // Wait for a user touch before proceeding to the next test
+        loop {
+ 
 
-        Timer::after(Duration::from_millis(20)).await;
+            if let Some(HighLevelEvent::Motion(motion)) = context.poll_input().await {
+                if matches!(motion.action, TouchAction::Down) {
+                    break;
+                }
+            }
+
+            // Small sleep to avoid tight loop when no input
+            Timer::after(Duration::from_millis(10)).await;
+        }
     }
 }

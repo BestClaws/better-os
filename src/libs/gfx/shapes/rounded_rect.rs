@@ -156,9 +156,11 @@ impl super::Shape for RoundedRect {
                     }
 
                     if in_corner {
-                        if dist2 >= inner_r * inner_r && dist2 <= (outer_r + 1) * (outer_r + 1) {
-                            stroke_opa = aa_coverage(dist2, outer_r);
-                        }
+                        // Compute ring coverage with AA on both inner and outer edges,
+                        // similar to LVGL's combined radius masks
+                        let cov_out = aa_coverage(dist2, outer_r);
+                        let cov_in = aa_coverage(dist2, inner_r);
+                        stroke_opa = cov_out.saturating_sub(cov_in);
                     } else {
                         if (py >= y1
                             && py < y1 + self.stroke_width

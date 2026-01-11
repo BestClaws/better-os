@@ -112,7 +112,7 @@ pub async fn ui_compositor_service(
         if redraw_duration.as_millis() > 50
             || (frame_count % 300 == 0 && last_perf_log.elapsed().as_secs() >= 5)
         {
-            info!(
+            debug!(
                 "Compositor frame: redraw={}ms, total={}ms",
                 redraw_duration.as_millis(),
                 frame_start.elapsed().as_millis()
