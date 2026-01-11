@@ -7,22 +7,22 @@ pub struct HpsUuids;
 impl HpsUuids {
     /// HTTP Proxy Service UUID: 0x1823
     pub const SERVICE: u16 = 0x1823;
-    
+
     /// URI Characteristic UUID: 0x2AB6
     pub const URI: u16 = 0x2AB6;
-    
+
     /// HTTP Headers Characteristic UUID: 0x2AB7
     pub const HTTP_HEADERS: u16 = 0x2AB7;
-    
+
     /// HTTP Status Code Characteristic UUID: 0x2AB8
     pub const HTTP_STATUS_CODE: u16 = 0x2AB8;
-    
+
     /// HTTP Entity Body Characteristic UUID: 0x2AB9
     pub const HTTP_ENTITY_BODY: u16 = 0x2AB9;
-    
+
     /// HTTP Control Point Characteristic UUID: 0x2ABA
     pub const HTTP_CONTROL_POINT: u16 = 0x2ABA;
-    
+
     /// HTTPS Security Characteristic UUID: 0x2ABB
     pub const HTTPS_SECURITY: u16 = 0x2ABB;
 }
@@ -62,13 +62,13 @@ impl HttpMethod {
 pub struct DataStatus {
     /// Headers were received
     pub headers_received: bool,
-    
+
     /// Headers were truncated (exceeded 512 octets)
     pub headers_truncated: bool,
-    
+
     /// Body was received
     pub body_received: bool,
-    
+
     /// Body was truncated (exceeded 512 octets)
     pub body_truncated: bool,
 }
@@ -82,7 +82,7 @@ impl DataStatus {
             body_truncated: (byte & 0x08) != 0,
         }
     }
-    
+
     pub fn to_byte(&self) -> u8 {
         let mut byte = 0u8;
         if self.headers_received {
@@ -106,7 +106,7 @@ impl DataStatus {
 pub struct HttpStatusCode {
     /// HTTP status code (e.g., 200, 404, 500)
     pub status_code: u16,
-    
+
     /// Data status bit field
     pub data_status: DataStatus,
 }
@@ -117,17 +117,17 @@ impl HttpStatusCode {
         if bytes.len() < 3 {
             return None;
         }
-        
+
         // Little endian uint16
         let status_code = u16::from_le_bytes([bytes[0], bytes[1]]);
         let data_status = DataStatus::from_byte(bytes[2]);
-        
+
         Some(Self {
             status_code,
             data_status,
         })
     }
-    
+
     pub fn is_success(&self) -> bool {
         self.status_code >= 200 && self.status_code < 300
     }
@@ -136,9 +136,9 @@ impl HttpStatusCode {
 /// Maximum sizes per HPS v1.0 specification
 /// Spec allows up to 512 bytes per characteristic, but we use larger buffers
 /// Total budget: 10KB across all characteristics
-pub const MAX_URI_SIZE: usize = 1024;      // 1KB for URLs
-pub const MAX_HEADERS_SIZE: usize = 4096;  // 4KB for request + response headers
-pub const MAX_BODY_SIZE: usize = 5120;     // 5KB for request + response body
+pub const MAX_URI_SIZE: usize = 1024; // 1KB for URLs
+pub const MAX_HEADERS_SIZE: usize = 4096; // 4KB for request + response headers
+pub const MAX_BODY_SIZE: usize = 5120; // 5KB for request + response body
 
 /// HTTP Request to be sent via HPS
 pub struct HttpRequest<'a> {
@@ -157,7 +157,7 @@ impl<'a> HttpRequest<'a> {
             body: &[],
         }
     }
-    
+
     pub fn post(uri: &'a str, body: &'a [u8]) -> Self {
         Self {
             method: HttpMethod::Post,
@@ -166,7 +166,7 @@ impl<'a> HttpRequest<'a> {
             body,
         }
     }
-    
+
     pub fn with_headers(mut self, headers: &'a str) -> Self {
         self.headers = headers;
         self

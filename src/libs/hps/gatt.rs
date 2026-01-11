@@ -16,26 +16,26 @@ impl HpsGattConnector {
     pub fn new() -> Self {
         Self {}
     }
-    
+
     /// Discover HPS service and all characteristics
     /// NOTE: This will be implemented in hps_service.rs with proper generic handling
     pub async fn discover_service(&mut self) -> Result<HpsCharacteristics, HpsError> {
         info!("HPS GATT: Service discovery (stub - to be moved to service task)");
-        
+
         // This will be implemented in the service task where we have access to
         // GattClient with proper generic parameters
         warn!("HPS GATT: discover_service() - moving to service task");
-        
+
         Err(HpsError::NotFound)
     }
 
     /// Write to a characteristic (for short values)
-    pub async fn write_characteristic(
-        &mut self,
-        handle: u16,
-        data: &[u8],
-    ) -> Result<(), HpsError> {
-        debug!("HPS GATT: Writing {} bytes to handle {}", data.len(), handle);
+    pub async fn write_characteristic(&mut self, handle: u16, data: &[u8]) -> Result<(), HpsError> {
+        debug!(
+            "HPS GATT: Writing {} bytes to handle {}",
+            data.len(),
+            handle
+        );
         warn!("HPS GATT: write_characteristic() - stub, moving to service task");
         Ok(())
     }
@@ -56,7 +56,10 @@ impl HpsGattConnector {
     }
 
     /// Read from a characteristic
-    pub async fn read_characteristic(&mut self, handle: u16) -> Result<heapless::Vec<u8, 512>, HpsError> {
+    pub async fn read_characteristic(
+        &mut self,
+        handle: u16,
+    ) -> Result<heapless::Vec<u8, 512>, HpsError> {
         debug!("HPS GATT: Reading from handle {}", handle);
         warn!("HPS GATT: read_characteristic() - stub, moving to service task");
         Ok(heapless::Vec::new())
@@ -80,10 +83,7 @@ impl HpsGattConnector {
     }
 
     /// Register callback for notifications on a characteristic
-    pub async fn register_notification_handler(
-        &mut self,
-        handle: u16,
-    ) -> Result<(), HpsError> {
+    pub async fn register_notification_handler(&mut self, handle: u16) -> Result<(), HpsError> {
         debug!("HPS GATT: Registering notification handler for {}", handle);
         warn!("HPS GATT: register_notification_handler() - stub, moving to service task");
         Ok(())

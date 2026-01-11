@@ -63,7 +63,10 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 }
                 let out = blend_rgb565(bg_raw, fg_rgb565, eff);
                 unsafe {
-                    core::ptr::write_unaligned(buf.as_mut_ptr().add(byte_idx) as *mut u16, out.to_be());
+                    core::ptr::write_unaligned(
+                        buf.as_mut_ptr().add(byte_idx) as *mut u16,
+                        out.to_be(),
+                    );
                 }
             }
             fn encode_row(dst: &mut [u8], c: Rgba8888) {
@@ -138,7 +141,8 @@ fn ops_for_format(fmt: PixelFormat) -> PixelOps {
                 // Expand to 8-bit for blending
                 let bg8 = (bg_gray4 << 4) | bg_gray4;
                 let fg8 = (fg_gray4 << 4) | fg_gray4;
-                let blended8 = ((bg8 as u32 * (255 - eff) as u32 + fg8 as u32 * eff as u32) / 255) as u8;
+                let blended8 =
+                    ((bg8 as u32 * (255 - eff) as u32 + fg8 as u32 * eff as u32) / 255) as u8;
                 let blended4 = blended8 >> 4;
                 if is_high {
                     buf[byte_idx] = (buf[byte_idx] & 0x0F) | (blended4 << 4);
@@ -289,12 +293,12 @@ impl<'a> DrawingSurface<'a> {
     pub fn pixel_format(&self) -> PixelFormat {
         self.pixel_format
     }
-    
+
     /// Get pixel at linear index (for blitter)
     pub(crate) fn get_pixel_at_index(&self, idx: usize) -> Rgba8888 {
         (self.ops.get_pixel)(self.buf(), idx)
     }
-    
+
     /// Set pixel at linear index (for blitter)
     pub(crate) fn set_pixel_at_index(&mut self, idx: usize, color: Rgba8888) {
         (self.ops.set_pixel)(self.buf_mut(), idx, color);

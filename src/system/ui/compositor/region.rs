@@ -46,14 +46,14 @@ pub fn extract_region_buffer_format(
             // Gray4: 2 pixels per byte, need pixel-level extraction
             let region_size = (region_width * region_height + 1) / 2;
             let mut region_buffer = vec![0u8; region_size];
-            
+
             for row in 0..region_height {
                 for col in 0..region_width {
                     let src_x = region_x + col;
                     let src_y = region_y + row;
                     let src_pixel_idx = src_y * full_width as usize + src_x;
                     let dst_pixel_idx = row * region_width + col;
-                    
+
                     // Read pixel from source
                     let src_byte_idx = src_pixel_idx / 2;
                     let src_is_high = (src_pixel_idx & 1) == 0;
@@ -62,18 +62,19 @@ pub fn extract_region_buffer_format(
                     } else {
                         full_buffer[src_byte_idx] & 0x0F
                     };
-                    
+
                     // Write pixel to destination
                     let dst_byte_idx = dst_pixel_idx / 2;
                     let dst_is_high = (dst_pixel_idx & 1) == 0;
                     if dst_is_high {
-                        region_buffer[dst_byte_idx] = (region_buffer[dst_byte_idx] & 0x0F) | (pixel << 4);
+                        region_buffer[dst_byte_idx] =
+                            (region_buffer[dst_byte_idx] & 0x0F) | (pixel << 4);
                     } else {
                         region_buffer[dst_byte_idx] = (region_buffer[dst_byte_idx] & 0xF0) | pixel;
                     }
                 }
             }
-            
+
             region_buffer
         }
         _ => {
@@ -82,7 +83,13 @@ pub fn extract_region_buffer_format(
                 PixelFormat::Rgb565 => 2,
                 _ => 1,
             };
-            extract_region_buffer(full_buffer, region, full_width, full_height, bytes_per_pixel)
+            extract_region_buffer(
+                full_buffer,
+                region,
+                full_width,
+                full_height,
+                bytes_per_pixel,
+            )
         }
     }
 }

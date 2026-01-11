@@ -11,11 +11,10 @@ pub mod error;
 pub mod types;
 
 // Legacy modules (no longer used in new architecture)
-pub mod client;  // Old channel-based client (deprecated)
-pub mod gatt;    // GATT stubs (operations moved to hps_service)
+pub mod client; // Old channel-based client (deprecated)
+pub mod gatt; // GATT stubs (operations moved to hps_service)
 
 pub use error::HpsError;
 pub use types::{
-    DataStatus, HttpMethod, HttpRequest, HttpResponse, HttpStatusCode, HpsCharacteristics,
-    HpsUuids,
+    DataStatus, HpsCharacteristics, HpsUuids, HttpMethod, HttpRequest, HttpResponse, HttpStatusCode,
 };

@@ -338,8 +338,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         );
         // Wait for a user touch before proceeding to the next test
         loop {
- 
-
             if let Some(HighLevelEvent::Motion(motion)) = context.poll_input().await {
                 if matches!(motion.action, TouchAction::Down) {
                     break;

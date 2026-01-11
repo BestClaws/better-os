@@ -93,7 +93,7 @@ pub(crate) fn start(spawner: Spawner) {
             Instant::now().as_millis() as f32 / 1000f32
         );
         spawner.spawn(hps_service(radio)).unwrap();
-        
+
         // Spawn HTTP service (sits between HTTP client and HPS)
         info!(
             "[{}s] spawning HTTP service",

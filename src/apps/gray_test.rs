@@ -9,10 +9,10 @@ use embassy_time::{Duration, Timer};
 #[embassy_executor::task]
 pub async fn gray_test_app(ctx: AppContext) {
     info!("Gray Test: Starting");
-    
+
     // Wait a moment to ensure window is ready
     Timer::after(Duration::from_millis(100)).await;
-    
+
     let gray_levels = [
         (0, "Black (0)"),
         (255, "White (255)"),
@@ -24,17 +24,20 @@ pub async fn gray_test_app(ctx: AppContext) {
         (96, "37.5% Gray (96)"),
         (160, "62.5% Gray (160)"),
     ];
-    
+
     for (gray_val, name) in gray_levels.iter().cycle() {
-        info!("Gray Test: Drawing {} - RGB({},{},{})", name, gray_val, gray_val, gray_val);
-        
+        info!(
+            "Gray Test: Drawing {} - RGB({},{},{})",
+            name, gray_val, gray_val, gray_val
+        );
+
         let color = Rgba8888::rgba(*gray_val, *gray_val, *gray_val, 255);
-        
+
         ctx.draw(|surface: &mut DrawingSurface| {
             surface.clear(color);
         })
         .await;
-        
+
         // Hold each level for 2 seconds
         Timer::after(Duration::from_secs(2)).await;
     }

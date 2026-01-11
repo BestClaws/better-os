@@ -120,7 +120,7 @@ impl Rasterizer for DrawingSurface<'_> {
             return;
         }
         let a = (color.to_u32() & 0xFF) as u8;
-        
+
         // Fast path for fully opaque fill
         if a == 255 {
             // Use set_pixels_horizontal_internal for each row to properly handle all formats

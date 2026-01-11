@@ -2,8 +2,8 @@ use crate::system::hal::touch::AsyncTouch;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use embassy_time::{Duration, Timer};
-use embedded_hal_async::i2c::{I2c, SevenBitAddress};
 use embedded_hal::digital::OutputPin;
+use embedded_hal_async::i2c::{I2c, SevenBitAddress};
 
 // FT5336 registers and masks from Zephyr code
 const REG_TD_STATUS: u8 = 0x02;

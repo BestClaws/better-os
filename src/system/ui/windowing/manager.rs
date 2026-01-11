@@ -97,9 +97,7 @@ impl WindowManager {
         if width == 0 || height == 0 {
             warn!(
                 "Refusing to create window id={} with zero dimension ({}x{})",
-                id,
-                width,
-                height
+                id, width, height
             );
             return None;
         }

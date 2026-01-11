@@ -29,4 +29,24 @@ impl Rgba8888 {
     pub const fn to_u32(self) -> u32 {
         self.0
     }
+
+    /// Returns the alpha component of the color.
+    #[inline]
+    pub const fn alpha(self) -> u8 {
+        (self.0 & 0xFF) as u8
+    }
+
+    /// Returns a new color with the provided alpha value.
+    #[inline]
+    pub const fn with_alpha(self, alpha: u8) -> Self {
+        Self((self.0 & 0xFFFFFF00) | (alpha as u32))
+    }
+
+    /// Multiplies the existing alpha channel by `alpha / 255`.
+    #[inline]
+    pub fn multiply_alpha(self, alpha: u8) -> Self {
+        let existing = self.alpha() as u32;
+        let effective = ((existing * alpha as u32) / 255) as u8;
+        self.with_alpha(effective)
+    }
 }

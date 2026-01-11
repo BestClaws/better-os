@@ -14,7 +14,7 @@ pub use response::Response;
 use crate::libs::hps::types::HttpMethod;
 
 /// Convenience function to make a GET request
-/// 
+///
 /// # Example
 /// ```rust
 /// let response = http::get("https://api.example.com/data").await?;

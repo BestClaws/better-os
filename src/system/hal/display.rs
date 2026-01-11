@@ -22,7 +22,7 @@ impl PixelFormat {
             PixelFormat::Gray4 => 1, // Note: actual usage needs (width*height+1)/2
         }
     }
-    
+
     /// Calculate actual framebuffer size in bytes for given dimensions
     pub const fn framebuffer_size(&self, width: u32, height: u32) -> usize {
         let pixels = (width as usize) * (height as usize);

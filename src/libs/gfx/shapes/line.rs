@@ -1,6 +1,6 @@
 // file: src/shapes/line.rs
 use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::Rasterizer;
+use crate::libs::gfx::{Rasterizer, StrokeStyle};
 use libm::{fabsf, floorf};
 
 pub struct Line {
@@ -8,9 +8,7 @@ pub struct Line {
     y1: i32,
     x2: i32,
     y2: i32,
-    width: i32,
-    color: Rgba8888,
-    alpha: u8,
+    stroke: StrokeStyle,
 }
 
 impl Line {
@@ -20,44 +18,30 @@ impl Line {
             y1,
             x2,
             y2,
-            width: 1,
-            color: Rgba8888::rgba(0, 0, 0, 255),
-            alpha: 255,
+            stroke: StrokeStyle::new(1, Rgba8888::rgba(0, 0, 0, 255)),
         }
     }
 
     pub fn stroke(mut self, width: i32, color: Rgba8888) -> Self {
-        self.width = width;
-        self.color = color;
+        self.stroke.set(width, color);
         self
     }
 
     pub fn stroke_alpha(mut self, alpha: u8) -> Self {
-        self.alpha = alpha;
+        self.stroke.set_alpha(alpha);
         self
     }
 }
 
 impl super::Shape for Line {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
-        if self.alpha == 0 {
+        let Some(stroke_rgba) = self.stroke.effective_color() else {
+            return;
+        };
+        let stroke_width = self.stroke.width();
+        if stroke_width <= 0 {
             return;
         }
-        if self.width <= 0 {
-            return;
-        }
-
-        // Combine intrinsic color alpha with stroke alpha multiplier
-        let cu = self.color.to_u32();
-        let r = ((cu >> 24) & 0xFF) as u8;
-        let g = ((cu >> 16) & 0xFF) as u8;
-        let b = ((cu >> 8) & 0xFF) as u8;
-        let a = (cu & 0xFF) as u8;
-        let eff_a = ((a as u32 * self.alpha as u32) / 255) as u8;
-        if eff_a == 0 {
-            return;
-        }
-        let stroke_rgba = Rgba8888::rgba(r, g, b, eff_a);
 
         let x1 = self.x1;
         let y1 = self.y1;
@@ -65,7 +49,7 @@ impl super::Shape for Line {
         let y2 = self.y2;
 
         // Half widths to balance odd/even thickness
-        let w = self.width - 1;
+        let w = stroke_width - 1;
         let w_half0 = if w >= 0 { w >> 1 } else { 0 };
         let w_half1 = if w >= 0 { w_half0 + (w & 0x1) } else { 0 };
 
@@ -153,7 +137,7 @@ impl super::Shape for Line {
             let dy_f = y1f - y0;
             let gradient = if dx_f == 0.0 { 1.0 } else { dy_f / dx_f };
             // Render depending on width
-            if self.width == 1 {
+            if stroke_width == 1 {
                 // First endpoint
                 let xend = floorf(x0 + 0.5);
                 let yend = y0 + gradient * (xend - x0);
@@ -216,7 +200,7 @@ impl super::Shape for Line {
                 }
             } else {
                 // Thick AA line: draw AA top/bottom edges and fill the interior
-                let half = (self.width as f32) / 2.0;
+                let half = (stroke_width as f32) / 2.0;
 
                 // First endpoint setup
                 let xend = floorf(x0 + 0.5);
@@ -491,7 +475,7 @@ impl super::Shape for Line {
                 let mut err = 0;
                 for _ in 0..=adx {
                     let y_start = y - w_half0;
-                    let len = self.width;
+                    let len = stroke_width;
                     rasterizer.blend_vspan_with(x, y_start, len, |_: usize| (stroke_rgba, 255));
                     err += ady;
                     if (err << 1) >= adx {
@@ -506,7 +490,7 @@ impl super::Shape for Line {
                 let mut err = 0;
                 for _ in 0..=ady {
                     let x_start = x - w_half0;
-                    let len = self.width;
+                    let len = stroke_width;
                     rasterizer.blend_hspan_with(x_start, y, len, |_: usize| (stroke_rgba, 255));
                     err += adx;
                     if (err << 1) >= ady {

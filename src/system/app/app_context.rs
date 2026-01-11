@@ -1,8 +1,8 @@
+use crate::system::hal::display::DisplayResolution;
 use crate::system::input::types::HighLevelEvent;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
-use crate::system::hal::display::DisplayResolution;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 // migrated away from two_d Canvas2D; apps use gfx::Rasterizer directly

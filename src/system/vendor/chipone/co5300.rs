@@ -93,26 +93,26 @@ const SCALING_CHUNK_HEIGHT: u16 = 50;
 /// These commands control the display hardware. Commands are sent via
 /// Single-SPI mode, while pixel data uses Quad-SPI for higher bandwidth.
 pub mod commands {
-    pub const NOP: u8 = 0x00;          // No operation
-    pub const SWRESET: u8 = 0x01;      // Software reset
-    pub const SLPIN: u8 = 0x10;        // Enter sleep mode
-    pub const SLPOUT: u8 = 0x11;       // Exit sleep mode
-    pub const INVOFF: u8 = 0x20;       // Display inversion off
-    pub const INVON: u8 = 0x21;        // Display inversion on
-    pub const DISPOFF: u8 = 0x28;      // Display off
-    pub const DISPON: u8 = 0x29;       // Display on
-    pub const CASET: u8 = 0x2A;        // Column address set (X coordinates)
-    pub const PASET: u8 = 0x2B;        // Page address set (Y coordinates)
-    pub const RAMWR: u8 = 0x2C;        // Memory write (start new transfer)
-    pub const RAMWRC: u8 = 0x3C;       // Memory write continue (continue transfer)
-    pub const TEON: u8 = 0x35;         // Tearing effect line on
-    pub const MADCTL: u8 = 0x36;       // Memory data access control
-    pub const COLMOD: u8 = 0x3A;       // Pixel format set
-    pub const TESCAN: u8 = 0x44;       // Tearing effect scan line
-    pub const WRDISBV: u8 = 0x51;      // Write display brightness
-    pub const WRCTRLD1: u8 = 0x53;     // Write control display
-    pub const C4: u8 = 0xC4;           // Vendor-specific command
-    pub const C63: u8 = 0x63;          // Vendor-specific command
+    pub const NOP: u8 = 0x00; // No operation
+    pub const SWRESET: u8 = 0x01; // Software reset
+    pub const SLPIN: u8 = 0x10; // Enter sleep mode
+    pub const SLPOUT: u8 = 0x11; // Exit sleep mode
+    pub const INVOFF: u8 = 0x20; // Display inversion off
+    pub const INVON: u8 = 0x21; // Display inversion on
+    pub const DISPOFF: u8 = 0x28; // Display off
+    pub const DISPON: u8 = 0x29; // Display on
+    pub const CASET: u8 = 0x2A; // Column address set (X coordinates)
+    pub const PASET: u8 = 0x2B; // Page address set (Y coordinates)
+    pub const RAMWR: u8 = 0x2C; // Memory write (start new transfer)
+    pub const RAMWRC: u8 = 0x3C; // Memory write continue (continue transfer)
+    pub const TEON: u8 = 0x35; // Tearing effect line on
+    pub const MADCTL: u8 = 0x36; // Memory data access control
+    pub const COLMOD: u8 = 0x3A; // Pixel format set
+    pub const TESCAN: u8 = 0x44; // Tearing effect scan line
+    pub const WRDISBV: u8 = 0x51; // Write display brightness
+    pub const WRCTRLD1: u8 = 0x53; // Write control display
+    pub const C4: u8 = 0xC4; // Vendor-specific command
+    pub const C63: u8 = 0x63; // Vendor-specific command
 }
 
 /// RAMWR command code for first chunk (starts new write)
@@ -149,7 +149,7 @@ const fn calculate_offsets_const(
 ) -> (u16, u16, u16, u16) {
     let scaled_width = logical_width * scale;
     let scaled_height = logical_height * scale;
-    
+
     // For scale >= 4, skip centering to avoid exceeding physical bounds
     // with hardware offset applied (408 + 22 + 1 would exceed 410)
     let center_x = if scale >= 4 {
@@ -160,7 +160,7 @@ const fn calculate_offsets_const(
             .saturating_sub(HARDWARE_X_OFFSET as u32);
         (available_space / 2) as u16
     };
-    
+
     let center_y = if scale >= 4 {
         0
     } else {
@@ -169,7 +169,7 @@ const fn calculate_offsets_const(
             .saturating_sub(HARDWARE_Y_OFFSET as u32);
         (available_space / 2) as u16
     };
-    
+
     (HARDWARE_X_OFFSET, HARDWARE_Y_OFFSET, center_x, center_y)
 }
 
@@ -180,10 +180,8 @@ const fn calculate_offsets_const(
 const RESOLUTION_OFFSETS: [(u16, u16, u16, u16); 3] = [
     // Scale 1: 410×502 (full resolution, no scaling)
     calculate_offsets_const(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, 410, 502, 1),
-    
     // Scale 2: 205×251 → 410×502 (2x2 blocks)
     calculate_offsets_const(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, 205, 251, 2),
-    
     // Scale 4: 102×125 → 408×500 (4x4 blocks, optimized, default)
     calculate_offsets_const(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, 102, 125, 4),
 ];
@@ -220,7 +218,7 @@ const SUPPORTED_FORMATS: [PixelFormat; 2] = [PixelFormat::Rgb565, PixelFormat::G
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Convert PixelFormat enum to SH8601 COLMOD register value
-/// 
+///
 /// Note: For Gray4 framebuffers, we use RGB565 display mode and convert during transfer to keep Quad-SPI
 #[inline]
 fn pixel_format_to_colmod(fmt: PixelFormat) -> u8 {
@@ -229,7 +227,7 @@ fn pixel_format_to_colmod(fmt: PixelFormat) -> u8 {
         PixelFormat::Rgb888 => 0x77, // 24-bit/pixel RGB888
         PixelFormat::Rgb666 => 0x66, // 18-bit/pixel RGB666
         PixelFormat::Gray8 => 0x11,  // 8-bit/pixel grayscale
-        PixelFormat::Gray4 => 0x55,  // Gray4 framebuffer -> RGB565 display (convert during transfer, use Quad-SPI)
+        PixelFormat::Gray4 => 0x55, // Gray4 framebuffer -> RGB565 display (convert during transfer, use Quad-SPI)
     }
 }
 
@@ -253,17 +251,17 @@ pub struct Co5300<RST> {
     // Hardware interfaces
     qspi: SpiDmaBus<'static, esp_hal::Async>,
     reset_pin: RST,
-    
+
     // Display dimensions
     width: u16,
     height: u16,
-    
+
     // Coordinate offsets (applied to all drawing operations)
     hw_x_offset: u16,
     hw_y_offset: u16,
     center_x_offset: u16,
     center_y_offset: u16,
-    
+
     // Display configuration
     pixel_format: PixelFormat,
     active_resolution: DisplayResolution,
@@ -280,12 +278,9 @@ where
     /// - `reset_pin`: GPIO pin for hardware reset
     ///
     /// Resolution and pixel format are configured later through capability negotiation.
-    pub fn new(
-        qspi: SpiDmaBus<'static, esp_hal::Async>,
-        reset_pin: RST,
-    ) -> Self {
+    pub fn new(qspi: SpiDmaBus<'static, esp_hal::Async>, reset_pin: RST) -> Self {
         debug!("Creating CO5300 driver");
-        
+
         // Initialize with native/default values
         // These will be configured during capability negotiation
         let active_resolution = SUPPORTED_RESOLUTIONS[PREFERRED_MODE_INDEX];
@@ -355,7 +350,7 @@ where
     async fn send_pixels(&mut self, pixels: &[u8]) -> Result<(), esp_hal::spi::Error> {
         for (index, chunk) in pixels.chunks(DMA_CHUNK_SIZE).enumerate() {
             let cmd = if index == 0 { CMD_RAMWR } else { CMD_RAMWRC };
-            
+
             self.qspi.half_duplex_write(
                 DataMode::Quad,
                 Command::_8Bit(QSPI_PIXEL_OPCODE as u16, DataMode::Single),
@@ -421,7 +416,7 @@ where
             &[
                 (x_start_adj >> 8) as u8,
                 (x_start_adj & 0xFF) as u8,
-                ((x_end_adj - 1) >> 8) as u8,      // -1 because end is inclusive
+                ((x_end_adj - 1) >> 8) as u8, // -1 because end is inclusive
                 ((x_end_adj - 1) & 0xFF) as u8,
             ],
         )
@@ -433,7 +428,7 @@ where
             &[
                 (y_start_adj >> 8) as u8,
                 (y_start_adj & 0xFF) as u8,
-                ((y_end_adj - 1) >> 8) as u8,      // -1 because end is inclusive
+                ((y_end_adj - 1) >> 8) as u8, // -1 because end is inclusive
                 ((y_end_adj - 1) & 0xFF) as u8,
             ],
         )
@@ -457,38 +452,41 @@ where
     /// content and the extra 2 pixels on right/bottom stay black from this clear.
     async fn clear_display_ram(&mut self) -> Result<(), esp_hal::spi::Error> {
         debug!("Clearing display RAM to black");
-        
+
         // Set window to full visible area using hardware offset
         // CASET: 0x16 to 0x1AF (22 to 431) = 410 pixels wide
         // PASET: 0x00 to 0x1F5 (0 to 501) = 502 pixels tall
         self.send_command_with_data(
             commands::CASET,
             &[
-                0x00, 0x16,  // Start: 22 (HARDWARE_X_OFFSET)
-                0x01, 0xAF,  // End: 431
+                0x00, 0x16, // Start: 22 (HARDWARE_X_OFFSET)
+                0x01, 0xAF, // End: 431
             ],
-        ).await?;
-        
+        )
+        .await?;
+
         self.send_command_with_data(
             commands::PASET,
             &[
-                0x00, 0x00,  // Start: 0
-                0x01, 0xF5,  // End: 501
+                0x00, 0x00, // Start: 0
+                0x01, 0xF5, // End: 501
             ],
-        ).await?;
-        
+        )
+        .await?;
+
         // Calculate total bytes: 410 × 502 × 2 bytes/pixel = 411,640 bytes
         let total_bytes = 410u32 * 502u32 * 2;
-        let total_chunks = ((total_bytes + DMA_CHUNK_SIZE as u32 - 1) / DMA_CHUNK_SIZE as u32) as usize;
-        
+        let total_chunks =
+            ((total_bytes + DMA_CHUNK_SIZE as u32 - 1) / DMA_CHUNK_SIZE as u32) as usize;
+
         debug!("Clearing 410×502 pixels ({} chunks)", total_chunks);
-        
+
         // Fill with black pixels (RGB565 black = 0x0000)
         let black_chunk = vec![0u8; DMA_CHUNK_SIZE];
-        
+
         for i in 0..total_chunks {
             let cmd = if i == 0 { CMD_RAMWR } else { CMD_RAMWRC };
-            
+
             self.qspi.half_duplex_write(
                 DataMode::Quad,
                 Command::_8Bit(QSPI_PIXEL_OPCODE as u16, DataMode::Single),
@@ -497,7 +495,7 @@ where
                 &black_chunk,
             )?;
         }
-        
+
         debug!("Display RAM cleared");
         Ok(())
     }
@@ -527,7 +525,12 @@ where
             return;
         }
 
-        debug!("draw_unscaled: {}×{} in {}ms", w, h, t0.elapsed().as_millis());
+        debug!(
+            "draw_unscaled: {}×{} in {}ms",
+            w,
+            h,
+            t0.elapsed().as_millis()
+        );
     }
 
     /// Generic scaling path for 2× and other integer scales
@@ -588,7 +591,7 @@ where
                     let src_col = col / scale as usize;
                     let src_idx = (src_row + src_col) * 2;
                     let dst_idx = (dst_row + col) * 2;
-                    
+
                     // Copy RGB565 pixel (2 bytes)
                     chunk[dst_idx] = buffer[src_idx];
                     chunk[dst_idx + 1] = buffer[src_idx + 1];
@@ -659,10 +662,10 @@ where
 
             // Scale and convert Gray4→RGB565 for this chunk
             let mut dst_idx = 0;
-            
+
             for row in 0..chunk_h as usize {
                 let src_row = (row + y_chunk as usize) / 2;
-                
+
                 // Process one source row, writing to scaled output
                 for col in 0..w as usize {
                     // Read Gray4 pixel
@@ -674,12 +677,12 @@ where
                     } else {
                         buffer[byte_idx] & 0x0F
                     } as u16;
-                    
+
                     // Expand 4-bit to RGB565 grayscale
                     let gray5 = (gray4 << 1) | (gray4 >> 3); // 4-bit to 5-bit
                     let gray6 = (gray4 << 2) | (gray4 >> 2); // 4-bit to 6-bit
                     let rgb565 = (gray5 << 11) | (gray6 << 5) | gray5;
-                    
+
                     // Write pixel 2× horizontally (2× width scaling), RGB565 big-endian
                     chunk[dst_idx] = (rgb565 >> 8) as u8;
                     chunk[dst_idx + 1] = (rgb565 & 0xFF) as u8;
@@ -690,7 +693,7 @@ where
             }
 
             let chunk_bytes = &chunk[0..(scaled_w * chunk_h * 2) as usize]; // RGB565 = 2 bytes/pixel
-            
+
             if self.send_pixels(chunk_bytes).await.is_err() {
                 error!("Pixel transfer failed (scale 2× Gray4)");
                 return;
@@ -734,7 +737,7 @@ where
         // Each u64 holds 4 RGB565 pixels
         let pixels_per_u64 = 4;
         let u64s_per_row = (scaled_w / pixels_per_u64) as usize;
-        
+
         let mut chunk = vec![0u64; u64s_per_row * SCALING_CHUNK_HEIGHT as usize];
         let mut scaled_row_cache = vec![0u64; u64s_per_row];
 
@@ -775,10 +778,9 @@ where
 
                         // Build scaled row: replicate each pixel 4 times horizontally
                         for col in 0..w as usize {
-                            let pixel = core::ptr::read_unaligned(
-                                row_ptr.add(col * 2) as *const u16
-                            );
-                            
+                            let pixel =
+                                core::ptr::read_unaligned(row_ptr.add(col * 2) as *const u16);
+
                             // Pack 4 copies of the pixel into u64
                             // Layout: [pixel][pixel][pixel][pixel]
                             scaled_row_cache[col] = (pixel as u64)
@@ -859,13 +861,15 @@ where
 
             // Vendor-specific initialization sequence
             self.send_command_with_data(commands::C4, &[0x80]).await?;
-            self.send_command_with_data(commands::WRCTRLD1, &[0x20]).await?;
+            self.send_command_with_data(commands::WRCTRLD1, &[0x20])
+                .await?;
             Timer::after(Duration::from_millis(1)).await;
 
             self.send_command_with_data(commands::C63, &[0xFF]).await?;
             Timer::after(Duration::from_millis(1)).await;
 
-            self.send_command_with_data(commands::WRDISBV, &[0x00]).await?;
+            self.send_command_with_data(commands::WRDISBV, &[0x00])
+                .await?;
             Timer::after(Duration::from_millis(1)).await;
 
             // Enable display
@@ -873,16 +877,20 @@ where
             Timer::after(Duration::from_millis(10)).await;
 
             // Set full brightness
-            self.send_command_with_data(commands::WRDISBV, &[0xFF]).await?;
+            self.send_command_with_data(commands::WRDISBV, &[0xFF])
+                .await?;
 
             // Configure tearing effect (for VSYNC synchronization)
-            self.send_command_with_data(commands::TESCAN, &[0x00, 0xC8]).await?;
+            self.send_command_with_data(commands::TESCAN, &[0x00, 0xC8])
+                .await?;
             self.send_command_with_data(commands::TEON, &[0x00]).await?;
-            self.send_command_with_data(commands::WRCTRLD1, &[0x20]).await?;
+            self.send_command_with_data(commands::WRCTRLD1, &[0x20])
+                .await?;
             Timer::after(Duration::from_millis(25)).await;
 
             // Set memory access control and pixel format
-            self.send_command_with_data(commands::MADCTL, &[0x00]).await?;
+            self.send_command_with_data(commands::MADCTL, &[0x00])
+                .await?;
             self.send_command_with_data(
                 commands::COLMOD,
                 &[pixel_format_to_colmod(self.pixel_format)],
@@ -983,7 +991,7 @@ where
     /// Updates active resolution and recalculates offsets from pre-computed table.
     fn set_resolution(&mut self, resolution: DisplayResolution) {
         let caps = self.capabilities();
-        
+
         // Find exact match or fallback to same scale factor
         let selected = caps
             .supported_resolutions
@@ -999,13 +1007,13 @@ where
             .unwrap_or(caps.preferred_resolution);
 
         self.active_resolution = selected;
-        
+
         // Look up pre-computed offsets
         let mode_index = SUPPORTED_RESOLUTIONS
             .iter()
             .position(|r| r.logical == selected.logical && r.scale == selected.scale)
             .unwrap_or(PREFERRED_MODE_INDEX);
-        
+
         let (hw_x, hw_y, center_x, center_y) = RESOLUTION_OFFSETS[mode_index];
         self.hw_x_offset = hw_x;
         self.hw_y_offset = hw_y;

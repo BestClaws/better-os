@@ -63,16 +63,16 @@ impl SurfaceBlitter {
         debug_assert_eq!(dest.pixel_format(), source.pixel_format());
         let format = dest.pixel_format();
         let is_gray4 = matches!(format, crate::system::hal::display::PixelFormat::Gray4);
-        
+
         if !is_gray4 && dest.bytes_per_pixel() == 1 {
             // Safety check: if bytes_per_pixel is 1 but not Gray8, something is wrong
             debug!("Warning: format={:?} bpp=1", format);
         }
-        
+
         let dest_w_i = dest_w as i32;
         let dest_h_i = dest_h as i32;
         let src_w = source.width();
-        
+
         for sy in src_y0..src_y1 {
             let dy = sy as i32 + offset_y;
             if dy < 0 || dy >= dest_h_i {
@@ -90,7 +90,7 @@ impl SurfaceBlitter {
             if sx0 >= sx1 {
                 continue;
             }
-            
+
             if is_gray4 {
                 // Gray4: 2 pixels per byte, need pixel-by-pixel copy for unaligned cases
                 // For now, use pixel-by-pixel copy (can be optimized later for aligned cases)
