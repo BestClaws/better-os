@@ -25,28 +25,72 @@ pub fn sqrt32(n: u32) -> u32 {
     isqrt(n)
 }
 
-/// Fast atan2 in degrees (matching LVGL's implementation)
-/// Returns angle in range [0, 360)
+/// Fast atan2 in degrees (matching LVGL's lv_atan2)
+/// Takes (x, y) parameter order like LVGL, not standard atan2(y, x)
+/// Returns angle in range [0, 360) where 0° is up, 90° is right
 #[inline]
-pub fn atan2_deg(y: i32, x: i32) -> i32 {
+pub fn atan2_deg(x: i32, y: i32) -> i32 {
     if x == 0 && y == 0 {
         return 0;
     }
 
-    let ay = y.abs();
-    let ax = x.abs();
+    let mut negflag = 0u8;
+    let mut ux = x;
+    let mut uy = y;
 
-    let mut ang = (ay * 45) / (ax + ay + 1);
-
+    // Save sign flags and make values positive
     if x < 0 {
-        ang = 180 - ang;
+        negflag |= 0x01;
+        ux = -x;
     }
-
     if y < 0 {
-        ang = 360 - ang;
+        negflag |= 0x02;
+        uy = -y;
     }
 
-    ang
+    // Calculate scaled degrees (0-45 range)
+    let mut degree = if ux > uy {
+        negflag |= 0x10;
+        (uy * 45) / ux
+    } else {
+        (ux * 45) / uy
+    };
+
+    // Compensate for error curve (LVGL's compensation table)
+    let mut comp = 0;
+    if degree > 22 {
+        if degree <= 44 { comp += 1; }
+        if degree <= 41 { comp += 1; }
+        if degree <= 37 { comp += 1; }
+        if degree <= 32 { comp += 1; }
+    } else {
+        if degree >= 2 { comp += 1; }
+        if degree >= 6 { comp += 1; }
+        if degree >= 10 { comp += 1; }
+        if degree >= 15 { comp += 1; }
+    }
+    degree += comp;
+
+    // Invert if X>Y octant (makes 0-45 into 90-45)
+    if negflag & 0x10 != 0 {
+        degree = 90 - degree;
+    }
+
+    // Map to correct quadrant based on sign flags
+    if negflag & 0x02 != 0 {  // -Y
+        if negflag & 0x01 != 0 {  // -Y -X (quadrant 3)
+            degree = 180 + degree;
+        } else {  // -Y +X (quadrant 4)
+            degree = 180 - degree;
+        }
+    } else {  // +Y
+        if negflag & 0x01 != 0 {  // +Y -X (quadrant 2)
+            degree = 360 - degree;
+        }
+        // else +Y +X (quadrant 1): degree unchanged
+    }
+
+    degree
 }
 
 /// Check if an angle is within a given arc range

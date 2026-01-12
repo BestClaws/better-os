@@ -1,8 +1,13 @@
 /// Line drawing matching LVGL's lv_draw_line
+
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::Rasterizer;
 use crate::color::Rgba8888;
 use crate::types::*;
-use crate::math::{aa_coverage_sq, dist_sq};
+use crate::math::{dist_sq};
+use crate::masks::{Mask, LineMask, LineSide, apply_masks, MaskResult};
 
 /// Line descriptor matching LVGL
 #[derive(Clone, Debug)]
@@ -71,7 +76,7 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         return;
     }
     
-    // General case: antialiased line with distance-based rendering
+    // General case: diagonal line with mask-based rendering (matching LVGL)
     let len_sq = dx * dx + dy * dy;
     
     if len_sq == 0 {
@@ -81,59 +86,153 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         return;
     }
 
-    let min_x = dsc.p1.x.min(dsc.p2.x) - dsc.width;
-    let max_x = dsc.p1.x.max(dsc.p2.x) + dsc.width;
-    let min_y = dsc.p1.y.min(dsc.p2.y) - dsc.width;
-    let max_y = dsc.p1.y.max(dsc.p2.y) + dsc.width;
-
-    let half_width = dsc.width / 2;
-    let is_dashed = dsc.dash_width > 0 && dsc.dash_gap > 0;
-
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            // Calculate perpendicular distance to line
-            let px = x - dsc.p1.x;
-            let py = y - dsc.p1.y;
-            let t = ((px * dx + py * dy) * 256) / len_sq;
-
-            let (d_sq, on_line) = if t < 0 {
-                (dist_sq(x, y, dsc.p1.x, dsc.p1.y), dsc.round_start)
-            } else if t > 256 {
-                (dist_sq(x, y, dsc.p2.x, dsc.p2.y), dsc.round_end)
-            } else {
-                let proj_x = dsc.p1.x + (dx * t) / 256;
-                let proj_y = dsc.p1.y + (dy * t) / 256;
-                (dist_sq(x, y, proj_x, proj_y), true)
-            };
-
-            if !on_line {
-                continue;
-            }
-
-            // Check dash pattern
-            if is_dashed {
-                let line_pos = ((t * crate::math::isqrt(len_sq as u32) as i32) / 256).max(0);
-                let pattern_len = dsc.dash_width + dsc.dash_gap;
-                let pos_in_pattern = line_pos % pattern_len;
-                if pos_in_pattern >= dsc.dash_width {
-                    continue;
-                }
-            }
-
-            let coverage = aa_coverage_sq(d_sq, half_width);
-            if coverage > 0 {
-                let opa = ((dsc.opa as u32 * coverage as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.color, opa);
+    // Use LVGL's width correction for diagonal lines
+    let xdiff = dsc.p2.x - dsc.p1.x;
+    let ydiff = dsc.p2.y - dsc.p1.y;
+    let flat = xdiff.abs() > ydiff.abs();
+    
+    // LVGL's width correction table
+    const WCORR: [u16; 33] = [
+        128, 128, 128, 129, 129, 130, 130, 131,
+        132, 133, 134, 135, 137, 138, 140, 141,
+        143, 145, 147, 149, 151, 153, 155, 158,
+        160, 162, 165, 167, 170, 173, 175, 178,
+        181,
+    ];
+    
+    let mut w = dsc.width;
+    let wcorr_i = if flat {
+        ((ydiff.abs() << 5) / xdiff.abs()).min(32)
+    } else {
+        ((xdiff.abs() << 5) / ydiff.abs()).min(32)
+    } as usize;
+    w = ((w as i32 * WCORR[wcorr_i] as i32 + 63) >> 7) as i32;
+    
+    let w_half0 = w >> 1;
+    let w_half1 = w_half0 + (w & 1);
+    
+    // Determine point order (left to right for flat, top to bottom for steep)
+    let (p1, p2) = if flat {
+        if xdiff > 0 {
+            (dsc.p1, dsc.p2)
+        } else {
+            (dsc.p2, dsc.p1)
+        }
+    } else {
+        if ydiff > 0 {
+            (dsc.p1, dsc.p2)
+        } else {
+            (dsc.p2, dsc.p1)
+        }
+    };
+    
+    // Create line masks for the edges
+    let (mask_left, mask_right) = if flat {
+        let xdiff_ordered = p2.x - p1.x;
+        if xdiff_ordered > 0 {
+            (
+                LineMask::from_points(
+                    Point::new(p1.x, p1.y - w_half0),
+                    Point::new(p2.x, p2.y - w_half0),
+                    LineSide::Left
+                ),
+                LineMask::from_points(
+                    Point::new(p1.x, p1.y + w_half1),
+                    Point::new(p2.x, p2.y + w_half1),
+                    LineSide::Right
+                )
+            )
+        } else {
+            (
+                LineMask::from_points(
+                    Point::new(p1.x, p1.y + w_half1),
+                    Point::new(p2.x, p2.y + w_half1),
+                    LineSide::Left
+                ),
+                LineMask::from_points(
+                    Point::new(p1.x, p1.y - w_half0),
+                    Point::new(p2.x, p2.y - w_half0),
+                    LineSide::Right
+                )
+            )
+        }
+    } else {
+        (
+            LineMask::from_points(
+                Point::new(p1.x + w_half1, p1.y),
+                Point::new(p2.x + w_half1, p2.y),
+                LineSide::Left
+            ),
+            LineMask::from_points(
+                Point::new(p1.x - w_half0, p1.y),
+                Point::new(p2.x - w_half0, p2.y),
+                LineSide::Right
+            )
+        )
+    };
+    
+    // End cap masks (unless raw_end is set)
+    let (mask_top, mask_bottom) = if !dsc.round_start && !dsc.round_end {
+        let ydiff_ordered = p2.y - p1.y;
+        let xdiff_ordered = p2.x - p1.x;
+        (
+            Some(LineMask::from_points(
+                p1,
+                Point::new(p1.x - ydiff_ordered, p1.y + xdiff_ordered),
+                LineSide::Bottom
+            )),
+            Some(LineMask::from_points(
+                p2,
+                Point::new(p2.x - ydiff_ordered, p2.y + xdiff_ordered),
+                LineSide::Top
+            ))
+        )
+    } else {
+        (None, None)
+    };
+    
+    // Calculate blend area
+    let blend_area = Area::new(
+        p1.x.min(p2.x) - w,
+        p1.y.min(p2.y) - w,
+        p1.x.max(p2.x) + w,
+        p1.y.max(p2.y) + w
+    );
+    
+    // Draw line using masks
+    let draw_width = blend_area.x2 - blend_area.x1 + 1;
+    let mut mask_buf = vec![255u8; draw_width as usize];
+    
+    for y in blend_area.y1..=blend_area.y2 {
+        // Reset mask buffer
+        mask_buf.fill(255);
+        
+        // Build mask list
+        let mut masks: Vec<&dyn Mask> = vec![&mask_left, &mask_right];
+        if let Some(ref m) = mask_top {
+            masks.push(m);
+        }
+        if let Some(ref m) = mask_bottom {
+            masks.push(m);
+        }
+        
+        // Apply masks
+        let res = apply_masks(&masks, &mut mask_buf, blend_area.x1, y, draw_width as usize);
+        
+        if res == MaskResult::Transparent {
+            continue;
+        }
+        
+        // Blend pixels
+        for (i, &opa) in mask_buf.iter().enumerate() {
+            if opa > 0 {
+                let x = blend_area.x1 + i as i32;
+                let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
+                rast.blend_pixel(x, y, dsc.color, final_opa);
             }
         }
     }
     
-    // Mark dirty region for general line
-    let w = dsc.width - 1;
-    let w_half = w / 2 + 1;
-    let min_x = dsc.p1.x.min(dsc.p2.x) - w_half;
-    let max_x = dsc.p1.x.max(dsc.p2.x) + w_half;
-    let min_y = dsc.p1.y.min(dsc.p2.y) - w_half;
-    let max_y = dsc.p1.y.max(dsc.p2.y) + w_half;
-    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
+    // Mark dirty region
+    rast.mark_dirty(blend_area.x1, blend_area.y1, blend_area.x2 + 1, blend_area.y2 + 1);
 }

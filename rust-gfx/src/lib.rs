@@ -1,11 +1,14 @@
 #![no_std]
 
+extern crate alloc;
+
 // Public modules
 pub mod color;
 pub mod types;
 pub mod math;
 pub mod primitives;
 pub mod rasterizer;
+pub mod masks;
 
 #[cfg(feature = "std")]
 pub mod canvas;

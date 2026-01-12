@@ -1,8 +1,12 @@
 /// Arc drawing matching LVGL's lv_draw_arc
+
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::Rasterizer;
 use crate::color::Rgba8888;
 use crate::types::*;
-use crate::math::{aa_coverage_sq, atan2_deg, angle_in_range, dist_sq};
+use crate::masks::{Mask, AngleMask, RadiusMask, apply_masks, MaskResult};
 
 /// Arc descriptor matching LVGL
 #[derive(Clone, Debug)]
@@ -32,50 +36,79 @@ impl ArcDsc {
     }
 }
 
-/// Draw an arc
+/// Draw an arc using mask-based rendering (matching LVGL)
 pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
+    if dsc.width == 0 {
+        return;
+    }
+    
     let cx = dsc.center.x;
     let cy = dsc.center.y;
-    let r_outer = dsc.radius + dsc.width / 2;
-    let r_inner = dsc.radius - dsc.width / 2;
-
-    let min_x = cx - r_outer;
-    let max_x = cx + r_outer;
-    let min_y = cy - r_outer;
-    let max_y = cy + r_outer;
-
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            let dx = x - cx;
-            let dy = y - cy;
-            let d_sq = dx * dx + dy * dy;
-
-            // Check if in radius range
-            if d_sq < r_inner * r_inner || d_sq > r_outer * r_outer {
-                continue;
-            }
-
-            // Check angle
-            let angle = atan2_deg(dy, dx);
-            if !angle_in_range(angle, dsc.start_angle, dsc.end_angle) {
-                continue;
-            }
-
-            // Calculate coverage
-            let coverage = if d_sq <= dsc.radius * dsc.radius {
-                // Inner part
-                aa_coverage_sq(d_sq, r_inner)
-            } else {
-                // Outer part
-                255 - aa_coverage_sq(d_sq, r_outer)
-            };
-
-            if coverage > 0 {
-                let opa = ((dsc.opa as u32 * coverage as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.color, opa);
+    let width = dsc.width.min(dsc.radius);
+    
+    // Calculate inner and outer radii
+    let r_outer = dsc.radius;
+    let r_inner = dsc.radius - width;
+    
+    // Normalize angles to 0-359
+    let mut start_angle = dsc.start_angle;
+    let mut end_angle = dsc.end_angle;
+    while start_angle >= 360 { start_angle -= 360; }
+    while end_angle >= 360 { end_angle -= 360; }
+    
+    // Create angle mask
+    let angle_mask = AngleMask::new(cx, cy, start_angle, end_angle);
+    
+    // Create radius masks (outer and inner)
+    let outer_area = Area::new(
+        cx - r_outer,
+        cy - r_outer,
+        cx + r_outer,
+        cy + r_outer
+    );
+    let inner_area = Area::new(
+        cx - r_inner,
+        cy - r_inner,
+        cx + r_inner,
+        cy + r_inner
+    );
+    
+    let mask_outer = RadiusMask::new(outer_area, r_outer, false);  // Keep inside
+    let mask_inner = RadiusMask::new(inner_area, r_inner, true);   // Keep outside
+    
+    // Calculate blend area
+    let blend_area = Area::new(
+        cx - r_outer,
+        cy - r_outer,
+        cx + r_outer,
+        cy + r_outer
+    );
+    
+    // Draw arc using masks
+    let draw_width = (blend_area.x2 - blend_area.x1 + 1) as usize;
+    let mut mask_buf = vec![255u8; draw_width];
+    
+    for y in blend_area.y1..=blend_area.y2 {
+        // Reset mask buffer
+        mask_buf.fill(255);
+        
+        // Apply masks
+        let masks: Vec<&dyn Mask> = vec![&angle_mask, &mask_outer, &mask_inner];
+        let res = apply_masks(&masks, &mut mask_buf, blend_area.x1, y, draw_width);
+        
+        if res == MaskResult::Transparent {
+            continue;
+        }
+        
+        // Blend pixels
+        for (i, &opa) in mask_buf.iter().enumerate() {
+            if opa > 0 {
+                let x = blend_area.x1 + i as i32;
+                let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
+                rast.blend_pixel(x, y, dsc.color, final_opa);
             }
         }
     }
     
-    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
+    rast.mark_dirty(blend_area.x1, blend_area.y1, blend_area.x2 + 1, blend_area.y2 + 1);
 }
