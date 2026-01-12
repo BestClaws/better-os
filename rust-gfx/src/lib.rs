@@ -7,7 +7,7 @@ pub mod shapes;
 pub mod three_d;
 
 pub use color::Rgba8888;
-pub use fill::{Fill, FillContext, StrokeStyle};
+pub use fill::Fill;
 pub use rasterizer::Rasterizer;
 pub use rasterizer::Rgb565Rasterizer;
 pub use shapes::{Arc, Circle, Line, RoundedRect, Shape};
@@ -131,6 +131,41 @@ pub fn lerp_rgba(a: Rgba8888, b: Rgba8888, frac: u8) -> Rgba8888 {
     let a = ((aa * inv as u16 + ba * frac as u16) / 255) as u32;
 
     Rgba8888::from_u32((r << 24) | (g << 16) | (b << 8) | a)
+}
+
+#[inline(always)]
+pub fn radial_gradient_rgba_sq(
+    inner: Rgba8888,
+    outer: Rgba8888,
+    dist2: i32,
+    r2: i32,
+) -> Rgba8888 {
+    let frac = ((dist2 * 255) / r2).clamp(0, 255) as u8;
+    lerp_rgba(inner, outer, frac)
+}
+
+#[inline(always)]
+pub fn linear_gradient_h_rgba(
+    start: Rgba8888,
+    end: Rgba8888,
+    x: i32,
+    cx: i32,
+    r: i32,
+) -> Rgba8888 {
+    let frac = (((x - (cx - r)) * 255) / (r * 2)).clamp(0, 255) as u8;
+    lerp_rgba(start, end, frac)
+}
+
+#[inline(always)]
+pub fn linear_gradient_v_rgba(
+    start: Rgba8888,
+    end: Rgba8888,
+    y: i32,
+    cy: i32,
+    r: i32,
+) -> Rgba8888 {
+    let frac = (((y - (cy - r)) * 255) / (r * 2)).clamp(0, 255) as u8;
+    lerp_rgba(start, end, frac)
 }
 
 /// Compute the fractional part of "x / N" * 256, as an integer in 0..=255.

@@ -2,8 +2,8 @@
 
 // Re-export core graphics from rust-gfx library
 pub use rust_gfx::{
-    Arc, Circle, Fill, FillContext, Line, Rasterizer, Rgb565Rasterizer, Rgba8888, RoundedRect,
-    Shape, StrokeStyle,
+    Arc, Circle, Fill, Line, Rasterizer, Rgb565Rasterizer, Rgba8888, RoundedRect,
+    Shape,
 };
 
 // Re-export 3D rendering

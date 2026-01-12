@@ -2,7 +2,7 @@
 
 use crate::color::Rgba8888;
 use crate::shapes::circle::draw_circle_or_arc;
-use crate::{Fill, Rasterizer, StrokeStyle};
+use crate::{Fill, Rasterizer};
 
 pub struct Arc {
     cx: i32,
@@ -10,7 +10,9 @@ pub struct Arc {
     radius: i32,
     start_deg: i32,
     end_deg: i32,
-    stroke: StrokeStyle,
+    stroke_width: i32,
+    stroke_color: Rgba8888,
+    stroke_alpha: u8,
     fill: Option<Fill>,
 }
 
@@ -22,44 +24,41 @@ impl Arc {
             radius,
             start_deg,
             end_deg,
-            stroke: StrokeStyle::disabled(),
+            stroke_width: 0,
+            stroke_color: Rgba8888::rgba(0, 0, 0, 255),
+            stroke_alpha: 255,
             fill: None,
         }
     }
 
     pub fn stroke(mut self, width: i32, color: Rgba8888) -> Self {
-        self.stroke.set(width, color);
+        self.stroke_width = width;
+        self.stroke_color = color;
         self
     }
 
     pub fn stroke_alpha(mut self, alpha: u8) -> Self {
-        self.stroke.set_alpha(alpha);
+        self.stroke_alpha = alpha;
         self
     }
 
     pub fn fill_solid(mut self, color: Rgba8888) -> Self {
-        self.fill = Some(Fill::solid(color));
+        self.fill = Some(Fill::Solid(color));
         self
     }
 
     pub fn fill_radial(mut self, inner: Rgba8888, outer: Rgba8888) -> Self {
-        let radius = self.radius.max(0) as i64;
-        let radius_sq = (radius * radius).max(1);
-        self.fill = Some(Fill::radial(self.cx, self.cy, radius_sq, inner, outer));
+        self.fill = Some(Fill::RadialGradient { inner, outer });
         self
     }
 
     pub fn fill_linear_h(mut self, start: Rgba8888, end: Rgba8888) -> Self {
-        let origin = self.cx - self.radius;
-        let length = (self.radius.max(0)).saturating_mul(2).max(1);
-        self.fill = Some(Fill::linear_horizontal(start, end, origin, length));
+        self.fill = Some(Fill::LinearGradientH { start, end });
         self
     }
 
     pub fn fill_linear_v(mut self, start: Rgba8888, end: Rgba8888) -> Self {
-        let origin = self.cy - self.radius;
-        let length = (self.radius.max(0)).saturating_mul(2).max(1);
-        self.fill = Some(Fill::linear_vertical(start, end, origin, length));
+        self.fill = Some(Fill::LinearGradientV { start, end });
         self
     }
 }
@@ -71,7 +70,9 @@ impl super::Shape for Arc {
             self.cx,
             self.cy,
             self.radius,
-            self.stroke,
+            self.stroke_width,
+            self.stroke_color,
+            self.stroke_alpha,
             self.fill,
             Some((self.start_deg, self.end_deg)),
         );
