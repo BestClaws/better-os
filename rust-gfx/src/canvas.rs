@@ -61,9 +61,7 @@ impl Canvas {
         if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return;
         }
-        if opa == 0 {
-            return;
-        }
+        // Note: Don't skip opa==0! LVGL stores color info even for fully transparent pixels
 
         let idx = y as usize * self.width + x as usize;
         let bg = self.buffer[idx];

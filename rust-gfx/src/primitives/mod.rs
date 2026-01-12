@@ -9,6 +9,7 @@ pub mod label;
 pub mod blur;
 pub mod gradient;
 pub mod mask;
+pub mod circle_cache;
 
 // Re-exports for convenience
 pub use rectangle::*;

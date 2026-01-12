@@ -1,85 +1,191 @@
 /// Masking operations for rounded corners and complex shapes
 /// Matches LVGL's mask system
 use crate::types::{Area, Opa, OPA_COVER};
-use crate::math::{aa_coverage_sq, dist_sq};
+use crate::primitives::circle_cache::CircleCache;
+use crate::math::{dist_sq, aa_coverage_sq};
 
-/// Radius mask for rounded corners
+/// Radius mask for rounded corners (LVGL-compatible)
 pub struct RadiusMask {
     area: Area,
     radius: i32,
     outer: bool,
+    circle: Option<CircleCache>,
 }
 
 impl RadiusMask {
     pub fn new(area: Area, radius: i32, outer: bool) -> Self {
-        Self { area, radius, outer }
-    }
+        // Clamp radius to not exceed half the shortest side
+        let width = area.x2 - area.x1 + 1;
+        let height = area.y2 - area.y1 + 1;
+        let short_side = width.min(height);
+        let radius = radius.min(short_side / 2).max(0);
 
-    /// Get mask value for a point (0 = fully masked, 255 = fully visible)
-    pub fn get_mask_value(&self, x: i32, y: i32) -> Opa {
-        if self.radius == 0 {
-            return OPA_COVER;
-        }
-
-        let width = self.area.x2 - self.area.x1 + 1;
-        let height = self.area.y2 - self.area.y1 + 1;
-
-        // Determine which corner (if any) this point is in
-        let r = self.radius;
-
-        // Top-left corner
-        let tl_x = self.area.x1 + r;
-        let tl_y = self.area.y1 + r;
-
-        // Top-right corner
-        let tr_x = self.area.x2 - r;
-        let tr_y = self.area.y1 + r;
-
-        // Bottom-left corner
-        let bl_x = self.area.x1 + r;
-        let bl_y = self.area.y2 - r;
-
-        // Bottom-right corner
-        let br_x = self.area.x2 - r;
-        let br_y = self.area.y2 - r;
-
-        // Check which corner region we're in
-        let (cx, cy) = if x < tl_x && y < tl_y {
-            // Top-left
-            (tl_x, tl_y)
-        } else if x > tr_x && y < tr_y {
-            // Top-right
-            (tr_x, tr_y)
-        } else if x < bl_x && y > bl_y {
-            // Bottom-left
-            (bl_x, bl_y)
-        } else if x > br_x && y > br_y {
-            // Bottom-right
-            (br_x, br_y)
+        let circle = if radius > 0 {
+            Some(CircleCache::new(radius))
         } else {
-            // Not in a corner region
-            return OPA_COVER;
+            None
         };
 
-        // Calculate distance from corner center
-        let dist_sq = dist_sq(x, y, cx, cy);
-        let coverage = aa_coverage_sq(dist_sq, r);
-
-        if self.outer {
-            255 - coverage
-        } else {
-            coverage
+        Self {
+            area,
+            radius,
+            outer,
+            circle,
         }
     }
 
-    /// Apply mask to a line buffer
+    /// Apply mask to a line buffer (LVGL scanline approach)
+    /// This matches lv_draw_mask_radius exactly
     pub fn apply_to_line(&self, y: i32, x_start: i32, mask_buf: &mut [Opa]) {
-        for (i, m) in mask_buf.iter_mut().enumerate() {
-            let x = x_start + i as i32;
-            let mask_val = self.get_mask_value(x, y);
-            // Multiply existing mask value
-            *m = ((*m as u32 * mask_val as u32) / 255) as Opa;
+        let len = mask_buf.len() as i32;
+        
+        // Check if line is outside the rect
+        if y < self.area.y1 || y > self.area.y2 {
+            if self.outer {
+                // Keep as is (full cover)
+                return;
+            } else {
+                // Clear all (transparent)
+                for m in mask_buf.iter_mut() {
+                    *m = 0;
+                }
+                return;
+            }
         }
+
+        let radius = self.radius;
+        let w = self.area.x2 - self.area.x1 + 1;
+        let h = self.area.y2 - self.area.y1 + 1;
+
+        // If in the middle vertical area (no rounding needed)
+        if (x_start >= self.area.x1 + radius && x_start + len <= self.area.x2 - radius + 1)
+            || (y >= self.area.y1 + radius && y <= self.area.y2 - radius)
+        {
+            if !self.outer {
+                // Clear edges outside rect
+                let last = self.area.x1 - x_start;
+                if last > 0 && last < len {
+                    for i in 0..last {
+                        mask_buf[i as usize] = 0;
+                    }
+                }
+                let first = self.area.x2 - x_start + 1;
+                if first < len && first > 0 {
+                    for i in first..len {
+                        mask_buf[i as usize] = 0;
+                    }
+                }
+            } else {
+                // Clear middle
+                let first = (self.area.x1 - x_start).max(0);
+                let last = (self.area.x2 - x_start + 1).min(len);
+                if first < last {
+                    for i in first..last {
+                        mask_buf[i as usize] = 0;
+                    }
+                }
+            }
+            return;
+        }
+
+        // Get circle data
+        let Some(ref circle) = self.circle else {
+            return;
+        };
+
+        // Convert to relative coordinates (matching LVGL)
+        let rel_y = y - self.area.y1;
+        
+        // Determine which y in the circle we're at (matching LVGL exactly)
+        let cir_y = if rel_y < radius {
+            radius - rel_y - 1
+        } else {
+            rel_y - (h - radius)
+        };
+
+        let Some((aa_opa, x_offset)) = circle.get_line(cir_y) else {
+            return;
+        };
+
+        let aa_len = aa_opa.len() as i32;
+        let k = self.area.x1 - x_start;
+        let cir_x_right = k + w - radius + x_offset;
+        let cir_x_left = k + radius - x_offset - 1;
+
+        if !self.outer {
+            // Apply AA to corners
+            for i in 0..aa_len {
+                let opa = aa_opa[(aa_len - i - 1) as usize];
+                
+                let right_idx = cir_x_right + i;
+                if right_idx >= 0 && right_idx < len {
+                    mask_buf[right_idx as usize] =
+                        Self::mask_mix(opa, mask_buf[right_idx as usize]);
+                }
+
+                let left_idx = cir_x_left - i;
+                if left_idx >= 0 && left_idx < len {
+                    mask_buf[left_idx as usize] =
+                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                }
+            }
+
+            // Clear outside areas
+            let right_clear = (cir_x_right + aa_len).max(0).min(len);
+            for i in right_clear..len {
+                mask_buf[i as usize] = 0;
+            }
+
+            let left_clear = (cir_x_left - aa_len + 1).max(0).min(len);
+            for i in 0..left_clear {
+                mask_buf[i as usize] = 0;
+            }
+        } else {
+            // Outer mask (inverted)
+            for i in 0..aa_len {
+                let opa = 255 - aa_opa[(aa_len - 1 - i) as usize];
+                
+                let right_idx = cir_x_right + i;
+                if right_idx >= 0 && right_idx < len {
+                    mask_buf[right_idx as usize] =
+                        Self::mask_mix(opa, mask_buf[right_idx as usize]);
+                }
+
+                let left_idx = cir_x_left - i;
+                if left_idx >= 0 && left_idx < len {
+                    mask_buf[left_idx as usize] =
+                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                }
+            }
+
+            // Clear middle
+            let clr_start = (cir_x_left + 1).max(0).min(len);
+            let clr_end = cir_x_right.max(0).min(len);
+            for i in clr_start..clr_end {
+                mask_buf[i as usize] = 0;
+            }
+        }
+    }
+
+    #[inline]
+    fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
+        if mask_new >= 255 {
+            return mask_act;
+        }
+        if mask_new <= 0 {
+            return 0;
+        }
+        ((mask_act as u32 * mask_new as u32) / 255) as Opa
+    }
+
+    /// Legacy per-pixel mask (slower, but compatible)
+    /// For scanline rendering, use apply_to_line instead
+    #[allow(dead_code)]
+    pub fn get_mask_value(&self, x: i32, y: i32) -> Opa {
+        // Fallback: use apply_to_line for single pixel
+        let mut buf = [255u8];
+        self.apply_to_line(y, x, &mut buf);
+        buf[0]
     }
 }
 

@@ -85,19 +85,15 @@ impl Rgba8888 {
 /// Matches LVGL's color blending: result = bg * (1 - opa) + fg * opa
 #[inline]
 pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
-    if opa == 0 {
-        return bg;
-    }
+    // LVGL uses non-premultiplied alpha:
+    // The resulting pixel always has fg's RGB values, with alpha = opa
+    // This preserves color information even when alpha is 0
     if opa == 255 {
         return fg;
     }
-
-    let inv_opa = 255 - opa;
-    let r = ((bg.r() as u32 * inv_opa as u32 + fg.r() as u32 * opa as u32) / 255) as u8;
-    let g = ((bg.g() as u32 * inv_opa as u32 + fg.g() as u32 * opa as u32) / 255) as u8;
-    let b = ((bg.b() as u32 * inv_opa as u32 + fg.b() as u32 * opa as u32) / 255) as u8;
-    let a = ((bg.a() as u32 * inv_opa as u32 + fg.a() as u32 * opa as u32) / 255) as u8;
-    Rgba8888::rgba(r, g, b, a)
+    
+    // Always store the foreground color's RGB, just modulate the alpha
+    Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa)
 }
 
 /// Linear interpolation between two colors

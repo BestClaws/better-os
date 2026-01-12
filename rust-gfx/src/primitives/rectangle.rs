@@ -164,9 +164,8 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
                 OPA_COVER
             };
 
-            if mask_val == 0 {
-                continue;
-            }
+            // LVGL writes ALL pixels in the rect, even if mask==0
+            // This preserves color info in transparent pixels (non-premultiplied alpha)
 
             // Get color (possibly from gradient)
             let (color, grad_opa) = if has_grad {
@@ -180,9 +179,8 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             // Combine opacities: dsc.bg_opa * grad_opa * mask_val
             let opa = ((dsc.bg_opa as u32 * grad_opa as u32 * mask_val as u32) / (255 * 255)) as Opa;
 
-            if opa > 0 {
-                rast.blend_pixel(x, y, color, opa);
-            }
+            // Write pixel even if opa==0 (LVGL behavior for non-premultiplied alpha)
+            rast.blend_pixel(x, y, color, opa);
         }
     }
 }
