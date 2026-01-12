@@ -99,7 +99,18 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
 
     // Draw background
     if dsc.bg_opa > 0 {
-        draw_bg(rast, dsc, area);
+        // LVGL optimization: If border is opaque and thick, shrink bg by 1px to avoid corner artifacts
+        let bg_area = if dsc.border_width > 1 && dsc.border_opa >= OPA_COVER && dsc.radius != 0 {
+            Area::new(
+                area.x1 + if dsc.border_side.has_left() { 1 } else { 0 },
+                area.y1 + if dsc.border_side.has_top() { 1 } else { 0 },
+                area.x2 - if dsc.border_side.has_right() { 1 } else { 0 },
+                area.y2 - if dsc.border_side.has_bottom() { 1 } else { 0 },
+            )
+        } else {
+            *area
+        };
+        draw_bg(rast, dsc, &bg_area);
     }
 
     // Draw border (if any)

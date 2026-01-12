@@ -85,14 +85,40 @@ impl Rgba8888 {
 /// Matches LVGL's color blending: result = bg * (1 - opa) + fg * opa
 #[inline]
 pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
-    // LVGL uses non-premultiplied alpha storage:
-    // Always store fg's RGB values with alpha=opa
-    // Blending happens at display/composite time, not at storage time
-    if opa == 255 {
+    // Match LVGL's lv_color_mix32 behavior with non-premultiplied alpha storage:
+    // 1. If opa >= 255, return pure fg
+    // 2. If opa == 0 AND bg is opaque, return bg (no change)
+    // 3. If opa == 0 AND bg is transparent, return fg color at alpha=0 (preserve fg color info)
+    // 4. Otherwise blend: result.rgb = (fg.rgb * opa + bg.rgb * (255-opa)) / 255
+    
+    if opa >= 255 {
         return fg;
     }
     
-    Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa)
+    // Non-premultiplied alpha: preserve fg color even at alpha=0 when bg is transparent
+    if opa == 0 {
+        if bg.a() == 0 {
+            // Transparent background: store fg color with alpha=0
+            return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), 0);
+        } else {
+            // Opaque background: no blending needed, return bg
+            return bg;
+        }
+    }
+    
+    // If background is fully transparent, just use fg color with opa (no blending)
+    if bg.a() == 0 {
+        return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa);
+    }
+    
+    // Opaque or semi-transparent background: blend colors
+    // result.rgb = (fg.rgb * opa + bg.rgb * (255 - opa)) / 255
+    let inv_opa = 255 - opa;
+    let r = udiv255(fg.r() as u32 * opa as u32 + bg.r() as u32 * inv_opa as u32);
+    let g = udiv255(fg.g() as u32 * opa as u32 + bg.g() as u32 * inv_opa as u32);
+    let b = udiv255(fg.b() as u32 * opa as u32 + bg.b() as u32 * inv_opa as u32);
+    
+    Rgba8888::rgba(r, g, b, opa)
 }
 
 /// Fast divide by 255 using LVGL's method
