@@ -16,7 +16,7 @@ const SPRITE_H: i32 = 66;
 
 #[embassy_executor::task]
 pub async fn gfx_bench_app(context: AppContext) {
-    info!("GFX Bench: Showcasing 42 passing LVGL-compatible sprites");
+    info!("GFX Bench: Showcasing 48 passing LVGL-compatible sprites");
     
     loop {
         // 0-19: Solid rectangles with various radius and colors
@@ -82,6 +82,42 @@ pub async fn gfx_bench_app(context: AppContext) {
                 draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
             }).await;
             info!("rect_grad_ver_r{}: {} us", radius, start.elapsed().as_micros());
+            Timer::after(Duration::from_millis(100)).await;
+        }
+        
+        for &radius in grad_radii.iter() {
+            // Radial gradient (fallback to horizontal in simple mode)
+            if !context.is_focused().await { continue; }
+            let start = Instant::now();
+            context.draw(|surface| {
+                surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                let mut dsc = RectDsc::new();
+                dsc.radius = radius;
+                dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                dsc.bg_opa = OPA_COVER;
+                dsc.bg_grad.dir = GradDir::Radial;
+                dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
+                draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
+            }).await;
+            info!("rect_grad_radial_r{}: {} us", radius, start.elapsed().as_micros());
+            Timer::after(Duration::from_millis(100)).await;
+        }
+        
+        for &radius in grad_radii.iter() {
+            // Conical gradient (fallback to horizontal in simple mode)
+            if !context.is_focused().await { continue; }
+            let start = Instant::now();
+            context.draw(|surface| {
+                surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                let mut dsc = RectDsc::new();
+                dsc.radius = radius;
+                dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                dsc.bg_opa = OPA_COVER;
+                dsc.bg_grad.dir = GradDir::Conical;
+                dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
+                draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
+            }).await;
+            info!("rect_grad_conical_r{}: {} us", radius, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
         
