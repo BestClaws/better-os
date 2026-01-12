@@ -1,6 +1,6 @@
-/// Label/text drawing (simplified stub for now)
+/// Label/text drawing (simplified stub for now - requires std/alloc for String)
 #[cfg(feature = "std")]
-use crate::canvas::Canvas;
+use crate::Rasterizer;
 #[cfg(feature = "std")]
 use crate::color::Rgba8888;
 #[cfg(feature = "std")]
@@ -11,6 +11,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 use alloc::string::String;
 
+#[cfg(feature = "std")]
 /// Text decoration
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TextDecor {
@@ -19,6 +20,7 @@ pub enum TextDecor {
     Strikethrough,
 }
 
+#[cfg(feature = "std")]
 /// Label descriptor matching LVGL
 #[derive(Clone, Debug)]
 pub struct LabelDsc {
@@ -29,6 +31,7 @@ pub struct LabelDsc {
     pub letter_space: i32,
 }
 
+#[cfg(feature = "std")]
 impl LabelDsc {
     pub fn new(text: String) -> Self {
         Self {
@@ -41,8 +44,9 @@ impl LabelDsc {
     }
 }
 
+#[cfg(feature = "std")]
 /// Draw label (stub - requires font rendering)
-pub fn draw_label(canvas: &mut Canvas, dsc: &LabelDsc, area: &Area) {
+pub fn draw_label<R: Rasterizer>(_rast: &mut R, dsc: &LabelDsc, area: &Area) {
     // For now, this is a stub
     // Real implementation would need a font rasterizer
     // which is complex and requires either:
@@ -51,5 +55,5 @@ pub fn draw_label(canvas: &mut Canvas, dsc: &LabelDsc, area: &Area) {
     // 3. Simple bitmap font
     
     // As a placeholder, draw a filled rect to show the label area
-    let _ = (canvas, dsc, area);
+    let _ = (_rast, dsc, area);
 }

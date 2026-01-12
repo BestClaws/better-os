@@ -1,5 +1,5 @@
 /// Arc drawing matching LVGL's lv_draw_arc
-use crate::canvas::Canvas;
+use crate::Rasterizer;
 use crate::color::Rgba8888;
 use crate::types::*;
 use crate::math::{aa_coverage_sq, atan2_deg, angle_in_range, dist_sq};
@@ -33,7 +33,7 @@ impl ArcDsc {
 }
 
 /// Draw an arc
-pub fn draw_arc(canvas: &mut Canvas, dsc: &ArcDsc) {
+pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
     let cx = dsc.center.x;
     let cy = dsc.center.y;
     let r_outer = dsc.radius + dsc.width / 2;
@@ -72,7 +72,7 @@ pub fn draw_arc(canvas: &mut Canvas, dsc: &ArcDsc) {
 
             if coverage > 0 {
                 let opa = ((dsc.opa as u32 * coverage as u32) / 255) as Opa;
-                canvas.blend_pixel(x, y, dsc.color, opa);
+                rast.blend_pixel(x, y, dsc.color, opa);
             }
         }
     }

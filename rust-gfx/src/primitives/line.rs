@@ -1,5 +1,5 @@
 /// Line drawing matching LVGL's lv_draw_line
-use crate::canvas::Canvas;
+use crate::Rasterizer;
 use crate::color::Rgba8888;
 use crate::types::*;
 use crate::math::{aa_coverage_sq, dist_sq};
@@ -35,14 +35,14 @@ impl LineDsc {
 }
 
 /// Draw a line
-pub fn draw_line(canvas: &mut Canvas, dsc: &LineDsc) {
+pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     let dx = dsc.p2.x - dsc.p1.x;
     let dy = dsc.p2.y - dsc.p1.y;
     let len_sq = dx * dx + dy * dy;
     
     if len_sq == 0 {
         // Point
-        canvas.blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
+        rast.blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
         return;
     }
 
@@ -88,7 +88,7 @@ pub fn draw_line(canvas: &mut Canvas, dsc: &LineDsc) {
             let coverage = aa_coverage_sq(d_sq, half_width);
             if coverage > 0 {
                 let opa = ((dsc.opa as u32 * coverage as u32) / 255) as Opa;
-                canvas.blend_pixel(x, y, dsc.color, opa);
+                rast.blend_pixel(x, y, dsc.color, opa);
             }
         }
     }

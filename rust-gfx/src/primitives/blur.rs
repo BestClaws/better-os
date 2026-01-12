@@ -1,5 +1,5 @@
 /// Blur effect (simplified stub for now)
-use crate::canvas::Canvas;
+use crate::Rasterizer;
 use crate::types::Area;
 
 /// Blur descriptor matching LVGL
@@ -19,7 +19,7 @@ impl BlurDsc {
 }
 
 /// Apply blur effect (stub - requires convolution)
-pub fn draw_blur(canvas: &mut Canvas, dsc: &BlurDsc, area: &Area) {
+pub fn draw_blur<R: Rasterizer>(_rast: &mut R, dsc: &BlurDsc, area: &Area) {
     // Blur is complex and requires convolution
     // For now, this is a stub
     // Real implementation would use:
@@ -27,5 +27,5 @@ pub fn draw_blur(canvas: &mut Canvas, dsc: &BlurDsc, area: &Area) {
     // - Gaussian blur (more accurate)
     // - Separable convolution for performance
     
-    let _ = (canvas, dsc, area);
+    let _ = (_rast, dsc, area);
 }

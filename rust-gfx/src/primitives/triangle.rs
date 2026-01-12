@@ -1,5 +1,5 @@
 /// Triangle drawing matching LVGL's lv_draw_triangle
-use crate::canvas::Canvas;
+use crate::Rasterizer;
 use crate::color::Rgba8888;
 use crate::types::*;
 use crate::primitives::{gradient::*, mask::TriangleMask};
@@ -29,7 +29,7 @@ impl TriangleDsc {
 }
 
 /// Draw a filled triangle
-pub fn draw_triangle(canvas: &mut Canvas, dsc: &TriangleDsc) {
+pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
     let mask = TriangleMask::new(
         dsc.p1.x, dsc.p1.y,
         dsc.p2.x, dsc.p2.y,
@@ -61,7 +61,7 @@ pub fn draw_triangle(canvas: &mut Canvas, dsc: &TriangleDsc) {
                 };
 
                 let opa = ((dsc.opa as u32 * grad_opa as u32) / 255) as Opa;
-                canvas.blend_pixel(x, y, color, opa);
+                rast.blend_pixel(x, y, color, opa);
             }
         }
     }
