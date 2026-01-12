@@ -11,6 +11,9 @@ test = false
 
 
 [dependencies]
+# Graphics library
+rust-gfx = { path = "rust-gfx" }
+
 # try 0.7.0 if u want
 embassy-executor    = { version = "0.9.0", features = [ "defmt" ] }
 esp-hal = { version = "1.0.0", features = [ "unstable", "esp32c6", "rt", "defmt" ] }

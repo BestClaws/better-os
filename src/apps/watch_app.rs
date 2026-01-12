@@ -1,9 +1,9 @@
 //! Minimal analog watch face with a digital time badge.
 
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::shapes::{Line, Shape};
-use crate::libs::gfx::{Circle, RoundedRect, SurfaceDrawTarget};
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer;
+use rust_gfx::shapes::{Line, Shape};
+use rust_gfx::{Circle, RoundedRect};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use alloc::format;
@@ -171,12 +171,13 @@ fn draw_time_badge(
         .stroke(2, Rgba8888::rgba(252, 234, 78, 255))
         .draw(surface);
 
-    let text = format!("{:02}:{:02}", minutes, seconds);
-    let style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(246, 248, 255));
-    let mut target = SurfaceDrawTarget::new(surface);
-    let text_width = (text.len() as i32) * FONT_6X10.character_size.width as i32;
-    let text_height = FONT_6X10.character_size.height as i32;
-    let text_x = cx - text_width / 2;
-    let text_y = badge_y + (badge_height - text_height) / 2 + text_height - 2;
-    let _ = EgText::new(text.as_str(), Point::new(text_x, text_y), style).draw(&mut target);
+    // TODO: Text rendering disabled - requires embedded-graphics
+    // let text = format!("{:02}:{:02}", minutes, seconds);
+    // let style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(246, 248, 255));
+    // let mut target = SurfaceDrawTarget::new(surface);
+    // let text_width = (text.len() as i32) * FONT_6X10.character_size.width as i32;
+    // let text_height = FONT_6X10.character_size.height as i32;
+    // let text_x = cx - text_width / 2;
+    // let text_y = badge_y + (badge_height - text_height) / 2 + text_height - 2;
+    // let _ = EgText::new(text.as_str(), Point::new(text_x, text_y), style).draw(&mut target);
 }

@@ -1,6 +1,6 @@
-/// Color conversion helpers between the better-os color model and embedded-graphics colors.
+/// Color conversion helpers between rust-gfx and embedded-graphics colors.
 pub mod color {
-    use crate::libs::gfx::color::Rgba8888;
+    use rust_gfx::Rgba8888;
     use embedded_graphics::pixelcolor::{Rgb888, RgbColor};
 
     /// Extension trait converting an `Rgba8888` into the 24-bit RGB color used by embedded-graphics.
@@ -19,7 +19,7 @@ pub mod color {
         }
     }
 
-    /// Extension trait converting an embedded-graphics RGB color into the better-os RGBA model.
+    /// Extension trait converting an embedded-graphics RGB color into rust-gfx RGBA model.
     pub trait IntoRgba8888 {
         fn into_rgba8888(self, alpha: u8) -> Rgba8888;
     }
@@ -34,8 +34,8 @@ pub mod color {
 
 pub mod draw_target {
     use super::color::IntoRgba8888;
-    use crate::libs::gfx::color::Rgba8888;
-    use crate::libs::gfx::rasterizer::Rasterizer;
+    use rust_gfx::Rgba8888;
+    use rust_gfx::Rasterizer;
     use core::convert::Infallible;
     use embedded_graphics::geometry::{OriginDimensions, Size};
     use embedded_graphics::pixelcolor::Rgb888;

@@ -67,6 +67,7 @@ dependencies = [
  "nb 1.1.0",
  "panic-rtt-target",
  "rtt-target",
+ "rust-gfx",
  "serde",
  "serde-json-core",
  "static_cell",
@@ -1526,6 +1527,14 @@ dependencies = [
  "defmt 0.3.100",
  "portable-atomic",
  "ufmt-write",
+]
+
+[[package]]
+name = "rust-gfx"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "micromath",
 ]
 
 [[package]]

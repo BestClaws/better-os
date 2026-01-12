@@ -1,6 +1,6 @@
 //! Gray test app - cycles through different gray levels
 
-use crate::libs::gfx::color::Rgba8888;
+use rust_gfx::color::Rgba8888;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;

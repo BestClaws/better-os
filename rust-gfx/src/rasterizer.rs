@@ -1,7 +1,5 @@
-// file: src/rasterizer.rs
-
-use rust_gfx::color::Rgba8888;
-use rust_gfx::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
+use crate::color::Rgba8888;
+use crate::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
 
 pub trait Rasterizer {
     fn width(&self) -> usize;
@@ -192,7 +190,7 @@ impl Rasterizer for Rgb565Rasterizer {
         let x1 = (x + w - 1).min(self.width as i32 - 1);
         let y1 = (y + h - 1).min(self.height as i32 - 1);
         for py in y0..=y1 {
-            self.blend_hspan_with(x0, py, x1 - x0 + 1, |i| (color, 255));
+            self.blend_hspan_with(x0, py, x1 - x0 + 1, |_i| (color, 255));
         }
     }
 }

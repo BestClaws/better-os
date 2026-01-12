@@ -1,7 +1,7 @@
 // file: src/shapes/circle.rs
 
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{aa_coverage, angle_in_range, Fill, FillContext, Rasterizer, StrokeStyle};
+use crate::color::Rgba8888;
+use crate::{aa_coverage, angle_in_range, Fill, FillContext, Rasterizer, StrokeStyle};
 
 pub struct Circle {
     cx: i32,
@@ -61,7 +61,7 @@ impl Circle {
 
 impl super::Shape for Circle {
     fn draw<R: Rasterizer>(&self, rasterizer: &mut R) {
-        crate::libs::gfx::shapes::circle::draw_circle_or_arc(
+        draw_circle_or_arc(
             rasterizer,
             self.cx,
             self.cy,

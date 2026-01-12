@@ -1,5 +1,5 @@
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{draw_model, parse_binary_stl, Quaternion, RenderOptions, Vec3};
+use rust_gfx::color::Rgba8888;
+use rust_gfx::{draw_model, parse_binary_stl, Quaternion, RenderOptions, Vec3};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
@@ -12,7 +12,7 @@ pub async fn arrow_app(context: AppContext) {
     let model = match parse_binary_stl(STL_DATA) {
         Ok(model) => model,
         Err(e) => {
-            info!("3D arrow STL parse error: {:?}", e);
+            defmt::error!("3D arrow STL parse error");
             return;
         }
     };

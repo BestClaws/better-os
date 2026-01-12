@@ -1,5 +1,5 @@
-use rust_gfx::color::Rgba8888;
-use rust_gfx::lerp_rgba;
+use crate::color::Rgba8888;
+use crate::lerp_rgba;
 
 /// Stroke descriptor shared by all primitives.
 #[derive(Clone, Copy, Debug)]

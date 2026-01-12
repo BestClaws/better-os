@@ -1,7 +1,7 @@
 use super::math::{Quaternion, Vec3};
 use super::model::{Model, MAX_TRIANGLES, MAX_VERTICES};
-use rust_gfx::color::Rgba8888;
-use rust_gfx::rasterizer::Rasterizer;
+use crate::color::Rgba8888;
+use crate::rasterizer::Rasterizer;
 use micromath::F32Ext;
 
 /// Configuration for rendering the 3D model.

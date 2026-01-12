@@ -1,6 +1,6 @@
 // file: src/shapes/line.rs
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{Rasterizer, StrokeStyle};
+use crate::color::Rgba8888;
+use crate::{Rasterizer, StrokeStyle};
 use libm::{fabsf, floorf};
 
 pub struct Line {

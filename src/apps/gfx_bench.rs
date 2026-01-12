@@ -1,10 +1,10 @@
 #![no_std]
 
 extern crate alloc;
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer; // trait import so we can call fill_rect
-use crate::libs::gfx::shapes::{Line, Shape, Text};
-use crate::libs::gfx::{Arc, Circle, RoundedRect};
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer; // trait import so we can call fill_rect
+use rust_gfx::shapes::{Line, Shape};
+use rust_gfx::{Arc, Circle, RoundedRect};
 use crate::system::app::app_context::AppContext;
 use crate::system::input::types::{HighLevelEvent, TouchAction};
 use crate::system::ui::drawing_surface::DrawingSurface;

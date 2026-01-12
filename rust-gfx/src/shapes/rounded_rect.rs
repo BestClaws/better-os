@@ -1,7 +1,7 @@
 // file: src/shapes/rounded_rect.rs
 
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{aa_coverage, Fill, FillContext, Rasterizer, StrokeStyle};
+use crate::color::Rgba8888;
+use crate::{aa_coverage, Fill, FillContext, Rasterizer, StrokeStyle};
 
 pub struct RoundedRect {
     x: i32,

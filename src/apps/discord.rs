@@ -1,6 +1,6 @@
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::{RoundedRect, Shape, SurfaceDrawTarget};
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer;
+use rust_gfx::{RoundedRect, Shape};
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -224,22 +224,24 @@ fn draw_interface(
         .fill_solid(Rgba8888::rgba(43, 45, 49, 255))
         .draw(surface);
 
-        let text_padding = (width / 40).max(2).min(8);
-        let text_x = x + text_padding;
-        let text_y = y
-            + (message_height - message_font.character_size.height as i32) / 2
-            + message_font.baseline as i32;
-        {
-            let mut text_target = SurfaceDrawTarget::new(surface);
-            let _ = EgText::new(message.as_str(), Point::new(text_x, text_y), message_style)
-                .draw(&mut text_target);
-        }
+        // TODO: Text rendering disabled - requires embedded-graphics
+        // let text_padding = (width / 40).max(2).min(8);
+        // let text_x = x + text_padding;
+        // let text_y = y
+        //     + (message_height - message_font.character_size.height as i32) / 2
+        //     + message_font.baseline as i32;
+        // {
+        //     let mut text_target = SurfaceDrawTarget::new(surface);
+        //     let _ = EgText::new(message.as_str(), Point::new(text_x, text_y), message_style)
+        //         .draw(&mut text_target);
+        // }
     }
 
+    // TODO: Text rendering disabled - requires embedded-graphics
     // Draw title text last to avoid surface state issues
-    {
-        let mut target = SurfaceDrawTarget::new(surface);
-        let _ =
-            EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
-    }
+    // {
+    //     let mut target = SurfaceDrawTarget::new(surface);
+    //     let _ =
+    //         EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
+    // }
 }

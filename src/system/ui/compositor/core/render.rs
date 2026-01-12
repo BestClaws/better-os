@@ -2,7 +2,7 @@ use defmt::debug;
 use embassy_time::Instant;
 
 use super::state::UICompositor;
-use crate::libs::gfx::color::Rgba8888;
+use rust_gfx::color::Rgba8888;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
 use crate::util::math::primitives::Rect;

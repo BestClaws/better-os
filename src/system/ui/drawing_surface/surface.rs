@@ -1,8 +1,9 @@
 use alloc::vec::Vec;
 
 use super::util::{clip_rect, intersects_or_touches, union_rect};
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::{blend_rgb565, rgba8888_to_gray4_and_alpha, rgba8888_to_rgb565_and_alpha};
+use rust_gfx::color::Rgba8888;
+use crate::libs::gfx::rgba8888_to_gray4_and_alpha;
+use rust_gfx::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::{Point, Rect, Size};
 

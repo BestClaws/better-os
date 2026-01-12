@@ -4,8 +4,8 @@
 //! pixel format (reference: RGB565). Dirty regions are reported explicitly
 //! via `mark_dirty` and not computed per-pixel.
 use super::surface::DrawingSurface;
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer;
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer;
 use crate::util::math::primitives::Rect;
 
 impl Rasterizer for DrawingSurface<'_> {

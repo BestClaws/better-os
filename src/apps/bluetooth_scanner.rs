@@ -3,9 +3,9 @@ use core::fmt::Write;
 use crate::libs::bluetooth::{
     bluetooth, BlePacket, BluetoothEvent, DiscoveredDevice, GattServiceStatus, ScanStatus,
 };
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::SurfaceDrawTarget;
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer;
+// use rust_gfx::SurfaceDrawTarget; // Removed - requires embedded-graphics
 use crate::libs::http_bridge::{HttpBridgeError, HttpClient};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -219,15 +219,16 @@ fn draw_interface(
 
     let status_text = format_status(status);
 
-    {
-        let mut target = SurfaceDrawTarget::new(surface);
-
-        let _ = EgText::new(
-            "Bluetooth Scanner",
-            Point::new(heading_x, heading_y),
-            title_style,
-        )
-        .draw(&mut target);
+    // TODO: Text rendering disabled - requires embedded-graphics
+    // {
+    //     let mut target = SurfaceDrawTarget::new(surface);
+    //
+    //     let _ = EgText::new(
+    //         "Bluetooth Scanner",
+    //         Point::new(heading_x, heading_y),
+    //         title_style,
+    //     )
+    //     .draw(&mut target);
 
         let status_y = heading_y + title_height + 2;
         let _ = EgText::new(

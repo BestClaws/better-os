@@ -1,8 +1,8 @@
 // file: src/shapes/arc.rs
 
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::shapes::circle::draw_circle_or_arc;
-use crate::libs::gfx::{Fill, Rasterizer, StrokeStyle};
+use crate::color::Rgba8888;
+use crate::shapes::circle::draw_circle_or_arc;
+use crate::{Fill, Rasterizer, StrokeStyle};
 
 pub struct Arc {
     cx: i32,

@@ -1,9 +1,9 @@
 //! Simplified Analog Watch Application using new gfx API
 
-use crate::libs::gfx::color::Rgba8888;
-use crate::libs::gfx::rasterizer::Rasterizer;
-use crate::libs::gfx::shapes::{Line, Shape};
-use crate::libs::gfx::Circle;
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer;
+use rust_gfx::shapes::{Line, Shape};
+use rust_gfx::Circle;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
