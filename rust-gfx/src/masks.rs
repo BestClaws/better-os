@@ -229,9 +229,9 @@ impl Mask for LineMask {
 
 impl LineMask {
     fn apply_flat(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Calculate y at start of scan line (using origo-relative coordinates)
-        let rel_x = x;
-        let rel_y = y;
+        // Make coordinates relative to the origo (LVGL does this!)
+        let rel_x = x - self.origo.x;
+        let rel_y = y - self.origo.y;
         
         let y_at_x = ((self.yx_steep as i64 * rel_x as i64) >> 10) as i32;
         
@@ -345,8 +345,9 @@ impl LineMask {
     }
     
     fn apply_steep(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        let rel_x = x;
-        let rel_y = y;
+        // Make coordinates relative to the origo (LVGL does this!)
+        let rel_x = x - self.origo.x;
+        let rel_y = y - self.origo.y;
         
         // Calculate x at current y
         let mut x_at_y = ((self.xy_steep as i64 * rel_y as i64) >> 10) as i32;
@@ -499,7 +500,15 @@ impl LineMask {
     }
     
     #[inline]
+    #[inline]
     fn mask_mix(current: u8, new: u8) -> u8 {
+        // Early exits for performance and correctness (LVGL does this)
+        if new >= 255 {
+            return current;
+        }
+        if new <= 0 {
+            return 0;
+        }
         ((current as u32 * new as u32) / 255) as u8
     }
 }
