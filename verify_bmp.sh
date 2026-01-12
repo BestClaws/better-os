@@ -18,7 +18,8 @@ if [ ! -d "$REFERENCE_DIR" ]; then
     exit 1
 fi
 
-# Array to store failed files
+# Arrays to store results
+matched_files=()
 failed_files=()
 
 # Check all sprite files
@@ -43,17 +44,28 @@ for sprite_file in "$SPRITES_DIR"/*.bmp; do
     # Compare checksums
     if [ "$sprite_checksum" != "$reference_checksum" ]; then
         failed_files+=("$filename")
+    else
+        matched_files+=("$filename")
     fi
 done
 
 # Output results
+echo "MATCHED (${#matched_files[@]}):"
+for file in "${matched_files[@]}"; do
+    echo "$file"
+done
+
+echo ""
+echo "FAILED (${#failed_files[@]}):"
+for file in "${failed_files[@]}"; do
+    echo "$file"
+done
+
+echo ""
+echo "Summary: ${#matched_files[@]} matched, ${#failed_files[@]} failed out of $((${#matched_files[@]} + ${#failed_files[@]})) total"
+
 if [ ${#failed_files[@]} -eq 0 ]; then
-    echo "OK"
     exit 0
 else
-    echo "FAILED:"
-    for file in "${failed_files[@]}"; do
-        echo "$file"
-    done
     exit 1
 fi
