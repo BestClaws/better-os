@@ -254,9 +254,8 @@ fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
                 OPA_COVER
             };
 
-            if mask_val > 0 {
-                rast.blend_pixel(x, y, dsc.border_color, ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa);
-            }
+            // Draw even if mask_val == 0 to preserve color info (non-premultiplied alpha)
+            rast.blend_pixel(x, y, dsc.border_color, ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa);
         }
     }
 }
@@ -289,10 +288,9 @@ fn draw_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
                 x, y, area, shadow_radius, dsc.shadow_width
             );
 
-            if shadow_opa > 0 {
-                let final_opa = ((dsc.shadow_opa as u32 * shadow_opa as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.shadow_color, final_opa);
-            }
+            // Draw even if shadow_opa == 0 to preserve color info (non-premultiplied alpha)
+            let final_opa = ((dsc.shadow_opa as u32 * shadow_opa as u32) / 255) as Opa;
+            rast.blend_pixel(x, y, dsc.shadow_color, final_opa);
         }
     }
 }
@@ -364,9 +362,9 @@ fn draw_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             let in_outer = is_point_in_rounded_rect(x, y, &outline_area, outline_radius + dsc.outline_width);
             let in_inner = is_point_in_rounded_rect(x, y, &inner_area, outline_radius);
 
-            if in_outer && !in_inner {
-                rast.blend_pixel(x, y, dsc.outline_color, dsc.outline_opa);
-            }
+            // Draw with appropriate opacity (0 if outside outline ring)
+            let opa = if in_outer && !in_inner { dsc.outline_opa } else { 0 };
+            rast.blend_pixel(x, y, dsc.outline_color, opa);
         }
     }
 }
