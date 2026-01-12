@@ -22,18 +22,18 @@ fi
 matched_files=()
 failed_files=()
 
-# Check all sprite files
-for sprite_file in "$SPRITES_DIR"/*.bmp; do
-    if [ ! -f "$sprite_file" ]; then
+# Check all reference files (only compare sprites that have references)
+for reference_file in "$REFERENCE_DIR"/*.bmp; do
+    if [ ! -f "$reference_file" ]; then
         continue
     fi
     
-    filename=$(basename "$sprite_file")
-    reference_file="$REFERENCE_DIR/$filename"
+    filename=$(basename "$reference_file")
+    sprite_file="$SPRITES_DIR/$filename"
     
-    # Check if reference file exists
-    if [ ! -f "$reference_file" ]; then
-        failed_files+=("$filename (reference missing)")
+    # Check if sprite file exists
+    if [ ! -f "$sprite_file" ]; then
+        failed_files+=("$filename (sprite missing)")
         continue
     fi
     
