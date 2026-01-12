@@ -44,13 +44,21 @@ impl RadiusMask {
     pub fn apply_to_line(&self, y: i32, x_start: i32, mask_buf: &mut [Opa]) {
         let len = mask_buf.len() as i32;
         
-        // Check if line is outside the rect
+        let radius = self.radius;
+        
+        // Check if line is outside the rect (and not in corner radius region)
         if y < self.area.y1 || y > self.area.y2 {
-            if self.outer {
-                // Keep as is (full cover)
+            // For outer (inverted) masks, check if we're in corner radius region
+            let in_corner_region = (y < self.area.y1 && y >= self.area.y1 - radius) ||
+                                   (y > self.area.y2 && y <= self.area.y2 + radius);
+            
+            if self.outer && in_corner_region {
+                // Continue to apply circle mask for corner regions
+            } else if self.outer {
+                // Far outside rect - keep as is (full cover)
                 return;
             } else {
-                // Clear all (transparent)
+                // Non-inverted mask outside rect - clear all (transparent)
                 for m in mask_buf.iter_mut() {
                     *m = 0;
                 }
@@ -58,7 +66,6 @@ impl RadiusMask {
             }
         }
 
-        let radius = self.radius;
         let w = self.area.x2 - self.area.x1 + 1;
         let h = self.area.y2 - self.area.y1 + 1;
 
@@ -102,7 +109,11 @@ impl RadiusMask {
         let rel_y = y - self.area.y1;
         
         // Determine which y in the circle we're at (matching LVGL exactly)
-        let cir_y = if rel_y < radius {
+        // Handle negative rel_y for lines above the rect
+        let cir_y = if rel_y < 0 {
+            // Above rect - mirror the calculation
+            radius + rel_y
+        } else if rel_y < radius {
             radius - rel_y - 1
         } else {
             rel_y - (h - radius)
