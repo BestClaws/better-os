@@ -4,6 +4,7 @@ extern crate alloc;
 use rust_gfx::color::Rgba8888;
 use rust_gfx::primitives::*;
 use rust_gfx::rasterizer::Rasterizer;
+use rust_gfx::{Area, BorderSide, OPA_50, OPA_70, OPA_COVER, RADIUS_CIRCLE};
 use crate::system::app::app_context::AppContext;
 use crate::system::input::types::{HighLevelEvent, TouchAction};
 use crate::system::ui::drawing_surface::DrawingSurface;
