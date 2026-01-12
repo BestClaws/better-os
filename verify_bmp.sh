@@ -2,7 +2,7 @@
 
 # Script to verify if all sprite files match their references
 
-SPRITES_DIR="sprites"
+SPRITES_DIR="rust-gfx/sprites"
 REFERENCE_DIR="reference_sprites"
 
 # Check if directories exist
