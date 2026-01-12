@@ -4,9 +4,9 @@ use crate::color::Rgba8888;
 /// Opacity type matching LVGL's lv_opa_t
 pub type Opa = u8;
 
-/// Common opacity values
+/// Common opacity values (matching LVGL's LV_OPA_* constants exactly)
 pub const OPA_TRANSP: Opa = 0;
-pub const OPA_30: Opa = 77;
+pub const OPA_30: Opa = 76;
 pub const OPA_40: Opa = 102;
 pub const OPA_50: Opa = 127;
 pub const OPA_70: Opa = 178;

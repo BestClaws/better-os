@@ -120,12 +120,14 @@ pub fn lerp_u8(a: u8, b: u8, frac: u8) -> u8 {
 }
 
 /// Calculate fractional position (returns 0-255)
+/// Matches LVGL: (num * 255 + denom/2) / denom for proper rounding
 #[inline]
 pub fn frac_255(num: i32, denom: i32) -> u8 {
     if denom == 0 {
         return 0;
     }
-    let frac = ((num * 255) / denom).max(0).min(255);
+    // Add half of denom for rounding
+    let frac = ((num * 255 + denom / 2) / denom).max(0).min(255);
     frac as u8
 }
 

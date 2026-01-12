@@ -104,6 +104,7 @@ fn udiv255(x: u32) -> u8 {
 
 /// Linear interpolation between two colors
 /// t=0 returns c1, t=255 returns c2
+/// Matches LVGL's exact formula: LV_UDIV255(c2 * t + c1 * (255-t))
 #[inline]
 pub fn lerp_color(c1: Rgba8888, c2: Rgba8888, t: u8) -> Rgba8888 {
     if t == 0 {
@@ -113,9 +114,10 @@ pub fn lerp_color(c1: Rgba8888, c2: Rgba8888, t: u8) -> Rgba8888 {
         return c2;
     }
     let inv_t = 255 - t;
-    let r = udiv255(c1.r() as u32 * inv_t as u32 + c2.r() as u32 * t as u32);
-    let g = udiv255(c1.g() as u32 * inv_t as u32 + c2.g() as u32 * t as u32);
-    let b = udiv255(c1.b() as u32 * inv_t as u32 + c2.b() as u32 * t as u32);
-    let a = udiv255(c1.a() as u32 * inv_t as u32 + c2.a() as u32 * t as u32);
+    // LVGL does: color2 * mix + color1 * (255-mix), then udiv255
+    let r = udiv255(c2.r() as u32 * t as u32 + c1.r() as u32 * inv_t as u32);
+    let g = udiv255(c2.g() as u32 * t as u32 + c1.g() as u32 * inv_t as u32);
+    let b = udiv255(c2.b() as u32 * t as u32 + c1.b() as u32 * inv_t as u32);
+    let a = udiv255(c2.a() as u32 * t as u32 + c1.a() as u32 * inv_t as u32);
     Rgba8888::rgba(r, g, b, a)
 }
