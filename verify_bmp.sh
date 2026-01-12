@@ -18,6 +18,15 @@ if [ ! -d "$REFERENCE_DIR" ]; then
     exit 1
 fi
 
+# Check if sprites directory has any BMP files
+sprite_count=$(find "$SPRITES_DIR" -maxdepth 1 -name "*.bmp" 2>/dev/null | wc -l)
+if [ "$sprite_count" -eq 0 ]; then
+    echo "FAILED:"
+    echo "Error: No sprite files found in $SPRITES_DIR" >&2
+    echo "Please run sprite generator first: cd rust-gfx && cargo run --example sprite_generator --release" >&2
+    exit 1
+fi
+
 # Arrays to store results
 matched_files=()
 failed_files=()
@@ -63,6 +72,12 @@ done
 
 echo ""
 echo "Summary: ${#matched_files[@]} matched, ${#failed_files[@]} failed out of $((${#matched_files[@]} + ${#failed_files[@]})) total"
+
+# Clean up sprites after verification
+echo ""
+echo "Cleaning up sprites directory..."
+rm -f "$SPRITES_DIR"/*.bmp
+echo "Sprites directory cleared."
 
 if [ ${#failed_files[@]} -eq 0 ]; then
     exit 0
