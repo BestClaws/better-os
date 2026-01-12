@@ -96,6 +96,13 @@ pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
     Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa)
 }
 
+/// Fast divide by 255 using LVGL's method
+/// LV_UDIV255(x) = ((x * 0x8081) >> 23)
+#[inline]
+fn udiv255(x: u32) -> u8 {
+    ((x * 0x8081) >> 23) as u8
+}
+
 /// Linear interpolation between two colors
 /// t=0 returns c1, t=255 returns c2
 #[inline]
@@ -107,9 +114,9 @@ pub fn lerp_color(c1: Rgba8888, c2: Rgba8888, t: u8) -> Rgba8888 {
         return c2;
     }
     let inv_t = 255 - t;
-    let r = ((c1.r() as u32 * inv_t as u32 + c2.r() as u32 * t as u32) / 255) as u8;
-    let g = ((c1.g() as u32 * inv_t as u32 + c2.g() as u32 * t as u32) / 255) as u8;
-    let b = ((c1.b() as u32 * inv_t as u32 + c2.b() as u32 * t as u32) / 255) as u8;
-    let a = ((c1.a() as u32 * inv_t as u32 + c2.a() as u32 * t as u32) / 255) as u8;
+    let r = udiv255(c1.r() as u32 * inv_t as u32 + c2.r() as u32 * t as u32);
+    let g = udiv255(c1.g() as u32 * inv_t as u32 + c2.g() as u32 * t as u32);
+    let b = udiv255(c1.b() as u32 * inv_t as u32 + c2.b() as u32 * t as u32);
+    let a = udiv255(c1.a() as u32 * inv_t as u32 + c2.a() as u32 * t as u32);
     Rgba8888::rgba(r, g, b, a)
 }
