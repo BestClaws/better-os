@@ -85,29 +85,14 @@ impl Rgba8888 {
 /// Matches LVGL's color blending: result = bg * (1 - opa) + fg * opa
 #[inline]
 pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
-    // LVGL blending: blend foreground over background
-    // Non-premultiplied alpha: RGB keeps full color values
-    
+    // LVGL uses non-premultiplied alpha storage:
+    // Always store fg's RGB values with alpha=opa
+    // Blending happens at display/composite time, not at storage time
     if opa == 255 {
         return fg;
     }
     
-    if bg.a() == 0 {
-        // Background is fully transparent: just store fg color with opa
-        // This preserves color info for non-premultiplied alpha
-        return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa);
-    }
-    
-    // Background has color: blend RGB channels
-    let inv_opa = 255 - opa;
-    let r = udiv255(fg.r() as u32 * opa as u32 + bg.r() as u32 * inv_opa as u32);
-    let g = udiv255(fg.g() as u32 * opa as u32 + bg.g() as u32 * inv_opa as u32);
-    let b = udiv255(fg.b() as u32 * opa as u32 + bg.b() as u32 * inv_opa as u32);
-    
-    // Result is opaque if background was opaque
-    let a = if bg.a() == 255 { 255 } else { opa };
-    
-    Rgba8888::rgba(r, g, b, a)
+    Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa)
 }
 
 /// Fast divide by 255 using LVGL's method
