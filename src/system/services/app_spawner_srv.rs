@@ -38,24 +38,24 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     spawn_fn: spawn_bluetooth_scanner_app,
     // },
     // AppDescriptor {
-    //     name: "GFX Benchmark",
-    //     id: 2,
-    //     spawn_fn: spawn_gfx_bench_app,
-    // },
-    // AppDescriptor {
     //     name: "Text Demo",
     //     id: 4,
     //     spawn_fn: spawn_text_demo_app,
     // },
     AppDescriptor {
         name: "Watch",
-        id: 3,
+        id: 1,
         spawn_fn: spawn_watch_app,
     },
     AppDescriptor {
         name: "Rect",
-        id: 4,
+        id: 2,
         spawn_fn: spawn_rect_app,
+    },
+    AppDescriptor {
+        name: "GFX Benchmark",
+        id: 3,
+        spawn_fn: spawn_gfx_bench_app,
     },
     // AppDescriptor {
     //     name: "3D Arrow",

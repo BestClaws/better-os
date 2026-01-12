@@ -19,6 +19,11 @@ pub async fn gfx_bench_app(context: AppContext) {
     info!("GFX Bench: Showcasing 48 passing LVGL-compatible sprites");
     
     loop {
+        if !context.is_focused().await {
+            Timer::after(Duration::from_millis(100)).await;
+            continue;
+        }
+        
         // 0-19: Solid rectangles with various radius and colors
         let radii = [0, 5, 10, 20, RADIUS_CIRCLE];
         let radius_names = ["r0", "r5", "r10", "r20", "rcircle"];
@@ -32,7 +37,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         
         for r in 0..5 {
             for c in 0..4 {
-                if !context.is_focused().await { continue; }
                 let start = Instant::now();
                 context.draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -51,7 +55,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         let grad_radii = [0, 5, 10];
         for &radius in grad_radii.iter() {
             // Horizontal gradient
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -69,7 +72,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         
         for &radius in grad_radii.iter() {
             // Vertical gradient
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -87,7 +89,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         
         for &radius in grad_radii.iter() {
             // Radial gradient (fallback to horizontal in simple mode)
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -105,7 +106,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         
         for &radius in grad_radii.iter() {
             // Conical gradient (fallback to horizontal in simple mode)
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -122,7 +122,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         }
         
         // 44: Border w10 full
-        if !context.is_focused().await { continue; }
         let start = Instant::now();
         context.draw(|surface| {
             surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -142,7 +141,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         // 60-63: Opacity tests
         let opacities = [(OPA_COVER, "100"), (OPA_70, "70"), (OPA_50, "50"), (OPA_30, "30")];
         for &(opa, name) in opacities.iter() {
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -160,7 +158,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         let line_widths = [1, 3, 6, 10];
         for &width in line_widths.iter() {
             // Horizontal
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -175,7 +172,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         
         for &width in line_widths.iter() {
             // Vertical
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
@@ -191,7 +187,6 @@ pub async fn gfx_bench_app(context: AppContext) {
         // 117-119: Line opacity tests
         let line_opas = [(OPA_COVER, "100"), (OPA_70, "70"), (102, "40")]; // OPA_40 = 102
         for &(opa, name) in line_opas.iter() {
-            if !context.is_focused().await { continue; }
             let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));

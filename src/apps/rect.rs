@@ -47,7 +47,6 @@ pub async fn rect_app(ctx: AppContext) {
         })
         .await;
 
-        ctx.request_redraw().await;
         hue = (hue + 3) % 360;
         Timer::after(Duration::from_millis(16)).await;
     }
