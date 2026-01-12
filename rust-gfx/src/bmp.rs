@@ -52,10 +52,10 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
     file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // Colors used: 0
     file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // Important colors: 0
 
-    // Color masks (for BI_BITFIELDS)
-    file.write_all(&[0x00, 0xFF, 0x00, 0x00])?;  // Red mask: 0x00FF0000
-    file.write_all(&[0x00, 0x00, 0xFF, 0x00])?;  // Green mask: 0x0000FF00
-    file.write_all(&[0xFF, 0x00, 0x00, 0x00])?;  // Blue mask: 0x000000FF
+    // Color masks (for BI_BITFIELDS) - SDL uses BGRA order
+    file.write_all(&[0x00, 0x00, 0xFF, 0x00])?;  // Blue mask: 0x00FF0000
+    file.write_all(&[0x00, 0xFF, 0x00, 0x00])?;  // Green mask: 0x0000FF00
+    file.write_all(&[0xFF, 0x00, 0x00, 0x00])?;  // Red mask: 0x000000FF
     file.write_all(&[0x00, 0x00, 0x00, 0xFF])?;  // Alpha mask: 0xFF000000
 
     // Color space type: "Win " (0x57696E20)
@@ -68,20 +68,16 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
     file.write_all(&[0u8; 12])?;
 
     // Write pixel data (bottom-up, as BMP format requires)
-    // Convert from Rgba8888 (0xRRGGBBAA) to ARGB8888 (0xAARRGGBB) for BMP
+    // SDL format is BGRA (Blue, Green, Red, Alpha) in memory
     
     for y in (0..height).rev() {
         let row_start = (y * width) as usize;
         let row_end = row_start + width as usize;
         let row = &canvas.buffer()[row_start..row_end];
         
-        // Write as ARGB bytes (convert from Rgba8888)
+        // Write as BGRA bytes (SDL format)
         for &pixel in row {
-            let argb = ((pixel.a() as u32) << 24)
-                     | ((pixel.r() as u32) << 16)
-                     | ((pixel.g() as u32) << 8)
-                     | (pixel.b() as u32);
-            file.write_all(&argb.to_le_bytes())?;
+            file.write_all(&[pixel.b(), pixel.g(), pixel.r(), pixel.a()])?;
         }
     }
 
