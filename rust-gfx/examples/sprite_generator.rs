@@ -8,7 +8,10 @@ const SPRITE_WIDTH: usize = 102;
 const SPRITE_HEIGHT: usize = 125;
 
 fn main() {
-    // Create sprites directory
+    // Clean up and recreate sprites directory
+    if fs::metadata("sprites").is_ok() {
+        fs::remove_dir_all("sprites").expect("Failed to remove sprites directory");
+    }
     fs::create_dir_all("sprites").expect("Failed to create sprites directory");
 
     let mut sprite_index = 0;
