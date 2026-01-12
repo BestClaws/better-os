@@ -34,6 +34,11 @@ impl RadiusMask {
         }
     }
 
+    /// Get access to the circle cache (for debugging)
+    pub fn get_cache(&self) -> Option<&CircleCache> {
+        self.circle.as_ref()
+    }
+
     /// Apply mask to a line buffer (LVGL scanline approach)
     /// This matches lv_draw_mask_radius exactly
     pub fn apply_to_line(&self, y: i32, x_start: i32, mask_buf: &mut [Opa]) {

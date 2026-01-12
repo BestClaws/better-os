@@ -85,25 +85,16 @@ impl Rgba8888 {
 /// Matches LVGL's color blending: result = bg * (1 - opa) + fg * opa
 #[inline]
 pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
-    // Match LVGL's lv_color_mix32 behavior with non-premultiplied alpha storage:
-    // 1. If opa >= 255, return pure fg
-    // 2. If opa == 0 AND bg is opaque, return bg (no change)
-    // 3. If opa == 0 AND bg is transparent, return fg color at alpha=0 (preserve fg color info)
-    // 4. Otherwise blend: result.rgb = (fg.rgb * opa + bg.rgb * (255-opa)) / 255
+    // LVGL non-premultiplied alpha: ALWAYS store foreground color with foreground alpha
+    // Even at opa=0, preserve fg RGB (this is critical for LVGL compatibility)
     
     if opa >= 255 {
         return fg;
     }
     
-    // Non-premultiplied alpha: preserve fg color even at alpha=0 when bg is transparent
+    // CRITICAL: At opa==0, return fg color with alpha=0 (preserve color info)
     if opa == 0 {
-        if bg.a() == 0 {
-            // Transparent background: store fg color with alpha=0
-            return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), 0);
-        } else {
-            // Opaque background: no blending needed, return bg
-            return bg;
-        }
+        return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), 0);
     }
     
     // If background is fully transparent, just use fg color with opa (no blending)
@@ -111,14 +102,28 @@ pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
         return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa);
     }
     
-    // Opaque or semi-transparent background: blend colors
-    // result.rgb = (fg.rgb * opa + bg.rgb * (255 - opa)) / 255
-    let inv_opa = 255 - opa;
-    let r = udiv255(fg.r() as u32 * opa as u32 + bg.r() as u32 * inv_opa as u32);
-    let g = udiv255(fg.g() as u32 * opa as u32 + bg.g() as u32 * inv_opa as u32);
-    let b = udiv255(fg.b() as u32 * opa as u32 + bg.b() as u32 * inv_opa as u32);
+    // LVGL Porter-Duff OVER compositing when both colors have alpha
+    // https://en.wikipedia.org/wiki/Alpha_compositing#Analytical_derivation_of_the_over_operator
     
-    Rgba8888::rgba(r, g, b, opa)
+    // First calculate composited alpha
+    let inv_fg_a = 255 - opa;
+    let inv_bg_a = 255 - bg.a();
+    let result_alpha = 255 - udiv255(inv_fg_a as u32 * inv_bg_a as u32);
+    
+    // Calculate ratio for RGB blending
+    let ratio = if result_alpha > 0 {
+        (udiv255(opa as u32 * 255) as u32 * 255) / result_alpha as u32
+    } else {
+        0
+    };
+    let ratio = ratio.min(255) as u8;
+    
+    let inv_ratio = 255 - ratio;
+    let r = udiv255(fg.r() as u32 * ratio as u32 + bg.r() as u32 * inv_ratio as u32);
+    let g = udiv255(fg.g() as u32 * ratio as u32 + bg.g() as u32 * inv_ratio as u32);
+    let b = udiv255(fg.b() as u32 * ratio as u32 + bg.b() as u32 * inv_ratio as u32);
+    
+    Rgba8888::rgba(r, g, b, result_alpha)
 }
 
 /// Fast divide by 255 using LVGL's method

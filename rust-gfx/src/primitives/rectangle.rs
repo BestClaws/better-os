@@ -6,6 +6,8 @@ use crate::types::*;
 use crate::primitives::{gradient::*, mask::RadiusMask};
 use crate::math::{aa_coverage_sq, dist_sq, isqrt};
 
+extern crate alloc;
+
 /// Rectangle descriptor matching LVGL's lv_draw_rect_dsc_t
 #[derive(Clone, Debug)]
 pub struct RectDsc {
@@ -222,7 +224,7 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     }
 }
 
-/// Draw rectangle border
+/// Draw rectangle border matching LVGL exactly
 fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let width = area.width();
     let height = area.height();
@@ -232,71 +234,179 @@ fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     }
 
     let short_side = width.min(height);
-    let mut radius = dsc.radius.min(short_side / 2);
+    let mut rout = dsc.radius.min(short_side / 2);
     
     if dsc.radius == RADIUS_CIRCLE {
-        radius = short_side / 2;
+        rout = short_side / 2;
     }
 
     let bw = dsc.border_width;
     let sides = dsc.border_side;
 
-    // Draw each side
-    for y in area.y1..=area.y2 {
-        for x in area.x1..=area.x2 {
-            let rel_x = x - area.x1;
-            let rel_y = y - area.y1;
-            let rel_x_end = area.x2 - x;
-            let rel_y_end = area.y2 - y;
+    // Calculate inner area (LVGL logic)
+    let inner_area = Area::new(
+        area.x1 + if sides.has_left() { bw } else { -(bw + rout) },
+        area.y1 + if sides.has_top() { bw } else { -(bw + rout) },
+        area.x2 - if sides.has_right() { bw } else { -(bw + rout) },
+        area.y2 - if sides.has_bottom() { bw } else { -(bw + rout) },
+    );
+    let rin = (rout - bw).max(0);
 
-            let mut is_border = false;
+    // If no radius, use simple border
+    if rout == 0 && rin == 0 {
+        draw_border_simple(rast, dsc, area, &inner_area);
+        return;
+    }
 
-            // Check if this pixel is on a border edge
-            if sides.has_top() && rel_y < bw {
-                is_border = true;
+    // Complex border with radius
+    draw_border_complex(rast, dsc, area, &inner_area, rout, rin);
+}
+
+/// Simple border without rounded corners
+fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, inner: &Area) {
+    let sides = dsc.border_side;
+    
+    // Top edge
+    if sides.has_top() && outer.y1 <= inner.y1 {
+        for y in outer.y1..inner.y1 {
+            for x in outer.x1..=outer.x2 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
-            if sides.has_bottom() && rel_y_end < bw {
-                is_border = true;
+        }
+    }
+    
+    // Bottom edge
+    if sides.has_bottom() && outer.y2 >= inner.y2 {
+        for y in (inner.y2 + 1)..=outer.y2 {
+            for x in outer.x1..=outer.x2 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
-            if sides.has_left() && rel_x < bw {
-                is_border = true;
+        }
+    }
+    
+    // Left edge
+    if sides.has_left() && outer.x1 <= inner.x1 {
+        for y in inner.y1..=inner.y2 {
+            for x in outer.x1..inner.x1 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
-            if sides.has_right() && rel_x_end < bw {
-                is_border = true;
+        }
+    }
+    
+    // Right edge
+    if sides.has_right() && outer.x2 >= inner.x2 {
+        for y in inner.y1..=inner.y2 {
+            for x in (inner.x2 + 1)..=outer.x2 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+            }
+        }
+    }
+}
+
+/// Complex border with rounded corners (LVGL approach)
+fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, inner: &Area, rout: i32, rin: i32) {
+    let sides = dsc.border_side;
+    
+    // Create masks
+    let inner_mask = RadiusMask::new(*inner, rin, true);
+    let outer_mask = if rout > 0 {
+        Some(RadiusMask::new(*outer, rout, false))
+    } else {
+        None
+    };
+
+    // Calculate core area (non-rounded part)
+    let core_area = Area::new(
+        outer.x1.max(outer.x1 + rout).max(inner.x1),
+        outer.y1.max(outer.y1 + rout).max(inner.y1),
+        outer.x2.min(outer.x2 - rout).min(inner.x2),
+        outer.y2.min(outer.y2 - rout).min(inner.y2),
+    );
+
+    let top_side = outer.y1 <= inner.y1;
+    let bottom_side = outer.y2 >= inner.y2;
+    let left_side = outer.x1 <= inner.x1;
+    let right_side = outer.x2 >= inner.x2;
+
+    // Draw straight edges without masks (LVGL optimization)
+    if top_side && core_area.x1 <= core_area.x2 {
+        for y in outer.y1..inner.y1 {
+            for x in core_area.x1..=core_area.x2 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+            }
+        }
+    }
+
+    if bottom_side && core_area.x1 <= core_area.x2 {
+        for y in (inner.y2 + 1)..=outer.y2 {
+            for x in core_area.x1..=core_area.x2 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+            }
+        }
+    }
+
+    if left_side && core_area.y1 <= core_area.y2 {
+        for y in core_area.y1..=core_area.y2 {
+            for x in outer.x1..inner.x1 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+            }
+        }
+    }
+
+    if right_side && core_area.y1 <= core_area.y2 {
+        for y in core_area.y1..=core_area.y2 {
+            for x in (inner.x2 + 1)..=outer.x2 {
+                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+            }
+        }
+    }
+
+    // Draw corners with masks
+    // Background is already drawn by draw_bg(), we only need to draw the border on top
+    let corner_width = (outer.x2 - outer.x1 + 1) as usize;
+    let mut border_mask_buf: alloc::vec::Vec<Opa> = alloc::vec![255; corner_width];
+
+    // Top corners (left and right)
+    if (top_side && left_side) || (top_side && right_side) {
+        for y in outer.y1..core_area.y1 {
+            // Calculate border mask (inner + outer)
+            for m in border_mask_buf.iter_mut() { *m = 255; }
+            inner_mask.apply_to_line(y, outer.x1, &mut border_mask_buf);
+            if let Some(ref om) = outer_mask {
+                om.apply_to_line(y, outer.x1, &mut border_mask_buf);
             }
 
-            if !is_border {
-                continue;
-            }
-
-            // Apply radius masking if needed
-            let mask_val = if radius > 0 {
-                // For borders, we need to check if we're in the border ring
-                let outer_mask = RadiusMask::new(*area, radius, false);
+            // Draw border pixels (LVGL draws even at mask=0 to preserve color info)
+            for x in outer.x1..=outer.x2 {
+                let border_m = border_mask_buf[(x - outer.x1) as usize];
                 
-                // LVGL adjusts inner area based on enabled sides:
-                // - Enabled sides: shrink by border_width
-                // - Disabled sides: expand by -(border_width + radius) to exclude those areas
-                let inner_area = Area::new(
-                    area.x1 + if sides.has_left() { bw } else { -(bw + radius) },
-                    area.y1 + if sides.has_top() { bw } else { -(bw + radius) },
-                    area.x2 - if sides.has_right() { bw } else { -(bw + radius) },
-                    area.y2 - if sides.has_bottom() { bw } else { -(bw + radius) },
-                );
-                let inner_radius = (radius - bw).max(0);
-                let inner_mask = RadiusMask::new(inner_area, inner_radius, true);
+                // Always draw border in border area (LVGL non-premultiplied alpha behavior)
+                // Even at mask=0, this preserves the border color information
+                let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                rast.blend_pixel(x, y, dsc.border_color, border_opa);
+            }
+        }
+    }
 
-                let outer_val = outer_mask.get_mask_value(x, y);
-                let inner_val = inner_mask.get_mask_value(x, y);
+    // Bottom corners (left and right)
+    if (bottom_side && left_side) || (bottom_side && right_side) {
+        for y in (core_area.y2 + 1)..=outer.y2 {
+            // Calculate border mask (inner + outer)
+            for m in border_mask_buf.iter_mut() { *m = 255; }
+            inner_mask.apply_to_line(y, outer.x1, &mut border_mask_buf);
+            if let Some(ref om) = outer_mask {
+                om.apply_to_line(y, outer.x1, &mut border_mask_buf);
+            }
 
-                // Border is where outer is visible but inner is not
-                ((outer_val as u32 * inner_val as u32) / 255) as Opa
-            } else {
-                OPA_COVER
-            };
-
-            // Draw even if mask_val == 0 to preserve color info (non-premultiplied alpha)
-            rast.blend_pixel(x, y, dsc.border_color, ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa);
+            // Draw border pixels (LVGL draws even at mask=0 to preserve color info)
+            for x in outer.x1..=outer.x2 {
+                let border_m = border_mask_buf[(x - outer.x1) as usize];
+                
+                // Always draw border in border area (LVGL non-premultiplied alpha behavior)
+                // Even at mask=0, this preserves the border color information
+                let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                rast.blend_pixel(x, y, dsc.border_color, border_opa);
+            }
         }
     }
 }

@@ -13,6 +13,11 @@ pub struct CircleCache {
     x_start_on_y: Vec<u16>,   // Starting x coordinate for each y
 }
 
+pub struct CircleLineData {
+    pub x_start: i32,
+    pub opa: Vec<u8>,
+}
+
 impl CircleCache {
     /// Create a new circle cache for the given radius
     /// This matches LVGL's circ_calc_aa4 function
@@ -199,7 +204,15 @@ impl CircleCache {
         let x_start = self.x_start_on_y[y] as i32;
         Some((&self.cir_opa[start..end], x_start))
     }
-
+    
+    /// Get circle line data as a struct (for debugging)
+    pub fn get_line_data(&self, y: i32) -> Option<CircleLineData> {
+        let (opa_slice, x_start) = self.get_line(y)?;
+        Some(CircleLineData {
+            x_start,
+            opa: opa_slice.to_vec(),
+        })
+    }
     pub fn radius(&self) -> i32 {
         self.radius
     }

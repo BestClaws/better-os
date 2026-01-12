@@ -140,6 +140,17 @@ static void generate_rectangles(void) {
             char name[128];
             snprintf(name, sizeof(name), "rect_border_w%d_%s", border_widths[w], border_side_names[s]);
             lv_draw_rect(&layer, &rect_dsc, &area);
+            
+            // Debug: print pixel at (26,30) for w1_full
+            if (w == 0 && s == 0) {
+                const uint8_t *buf = lv_canvas_get_buf(canvas);
+                uint32_t *pixels = (uint32_t*)buf;
+                uint32_t pixel_26_30 = pixels[30 * SPRITE_WIDTH + 26];
+                uint8_t *rgba = (uint8_t*)&pixel_26_30;
+                printf("LVGL pixel (26,30): ARGB=0x%08x = (%d,%d,%d,%d)\n", 
+                       pixel_26_30, rgba[2], rgba[1], rgba[0], rgba[3]);
+            }
+            
             capture_sprite(name);
         }
     }
