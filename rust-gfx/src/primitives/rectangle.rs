@@ -247,11 +247,15 @@ fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             let mask_val = if radius > 0 {
                 // For borders, we need to check if we're in the border ring
                 let outer_mask = RadiusMask::new(*area, radius, false);
+                
+                // LVGL adjusts inner area based on enabled sides:
+                // - Enabled sides: shrink by border_width
+                // - Disabled sides: expand by -(border_width + radius) to exclude those areas
                 let inner_area = Area::new(
-                    area.x1 + bw,
-                    area.y1 + bw,
-                    area.x2 - bw,
-                    area.y2 - bw,
+                    area.x1 + if sides.has_left() { bw } else { -(bw + radius) },
+                    area.y1 + if sides.has_top() { bw } else { -(bw + radius) },
+                    area.x2 - if sides.has_right() { bw } else { -(bw + radius) },
+                    area.y2 - if sides.has_bottom() { bw } else { -(bw + radius) },
                 );
                 let inner_radius = (radius - bw).max(0);
                 let inner_mask = RadiusMask::new(inner_area, inner_radius, true);
