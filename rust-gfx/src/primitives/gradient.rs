@@ -37,17 +37,21 @@ pub fn gradient_get_color(
             }
         }
         GradDir::Radial => {
-            // Radial gradient from center
+            // Radial gradient from center (needs actual distance, not squared)
             let dx = x - cx;
             let dy = y - cy;
             let dist_sq = dx * dx + dy * dy;
-            let max_radius = ((width.max(height)) / 2).max(1);
-            let max_dist_sq = max_radius * max_radius;
             
-            if dist_sq >= max_dist_sq {
+            // Max radius is max(width, height) to reach furthest edge
+            let max_radius = width.max(height).max(1);
+            
+            // Use sqrt for actual distance
+            let dist = crate::math::sqrt32(dist_sq as u32) as i32;
+            
+            if dist >= max_radius {
                 255
             } else {
-                frac_255(dist_sq, max_dist_sq)
+                frac_255(dist, max_radius)
             }
         }
         GradDir::Conical => {

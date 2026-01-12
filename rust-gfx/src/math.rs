@@ -19,6 +19,12 @@ pub fn isqrt(n: u32) -> u32 {
     x
 }
 
+/// Alias for isqrt matching LVGL's naming
+#[inline]
+pub fn sqrt32(n: u32) -> u32 {
+    isqrt(n)
+}
+
 /// Fast atan2 in degrees (matching LVGL's implementation)
 /// Returns angle in range [0, 360)
 #[inline]
