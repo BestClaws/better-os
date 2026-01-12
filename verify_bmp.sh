@@ -5,6 +5,18 @@
 SPRITES_DIR="rust-gfx/sprites"
 REFERENCE_DIR="reference_sprites"
 
+# Check if sprites/ exists in the wrong place (adjacent to this script)
+if [ -d "sprites" ]; then
+    echo "FAILED:"
+    echo "Error: sprites/ directory found in project root!" >&2
+    echo "This is WRONG! Sprites should be in rust-gfx/sprites/, not in the project root." >&2
+    echo "Please delete the incorrect sprites/ directory:" >&2
+    echo "  rm -rf sprites" >&2
+    echo "Then regenerate sprites from the correct location:" >&2
+    echo "  cd rust-gfx && cargo run --release --bin sprite_generator" >&2
+    exit 1
+fi
+
 # Check if directories exist
 if [ ! -d "$SPRITES_DIR" ]; then
     echo "FAILED:"
