@@ -7,7 +7,7 @@ use rust_gfx::{Area, BorderSide, GradDir, OPA_COVER, OPA_70, OPA_50, OPA_30, RAD
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 
 const SPRITE_X: i32 = 20;
 const SPRITE_Y: i32 = 30;
@@ -21,16 +21,19 @@ pub async fn gfx_bench_app(context: AppContext) {
     loop {
         // 0-19: Solid rectangles with various radius and colors
         let radii = [0, 5, 10, 20, RADIUS_CIRCLE];
+        let radius_names = ["r0", "r5", "r10", "r20", "rcircle"];
         let colors = [
             Rgba8888::rgb(255, 100, 100),
             Rgba8888::rgb(100, 255, 100),
             Rgba8888::rgb(100, 100, 255),
             Rgba8888::rgb(255, 255, 100),
         ];
+        let color_names = ["red", "green", "blue", "yellow"];
         
         for r in 0..5 {
             for c in 0..4 {
                 if !context.is_focused().await { continue; }
+                let start = Instant::now();
                 context.draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                     let mut dsc = RectDsc::new();
@@ -39,6 +42,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                     dsc.bg_color = colors[c];
                     draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
                 }).await;
+                info!("rect_solid_{}_{}: {} us", radius_names[r], color_names[c], start.elapsed().as_micros());
                 Timer::after(Duration::from_millis(100)).await;
             }
         }
@@ -48,6 +52,7 @@ pub async fn gfx_bench_app(context: AppContext) {
         for &radius in grad_radii.iter() {
             // Horizontal gradient
             if !context.is_focused().await { continue; }
+            let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let mut dsc = RectDsc::new();
@@ -58,12 +63,14 @@ pub async fn gfx_bench_app(context: AppContext) {
                 dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
                 draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
             }).await;
+            info!("rect_grad_hor_r{}: {} us", radius, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
         
         for &radius in grad_radii.iter() {
             // Vertical gradient
             if !context.is_focused().await { continue; }
+            let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let mut dsc = RectDsc::new();
@@ -74,11 +81,13 @@ pub async fn gfx_bench_app(context: AppContext) {
                 dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
                 draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
             }).await;
+            info!("rect_grad_ver_r{}: {} us", radius, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
         
         // 44: Border w10 full
         if !context.is_focused().await { continue; }
+        let start = Instant::now();
         context.draw(|surface| {
             surface.clear(Rgba8888::rgba(0, 0, 0, 255));
             let mut dsc = RectDsc::new();
@@ -91,12 +100,14 @@ pub async fn gfx_bench_app(context: AppContext) {
             dsc.border_side = BorderSide::FULL;
             draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
         }).await;
+        info!("rect_border_w10_full: {} us", start.elapsed().as_micros());
         Timer::after(Duration::from_millis(100)).await;
         
         // 60-63: Opacity tests
-        let opacities = [OPA_COVER, OPA_70, OPA_50, OPA_30];
-        for &opa in opacities.iter() {
+        let opacities = [(OPA_COVER, "100"), (OPA_70, "70"), (OPA_50, "50"), (OPA_30, "30")];
+        for &(opa, name) in opacities.iter() {
             if !context.is_focused().await { continue; }
+            let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let mut dsc = RectDsc::new();
@@ -105,6 +116,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                 dsc.bg_opa = opa;
                 draw_rect(surface, &dsc, &Area::new(SPRITE_X, SPRITE_Y, SPRITE_X + SPRITE_W - 1, SPRITE_Y + SPRITE_H - 1));
             }).await;
+            info!("rect_opa{}: {} us", name, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
         
@@ -113,6 +125,7 @@ pub async fn gfx_bench_app(context: AppContext) {
         for &width in line_widths.iter() {
             // Horizontal
             if !context.is_focused().await { continue; }
+            let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let mut dsc = LineDsc::new(Point::new(15, 62), Point::new(87, 62));
@@ -120,12 +133,14 @@ pub async fn gfx_bench_app(context: AppContext) {
                 dsc.color = Rgba8888::WHITE;
                 draw_line(surface, &dsc);
             }).await;
+            info!("line_hor_w{}: {} us", width, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
         
         for &width in line_widths.iter() {
             // Vertical
             if !context.is_focused().await { continue; }
+            let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let mut dsc = LineDsc::new(Point::new(50, 30), Point::new(50, 95));
@@ -133,13 +148,15 @@ pub async fn gfx_bench_app(context: AppContext) {
                 dsc.color = Rgba8888::WHITE;
                 draw_line(surface, &dsc);
             }).await;
+            info!("line_ver_w{}: {} us", width, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
         
         // 117-119: Line opacity tests
-        let line_opas = [OPA_COVER, OPA_70, 102]; // OPA_40 = 102
-        for &opa in line_opas.iter() {
+        let line_opas = [(OPA_COVER, "100"), (OPA_70, "70"), (102, "40")]; // OPA_40 = 102
+        for &(opa, name) in line_opas.iter() {
             if !context.is_focused().await { continue; }
+            let start = Instant::now();
             context.draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
                 let mut dsc = LineDsc::new(Point::new(15, 62), Point::new(87, 62));
@@ -148,6 +165,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                 dsc.opa = opa;
                 draw_line(surface, &dsc);
             }).await;
+            info!("line_opa{}: {} us", name, start.elapsed().as_micros());
             Timer::after(Duration::from_millis(100)).await;
         }
     }
