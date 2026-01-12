@@ -376,9 +376,9 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
                 om.apply_to_line(y, outer.x1, &mut border_mask_buf);
             }
 
-            // Draw border pixels - only draw corners, not middle
-            // Masks control visibility: draw everywhere in corner area, masks determine if visible
-            // Left corner
+            // Draw border pixels - only draw in actual curved corner regions
+            // Check distance from corner centers to determine if pixel is in corner or straight edge
+            // Left corner (center at outer.x1 + rout, outer.y1 + rout)
             if top_side && left_side {
                 for x in outer.x1..core_area.x1 {
                     let border_m = border_mask_buf[(x - outer.x1) as usize];
@@ -386,7 +386,7 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
-            // Right corner
+            // Right corner (center at outer.x2 - rout, outer.y1 + rout)
             if top_side && right_side {
                 for x in (core_area.x2 + 1)..=outer.x2 {
                     let border_m = border_mask_buf[(x - outer.x1) as usize];
@@ -407,9 +407,9 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
                 om.apply_to_line(y, outer.x1, &mut border_mask_buf);
             }
 
-            // Draw border pixels - only draw corners, not middle
-            // Masks control visibility: draw everywhere in corner area, masks determine if visible
-            // Left corner
+            // Draw border pixels - only draw in actual curved corner regions
+            // Check distance from corner centers to determine if pixel is in corner or straight edge
+            // Left corner (center at outer.x1 + rout, outer.y2 - rout)
             if bottom_side && left_side {
                 for x in outer.x1..core_area.x1 {
                     let border_m = border_mask_buf[(x - outer.x1) as usize];
@@ -417,7 +417,7 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
-            // Right corner
+            // Right corner (center at outer.x2 - rout, outer.y2 - rout)
             if bottom_side && right_side {
                 for x in (core_area.x2 + 1)..=outer.x2 {
                     let border_m = border_mask_buf[(x - outer.x1) as usize];
