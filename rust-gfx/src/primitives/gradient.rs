@@ -37,30 +37,22 @@ pub fn gradient_get_color(
             }
         }
         GradDir::Radial => {
-            // Radial gradient from center (needs actual distance, not squared)
-            let dx = x - cx;
-            let dy = y - cy;
-            let dist_sq = dx * dx + dy * dy;
-            
-            // Max radius is max(width, height) to reach furthest edge
-            let max_radius = width.max(height).max(1);
-            
-            // Use sqrt for actual distance
-            let dist = crate::math::sqrt32(dist_sq as u32) as i32;
-            
-            if dist >= max_radius {
+            // In LVGL simple mode (LV_USE_DRAW_SW_COMPLEX_GRADIENTS=0), radial gradients
+            // fall back to horizontal gradients. Match this behavior.
+            if width <= 1 {
                 255
             } else {
-                frac_255(dist, max_radius)
+                frac_255(x, width - 1)
             }
         }
         GradDir::Conical => {
-            // Conical gradient (angle-based)
-            let dx = x - cx;
-            let dy = y - cy;
-            let angle = atan2_deg(dy, dx);
-            // Map [0, 360) to [0, 255]
-            ((angle * 255) / 360) as u8
+            // In LVGL simple mode (LV_USE_DRAW_SW_COMPLEX_GRADIENTS=0), conical gradients  
+            // fall back to horizontal gradients. Match this behavior.
+            if width <= 1 {
+                255
+            } else {
+                frac_255(x, width - 1)
+            }
         }
     };
 
