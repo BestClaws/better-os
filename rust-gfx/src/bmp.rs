@@ -1,17 +1,25 @@
 /// BMP file output matching SDL_SaveBMP format
 /// Generates 32-bit ARGB8888 BMP files with BI_BITFIELDS compression
+#[cfg(feature = "std")]
 use std::fs::File;
+#[cfg(feature = "std")]
 use std::io::{self, Write};
+#[cfg(feature = "std")]
 use std::path::Path;
 
+#[cfg(feature = "std")]
 use crate::canvas::Canvas;
 
+#[cfg(feature = "std")]
 const BMP_FILE_HEADER_SIZE: usize = 14;
+#[cfg(feature = "std")]
 const BMP_INFO_HEADER_V4_SIZE: usize = 108;
+#[cfg(feature = "std")]
 const BMP_PIXEL_DATA_OFFSET: usize = BMP_FILE_HEADER_SIZE + BMP_INFO_HEADER_V4_SIZE;
 
 /// Save canvas as BMP file, matching SDL_SaveBMP output exactly
 /// This ensures our checksums match the reference sprites
+#[cfg(feature = "std")]
 pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
     let mut file = File::create(path)?;
 
@@ -72,7 +80,7 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "std", test))]
 mod tests {
     use super::*;
     use crate::color_argb::Argb8888;

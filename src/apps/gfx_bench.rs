@@ -288,9 +288,10 @@ fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
             arc.draw(surface);
         }
         ShapeType::Text => {
-            let mut text = Text::new(w / 2 - 24, h / 2 + 10, "12:34");
-            text = text.color(Rgba8888::rgba(255, 255, 255, alpha));
-            text.draw(surface);
+            // TODO: Text rendering not yet implemented in new API
+            // let mut text = Text::new(w / 2 - 24, h / 2 + 10, "12:34");
+            // text = text.color(Rgba8888::rgba(255, 255, 255, alpha));
+            // text.draw(surface);
         }
     }
 }

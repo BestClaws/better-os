@@ -6,7 +6,7 @@ use crate::apps::arrow::arrow_app;
 use crate::apps::discord::discord_app;
 // TODO: Re-enable after HPS integration complete
 // use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
-// use crate::apps::gfx_bench::gfx_bench_app; // Disabled - uses Text
+use crate::apps::gfx_bench::gfx_bench_app; // Disabled - uses Text
 use crate::apps::gray_test::gray_test_app;
 use crate::apps::rect::rect_app;
 // use crate::apps::text_demo::text_demo_app; // Disabled - uses Text
@@ -37,11 +37,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 5,
     //     spawn_fn: spawn_bluetooth_scanner_app,
     // },
-    // AppDescriptor {
-    //     name: "GFX Benchmark",
-    //     id: 2,
-    //     spawn_fn: spawn_gfx_bench_app,
-    // },
+    AppDescriptor {
+        name: "GFX Benchmark",
+        id: 2,
+        spawn_fn: spawn_gfx_bench_app,
+    },
     // AppDescriptor {
     //     name: "Text Demo",
     //     id: 4,
@@ -224,12 +224,12 @@ fn spawn_watch_app(
     spawner.spawn(watch_app(context))
 }
 
-// fn spawn_gfx_bench_app(
-//     spawner: Spawner,
-//     context: AppContext,
-// ) -> Result<(), embassy_executor::SpawnError> {
-//     spawner.spawn(gfx_bench_app(context))
-// }
+fn spawn_gfx_bench_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(gfx_bench_app(context))
+}
 
 fn spawn_rect_app(
     spawner: Spawner,

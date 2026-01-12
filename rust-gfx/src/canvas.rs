@@ -3,12 +3,19 @@
 use crate::color_argb::{Argb8888, blend_colors};
 use crate::types::{Area, Opa, OPA_COVER};
 
+#[cfg(feature = "std")]
+extern crate alloc;
+#[cfg(feature = "std")]
+use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
 pub struct Canvas {
     pub width: usize,
     pub height: usize,
     buffer: Vec<Argb8888>,
 }
 
+#[cfg(feature = "std")]
 impl Canvas {
     /// Create a new canvas with transparent background
     pub fn new(width: usize, height: usize) -> Self {

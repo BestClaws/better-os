@@ -1,8 +1,9 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
 // New LVGL-compatible modules
 pub mod color_argb;
 pub mod types;
+#[cfg(feature = "std")]
 pub mod canvas;
 pub mod math;
 pub mod primitives;
@@ -20,6 +21,7 @@ pub mod three_d;
 // New exports
 pub use color_argb::{Argb8888, blend_colors, lerp_color};
 pub use types::*;
+#[cfg(feature = "std")]
 pub use canvas::Canvas;
 
 // Legacy exports (deprecated)

@@ -1,7 +1,15 @@
 /// Label/text drawing (simplified stub for now)
+#[cfg(feature = "std")]
 use crate::canvas::Canvas;
+#[cfg(feature = "std")]
 use crate::color_argb::Argb8888;
+#[cfg(feature = "std")]
 use crate::types::*;
+
+#[cfg(feature = "std")]
+extern crate alloc;
+#[cfg(feature = "std")]
+use alloc::string::String;
 
 /// Text decoration
 #[derive(Copy, Clone, Debug, PartialEq)]
