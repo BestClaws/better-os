@@ -20,19 +20,20 @@ pub fn gradient_get_color(
     let frac = match grad.dir {
         GradDir::None => 0,
         GradDir::Hor => {
-            // Horizontal gradient across width
-            if width <= 0 {
-                0
+            // Horizontal gradient: map pixels 0..(width-1) to 0..255
+            // Last pixel (width-1) should map to 255
+            if width <= 1 {
+                255
             } else {
-                frac_255(x, width)
+                frac_255(x, width - 1)
             }
         }
         GradDir::Ver => {
-            // Vertical gradient across height
-            if height <= 0 {
-                0
+            // Vertical gradient: map pixels 0..(height-1) to 0..255
+            if height <= 1 {
+                255
             } else {
-                frac_255(y, height)
+                frac_255(y, height - 1)
             }
         }
         GradDir::Radial => {
