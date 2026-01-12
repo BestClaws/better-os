@@ -1,5 +1,5 @@
 /// Gradient computation matching LVGL's system
-use crate::color_argb::{Argb8888, lerp_color};
+use crate::color::{Rgba8888, lerp_color};
 use crate::types::{GradDir, Gradient, Opa};
 use crate::math::{atan2_deg, frac_255};
 
@@ -12,7 +12,7 @@ pub fn gradient_get_color(
     height: i32,
     cx: i32,
     cy: i32,
-) -> (Argb8888, Opa) {
+) -> (Rgba8888, Opa) {
     if grad.stops_count < 2 {
         return (grad.stops[0].color, grad.stops[0].opa);
     }
@@ -68,7 +68,7 @@ pub fn gradient_get_color(
 
 /// Get gradient color for horizontal gradients (optimized)
 #[inline]
-pub fn gradient_get_color_hor(grad: &Gradient, x: i32, width: i32) -> (Argb8888, Opa) {
+pub fn gradient_get_color_hor(grad: &Gradient, x: i32, width: i32) -> (Rgba8888, Opa) {
     if width <= 0 {
         return (grad.stops[0].color, grad.stops[0].opa);
     }
@@ -80,7 +80,7 @@ pub fn gradient_get_color_hor(grad: &Gradient, x: i32, width: i32) -> (Argb8888,
 
 /// Get gradient color for vertical gradients (optimized)
 #[inline]
-pub fn gradient_get_color_ver(grad: &Gradient, y: i32, height: i32) -> (Argb8888, Opa) {
+pub fn gradient_get_color_ver(grad: &Gradient, y: i32, height: i32) -> (Rgba8888, Opa) {
     if height <= 0 {
         return (grad.stops[0].color, grad.stops[0].opa);
     }
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_horizontal_gradient() {
-        let grad = Gradient::horizontal(Argb8888::RED, Argb8888::BLUE);
+        let grad = Gradient::horizontal(Rgba8888::RED, Rgba8888::BLUE);
         
         // At start, should be red
         let (color, _) = gradient_get_color_hor(&grad, 0, 100);

@@ -1,5 +1,9 @@
 /// BMP file output matching SDL_SaveBMP format
 /// Generates 32-bit ARGB8888 BMP files with BI_BITFIELDS compression
+
+#[cfg(feature = "std")]
+extern crate std;
+
 #[cfg(feature = "std")]
 use std::fs::File;
 #[cfg(feature = "std")]
@@ -64,16 +68,20 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
     file.write_all(&[0u8; 12])?;
 
     // Write pixel data (bottom-up, as BMP format requires)
-    let raw_data = canvas.as_raw_argb();
+    // Convert from Rgba8888 (0xRRGGBBAA) to ARGB8888 (0xAARRGGBB) for BMP
     
     for y in (0..height).rev() {
         let row_start = (y * width) as usize;
         let row_end = row_start + width as usize;
-        let row = &raw_data[row_start..row_end];
+        let row = &canvas.buffer()[row_start..row_end];
         
-        // Write as ARGB bytes (matching our Argb8888 format)
+        // Write as ARGB bytes (convert from Rgba8888)
         for &pixel in row {
-            file.write_all(&pixel.to_le_bytes())?;
+            let argb = ((pixel.a() as u32) << 24)
+                     | ((pixel.r() as u32) << 16)
+                     | ((pixel.g() as u32) << 8)
+                     | (pixel.b() as u32);
+            file.write_all(&argb.to_le_bytes())?;
         }
     }
 
@@ -83,12 +91,12 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
 #[cfg(all(feature = "std", test))]
 mod tests {
     use super::*;
-    use crate::color_argb::Argb8888;
+    use crate::color::Rgba8888;
 
     #[test]
     fn test_bmp_save() {
         let mut canvas = Canvas::new(102, 125);
-        canvas.clear(Argb8888::RED);
+        canvas.clear(Rgba8888::RED);
         
         // Test save (comment out to avoid file I/O in tests)
         // save_bmp(&canvas, "test_output.bmp").unwrap();

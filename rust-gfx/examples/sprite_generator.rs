@@ -47,10 +47,10 @@ fn generate_rectangles(sprite_index: &mut usize) {
     let radii = [0, 5, 10, 20, RADIUS_CIRCLE];
     let radius_names = ["r0", "r5", "r10", "r20", "rcircle"];
     let colors = [
-        Argb8888::rgb(255, 100, 100),
-        Argb8888::rgb(100, 255, 100),
-        Argb8888::rgb(100, 100, 255),
-        Argb8888::rgb(255, 255, 100),
+        Rgba8888::rgb(255, 100, 100),
+        Rgba8888::rgb(100, 255, 100),
+        Rgba8888::rgb(100, 100, 255),
+        Rgba8888::rgb(255, 255, 100),
     ];
     let color_names = ["red", "green", "blue", "yellow"];
 
@@ -58,7 +58,7 @@ fn generate_rectangles(sprite_index: &mut usize) {
     for r in 0..5 {
         for c in 0..4 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let mut dsc = RectDsc::new();
             dsc.radius = radii[r];
@@ -80,22 +80,22 @@ fn generate_rectangles(sprite_index: &mut usize) {
     for g in 0..4 {
         for r in 0..3 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let mut dsc = RectDsc::new();
             dsc.radius = radii[r];
             dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Argb8888::rgb(255, 0, 0);
+            dsc.bg_color = Rgba8888::rgb(255, 0, 0);
             dsc.bg_grad = Gradient {
                 dir: grad_dirs[g],
                 stops: [
                     GradStop {
-                        color: Argb8888::rgb(255, 0, 0),
+                        color: Rgba8888::rgb(255, 0, 0),
                         opa: OPA_COVER,
                         frac: 0,
                     },
                     GradStop {
-                        color: Argb8888::rgb(0, 0, 255),
+                        color: Rgba8888::rgb(0, 0, 255),
                         opa: OPA_COVER,
                         frac: 255,
                     },
@@ -124,15 +124,15 @@ fn generate_rectangles(sprite_index: &mut usize) {
     for w in 0..4 {
         for s in 0..4 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let mut dsc = RectDsc::new();
             dsc.radius = 10;
             dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Argb8888::rgb(50, 50, 50);
+            dsc.bg_color = Rgba8888::rgb(50, 50, 50);
             dsc.border_opa = OPA_COVER;
             dsc.border_width = border_widths[w];
-            dsc.border_color = Argb8888::rgb(255, 255, 0);
+            dsc.border_color = Rgba8888::rgb(255, 255, 0);
             dsc.border_side = border_sides[s];
 
             let area = Area::new(20, 30, 82, 95);
@@ -149,18 +149,18 @@ fn generate_rectangles(sprite_index: &mut usize) {
     for i in 0..4 {
         for r in 0..2 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let mut dsc = RectDsc::new();
             dsc.radius = if r == 0 { 0 } else { 15 };
             dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Argb8888::rgb(200, 200, 200);
+            dsc.bg_color = Rgba8888::rgb(200, 200, 200);
             dsc.shadow_opa = OPA_50;
             dsc.shadow_width = shadow_configs[i][0];
             dsc.shadow_offset_x = shadow_configs[i][1];
             dsc.shadow_offset_y = shadow_configs[i][1];
             dsc.shadow_spread = shadow_configs[i][2];
-            dsc.shadow_color = Argb8888::rgb(0, 0, 0);
+            dsc.shadow_color = Rgba8888::rgb(0, 0, 0);
 
             let area = Area::new(25, 35, 77, 90);
             draw_rect(&mut canvas, &dsc, &area);
@@ -181,16 +181,16 @@ fn generate_rectangles(sprite_index: &mut usize) {
 
     for i in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let mut dsc = RectDsc::new();
         dsc.radius = 8;
         dsc.bg_opa = OPA_COVER;
-        dsc.bg_color = Argb8888::rgb(150, 150, 150);
+        dsc.bg_color = Rgba8888::rgb(150, 150, 150);
         dsc.outline_opa = OPA_COVER;
         dsc.outline_width = outline_configs[i][0];
         dsc.outline_pad = outline_configs[i][1];
-        dsc.outline_color = Argb8888::rgb(0, 255, 255);
+        dsc.outline_color = Rgba8888::rgb(0, 255, 255);
 
         let area = Area::new(30, 40, 72, 85);
         draw_rect(&mut canvas, &dsc, &area);
@@ -205,12 +205,12 @@ fn generate_rectangles(sprite_index: &mut usize) {
 
     for o in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let mut dsc = RectDsc::new();
         dsc.radius = 12;
         dsc.bg_opa = opas[o];
-        dsc.bg_color = Argb8888::rgb(255, 150, 50);
+        dsc.bg_color = Rgba8888::rgb(255, 150, 50);
 
         let area = Area::new(20, 30, 82, 95);
         draw_rect(&mut canvas, &dsc, &area);
@@ -239,17 +239,17 @@ fn generate_triangles(sprite_index: &mut usize) {
     let tri_orient_names = ["up", "down", "left", "right", "equi", "rightangle"];
 
     let tri_colors = [
-        Argb8888::rgb(255, 100, 100),
-        Argb8888::rgb(100, 255, 100),
-        Argb8888::rgb(100, 100, 255),
-        Argb8888::rgb(255, 255, 100),
+        Rgba8888::rgb(255, 100, 100),
+        Rgba8888::rgb(100, 255, 100),
+        Rgba8888::rgb(100, 100, 255),
+        Rgba8888::rgb(255, 255, 100),
     ];
     let tri_color_names = ["red", "green", "blue", "yellow"];
 
     for t in 0..6 {
         for c in 0..4 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let dsc = TriangleDsc {
                 p1: triangles[t][0],
@@ -274,24 +274,24 @@ fn generate_triangles(sprite_index: &mut usize) {
     for g in 0..2 {
         for t in 0..3 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let dsc = TriangleDsc {
                 p1: triangles[t][0],
                 p2: triangles[t][1],
                 p3: triangles[t][2],
-                color: Argb8888::WHITE,
+                color: Rgba8888::WHITE,
                 opa: OPA_COVER,
                 grad: Gradient {
                     dir: grad_dirs[g],
                     stops: [
                         GradStop {
-                            color: Argb8888::rgb(255, 0, 255),
+                            color: Rgba8888::rgb(255, 0, 255),
                             opa: OPA_COVER,
                             frac: 0,
                         },
                         GradStop {
-                            color: Argb8888::rgb(0, 255, 255),
+                            color: Rgba8888::rgb(0, 255, 255),
                             opa: OPA_COVER,
                             frac: 255,
                         },
@@ -313,13 +313,13 @@ fn generate_triangles(sprite_index: &mut usize) {
 
     for o in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = TriangleDsc {
             p1: triangles[0][0],
             p2: triangles[0][1],
             p3: triangles[0][2],
-            color: Argb8888::rgb(255, 128, 0),
+            color: Rgba8888::rgb(255, 128, 0),
             opa: opas[o],
             grad: Gradient::none(),
         };
@@ -337,13 +337,13 @@ fn generate_lines(sprite_index: &mut usize) {
     // Horizontal
     for w in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = LineDsc {
             p1: Point::new(15, 62),
             p2: Point::new(87, 62),
             width: widths[w],
-            color: Argb8888::rgb(255, 255, 255),
+            color: Rgba8888::rgb(255, 255, 255),
             opa: OPA_COVER,
             dash_width: 0,
             dash_gap: 0,
@@ -360,13 +360,13 @@ fn generate_lines(sprite_index: &mut usize) {
     // Vertical
     for w in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = LineDsc {
             p1: Point::new(51, 25),
             p2: Point::new(51, 100),
             width: widths[w],
-            color: Argb8888::rgb(255, 255, 0),
+            color: Rgba8888::rgb(255, 255, 0),
             opa: OPA_COVER,
             dash_width: 0,
             dash_gap: 0,
@@ -383,13 +383,13 @@ fn generate_lines(sprite_index: &mut usize) {
     // Diagonal
     for w in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = LineDsc {
             p1: Point::new(20, 30),
             p2: Point::new(82, 95),
             width: widths[w],
-            color: Argb8888::rgb(0, 255, 255),
+            color: Rgba8888::rgb(0, 255, 255),
             opa: OPA_COVER,
             dash_width: 0,
             dash_gap: 0,
@@ -408,13 +408,13 @@ fn generate_lines(sprite_index: &mut usize) {
 
     for d in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = LineDsc {
             p1: Point::new(15, 62),
             p2: Point::new(87, 62),
             width: 3,
-            color: Argb8888::rgb(255, 100, 255),
+            color: Rgba8888::rgb(255, 100, 255),
             opa: OPA_COVER,
             dash_width: dash_configs[d][0],
             dash_gap: dash_configs[d][1],
@@ -434,13 +434,13 @@ fn generate_lines(sprite_index: &mut usize) {
 
     for c in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = LineDsc {
             p1: Point::new(20, 40),
             p2: Point::new(82, 85),
             width: 8,
-            color: Argb8888::rgb(100, 255, 100),
+            color: Rgba8888::rgb(100, 255, 100),
             opa: OPA_COVER,
             dash_width: 0,
             dash_gap: 0,
@@ -460,13 +460,13 @@ fn generate_lines(sprite_index: &mut usize) {
 
     for o in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = LineDsc {
             p1: Point::new(15, 62),
             p2: Point::new(87, 62),
             width: 5,
-            color: Argb8888::rgb(255, 50, 50),
+            color: Rgba8888::rgb(255, 50, 50),
             opa: opas[o],
             dash_width: 0,
             dash_gap: 0,
@@ -490,7 +490,7 @@ fn generate_arcs(sprite_index: &mut usize) {
     for w in 0..3 {
         for a in 0..4 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             let dsc = ArcDsc {
                 center: Point::new(51, 62),
@@ -498,7 +498,7 @@ fn generate_arcs(sprite_index: &mut usize) {
                 start_angle: start_angles[a],
                 end_angle: start_angles[a] + 90,
                 width: widths[w],
-                color: Argb8888::rgb(255, 200, 0),
+                color: Rgba8888::rgb(255, 200, 0),
                 opa: OPA_COVER,
                 rounded: false,
             };
@@ -515,7 +515,7 @@ fn generate_arcs(sprite_index: &mut usize) {
 
     for s in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = ArcDsc {
             center: Point::new(51, 62),
@@ -523,7 +523,7 @@ fn generate_arcs(sprite_index: &mut usize) {
             start_angle: 0,
             end_angle: arc_spans[s],
             width: 8,
-            color: Argb8888::rgb(100, 255, 255),
+            color: Rgba8888::rgb(100, 255, 255),
             opa: OPA_COVER,
             rounded: false,
         };
@@ -537,7 +537,7 @@ fn generate_arcs(sprite_index: &mut usize) {
     // Rounded ends
     for w in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = ArcDsc {
             center: Point::new(51, 62),
@@ -545,7 +545,7 @@ fn generate_arcs(sprite_index: &mut usize) {
             start_angle: 45,
             end_angle: 225,
             width: widths[w],
-            color: Argb8888::rgb(255, 100, 255),
+            color: Rgba8888::rgb(255, 100, 255),
             opa: OPA_COVER,
             rounded: true,
         };
@@ -562,7 +562,7 @@ fn generate_arcs(sprite_index: &mut usize) {
 
     for o in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = ArcDsc {
             center: Point::new(51, 62),
@@ -570,7 +570,7 @@ fn generate_arcs(sprite_index: &mut usize) {
             start_angle: 0,
             end_angle: 270,
             width: 10,
-            color: Argb8888::rgb(255, 50, 50),
+            color: Rgba8888::rgb(255, 50, 50),
             opa: opas[o],
             rounded: false,
         };
@@ -583,16 +583,16 @@ fn generate_arcs(sprite_index: &mut usize) {
 
     // Different colors
     let colors = [
-        Argb8888::rgb(255, 0, 0),
-        Argb8888::rgb(0, 255, 0),
-        Argb8888::rgb(0, 0, 255),
-        Argb8888::rgb(255, 255, 0),
+        Rgba8888::rgb(255, 0, 0),
+        Rgba8888::rgb(0, 255, 0),
+        Rgba8888::rgb(0, 0, 255),
+        Rgba8888::rgb(255, 255, 0),
     ];
     let color_names = ["red", "green", "blue", "yellow"];
 
     for c in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         let dsc = ArcDsc {
             center: Point::new(51, 62),
@@ -620,11 +620,11 @@ fn generate_labels(sprite_index: &mut usize) {
 
     for t in 0..6 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
 
         // Placeholder: just draw a colored rectangle
         let area = Area::new(30, 50, 72, 75);
-        canvas.fill_area(&area, Argb8888::rgb(255, 255, 255), OPA_COVER);
+        canvas.fill_area(&area, Rgba8888::rgb(255, 255, 255), OPA_COVER);
 
         let name = format!("label_text_{}", text_names[t]);
         capture_sprite(&canvas, sprite_index, &name);
@@ -634,9 +634,9 @@ fn generate_labels(sprite_index: &mut usize) {
     // For now, generate placeholder sprites
     for _ in 0..16 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-        canvas.clear(Argb8888::TRANSPARENT);
+        canvas.clear(Rgba8888::TRANSPARENT);
         let area = Area::new(25, 50, 77, 75);
-        canvas.fill_area(&area, Argb8888::rgb(200, 200, 200), OPA_COVER);
+        canvas.fill_area(&area, Rgba8888::rgb(200, 200, 200), OPA_COVER);
         capture_sprite(&canvas, sprite_index, "label_placeholder");
     }
 }
@@ -651,16 +651,16 @@ fn generate_blurs(sprite_index: &mut usize) {
     for b in 0..4 {
         for c in 0..3 {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
-            canvas.clear(Argb8888::TRANSPARENT);
+            canvas.clear(Rgba8888::TRANSPARENT);
 
             // Draw a gradient rect (blur would be applied to this)
             let mut dsc = RectDsc::new();
             dsc.radius = corner_radii[c];
             dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Argb8888::rgb(255, 0, 0);
+            dsc.bg_color = Rgba8888::rgb(255, 0, 0);
             dsc.bg_grad = Gradient::horizontal(
-                Argb8888::rgb(255, 0, 0),
-                Argb8888::rgb(0, 0, 255),
+                Rgba8888::rgb(255, 0, 0),
+                Rgba8888::rgb(0, 0, 255),
             );
 
             let area = Area::new(20, 30, 82, 95);

@@ -1,5 +1,5 @@
 /// Core types for the graphics library matching LVGL's data structures
-use crate::color_argb::Argb8888;
+use crate::color::Rgba8888;
 
 /// Opacity type matching LVGL's lv_opa_t
 pub type Opa = u8;
@@ -25,7 +25,7 @@ pub enum GradDir {
 /// Gradient stop matching LVGL's gradient system
 #[derive(Copy, Clone, Debug)]
 pub struct GradStop {
-    pub color: Argb8888,
+    pub color: Rgba8888,
     pub opa: Opa,
     pub frac: u8,  // 0-255
 }
@@ -44,12 +44,12 @@ impl Gradient {
             dir: GradDir::None,
             stops: [
                 GradStop {
-                    color: Argb8888::WHITE,
+                    color: Rgba8888::WHITE,
                     opa: OPA_COVER,
                     frac: 0,
                 },
                 GradStop {
-                    color: Argb8888::BLACK,
+                    color: Rgba8888::BLACK,
                     opa: OPA_COVER,
                     frac: 255,
                 },
@@ -58,7 +58,7 @@ impl Gradient {
         }
     }
 
-    pub fn horizontal(start_color: Argb8888, end_color: Argb8888) -> Self {
+    pub fn horizontal(start_color: Rgba8888, end_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Hor,
             stops: [
@@ -77,7 +77,7 @@ impl Gradient {
         }
     }
 
-    pub fn vertical(start_color: Argb8888, end_color: Argb8888) -> Self {
+    pub fn vertical(start_color: Rgba8888, end_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Ver,
             stops: [
@@ -96,7 +96,7 @@ impl Gradient {
         }
     }
 
-    pub fn radial(inner_color: Argb8888, outer_color: Argb8888) -> Self {
+    pub fn radial(inner_color: Rgba8888, outer_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Radial,
             stops: [
@@ -115,7 +115,7 @@ impl Gradient {
         }
     }
 
-    pub fn conical(start_color: Argb8888, end_color: Argb8888) -> Self {
+    pub fn conical(start_color: Rgba8888, end_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Conical,
             stops: [

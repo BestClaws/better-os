@@ -7,10 +7,18 @@ pub trait Rasterizer {
     fn buffer_mut(&mut self) -> &mut [u8];
     fn mark_dirty(&mut self, min_x: i32, min_y: i32, max_x: i32, max_y: i32);
 
-    // New high-level, pixel-format-agnostic APIs (default: unimplemented)
-    fn blend_pixel(&mut self, _x: i32, _y: i32, _color: Rgba8888, _coverage: u8) {
-        // To be implemented by backends; shapes will adopt this API during migration.
-        unimplemented!("blend_pixel not implemented for this Rasterizer backend");
+    // New high-level, pixel-format-agnostic APIs
+    // Default implementations provided for basic functionality
+    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
+        // Default: bounds check only
+        if x < 0 || y < 0 || x >= self.width() as i32 || y >= self.height() as i32 {
+            return;
+        }
+        if coverage == 0 {
+            return;
+        }
+        // Subclasses should override this with format-specific implementation
+        unimplemented!("blend_pixel must be implemented by the rasterizer backend");
     }
 
     fn blend_hspan(&mut self, _x: i32, _y: i32, _colors: &[Rgba8888], _coverages: Option<&[u8]>) {
@@ -37,8 +45,16 @@ pub trait Rasterizer {
         unimplemented!("blend_vspan_with not implemented for this Rasterizer backend");
     }
 
-    fn fill_rect(&mut self, _x: i32, _y: i32, _w: i32, _h: i32, _color: Rgba8888) {
-        unimplemented!("fill_rect not implemented for this Rasterizer backend");
+    fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgba8888) {
+        // Default implementation using blend_pixel with full coverage
+        // Backends can override with optimized versions
+        let x2 = x + w;
+        let y2 = y + h;
+        for py in y..y2 {
+            for px in x..x2 {
+                self.blend_pixel(px, py, color, 255);
+            }
+        }
     }
 
     /// Unsafe escape hatch to raw buffer. Primitives should not use this.

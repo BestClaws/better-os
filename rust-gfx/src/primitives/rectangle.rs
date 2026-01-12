@@ -1,7 +1,7 @@
 /// Rectangle drawing matching LVGL's lv_draw_rect functionality
 /// Supports: solid fills, gradients, borders, shadows, outlines, rounded corners
-use crate::canvas::Canvas;
-use crate::color_argb::{Argb8888, blend_colors};
+use crate::Rasterizer;
+use crate::color::Rgba8888;
 use crate::types::*;
 use crate::primitives::{gradient::*, mask::RadiusMask};
 use crate::math::{aa_coverage_sq, dist_sq, isqrt};
@@ -10,7 +10,7 @@ use crate::math::{aa_coverage_sq, dist_sq, isqrt};
 #[derive(Clone, Debug)]
 pub struct RectDsc {
     /// Background color
-    pub bg_color: Argb8888,
+    pub bg_color: Rgba8888,
     /// Background opacity
     pub bg_opa: Opa,
     /// Background gradient
@@ -19,7 +19,7 @@ pub struct RectDsc {
     pub radius: i32,
     
     /// Border color
-    pub border_color: Argb8888,
+    pub border_color: Rgba8888,
     /// Border opacity
     pub border_opa: Opa,
     /// Border width
@@ -28,7 +28,7 @@ pub struct RectDsc {
     pub border_side: BorderSide,
     
     /// Shadow color
-    pub shadow_color: Argb8888,
+    pub shadow_color: Rgba8888,
     /// Shadow opacity
     pub shadow_opa: Opa,
     /// Shadow width (blur radius)
@@ -41,7 +41,7 @@ pub struct RectDsc {
     pub shadow_spread: i32,
     
     /// Outline color
-    pub outline_color: Argb8888,
+    pub outline_color: Rgba8888,
     /// Outline opacity
     pub outline_opa: Opa,
     /// Outline width
@@ -54,24 +54,24 @@ impl RectDsc {
     /// Initialize with LVGL defaults
     pub fn new() -> Self {
         Self {
-            bg_color: Argb8888::WHITE,
+            bg_color: Rgba8888::WHITE,
             bg_opa: OPA_COVER,
             bg_grad: Gradient::none(),
             radius: 0,
             
-            border_color: Argb8888::BLACK,
-            border_opa: OPA_COVER,
+            border_color: Rgba8888::BLACK,
+            border_opa: 0,
             border_width: 0,
             border_side: BorderSide::FULL,
             
-            shadow_color: Argb8888::BLACK,
+            shadow_color: Rgba8888::BLACK,
             shadow_opa: 0,
             shadow_width: 0,
             shadow_offset_x: 0,
             shadow_offset_y: 0,
             shadow_spread: 0,
             
-            outline_color: Argb8888::BLACK,
+            outline_color: Rgba8888::BLACK,
             outline_opa: 0,
             outline_width: 0,
             outline_pad: 0,
@@ -86,30 +86,30 @@ impl Default for RectDsc {
 }
 
 /// Draw a rectangle with the given descriptor
-pub fn draw_rect(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
+pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     // Draw shadow first (if any)
     if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
-        draw_shadow(canvas, dsc, area);
+        draw_shadow(rast, dsc, area);
     }
 
     // Draw outline (if any)
     if dsc.outline_opa > 0 && dsc.outline_width > 0 {
-        draw_outline(canvas, dsc, area);
+        draw_outline(rast, dsc, area);
     }
 
     // Draw background
     if dsc.bg_opa > 0 {
-        draw_bg(canvas, dsc, area);
+        draw_bg(rast, dsc, area);
     }
 
     // Draw border (if any)
     if dsc.border_opa > 0 && dsc.border_width > 0 {
-        draw_border(canvas, dsc, area);
+        draw_border(rast, dsc, area);
     }
 }
 
 /// Draw rectangle background (with gradient support and rounded corners)
-fn draw_bg(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
+fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let width = area.width();
     let height = area.height();
     
@@ -135,7 +135,16 @@ fn draw_bg(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
 
     // Simple case: no radius, no gradient
     if !has_radius && !has_grad {
-        canvas.fill_area(area, dsc.bg_color, dsc.bg_opa);
+        if dsc.bg_opa == OPA_COVER {
+            rast.fill_rect(area.x1, area.y1, width, height, dsc.bg_color);
+        } else {
+            // Need to blend with opacity
+            for y in area.y1..=area.y2 {
+                for x in area.x1..=area.x2 {
+                    rast.blend_pixel(x, y, dsc.bg_color, dsc.bg_opa);
+                }
+            }
+        }
         return;
     }
 
@@ -172,14 +181,14 @@ fn draw_bg(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
             let opa = ((dsc.bg_opa as u32 * grad_opa as u32 * mask_val as u32) / (255 * 255)) as Opa;
 
             if opa > 0 {
-                canvas.blend_pixel(x, y, color, opa);
+                rast.blend_pixel(x, y, color, opa);
             }
         }
     }
 }
 
 /// Draw rectangle border
-fn draw_border(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
+fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let width = area.width();
     let height = area.height();
     
@@ -248,14 +257,14 @@ fn draw_border(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
             };
 
             if mask_val > 0 {
-                canvas.blend_pixel(x, y, dsc.border_color, ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa);
+                rast.blend_pixel(x, y, dsc.border_color, ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa);
             }
         }
     }
 }
 
 /// Draw rectangle shadow
-fn draw_shadow(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
+fn draw_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let shadow_area = Area::new(
         area.x1 + dsc.shadow_offset_x - dsc.shadow_width,
         area.y1 + dsc.shadow_offset_y - dsc.shadow_width,
@@ -284,7 +293,7 @@ fn draw_shadow(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
 
             if shadow_opa > 0 {
                 let final_opa = ((dsc.shadow_opa as u32 * shadow_opa as u32) / 255) as Opa;
-                canvas.blend_pixel(x, y, dsc.shadow_color, final_opa);
+                rast.blend_pixel(x, y, dsc.shadow_color, final_opa);
             }
         }
     }
@@ -325,7 +334,7 @@ fn calculate_shadow_opa(x: i32, y: i32, rect: &Area, radius: i32, shadow_width: 
 }
 
 /// Draw rectangle outline
-fn draw_outline(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
+fn draw_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let outline_area = Area::new(
         area.x1 - dsc.outline_pad - dsc.outline_width,
         area.y1 - dsc.outline_pad - dsc.outline_width,
@@ -358,7 +367,7 @@ fn draw_outline(canvas: &mut Canvas, dsc: &RectDsc, area: &Area) {
             let in_inner = is_point_in_rounded_rect(x, y, &inner_area, outline_radius);
 
             if in_outer && !in_inner {
-                canvas.blend_pixel(x, y, dsc.outline_color, dsc.outline_opa);
+                rast.blend_pixel(x, y, dsc.outline_color, dsc.outline_opa);
             }
         }
     }

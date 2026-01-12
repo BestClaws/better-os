@@ -1,6 +1,6 @@
 /// Line drawing matching LVGL's lv_draw_line
 use crate::canvas::Canvas;
-use crate::color_argb::Argb8888;
+use crate::color::Rgba8888;
 use crate::types::*;
 use crate::math::{aa_coverage_sq, dist_sq};
 
@@ -10,7 +10,7 @@ pub struct LineDsc {
     pub p1: Point,
     pub p2: Point,
     pub width: i32,
-    pub color: Argb8888,
+    pub color: Rgba8888,
     pub opa: Opa,
     pub dash_width: i32,
     pub dash_gap: i32,
@@ -24,7 +24,7 @@ impl LineDsc {
             p1,
             p2,
             width: 1,
-            color: Argb8888::WHITE,
+            color: Rgba8888::WHITE,
             opa: OPA_COVER,
             dash_width: 0,
             dash_gap: 0,

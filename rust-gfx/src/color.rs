@@ -55,4 +55,65 @@ impl Rgba8888 {
         let effective = ((existing * alpha as u32) / 255) as u8;
         self.with_alpha(effective)
     }
+
+    /// Get red component
+    #[inline]
+    pub const fn r(self) -> u8 {
+        ((self.0 >> 24) & 0xFF) as u8
+    }
+
+    /// Get green component
+    #[inline]
+    pub const fn g(self) -> u8 {
+        ((self.0 >> 16) & 0xFF) as u8
+    }
+
+    /// Get blue component
+    #[inline]
+    pub const fn b(self) -> u8 {
+        ((self.0 >> 8) & 0xFF) as u8
+    }
+
+    /// Get alpha component (alias for alpha())
+    #[inline]
+    pub const fn a(self) -> u8 {
+        self.alpha()
+    }
+}
+
+/// Blend two colors with opacity (alpha compositing)
+/// Matches LVGL's color blending: result = bg * (1 - opa) + fg * opa
+#[inline]
+pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
+    if opa == 0 {
+        return bg;
+    }
+    if opa == 255 {
+        return fg;
+    }
+
+    let inv_opa = 255 - opa;
+    let r = ((bg.r() as u32 * inv_opa as u32 + fg.r() as u32 * opa as u32) / 255) as u8;
+    let g = ((bg.g() as u32 * inv_opa as u32 + fg.g() as u32 * opa as u32) / 255) as u8;
+    let b = ((bg.b() as u32 * inv_opa as u32 + fg.b() as u32 * opa as u32) / 255) as u8;
+    let a = ((bg.a() as u32 * inv_opa as u32 + fg.a() as u32 * opa as u32) / 255) as u8;
+    Rgba8888::rgba(r, g, b, a)
+}
+
+/// Linear interpolation between two colors
+/// t=0 returns c1, t=255 returns c2
+#[inline]
+pub fn lerp_color(c1: Rgba8888, c2: Rgba8888, t: u8) -> Rgba8888 {
+    if t == 0 {
+        return c1;
+    }
+    if t == 255 {
+        return c2;
+    }
+    let inv_t = 255 - t;
+    let r = ((c1.r() as u32 * inv_t as u32 + c2.r() as u32 * t as u32) / 255) as u8;
+    let g = ((c1.g() as u32 * inv_t as u32 + c2.g() as u32 * t as u32) / 255) as u8;
+    let b = ((c1.b() as u32 * inv_t as u32 + c2.b() as u32 * t as u32) / 255) as u8;
+    let a = ((c1.a() as u32 * inv_t as u32 + c2.a() as u32 * t as u32) / 255) as u8;
+    Rgba8888::rgba(r, g, b, a)
 }

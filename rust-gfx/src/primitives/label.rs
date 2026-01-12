@@ -2,7 +2,7 @@
 #[cfg(feature = "std")]
 use crate::canvas::Canvas;
 #[cfg(feature = "std")]
-use crate::color_argb::Argb8888;
+use crate::color::Rgba8888;
 #[cfg(feature = "std")]
 use crate::types::*;
 
@@ -23,7 +23,7 @@ pub enum TextDecor {
 #[derive(Clone, Debug)]
 pub struct LabelDsc {
     pub text: String,
-    pub color: Argb8888,
+    pub color: Rgba8888,
     pub opa: Opa,
     pub decor: TextDecor,
     pub letter_space: i32,
@@ -33,7 +33,7 @@ impl LabelDsc {
     pub fn new(text: String) -> Self {
         Self {
             text,
-            color: Argb8888::WHITE,
+            color: Rgba8888::WHITE,
             opa: OPA_COVER,
             decor: TextDecor::None,
             letter_space: 0,

@@ -1,6 +1,6 @@
 /// Arc drawing matching LVGL's lv_draw_arc
 use crate::canvas::Canvas;
-use crate::color_argb::Argb8888;
+use crate::color::Rgba8888;
 use crate::types::*;
 use crate::math::{aa_coverage_sq, atan2_deg, angle_in_range, dist_sq};
 
@@ -12,7 +12,7 @@ pub struct ArcDsc {
     pub start_angle: i32,  // degrees
     pub end_angle: i32,    // degrees
     pub width: i32,
-    pub color: Argb8888,
+    pub color: Rgba8888,
     pub opa: Opa,
     pub rounded: bool,
 }
@@ -25,7 +25,7 @@ impl ArcDsc {
             start_angle,
             end_angle,
             width: 1,
-            color: Argb8888::WHITE,
+            color: Rgba8888::WHITE,
             opa: OPA_COVER,
             rounded: false,
         }

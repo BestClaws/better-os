@@ -1,6 +1,6 @@
 /// Triangle drawing matching LVGL's lv_draw_triangle
 use crate::canvas::Canvas;
-use crate::color_argb::Argb8888;
+use crate::color::Rgba8888;
 use crate::types::*;
 use crate::primitives::{gradient::*, mask::TriangleMask};
 
@@ -10,7 +10,7 @@ pub struct TriangleDsc {
     pub p1: Point,
     pub p2: Point,
     pub p3: Point,
-    pub color: Argb8888,
+    pub color: Rgba8888,
     pub opa: Opa,
     pub grad: Gradient,
 }
@@ -21,7 +21,7 @@ impl TriangleDsc {
             p1,
             p2,
             p3,
-            color: Argb8888::WHITE,
+            color: Rgba8888::WHITE,
             opa: OPA_COVER,
             grad: Gradient::none(),
         }

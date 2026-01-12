@@ -1,7 +1,10 @@
 #![no_std]
 
-// New LVGL-compatible modules
-pub mod color_argb;
+// Internal ARGB module for BMP output only
+mod color_argb;
+
+// Public modules
+pub mod color;
 pub mod types;
 #[cfg(feature = "std")]
 pub mod canvas;
@@ -12,21 +15,16 @@ pub mod primitives;
 pub mod bmp;
 
 // Legacy modules (kept for backward compatibility)
-pub mod color;
 pub mod fill;
 pub mod rasterizer;
 pub mod shapes;
 pub mod three_d;
 
-// New exports
-pub use color_argb::{Argb8888, blend_colors, lerp_color};
+// Public API exports - single color format
+pub use color::{Rgba8888, blend_colors, lerp_color};
 pub use types::*;
 #[cfg(feature = "std")]
 pub use canvas::Canvas;
-
-// Legacy exports (deprecated)
-#[allow(deprecated)]
-pub use color::Rgba8888;
 pub use fill::Fill;
 pub use rasterizer::Rasterizer;
 pub use rasterizer::Rgb565Rasterizer;
