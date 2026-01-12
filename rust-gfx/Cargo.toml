@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = ["std"]
+std = []
+
+[[bin]]
+name = "sprite_generator"
+path = "examples/sprite_generator.rs"
 
 [dependencies]
 libm = "0.2.15"

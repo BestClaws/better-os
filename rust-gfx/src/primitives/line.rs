@@ -1,0 +1,95 @@
+/// Line drawing matching LVGL's lv_draw_line
+use crate::canvas::Canvas;
+use crate::color_argb::Argb8888;
+use crate::types::*;
+use crate::math::{aa_coverage_sq, dist_sq};
+
+/// Line descriptor matching LVGL
+#[derive(Clone, Debug)]
+pub struct LineDsc {
+    pub p1: Point,
+    pub p2: Point,
+    pub width: i32,
+    pub color: Argb8888,
+    pub opa: Opa,
+    pub dash_width: i32,
+    pub dash_gap: i32,
+    pub round_start: bool,
+    pub round_end: bool,
+}
+
+impl LineDsc {
+    pub fn new(p1: Point, p2: Point) -> Self {
+        Self {
+            p1,
+            p2,
+            width: 1,
+            color: Argb8888::WHITE,
+            opa: OPA_COVER,
+            dash_width: 0,
+            dash_gap: 0,
+            round_start: false,
+            round_end: false,
+        }
+    }
+}
+
+/// Draw a line
+pub fn draw_line(canvas: &mut Canvas, dsc: &LineDsc) {
+    let dx = dsc.p2.x - dsc.p1.x;
+    let dy = dsc.p2.y - dsc.p1.y;
+    let len_sq = dx * dx + dy * dy;
+    
+    if len_sq == 0 {
+        // Point
+        canvas.blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
+        return;
+    }
+
+    let min_x = dsc.p1.x.min(dsc.p2.x) - dsc.width;
+    let max_x = dsc.p1.x.max(dsc.p2.x) + dsc.width;
+    let min_y = dsc.p1.y.min(dsc.p2.y) - dsc.width;
+    let max_y = dsc.p1.y.max(dsc.p2.y) + dsc.width;
+
+    let half_width = dsc.width / 2;
+    let is_dashed = dsc.dash_width > 0 && dsc.dash_gap > 0;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            // Calculate perpendicular distance to line
+            let px = x - dsc.p1.x;
+            let py = y - dsc.p1.y;
+            let t = ((px * dx + py * dy) * 256) / len_sq;
+
+            let (d_sq, on_line) = if t < 0 {
+                (dist_sq(x, y, dsc.p1.x, dsc.p1.y), dsc.round_start)
+            } else if t > 256 {
+                (dist_sq(x, y, dsc.p2.x, dsc.p2.y), dsc.round_end)
+            } else {
+                let proj_x = dsc.p1.x + (dx * t) / 256;
+                let proj_y = dsc.p1.y + (dy * t) / 256;
+                (dist_sq(x, y, proj_x, proj_y), true)
+            };
+
+            if !on_line {
+                continue;
+            }
+
+            // Check dash pattern
+            if is_dashed {
+                let line_pos = ((t * crate::math::isqrt(len_sq as u32) as i32) / 256).max(0);
+                let pattern_len = dsc.dash_width + dsc.dash_gap;
+                let pos_in_pattern = line_pos % pattern_len;
+                if pos_in_pattern >= dsc.dash_width {
+                    continue;
+                }
+            }
+
+            let coverage = aa_coverage_sq(d_sq, half_width);
+            if coverage > 0 {
+                let opa = ((dsc.opa as u32 * coverage as u32) / 255) as Opa;
+                canvas.blend_pixel(x, y, dsc.color, opa);
+            }
+        }
+    }
+}

@@ -1,11 +1,29 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// New LVGL-compatible modules
+pub mod color_argb;
+pub mod types;
+pub mod canvas;
+pub mod math;
+pub mod primitives;
+
+#[cfg(feature = "std")]
+pub mod bmp;
+
+// Legacy modules (kept for backward compatibility)
 pub mod color;
 pub mod fill;
 pub mod rasterizer;
 pub mod shapes;
 pub mod three_d;
 
+// New exports
+pub use color_argb::{Argb8888, blend_colors, lerp_color};
+pub use types::*;
+pub use canvas::Canvas;
+
+// Legacy exports (deprecated)
+#[allow(deprecated)]
 pub use color::Rgba8888;
 pub use fill::Fill;
 pub use rasterizer::Rasterizer;
