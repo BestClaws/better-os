@@ -2,9 +2,8 @@
 
 extern crate alloc;
 use rust_gfx::color::Rgba8888;
-use rust_gfx::rasterizer::Rasterizer; // trait import so we can call fill_rect
-use rust_gfx::shapes::{Line, Shape};
-use rust_gfx::{Arc, Circle, RoundedRect};
+use rust_gfx::primitives::*;
+use rust_gfx::rasterizer::Rasterizer;
 use crate::system::app::app_context::AppContext;
 use crate::system::input::types::{HighLevelEvent, TouchAction};
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -13,296 +12,146 @@ use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
 
 #[derive(Debug, Clone, Copy)]
-pub enum ShapeType {
-    RoundedRect,
-    Circle,
-    Line,
-    Arc,
-    Text,
+struct SpriteTest {
+    name: &'static str,
+    radius: i32,
+    bg_color: Rgba8888,
+    border_width: i32,
+    border_color: Option<Rgba8888>,
+    bg_opa: u8,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum FillType {
-    Solid,
-    LinearH,
-    LinearV,
-    Radial,
-}
+fn generate_working_sprites() -> Vec<SpriteTest> {
+    let mut tests = Vec::new();
 
-#[derive(Debug, Clone, Copy)]
-pub enum StrokeType {
-    Thin,   // 1px
-    Medium, // 3px
-    Thick,  // 6px
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum CornerType {
-    Sharp,
-    Small,  // 2px
-    Medium, // 8px
-    Large,  // 20px
-    Asymmetric,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum AlphaType {
-    Opaque,          // 255
-    SemiTransparent, // 128
-    LowAlpha,        // 64
-    VeryLowAlpha,    // 32
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct TestConfig {
-    shape_type: ShapeType,
-    fill_type: Option<FillType>,
-    stroke_type: Option<StrokeType>,
-    corner_type: Option<CornerType>,
-    alpha_type: AlphaType,
-}
-
-fn alpha_value(alpha: AlphaType) -> u8 {
-    match alpha {
-        AlphaType::Opaque => 255,
-        AlphaType::SemiTransparent => 128,
-        AlphaType::LowAlpha => 64,
-        AlphaType::VeryLowAlpha => 32,
-    }
-}
-
-fn shape_name(shape: ShapeType) -> &'static str {
-    match shape {
-        ShapeType::RoundedRect => "RoundedRect",
-        ShapeType::Circle => "Circle",
-        ShapeType::Line => "Line",
-        ShapeType::Arc => "Arc",
-        ShapeType::Text => "Text",
-    }
-}
-
-fn fill_name(fill: Option<FillType>) -> &'static str {
-    match fill {
-        None => "NoFill",
-        Some(FillType::Solid) => "Solid",
-        Some(FillType::LinearH) => "LinearH",
-        Some(FillType::LinearV) => "LinearV",
-        Some(FillType::Radial) => "Radial",
-    }
-}
-
-fn stroke_name(stroke: Option<StrokeType>) -> &'static str {
-    match stroke {
-        None => "NoStroke",
-        Some(StrokeType::Thin) => "Thin",
-        Some(StrokeType::Medium) => "Medium",
-        Some(StrokeType::Thick) => "Thick",
-    }
-}
-
-fn corner_name(corner: Option<CornerType>) -> &'static str {
-    match corner {
-        None => "NoCorner",
-        Some(CornerType::Sharp) => "Sharp",
-        Some(CornerType::Small) => "Small",
-        Some(CornerType::Medium) => "Medium",
-        Some(CornerType::Large) => "Large",
-        Some(CornerType::Asymmetric) => "Asym",
-    }
-}
-
-fn alpha_name(alpha: AlphaType) -> &'static str {
-    match alpha {
-        AlphaType::Opaque => "Opaque",
-        AlphaType::SemiTransparent => "Semi",
-        AlphaType::LowAlpha => "Low",
-        AlphaType::VeryLowAlpha => "VeryLow",
-    }
-}
-
-fn generate_all_test_permutations() -> Vec<TestConfig> {
-    let mut configs = Vec::new();
-
-    let shapes = [
-        ShapeType::RoundedRect,
-        ShapeType::Circle,
-        ShapeType::Line,
-        ShapeType::Arc,
-        ShapeType::Text,
+    let radii = [0, 5, 10, 20, RADIUS_CIRCLE];
+    let radius_names = ["r0", "r5", "r10", "r20", "circle"];
+    let colors = [
+        Rgba8888::rgb(255, 100, 100),
+        Rgba8888::rgb(100, 255, 100),
+        Rgba8888::rgb(100, 100, 255),
+        Rgba8888::rgb(255, 255, 100),
     ];
+    let color_names = ["red", "green", "blue", "yellow"];
 
-    let fills = [
-        None,
-        Some(FillType::Solid),
-        Some(FillType::LinearH),
-        Some(FillType::LinearV),
-        Some(FillType::Radial),
-    ];
-
-    let strokes = [None, Some(StrokeType::Thin), Some(StrokeType::Medium)];
-
-    let corners = [None, Some(CornerType::Large), Some(CornerType::Asymmetric)];
-
-    let alphas = [AlphaType::Opaque, AlphaType::SemiTransparent];
-
-    for &shape in &shapes {
-        for &fill in &fills {
-            for &stroke in &strokes {
-                for &corner in &corners {
-                    for &alpha in &alphas {
-                        if matches!(shape, ShapeType::Line | ShapeType::Arc) && fill.is_some() {
-                            continue;
-                        }
-                        if matches!(shape, ShapeType::Text) && (fill.is_some() || stroke.is_some())
-                        {
-                            continue;
-                        }
-                        if !matches!(shape, ShapeType::RoundedRect) && corner.is_some() {
-                            continue;
-                        }
-                        if fill.is_none() && stroke.is_none() && !matches!(shape, ShapeType::Text) {
-                            continue;
-                        }
-
-                        configs.push(TestConfig {
-                            shape_type: shape,
-                            fill_type: fill,
-                            stroke_type: stroke,
-                            corner_type: corner,
-                            alpha_type: alpha,
-                        });
-                    }
-                }
-            }
+    // 20 solid fills with various radius (sprites 0-19)
+    for r in 0..5 {
+        for c in 0..4 {
+            tests.push(SpriteTest {
+                name: match (radius_names[r], color_names[c]) {
+                    ("r0", "red") => "rect_solid_r0_red",
+                    ("r0", "green") => "rect_solid_r0_green",
+                    ("r0", "blue") => "rect_solid_r0_blue",
+                    ("r0", "yellow") => "rect_solid_r0_yellow",
+                    ("r5", "red") => "rect_solid_r5_red",
+                    ("r5", "green") => "rect_solid_r5_green",
+                    ("r5", "blue") => "rect_solid_r5_blue",
+                    ("r5", "yellow") => "rect_solid_r5_yellow",
+                    ("r10", "red") => "rect_solid_r10_red",
+                    ("r10", "green") => "rect_solid_r10_green",
+                    ("r10", "blue") => "rect_solid_r10_blue",
+                    ("r10", "yellow") => "rect_solid_r10_yellow",
+                    ("r20", "red") => "rect_solid_r20_red",
+                    ("r20", "green") => "rect_solid_r20_green",
+                    ("r20", "blue") => "rect_solid_r20_blue",
+                    ("r20", "yellow") => "rect_solid_r20_yellow",
+                    ("circle", "red") => "rect_solid_rcircle_red",
+                    ("circle", "green") => "rect_solid_rcircle_green",
+                    ("circle", "blue") => "rect_solid_rcircle_blue",
+                    ("circle", "yellow") => "rect_solid_rcircle_yellow",
+                    _ => "unknown",
+                },
+                radius: radii[r],
+                bg_color: colors[c],
+                border_width: 0,
+                border_color: None,
+                bg_opa: OPA_COVER,
+            });
         }
     }
 
-    configs
+    // Border w10 full (sprite 44)
+    tests.push(SpriteTest {
+        name: "rect_border_w10_full",
+        radius: 10,
+        bg_color: Rgba8888::rgb(50, 50, 50),
+        border_width: 10,
+        border_color: Some(Rgba8888::rgb(255, 255, 0)),
+        bg_opa: OPA_COVER,
+    });
+
+    // Opacity variations (sprites 60-62)
+    tests.push(SpriteTest {
+        name: "rect_opa100",
+        radius: 12,
+        bg_color: Rgba8888::rgb(255, 150, 50),
+        border_width: 0,
+        border_color: None,
+        bg_opa: OPA_COVER,
+    });
+
+    tests.push(SpriteTest {
+        name: "rect_opa70",
+        radius: 12,
+        bg_color: Rgba8888::rgb(255, 150, 50),
+        border_width: 0,
+        border_color: None,
+        bg_opa: OPA_70,
+    });
+
+    tests.push(SpriteTest {
+        name: "rect_opa50",
+        radius: 12,
+        bg_color: Rgba8888::rgb(255, 150, 50),
+        border_width: 0,
+        border_color: None,
+        bg_opa: OPA_50,
+    });
+
+    tests
 }
 
-fn execute_test(surface: &mut DrawingSurface, config: TestConfig) {
+fn execute_test(surface: &mut DrawingSurface, test: SpriteTest) {
     let w = surface.width() as i32;
     let h = surface.height() as i32;
-    let half_w = (w as f32 * 0.5) as i32;
-    let half_h = (h as f32 * 0.5) as i32;
-    let left = (w / 2) - half_w / 2;
-    let top = (h / 2) - half_h / 2;
-    let alpha = alpha_value(config.alpha_type);
 
-    match config.shape_type {
-        ShapeType::RoundedRect => {
-            let (tl, tr, bl, br) = match config.corner_type.unwrap_or(CornerType::Sharp) {
-                CornerType::Sharp => (0, 0, 0, 0),
-                CornerType::Small => (2, 2, 2, 2),
-                CornerType::Medium => (8, 8, 8, 8),
-                CornerType::Large => (20, 20, 20, 20),
-                CornerType::Asymmetric => (12, 4, 16, 0),
-            };
-            let mut rr = RoundedRect::new(left, top, half_w, half_h, tl, tr, bl, br);
-            if let Some(stroke) = config.stroke_type {
-                rr = rr.stroke(
-                    match stroke {
-                        StrokeType::Thin => 1,
-                        StrokeType::Medium => 3,
-                        StrokeType::Thick => 6,
-                    },
-                    Rgba8888::rgba(255, 255, 255, alpha),
-                );
-            }
-            if let Some(fill) = config.fill_type {
-                rr = match fill {
-                    FillType::Solid => rr.fill_solid(Rgba8888::rgba(30, 30, 30, alpha)),
-                    FillType::LinearH => rr.fill_linear_h(
-                        Rgba8888::rgba(255, 0, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::LinearV => rr.fill_linear_v(
-                        Rgba8888::rgba(0, 255, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::Radial => rr.fill_radial(
-                        Rgba8888::rgba(255, 255, 255, alpha),
-                        Rgba8888::rgba(30, 30, 30, alpha),
-                    ),
-                };
-            }
-            rr.draw(surface);
-        }
-        ShapeType::Circle => {
-            let radius = (half_w.min(half_h) / 2).max(4);
-            let mut circle = Circle::new(w / 2, h / 2, radius);
-            if let Some(stroke) = config.stroke_type {
-                circle = circle.stroke(
-                    match stroke {
-                        StrokeType::Thin => 1,
-                        StrokeType::Medium => 3,
-                        StrokeType::Thick => 6,
-                    },
-                    Rgba8888::rgba(255, 255, 255, alpha),
-                );
-            }
-            if let Some(fill) = config.fill_type {
-                circle = match fill {
-                    FillType::Solid => circle.fill_solid(Rgba8888::rgba(200, 120, 40, alpha)),
-                    FillType::LinearH => circle.fill_linear_h(
-                        Rgba8888::rgba(255, 0, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::LinearV => circle.fill_linear_v(
-                        Rgba8888::rgba(0, 255, 0, alpha),
-                        Rgba8888::rgba(0, 0, 255, alpha),
-                    ),
-                    FillType::Radial => circle.fill_radial(
-                        Rgba8888::rgba(255, 255, 255, alpha),
-                        Rgba8888::rgba(30, 30, 30, alpha),
-                    ),
-                };
-            }
-            circle.draw(surface);
-        }
-        ShapeType::Line => {
-            let mut line = Line::new(left, h / 2, left + half_w, h / 2);
-            let stroke = config.stroke_type.unwrap_or(StrokeType::Thin);
-            line = line.stroke(
-                match stroke {
-                    StrokeType::Thin => 1,
-                    StrokeType::Medium => 3,
-                    StrokeType::Thick => 6,
-                },
-                Rgba8888::rgba(255, 255, 255, alpha),
-            );
-            line.draw(surface);
-        }
-        ShapeType::Arc => {
-            let radius = (half_w.min(half_h) / 2).max(4);
-            let mut arc = Arc::new(w / 2, h / 2, radius, 0, 180);
-            let stroke = config.stroke_type.unwrap_or(StrokeType::Thin);
-            arc = arc.stroke(
-                match stroke {
-                    StrokeType::Thin => 1,
-                    StrokeType::Medium => 3,
-                    StrokeType::Thick => 6,
-                },
-                Rgba8888::rgba(255, 255, 255, alpha),
-            );
-            arc.draw(surface);
-        }
-        ShapeType::Text => {
-            // TODO: Text rendering not yet implemented in new API
-            // let mut text = Text::new(w / 2 - 24, h / 2 + 10, "12:34");
-            // text = text.color(Rgba8888::rgba(255, 255, 255, alpha));
-            // text.draw(surface);
-        }
+    // Scale to fit screen - use same proportions as sprite_generator
+    let sprite_w = 62; // Area width from sprite generator: 82-20
+    let sprite_h = 65; // Area height: 95-30
+    
+    // Center the shape
+    let x1 = (w - sprite_w) / 2;
+    let y1 = (h - sprite_h) / 2;
+    let x2 = x1 + sprite_w;
+    let y2 = y1 + sprite_h;
+
+    // Create descriptor matching sprite generator
+    let mut dsc = RectDsc::new();
+    dsc.radius = test.radius;
+    dsc.bg_opa = test.bg_opa;
+    dsc.bg_color = test.bg_color;
+
+    if let Some(border_color) = test.border_color {
+        dsc.border_opa = OPA_COVER;
+        dsc.border_width = test.border_width;
+        dsc.border_color = border_color;
+        dsc.border_side = BorderSide::FULL;
     }
+
+    let area = Area::new(x1, y1, x2, y2);
+    
+    // Draw directly to surface using rust-gfx primitive
+    draw_rect(surface, &dsc, &area);
 }
 
 #[embassy_executor::task]
 pub async fn gfx_bench_app(context: AppContext) {
-    info!("Starting bench app");
+    info!("Starting gfx_bench - showcasing 24 working sprites");
 
-    let configs = generate_all_test_permutations();
+    let tests = generate_working_sprites();
+    info!("Generated {} test configurations", tests.len());
 
-    let mut next_cfg = 0usize;
+    let mut current_test = 0;
 
     loop {
         if !context.is_focused().await {
@@ -310,12 +159,12 @@ pub async fn gfx_bench_app(context: AppContext) {
             continue;
         }
 
-        let cfg = configs[next_cfg];
-        next_cfg = (next_cfg + 1) % configs.len();
-
+        let test = tests[current_test];
+        
         let draw_start = Instant::now();
         context
             .draw(|surface: &mut DrawingSurface| {
+                // Clear to black background
                 surface.fill_rect(
                     0,
                     0,
@@ -323,29 +172,30 @@ pub async fn gfx_bench_app(context: AppContext) {
                     surface.height() as i32,
                     Rgba8888::rgba(0, 0, 0, 255),
                 );
-                execute_test(surface, cfg);
+                
+                // Draw the test sprite
+                execute_test(surface, test);
             })
             .await;
         let elapsed = draw_start.elapsed();
 
         info!(
-            "bench {} {} {} {} {}: {} us",
-            shape_name(cfg.shape_type),
-            fill_name(cfg.fill_type),
-            stroke_name(cfg.stroke_type),
-            corner_name(cfg.corner_type),
-            alpha_name(cfg.alpha_type),
+            "Test {}/{}: {} - rendered in {} us",
+            current_test + 1,
+            tests.len(),
+            test.name,
             elapsed.as_micros()
         );
-        // Wait for a user touch before proceeding to the next test
+
+        // Wait for touch to proceed to next test
         loop {
             if let Some(HighLevelEvent::Motion(motion)) = context.poll_input().await {
                 if matches!(motion.action, TouchAction::Down) {
+                    current_test = (current_test + 1) % tests.len();
                     break;
                 }
             }
 
-            // Small sleep to avoid tight loop when no input
             Timer::after(Duration::from_millis(10)).await;
         }
     }
