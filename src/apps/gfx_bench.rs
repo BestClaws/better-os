@@ -197,25 +197,23 @@ fn execute_test(surface: &mut DrawingSurface, test: SpriteTest) {
     dsc.bg_color = test.bg_color;
 
     // Add gradient if specified
-    if test.grad_dir != GradDir::None {
-        if let Some(color2) = test.grad_color2 {
-            dsc.bg_grad = Gradient {
-                dir: test.grad_dir,
-                stops: [
-                    GradStop {
-                        color: test.bg_color,
-                        opa: OPA_COVER,
-                        frac: 0,
-                    },
-                    GradStop {
-                        color: color2,
-                        opa: OPA_COVER,
-                        frac: 255,
-                    },
-                ],
-                stops_count: 2,
-            };
-        }
+    if let Some(color2) = test.grad_color2 {
+        dsc.bg_grad = Gradient {
+            dir: test.grad_dir,
+            stops: [
+                GradStop {
+                    color: test.bg_color,
+                    opa: OPA_COVER,
+                    frac: 0,
+                },
+                GradStop {
+                    color: color2,
+                    opa: OPA_COVER,
+                    frac: 255,
+                },
+            ],
+            stops_count: 2,
+        };
     }
 
     if let Some(border_color) = test.border_color {
