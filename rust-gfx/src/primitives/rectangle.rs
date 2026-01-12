@@ -376,14 +376,23 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
                 om.apply_to_line(y, outer.x1, &mut border_mask_buf);
             }
 
-            // Draw border pixels (LVGL draws even at mask=0 to preserve color info)
-            for x in outer.x1..=outer.x2 {
-                let border_m = border_mask_buf[(x - outer.x1) as usize];
-                
-                // Always draw border in border area (LVGL non-premultiplied alpha behavior)
-                // Even at mask=0, this preserves the border color information
-                let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.border_color, border_opa);
+            // Draw border pixels - only draw corners, not middle
+            // Masks control visibility: draw everywhere in corner area, masks determine if visible
+            // Left corner
+            if top_side && left_side {
+                for x in outer.x1..core_area.x1 {
+                    let border_m = border_mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
+                }
+            }
+            // Right corner
+            if top_side && right_side {
+                for x in (core_area.x2 + 1)..=outer.x2 {
+                    let border_m = border_mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
+                }
             }
         }
     }
@@ -398,14 +407,23 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
                 om.apply_to_line(y, outer.x1, &mut border_mask_buf);
             }
 
-            // Draw border pixels (LVGL draws even at mask=0 to preserve color info)
-            for x in outer.x1..=outer.x2 {
-                let border_m = border_mask_buf[(x - outer.x1) as usize];
-                
-                // Always draw border in border area (LVGL non-premultiplied alpha behavior)
-                // Even at mask=0, this preserves the border color information
-                let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.border_color, border_opa);
+            // Draw border pixels - only draw corners, not middle
+            // Masks control visibility: draw everywhere in corner area, masks determine if visible
+            // Left corner
+            if bottom_side && left_side {
+                for x in outer.x1..core_area.x1 {
+                    let border_m = border_mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
+                }
+            }
+            // Right corner
+            if bottom_side && right_side {
+                for x in (core_area.x2 + 1)..=outer.x2 {
+                    let border_m = border_mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
+                }
             }
         }
     }
