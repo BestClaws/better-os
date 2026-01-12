@@ -302,18 +302,32 @@ impl LineMask {
             }
         }
         
+        // Final fractional pixel
+        if k < len as i32 && k >= 0 {
+            let x_inters = ((px_h as i64 * self.xy_steep as i64) >> 10) as i32;
+            let mut m = ((x_inters * px_h) >> 9) as i32;
+            if self.yx_steep < 0 {
+                m = 255 - m;
+            }
+            if self.inv {
+                m = 255 - m;
+            }
+            mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+        }
+        
         // Clear remaining pixels
         if self.inv {
-            let mut k = xei - rel_x;
-            if k > len as i32 {
+            let k_clear = xei - rel_x;
+            if k_clear > len as i32 {
                 return MaskResult::Transparent;
             }
-            if k >= 0 {
-                for i in 0..k.min(len as i32) as usize {
+            if k_clear >= 0 {
+                for i in 0..k_clear.min(len as i32) as usize {
                     mask_buf[i] = 0;
                 }
             }
         } else {
+            k += 1;
             if k < 0 {
                 return MaskResult::Transparent;
             }

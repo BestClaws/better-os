@@ -12,7 +12,7 @@ fn main() {
     let line = LineDsc {
         p1: Point::new(50, 50),
         p2: Point::new(150, 150),
-        width: 1,
+        width: 10,  // Thicker line
         color: Rgba8888::rgb(255, 0, 0),
         opa: 255,
         round_start: false,
