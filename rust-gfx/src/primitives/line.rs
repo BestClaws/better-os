@@ -38,6 +38,39 @@ impl LineDsc {
 pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     let dx = dsc.p2.x - dsc.p1.x;
     let dy = dsc.p2.y - dsc.p1.y;
+    
+    // LVGL optimization: horizontal and vertical lines use rectangle drawing
+    let is_horizontal = dy == 0 && dx != 0;
+    let is_vertical = dx == 0 && dy != 0;
+    
+    if (is_horizontal || is_vertical) && !dsc.round_start && !dsc.round_end && dsc.dash_width == 0 {
+        // Draw as filled rectangle (matching LVGL's draw_line_hor/draw_line_ver)
+        let w = dsc.width - 1;
+        let w_half0 = w / 2;
+        let w_half1 = w_half0 + (w & 1); // Compensate for odd width
+        
+        let (x1, x2, y1, y2) = if is_horizontal {
+            (dsc.p1.x.min(dsc.p2.x), 
+             dsc.p1.x.max(dsc.p2.x) - 1,  // LVGL subtracts 1 from max coordinate
+             dsc.p1.y - w_half1,
+             dsc.p1.y + w_half0)
+        } else {
+            (dsc.p1.x - w_half1,
+             dsc.p1.x + w_half0,
+             dsc.p1.y.min(dsc.p2.y),
+             dsc.p1.y.max(dsc.p2.y) - 1)  // LVGL subtracts 1 from max coordinate
+        };
+        
+        // Draw filled rectangle
+        for y in y1..=y2 {
+            for x in x1..=x2 {
+                rast.blend_pixel(x, y, dsc.color, dsc.opa);
+            }
+        }
+        return;
+    }
+    
+    // General case: antialiased line with distance-based rendering
     let len_sq = dx * dx + dy * dy;
     
     if len_sq == 0 {
