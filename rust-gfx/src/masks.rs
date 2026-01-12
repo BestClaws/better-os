@@ -258,7 +258,8 @@ impl LineMask {
             }
         }
         
-        // Calculate fractional x position
+        // If we reach here, line crosses this scanline - need antialiasing
+        // Calculate fractional x position where line crosses this y
         let xe = if self.yx_steep > 0 {
             ((rel_y * 256) as i64 * self.xy_steep as i64) >> 10
         } else {
@@ -277,16 +278,18 @@ impl LineMask {
         let mut k = xei - rel_x;
         
         // First pixel with antialiasing
-        if xef != 0 && k >= 0 && k < len as i32 {
-            let mut m = 255 - (((255 - xef) * (255 - px_h)) >> 9);
-            if self.inv {
-                m = 255 - m;
+        if xef != 0 {
+            if k >= 0 && k < len as i32 {
+                let mut m = 255 - (((255 - xef) * (255 - px_h)) >> 9);
+                if self.inv {
+                    m = 255 - m;
+                }
+                mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
             }
-            mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
             k += 1;
         }
         
-        // Middle pixels
+        // Middle pixels with full antialiasing
         while px_h > self.spx {
             if k >= 0 && k < len as i32 {
                 let mut m = px_h - (self.spx >> 1);
@@ -315,7 +318,7 @@ impl LineMask {
             mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
         }
         
-        // Clear remaining pixels
+        // Clear remaining pixels on the "wrong" side
         if self.inv {
             let k_clear = xei - rel_x;
             if k_clear > len as i32 {
