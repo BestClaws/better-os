@@ -76,4 +76,6 @@ pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
             }
         }
     }
+    
+    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
 }

@@ -2,12 +2,8 @@
 
 // Re-export core graphics from rust-gfx library
 pub use rust_gfx::{
-    Arc, Circle, Fill, Line, Rasterizer, Rgb565Rasterizer, Rgba8888, RoundedRect,
-    Shape,
+    Rasterizer, Rgb565Rasterizer, Rgba8888,
 };
-
-// Re-export 3D rendering
-pub use rust_gfx::{draw_model, parse_binary_stl, Model, Quaternion, RenderOptions, StlError, Vec3};
 
 pub const BLACK: u16 = 0x0000;
 

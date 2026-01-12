@@ -2,8 +2,8 @@
 
 use rust_gfx::color::Rgba8888;
 use rust_gfx::rasterizer::Rasterizer;
-use rust_gfx::shapes::{Line, Shape};
-use rust_gfx::{Circle, RoundedRect};
+use rust_gfx::primitives::{RectDsc, draw_rect, line::LineDsc, line::draw_line};
+use rust_gfx::types::{Point, Area, Gradient, OPA_COVER, RADIUS_CIRCLE};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use alloc::format;
@@ -64,29 +64,39 @@ fn draw_background(surface: &mut DrawingSurface, width: i32, height: i32) {
     surface.fill_rect(0, 0, width, height, Rgba8888::rgba(6, 6, 10, 255));
 
     let glow_radius = (width.max(height) as f32 * 0.68) as i32;
-    Circle::new(width / 2, height / 2, glow_radius)
-        .fill_radial(
-            Rgba8888::rgba(44, 44, 52, 140),
-            Rgba8888::rgba(0, 0, 0, 255),
-        )
-        .draw(surface);
+    let mut rect = RectDsc::new();
+    rect.bg_color = Rgba8888::rgba(44, 44, 52, 140);
+    rect.bg_opa = OPA_COVER;
+    rect.bg_grad = Gradient::radial(Rgba8888::rgba(44, 44, 52, 140), Rgba8888::rgba(0, 0, 0, 255));
+    rect.radius = RADIUS_CIRCLE;
+    let cx = width / 2;
+    let cy = height / 2;
+    let area = Area::new(cx - glow_radius, cy - glow_radius, glow_radius * 2, glow_radius * 2);
+    draw_rect(surface, &rect, &area);
 }
 
 fn draw_face(surface: &mut DrawingSurface, cx: i32, cy: i32, radius: i32) {
-    Circle::new(cx, cy, radius + 6)
-        .fill_radial(
-            Rgba8888::rgba(78, 78, 86, 220),
-            Rgba8888::rgba(8, 8, 12, 255),
-        )
-        .stroke(2, Rgba8888::rgba(110, 110, 118, 200))
-        .draw(surface);
+    // Outer circle with stroke
+    let mut outer = RectDsc::new();
+    outer.bg_color = Rgba8888::rgba(78, 78, 86, 220);
+    outer.bg_opa = OPA_COVER;
+    outer.bg_grad = Gradient::radial(Rgba8888::rgba(78, 78, 86, 220), Rgba8888::rgba(8, 8, 12, 255));
+    outer.radius = RADIUS_CIRCLE;
+    outer.border_width = 2;
+    outer.border_color = Rgba8888::rgba(110, 110, 118, 200);
+    outer.border_opa = OPA_COVER;
+    let r = radius + 6;
+    let outer_area = Area::new(cx - r, cy - r, r * 2, r * 2);
+    draw_rect(surface, &outer, &outer_area);
 
-    Circle::new(cx, cy, radius)
-        .fill_radial(
-            Rgba8888::rgba(86, 86, 96, 255),
-            Rgba8888::rgba(10, 10, 14, 255),
-        )
-        .draw(surface);
+    // Inner circle
+    let mut inner = RectDsc::new();
+    inner.bg_color = Rgba8888::rgba(86, 86, 96, 255);
+    inner.bg_opa = OPA_COVER;
+    inner.bg_grad = Gradient::radial(Rgba8888::rgba(86, 86, 96, 255), Rgba8888::rgba(10, 10, 14, 255));
+    inner.radius = RADIUS_CIRCLE;
+    let inner_area = Area::new(cx - radius, cy - radius, radius * 2, radius * 2);
+    draw_rect(surface, &inner, &inner_area);
 }
 
 fn draw_hands(
@@ -111,28 +121,38 @@ fn draw_hands(
 
     let hour_x = cx + roundf(hour_len * cosf(hour_angle)) as i32;
     let hour_y = cy + roundf(hour_len * sinf(hour_angle)) as i32;
-    Line::new(cx, cy, hour_x, hour_y)
-        .stroke(2, Rgba8888::rgba(248, 248, 252, 255))
-        .draw(surface);
+    let mut hour_line = LineDsc::new(Point::new(cx, cy), Point::new(hour_x, hour_y));
+    hour_line.width = 2;
+    hour_line.color = Rgba8888::rgba(248, 248, 252, 255);
+    hour_line.opa = OPA_COVER;
+    draw_line(surface, &hour_line);
 
     let minute_x = cx + roundf(minute_len * cosf(minute_angle)) as i32;
     let minute_y = cy + roundf(minute_len * sinf(minute_angle)) as i32;
-    Line::new(cx, cy, minute_x, minute_y)
-        .stroke(2, Rgba8888::rgba(248, 248, 252, 220))
-        .draw(surface);
+    let mut minute_line = LineDsc::new(Point::new(cx, cy), Point::new(minute_x, minute_y));
+    minute_line.width = 2;
+    minute_line.color = Rgba8888::rgba(248, 248, 252, 220);
+    minute_line.opa = OPA_COVER;
+    draw_line(surface, &minute_line);
 
     let second_x = cx + roundf(second_len * cosf(second_angle)) as i32;
     let second_y = cy + roundf(second_len * sinf(second_angle)) as i32;
     let second_tail_len = (radius as f32 * 0.12).max(4.0);
     let tail_x = cx - roundf(second_tail_len * cosf(second_angle)) as i32;
     let tail_y = cy - roundf(second_tail_len * sinf(second_angle)) as i32;
-    Line::new(tail_x, tail_y, second_x, second_y)
-        .stroke(1, Rgba8888::rgba(246, 64, 64, 255))
-        .draw(surface);
+    let mut second_line = LineDsc::new(Point::new(tail_x, tail_y), Point::new(second_x, second_y));
+    second_line.width = 1;
+    second_line.color = Rgba8888::rgba(246, 64, 64, 255);
+    second_line.opa = OPA_COVER;
+    draw_line(surface, &second_line);
 
-    Circle::new(cx, cy, 3)
-        .fill_solid(Rgba8888::rgba(246, 64, 64, 255))
-        .draw(surface);
+    // Center dot
+    let mut center = RectDsc::new();
+    center.bg_color = Rgba8888::rgba(246, 64, 64, 255);
+    center.bg_opa = OPA_COVER;
+    center.radius = RADIUS_CIRCLE;
+    let center_area = Area::new(cx - 3, cy - 3, 6, 6);
+    draw_rect(surface, &center, &center_area);
 }
 
 fn draw_time_badge(
@@ -153,23 +173,26 @@ fn draw_time_badge(
     let max_y = height - badge_height - 8;
     let badge_y = proposed_y.min(max_y.max(0));
 
-    RoundedRect::new(
-        badge_x - 4,
-        badge_y - 4,
-        badge_width + 8,
-        badge_height + 8,
-        12,
-        12,
-        12,
-        12,
-    )
-    .fill_radial(Rgba8888::rgba(255, 232, 64, 40), Rgba8888::rgba(0, 0, 0, 0))
-    .draw(surface);
+    // Glow behind badge
+    let mut glow = RectDsc::new();
+    glow.bg_color = Rgba8888::rgba(255, 232, 64, 40);
+    glow.bg_opa = OPA_COVER;
+    glow.bg_grad = Gradient::radial(Rgba8888::rgba(255, 232, 64, 40), Rgba8888::rgba(0, 0, 0, 0));
+    glow.radius = 12;
+    let glow_area = Area::new(badge_x - 4, badge_y - 4, badge_width + 8, badge_height + 8);
+    draw_rect(surface, &glow, &glow_area);
 
-    RoundedRect::new(badge_x, badge_y, badge_width, badge_height, 10, 10, 10, 10)
-        .fill_linear_h(Rgba8888::rgba(0, 0, 0, 128), Rgba8888::rgba(0, 0, 0, 128))
-        .stroke(2, Rgba8888::rgba(252, 234, 78, 255))
-        .draw(surface);
+    // Badge
+    let mut badge = RectDsc::new();
+    badge.bg_color = Rgba8888::rgba(0, 0, 0, 128);
+    badge.bg_opa = OPA_COVER;
+    badge.bg_grad = Gradient::horizontal(Rgba8888::rgba(0, 0, 0, 128), Rgba8888::rgba(0, 0, 0, 128));
+    badge.radius = 10;
+    badge.border_width = 2;
+    badge.border_color = Rgba8888::rgba(252, 234, 78, 255);
+    badge.border_opa = OPA_COVER;
+    let badge_area = Area::new(badge_x, badge_y, badge_width, badge_height);
+    draw_rect(surface, &badge, &badge_area);
 
     // TODO: Text rendering disabled - requires embedded-graphics
     // let text = format!("{:02}:{:02}", minutes, seconds);

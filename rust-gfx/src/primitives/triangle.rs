@@ -65,4 +65,6 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             }
         }
     }
+    
+    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
 }

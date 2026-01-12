@@ -67,6 +67,7 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
                 rast.blend_pixel(x, y, dsc.color, dsc.opa);
             }
         }
+        rast.mark_dirty(x1, y1, x2 + 1, y2 + 1);
         return;
     }
     
@@ -76,6 +77,7 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     if len_sq == 0 {
         // Point
         rast.blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
+        rast.mark_dirty(dsc.p1.x, dsc.p1.y, dsc.p1.x + 1, dsc.p1.y + 1);
         return;
     }
 
@@ -125,4 +127,13 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             }
         }
     }
+    
+    // Mark dirty region for general line
+    let w = dsc.width - 1;
+    let w_half = w / 2 + 1;
+    let min_x = dsc.p1.x.min(dsc.p2.x) - w_half;
+    let max_x = dsc.p1.x.max(dsc.p2.x) + w_half;
+    let min_y = dsc.p1.y.min(dsc.p2.y) - w_half;
+    let max_y = dsc.p1.y.max(dsc.p2.y) + w_half;
+    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
 }

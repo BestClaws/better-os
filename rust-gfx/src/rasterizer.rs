@@ -1,5 +1,4 @@
 use crate::color::Rgba8888;
-use crate::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
 
 pub trait Rasterizer {
     fn width(&self) -> usize;
@@ -122,15 +121,42 @@ impl Rasterizer for Rgb565Rasterizer {
             return;
         }
 
-        let (fg_rgb565, a) = rgba8888_to_rgb565_and_alpha(color.to_u32());
+        // Convert Rgba8888 to RGB565 with alpha
+        let rgba = color.to_u32();
+        let r = ((rgba >> 24) & 0xFF) as u8;
+        let g = ((rgba >> 16) & 0xFF) as u8;
+        let b = ((rgba >> 8) & 0xFF) as u8;
+        let a = (rgba & 0xFF) as u8;
+
+        let r5 = (r as u16 >> 3) & 0x1F;
+        let g6 = (g as u16 >> 2) & 0x3F;
+        let b5 = (b as u16 >> 3) & 0x1F;
+        let fg_rgb565 = (r5 << 11) | (g6 << 5) | b5;
+
         let eff = ((coverage as u32 * a as u32) / 255) as u8;
         if eff == 0 {
             return;
         }
 
+        // RGB565 alpha blend
         let idx = ((y as usize) * self.width + (x as usize)) * 2;
         let bg = ((self.buffer[idx] as u16) << 8) | self.buffer[idx + 1] as u16;
-        let out = blend_rgb565(bg, fg_rgb565, eff);
+        
+        let out = if eff == 255 {
+            fg_rgb565
+        } else {
+            let inv = 255 - eff;
+            let br = ((bg >> 11) & 0x1F) * inv as u16;
+            let bg_g = ((bg >> 5) & 0x3F) * inv as u16;
+            let bb = (bg & 0x1F) * inv as u16;
+
+            let fr = ((fg_rgb565 >> 11) & 0x1F) * eff as u16;
+            let fg_g = ((fg_rgb565 >> 5) & 0x3F) * eff as u16;
+            let fb = (fg_rgb565 & 0x1F) * eff as u16;
+
+            (((br + fr) / 255) << 11) | (((bg_g + fg_g) / 255) << 5) | ((bb + fb) / 255)
+        };
+
         self.buffer[idx] = (out >> 8) as u8;
         self.buffer[idx + 1] = out as u8;
     }

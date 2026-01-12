@@ -3,9 +3,47 @@ use alloc::vec::Vec;
 use super::util::{clip_rect, intersects_or_touches, union_rect};
 use rust_gfx::color::Rgba8888;
 use crate::libs::gfx::rgba8888_to_gray4_and_alpha;
-use rust_gfx::{blend_rgb565, rgba8888_to_rgb565_and_alpha};
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::{Point, Rect, Size};
+
+/// Convert RGBA8888 to RGB565 + separate alpha (inline helper)
+#[inline(always)]
+fn rgba8888_to_rgb565_and_alpha(rgba: u32) -> (u16, u8) {
+    let r = ((rgba >> 24) & 0xFF) as u8;
+    let g = ((rgba >> 16) & 0xFF) as u8;
+    let b = ((rgba >> 8) & 0xFF) as u8;
+    let a = (rgba & 0xFF) as u8;
+
+    let r5 = (r as u16 >> 3) & 0x1F;
+    let g6 = (g as u16 >> 2) & 0x3F;
+    let b5 = (b as u16 >> 3) & 0x1F;
+
+    let rgb565 = (r5 << 11) | (g6 << 5) | b5;
+    (rgb565, a)
+}
+
+/// RGB565 alpha blend (inline helper)
+#[inline(always)]
+fn blend_rgb565(bg: u16, fg: u16, opa: u8) -> u16 {
+    if opa == 255 {
+        return fg;
+    }
+    if opa == 0 {
+        return bg;
+    }
+
+    let inv = 255 - opa;
+
+    let br = ((bg >> 11) & 0x1F) * inv as u16;
+    let bg_g = ((bg >> 5) & 0x3F) * inv as u16;
+    let bb = (bg & 0x1F) * inv as u16;
+
+    let fr = ((fg >> 11) & 0x1F) * opa as u16;
+    let fg_g = ((fg >> 5) & 0x3F) * opa as u16;
+    let fb = (fg & 0x1F) * opa as u16;
+
+    (((br + fr) / 255) << 11) | (((bg_g + fg_g) / 255) << 5) | ((bb + fb) / 255)
+}
 
 /// Pixel operation function pointers cached per format for hot paths.
 ///

@@ -1,6 +1,7 @@
 use rust_gfx::color::Rgba8888;
 use rust_gfx::rasterizer::Rasterizer;
-use rust_gfx::{RoundedRect, Shape};
+use rust_gfx::primitives::{RectDsc, draw_rect};
+use rust_gfx::types::{Area, Gradient, OPA_COVER};
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -150,19 +151,29 @@ fn draw_interface(
     let width = surface.width() as i32;
     let height = surface.height() as i32;
 
-    // Clean gradient background - use RoundedRect with 0 radius instead of fill_rect
-    RoundedRect::new(0, 0, width, height, 0, 0, 0, 0)
-        .fill_solid(Rgba8888::rgba(24, 25, 28, 255))
-        .draw(surface);
+    // Clean gradient background - use RectDsc with 0 radius instead of fill_rect
+    let mut bg = RectDsc::new();
+    bg.bg_color = Rgba8888::rgba(24, 25, 28, 255);
+    bg.bg_opa = OPA_COVER;
+    bg.radius = 0;
+    let bg_area = Area::new(0, 0, width, height);
+    draw_rect(surface, &bg, &bg_area);
 
     // Simple, clean header - scale based on height
     let header_height = (height / 6).max(14).min(24);
-    RoundedRect::new(0, 0, width, header_height, 0, 0, 0, 0)
-        .fill_solid(Rgba8888::rgba(32, 34, 37, 255))
-        .draw(surface);
-    RoundedRect::new(0, header_height, width, 1, 0, 0, 0, 0)
-        .fill_solid(Rgba8888::rgba(0, 0, 0, 60))
-        .draw(surface);
+    let mut header = RectDsc::new();
+    header.bg_color = Rgba8888::rgba(32, 34, 37, 255);
+    header.bg_opa = OPA_COVER;
+    header.radius = 0;
+    let header_area = Area::new(0, 0, width, header_height);
+    draw_rect(surface, &header, &header_area);
+    
+    let mut divider = RectDsc::new();
+    divider.bg_color = Rgba8888::rgba(0, 0, 0, 60);
+    divider.bg_opa = OPA_COVER;
+    divider.radius = 0;
+    let divider_area = Area::new(0, header_height, width, 1);
+    draw_rect(surface, &divider, &divider_area);
 
     // Choose font based on resolution
     let (title_font, message_font) = if width <= 110 {
@@ -188,15 +199,16 @@ fn draw_interface(
     let dot_y = (header_height - dot_size) / 2;
     let dot_radius = dot_size / 2;
 
-    RoundedRect::new(
-        dot_x, dot_y, dot_size, dot_size, dot_radius, dot_radius, dot_radius, dot_radius,
-    )
-    .fill_solid(if connected {
+    let mut dot = RectDsc::new();
+    dot.bg_color = if connected {
         Rgba8888::rgba(67, 181, 129, 255)
     } else {
         Rgba8888::rgba(128, 132, 142, 255)
-    })
-    .draw(surface);
+    };
+    dot.bg_opa = OPA_COVER;
+    dot.radius = dot_radius;
+    let dot_area = Area::new(dot_x, dot_y, dot_size, dot_size);
+    draw_rect(surface, &dot, &dot_area);
 
     // Clean message list - scale with resolution
     let content_top = header_height + (height / 25).max(2).min(8);
@@ -211,18 +223,12 @@ fn draw_interface(
         let y = content_top + idx as i32 * (message_height + message_spacing);
 
         // Clean message bubble
-        RoundedRect::new(
-            x,
-            y,
-            message_width,
-            message_height,
-            corner_radius,
-            corner_radius,
-            corner_radius,
-            corner_radius,
-        )
-        .fill_solid(Rgba8888::rgba(43, 45, 49, 255))
-        .draw(surface);
+        let mut bubble = RectDsc::new();
+        bubble.bg_color = Rgba8888::rgba(43, 45, 49, 255);
+        bubble.bg_opa = OPA_COVER;
+        bubble.radius = corner_radius;
+        let bubble_area = Area::new(x, y, message_width, message_height);
+        draw_rect(surface, &bubble, &bubble_area);
 
         // TODO: Text rendering disabled - requires embedded-graphics
         // let text_padding = (width / 40).max(2).min(8);

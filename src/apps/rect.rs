@@ -11,19 +11,30 @@ use embassy_time::{Duration, Timer};
 #[embassy_executor::task]
 pub async fn rect_app(ctx: AppContext) {
     info!("Starting rect app with new primitives");
+    let mut hue: u32 = 0;
     loop {
         if !ctx.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
-        ctx.draw(|surface: &mut DrawingSurface| {
+        
+        // Calculate color based on hue (cycling through colors)
+        let r = ((((hue * 6) % 360) as f32 / 360.0 * 255.0) as u8).wrapping_add(50);
+        let g = ((((hue * 4) % 360) as f32 / 360.0 * 255.0) as u8).wrapping_add(50);
+        let b = ((((hue * 2) % 360) as f32 / 360.0 * 255.0) as u8).wrapping_add(100);
+        
+        let r2 = r.wrapping_add(50);
+        let g2 = g.wrapping_add(50);
+        let b2 = b.wrapping_add(50);
+        
+        ctx.draw(move |surface: &mut DrawingSurface| {
             // Draw a fancy rectangle with gradient, border, and rounded corners
             let mut dsc = RectDsc::new();
-            dsc.bg_color = Rgba8888::rgba(50, 100, 200, 255);
+            dsc.bg_color = Rgba8888::rgba(r, g, b, 255);
             dsc.bg_opa = OPA_COVER;
             dsc.bg_grad = Gradient::vertical(
-                Rgba8888::rgba(100, 150, 255, 255),
-                Rgba8888::rgba(50, 100, 200, 255)
+                Rgba8888::rgba(r2, g2, b2, 255),
+                Rgba8888::rgba(r, g, b, 255)
             );
             dsc.radius = 10;
             dsc.border_color = Rgba8888::rgba(200, 200, 200, 255);
@@ -36,6 +47,8 @@ pub async fn rect_app(ctx: AppContext) {
         })
         .await;
 
+        ctx.request_redraw().await;
+        hue = (hue + 3) % 360;
         Timer::after(Duration::from_millis(16)).await;
     }
 }

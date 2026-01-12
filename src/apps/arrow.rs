@@ -1,3 +1,5 @@
+// 3D rendering removed - legacy API no longer available
+/*
 use rust_gfx::color::Rgba8888;
 use rust_gfx::{draw_model, parse_binary_stl, Quaternion, RenderOptions, Vec3};
 use crate::system::app::app_context::AppContext;
@@ -88,4 +90,13 @@ pub async fn arrow_app(context: AppContext) {
         context.request_redraw().await;
         Timer::after(Duration::from_millis(16)).await;
     }
+}
+*/
+
+// Stub implementation while 3D rendering is not available
+use crate::system::app::app_context::AppContext;
+
+#[embassy_executor::task]
+pub async fn arrow_app(_context: AppContext) {
+    // 3D rendering API removed - app disabled
 }

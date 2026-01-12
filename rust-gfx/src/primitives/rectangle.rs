@@ -87,6 +87,29 @@ impl Default for RectDsc {
 
 /// Draw a rectangle with the given descriptor
 pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+    // Calculate extended area including shadow and outline
+    let mut min_x = area.x1;
+    let mut min_y = area.y1;
+    let mut max_x = area.x2;
+    let mut max_y = area.y2;
+    
+    // Extend for shadow
+    if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
+        min_x = min_x.min(area.x1 + dsc.shadow_offset_x - dsc.shadow_width);
+        min_y = min_y.min(area.y1 + dsc.shadow_offset_y - dsc.shadow_width);
+        max_x = max_x.max(area.x2 + dsc.shadow_offset_x + dsc.shadow_width);
+        max_y = max_y.max(area.y2 + dsc.shadow_offset_y + dsc.shadow_width);
+    }
+    
+    // Extend for outline
+    if dsc.outline_opa > 0 && dsc.outline_width > 0 {
+        let outline_ext = dsc.outline_pad + dsc.outline_width;
+        min_x = min_x.min(area.x1 - outline_ext);
+        min_y = min_y.min(area.y1 - outline_ext);
+        max_x = max_x.max(area.x2 + outline_ext);
+        max_y = max_y.max(area.y2 + outline_ext);
+    }
+    
     // Draw shadow first (if any)
     if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
         draw_shadow(rast, dsc, area);
@@ -117,6 +140,9 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     if dsc.border_opa > 0 && dsc.border_width > 0 {
         draw_border(rast, dsc, area);
     }
+    
+    // Mark the entire affected area as dirty
+    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
 }
 
 /// Draw rectangle background (with gradient support and rounded corners)
