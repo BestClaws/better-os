@@ -4,7 +4,7 @@ extern crate alloc;
 use rust_gfx::color::Rgba8888;
 use rust_gfx::primitives::*;
 use rust_gfx::rasterizer::Rasterizer;
-use rust_gfx::{Area, BorderSide, OPA_50, OPA_70, OPA_COVER, RADIUS_CIRCLE};
+use rust_gfx::{Area, BorderSide, GradDir, GradStop, Gradient, OPA_30, OPA_50, OPA_70, OPA_COVER, RADIUS_CIRCLE};
 use crate::system::app::app_context::AppContext;
 use crate::system::input::types::{HighLevelEvent, TouchAction};
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -20,6 +20,8 @@ struct SpriteTest {
     border_width: i32,
     border_color: Option<Rgba8888>,
     bg_opa: u8,
+    grad_dir: GradDir,
+    grad_color2: Option<Rgba8888>,
 }
 
 fn generate_working_sprites() -> Vec<SpriteTest> {
@@ -67,8 +69,51 @@ fn generate_working_sprites() -> Vec<SpriteTest> {
                 border_width: 0,
                 border_color: None,
                 bg_opa: OPA_COVER,
+                grad_dir: GradDir::None,
+                grad_color2: None,
             });
         }
+    }
+
+    // Horizontal gradients (sprites 20-22)
+    let grad_radii = [0, 5, 10];
+    let grad_names = ["hor_r0", "hor_r5", "hor_r10"];
+    for (i, &radius) in grad_radii.iter().enumerate() {
+        tests.push(SpriteTest {
+            name: match grad_names[i] {
+                "hor_r0" => "rect_grad_hor_r0",
+                "hor_r5" => "rect_grad_hor_r5",
+                "hor_r10" => "rect_grad_hor_r10",
+                _ => "unknown",
+            },
+            radius,
+            bg_color: Rgba8888::rgb(255, 0, 0), // Start color: red
+            border_width: 0,
+            border_color: None,
+            bg_opa: OPA_COVER,
+            grad_dir: GradDir::Hor,
+            grad_color2: Some(Rgba8888::rgb(0, 0, 255)), // End color: blue
+        });
+    }
+
+    // Vertical gradients (sprites 23-25)
+    let grad_names_v = ["ver_r0", "ver_r5", "ver_r10"];
+    for (i, &radius) in grad_radii.iter().enumerate() {
+        tests.push(SpriteTest {
+            name: match grad_names_v[i] {
+                "ver_r0" => "rect_grad_ver_r0",
+                "ver_r5" => "rect_grad_ver_r5",
+                "ver_r10" => "rect_grad_ver_r10",
+                _ => "unknown",
+            },
+            radius,
+            bg_color: Rgba8888::rgb(255, 0, 0), // Start color: red
+            border_width: 0,
+            border_color: None,
+            bg_opa: OPA_COVER,
+            grad_dir: GradDir::Ver,
+            grad_color2: Some(Rgba8888::rgb(0, 0, 255)), // End color: blue
+        });
     }
 
     // Border w10 full (sprite 44)
@@ -79,9 +124,11 @@ fn generate_working_sprites() -> Vec<SpriteTest> {
         border_width: 10,
         border_color: Some(Rgba8888::rgb(255, 255, 0)),
         bg_opa: OPA_COVER,
+        grad_dir: GradDir::None,
+        grad_color2: None,
     });
 
-    // Opacity variations (sprites 60-62)
+    // Opacity variations (sprites 60-63)
     tests.push(SpriteTest {
         name: "rect_opa100",
         radius: 12,
@@ -89,6 +136,8 @@ fn generate_working_sprites() -> Vec<SpriteTest> {
         border_width: 0,
         border_color: None,
         bg_opa: OPA_COVER,
+        grad_dir: GradDir::None,
+        grad_color2: None,
     });
 
     tests.push(SpriteTest {
@@ -98,6 +147,8 @@ fn generate_working_sprites() -> Vec<SpriteTest> {
         border_width: 0,
         border_color: None,
         bg_opa: OPA_70,
+        grad_dir: GradDir::None,
+        grad_color2: None,
     });
 
     tests.push(SpriteTest {
@@ -107,6 +158,19 @@ fn generate_working_sprites() -> Vec<SpriteTest> {
         border_width: 0,
         border_color: None,
         bg_opa: OPA_50,
+        grad_dir: GradDir::None,
+        grad_color2: None,
+    });
+
+    tests.push(SpriteTest {
+        name: "rect_opa30",
+        radius: 12,
+        bg_color: Rgba8888::rgb(255, 150, 50),
+        border_width: 0,
+        border_color: None,
+        bg_opa: OPA_30,
+        grad_dir: GradDir::None,
+        grad_color2: None,
     });
 
     tests
@@ -132,6 +196,28 @@ fn execute_test(surface: &mut DrawingSurface, test: SpriteTest) {
     dsc.bg_opa = test.bg_opa;
     dsc.bg_color = test.bg_color;
 
+    // Add gradient if specified
+    if test.grad_dir != GradDir::None {
+        if let Some(color2) = test.grad_color2 {
+            dsc.bg_grad = Gradient {
+                dir: test.grad_dir,
+                stops: [
+                    GradStop {
+                        color: test.bg_color,
+                        opa: OPA_COVER,
+                        frac: 0,
+                    },
+                    GradStop {
+                        color: color2,
+                        opa: OPA_COVER,
+                        frac: 255,
+                    },
+                ],
+                stops_count: 2,
+            };
+        }
+    }
+
     if let Some(border_color) = test.border_color {
         dsc.border_opa = OPA_COVER;
         dsc.border_width = test.border_width;
@@ -147,7 +233,7 @@ fn execute_test(surface: &mut DrawingSurface, test: SpriteTest) {
 
 #[embassy_executor::task]
 pub async fn gfx_bench_app(context: AppContext) {
-    info!("Starting gfx_bench - showcasing 24 working sprites");
+    info!("Starting gfx_bench - showcasing 31 working sprites");
 
     let tests = generate_working_sprites();
     info!("Generated {} test configurations", tests.len());
