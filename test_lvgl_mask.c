@@ -20,8 +20,37 @@ typedef struct {
     lv_area_t rect;
     int32_t radius;
     bool outer;
-    lv_draw_sw_mask_radius_circle_dsc_t circle;
+    lv_draw_sw_mask_radius_circle_dsc_t *circle;
 } lv_draw_sw_mask_radius_param_t;
+
+typedef enum {
+    LV_DRAW_SW_MASK_RES_TRANSP = 0,
+    LV_DRAW_SW_MASK_RES_FULL_COVER = 1,
+    LV_DRAW_SW_MASK_RES_CHANGED = 2,
+    LV_DRAW_SW_MASK_RES_UNKNOWN = 3,
+} lv_draw_sw_mask_res_t;
+
+static inline int32_t lv_area_get_width(const lv_area_t * area)
+{
+    return area->x2 - area->x1 + 1;
+}
+
+static inline int32_t lv_area_get_height(const lv_area_t * area)
+{
+    return area->y2 - area->y1 + 1;
+}
+
+static inline int32_t LV_CLAMP(int32_t min_v, int32_t v, int32_t max_v)
+{
+    if(v < min_v) return min_v;
+    if(v > max_v) return max_v;
+    return v;
+}
+
+static void lv_memzero(void * buf, size_t size)
+{
+    memset(buf, 0, size);
+}
 
 // Include the full circ_calc_aa4 implementation from before
 static void circ_init(lv_point_t * c, int32_t * tmp, int32_t radius) {
@@ -194,8 +223,125 @@ static lv_opa_t * get_next_line(lv_draw_sw_mask_radius_circle_dsc_t * c, int32_t
     return &c->cir_opa[c->opa_start_on_y[y]];
 }
 
-static uint8_t mask_mix(uint8_t a, uint8_t b) {
-    return (a * b) / 255;
+static uint8_t mask_mix(uint8_t mask_act, uint8_t mask_new) {
+    if(mask_new >= 255) return mask_act;
+    if(mask_new == 0) return 0;
+    uint32_t prod = (uint32_t)mask_act * (uint32_t)mask_new;
+    return (uint8_t)((prod * 0x8081u) >> 23);
+}
+
+static lv_draw_sw_mask_res_t lv_draw_mask_radius(uint8_t * mask_buf, int32_t abs_x,
+                                                 int32_t abs_y, int32_t len,
+                                                 lv_draw_sw_mask_radius_param_t * p)
+{
+    bool outer = p->outer;
+    int32_t radius = p->radius;
+    lv_area_t rect = p->rect;
+
+    if(!outer) {
+        if(abs_y < rect.y1 || abs_y > rect.y2) {
+            return LV_DRAW_SW_MASK_RES_TRANSP;
+        }
+    }
+    else {
+        if(abs_y < rect.y1 || abs_y > rect.y2) {
+            return LV_DRAW_SW_MASK_RES_FULL_COVER;
+        }
+    }
+
+    if((abs_x >= rect.x1 + radius && abs_x + len <= rect.x2 - radius) ||
+       (abs_y >= rect.y1 + radius && abs_y <= rect.y2 - radius)) {
+        if(!outer) {
+            int32_t last = rect.x1 - abs_x;
+            if(last > len) return LV_DRAW_SW_MASK_RES_TRANSP;
+            if(last > 0) lv_memzero(&mask_buf[0], last);
+
+            int32_t first = rect.x2 - abs_x + 1;
+            if(first <= 0) return LV_DRAW_SW_MASK_RES_TRANSP;
+            if(first < len) lv_memzero(&mask_buf[first], len - first);
+            if(last == 0 && first == len) return LV_DRAW_SW_MASK_RES_FULL_COVER;
+            return LV_DRAW_SW_MASK_RES_CHANGED;
+        }
+        else {
+            int32_t first = rect.x1 - abs_x;
+            if(first < 0) first = 0;
+            if(first <= len) {
+                int32_t last = rect.x2 - abs_x - first + 1;
+                if(first + last > len) last = len - first;
+                if(last > 0) lv_memzero(&mask_buf[first], last);
+            }
+            return LV_DRAW_SW_MASK_RES_CHANGED;
+        }
+    }
+
+    lv_draw_sw_mask_radius_circle_dsc_t * circle = p->circle;
+    if(!circle) return LV_DRAW_SW_MASK_RES_CHANGED;
+
+    int32_t k = rect.x1 - abs_x;
+    int32_t w = lv_area_get_width(&rect);
+    int32_t h = lv_area_get_height(&rect);
+    int32_t rel_x = abs_x - rect.x1;
+    (void)rel_x;
+    int32_t rel_y = abs_y - rect.y1;
+
+    int32_t cir_y;
+    if(rel_y < radius) {
+        cir_y = radius - rel_y - 1;
+    }
+    else {
+        cir_y = rel_y - (h - radius);
+    }
+
+    int32_t aa_len = 0;
+    int32_t x_start = 0;
+    lv_opa_t * aa_opa = get_next_line(circle, cir_y, &aa_len, &x_start);
+    int32_t cir_x_right = k + w - radius + x_start;
+    int32_t cir_x_left = k + radius - x_start - 1;
+
+    if(!outer) {
+        for(int32_t i = 0; i < aa_len; i++) {
+            lv_opa_t opa = aa_opa[aa_len - i - 1];
+            int32_t right_idx = cir_x_right + i;
+            if(right_idx >= 0 && right_idx < len) {
+                mask_buf[right_idx] = mask_mix(mask_buf[right_idx], opa);
+            }
+            int32_t left_idx = cir_x_left - i;
+            if(left_idx >= 0 && left_idx < len) {
+                mask_buf[left_idx] = mask_mix(mask_buf[left_idx], opa);
+            }
+        }
+
+        cir_x_right = LV_CLAMP(0, cir_x_right + aa_len, len);
+        if(cir_x_right < len) {
+            lv_memzero(&mask_buf[cir_x_right], len - cir_x_right);
+        }
+
+        cir_x_left = LV_CLAMP(0, cir_x_left - aa_len + 1, len);
+        if(cir_x_left > 0) {
+            lv_memzero(&mask_buf[0], cir_x_left);
+        }
+    }
+    else {
+        for(int32_t i = 0; i < aa_len; i++) {
+            lv_opa_t opa = 255 - aa_opa[aa_len - 1 - i];
+            int32_t right_idx = cir_x_right + i;
+            if(right_idx >= 0 && right_idx < len) {
+                mask_buf[right_idx] = mask_mix(mask_buf[right_idx], opa);
+            }
+            int32_t left_idx = cir_x_left - i;
+            if(left_idx >= 0 && left_idx < len) {
+                mask_buf[left_idx] = mask_mix(mask_buf[left_idx], opa);
+            }
+        }
+
+        int32_t clr_start = LV_CLAMP(0, cir_x_left + 1, len);
+        int32_t clr_end = LV_CLAMP(clr_start, cir_x_right, len);
+        if(clr_end > clr_start) {
+            lv_memzero(&mask_buf[clr_start], clr_end - clr_start);
+        }
+    }
+
+    return LV_DRAW_SW_MASK_RES_CHANGED;
 }
 
 int main() {
@@ -203,104 +349,66 @@ int main() {
     lv_draw_sw_mask_radius_param_t outer_mask = {0};
     lv_draw_sw_mask_radius_param_t inner_mask = {0};
     
-    outer_mask.rect = (lv_area_t){20, 30, 82, 95};
-    outer_mask.radius = 10;
+    outer_mask.rect = (lv_area_t){16, 27, 86, 97};
+    outer_mask.radius = 35;
     outer_mask.outer = false;
-    circ_calc_aa4(&outer_mask.circle, 10);
-    
-    inner_mask.rect = (lv_area_t){21, 31, 81, 94};
-    inner_mask.radius = 9;
+    outer_mask.circle = malloc(sizeof(lv_draw_sw_mask_radius_circle_dsc_t));
+    memset(outer_mask.circle, 0, sizeof(*outer_mask.circle));
+    circ_calc_aa4(outer_mask.circle, 35);
+
+    inner_mask.rect = (lv_area_t){19, 30, 83, 94};
+    inner_mask.radius = 32;
     inner_mask.outer = true;
-    circ_calc_aa4(&inner_mask.circle, 9);
+    inner_mask.circle = malloc(sizeof(lv_draw_sw_mask_radius_circle_dsc_t));
+    memset(inner_mask.circle, 0, sizeof(*inner_mask.circle));
+    circ_calc_aa4(inner_mask.circle, 32);
     
-    // Apply masks at y=30
-    int y = 30;
-    int width = 63;
-    uint8_t mask_buf[63];
-    memset(mask_buf, 255, width);
-    
-    // Apply inner mask
-    lv_area_t *rect = &inner_mask.rect;
-    bool outer = inner_mask.outer;
-    int radius = inner_mask.radius;
-    int w = rect->x2 - rect->x1 + 1;
-    int h = rect->y2 - rect->y1 + 1;
-    int abs_y = y - rect->y1;
-    int cir_y = (abs_y < radius) ? (radius - abs_y - 1) : (abs_y - (h - radius));
-    int aa_len, x_start;
-    lv_opa_t *aa_opa = get_next_line(&inner_mask.circle, cir_y, &aa_len, &x_start);
-    
-    if(aa_opa) {
-        int k = rect->x1 - 20;  // x_start = 20
-        int cir_x_right = k + w - radius + x_start;
-        int cir_x_left = k + radius - x_start - 1;
-        
-        printf("Inner mask (outer=%d, radius=%d):\n", outer, radius);
-        printf("  cir_y=%d, aa_len=%d, x_start=%d\n", cir_y, aa_len, x_start);
-        printf("  cir_x_left=%d, cir_x_right=%d\n", cir_x_left, cir_x_right);
-        printf("  aa_opa=[");
-        for(int i = 0; i < aa_len; i++) printf("%d%s", aa_opa[i], i < aa_len-1 ? ", " : "");
-        printf("]\n");
-        
-        for(int i = 0; i < aa_len; i++) {
-            lv_opa_t opa = 255 - (aa_opa[aa_len - 1 - i]);
-            if(cir_x_left - i >= 0 && cir_x_left - i < width) {
-                mask_buf[cir_x_left - i] = mask_mix(opa, mask_buf[cir_x_left - i]);
+    // Apply masks at y=60 to match Rust probe
+    int width = outer_mask.rect.x2 - outer_mask.rect.x1 + 1;
+    for(int y = 60; y <= 64; y++) {
+        uint8_t mask_buf[128];
+        memset(mask_buf, 255, sizeof(mask_buf));
+
+        uint8_t mask_after_inner[128];
+        memcpy(mask_after_inner, mask_buf, sizeof(mask_after_inner));
+
+        lv_draw_sw_mask_res_t res_inner = lv_draw_mask_radius(mask_after_inner, outer_mask.rect.x1, y,
+                                                              width, &inner_mask);
+
+        printf("y=%d inner res=%d\n", y, res_inner);
+        int start = 0;
+        while(start < width) {
+            int val = mask_after_inner[start];
+            int end = start;
+            while(end + 1 < width && mask_after_inner[end + 1] == val) {
+                end++;
             }
+            printf("  [%d,%d]=%d\n", start, end, val);
+            start = end + 1;
         }
-        int clr_start = (cir_x_left + 1 > 0) ? cir_x_left + 1 : 0;
-        int clr_len = (cir_x_right - clr_start > 0) ? cir_x_right - clr_start : 0;
-        if(clr_len > width - clr_start) clr_len = width - clr_start;
-        memset(&mask_buf[clr_start], 0, clr_len);
+
+        uint8_t mask_after_both[128];
+        memcpy(mask_after_both, mask_after_inner, sizeof(mask_after_both));
+        lv_draw_sw_mask_res_t res_outer = lv_draw_mask_radius(mask_after_both, outer_mask.rect.x1, y,
+                                                              width, &outer_mask);
+
+        printf("y=%d outer res=%d\n", y, res_outer);
+        start = 0;
+        while(start < width) {
+            int val = mask_after_both[start];
+            int end = start;
+            while(end + 1 < width && mask_after_both[end + 1] == val) {
+                end++;
+            }
+            printf("  [%d,%d]=%d\n", start, end, val);
+            start = end + 1;
+        }
+        printf("\n");
     }
     
-    printf("After inner mask at x=26 (idx=6): %d\n\n", mask_buf[6]);
-    
-    // Apply outer mask
-    rect = &outer_mask.rect;
-    outer = outer_mask.outer;
-    radius = outer_mask.radius;
-    w = rect->x2 - rect->x1 + 1;
-    h = rect->y2 - rect->y1 + 1;
-    abs_y = y - rect->y1;
-    cir_y = (abs_y < radius) ? (radius - abs_y - 1) : (abs_y - (h - radius));
-    aa_opa = get_next_line(&outer_mask.circle, cir_y, &aa_len, &x_start);
-    
-    if(aa_opa) {
-        int k = rect->x1 - 20;
-        int cir_x_right = k + w - radius + x_start;
-        int cir_x_left = k + radius - x_start - 1;
-        
-        printf("Outer mask (outer=%d, radius=%d):\n", outer, radius);
-        printf("  cir_y=%d, aa_len=%d, x_start=%d\n", cir_y, aa_len, x_start);
-        printf("  cir_x_left=%d, cir_x_right=%d\n", cir_x_left, cir_x_right);
-        printf("  aa_opa=[");
-        for(int i = 0; i < aa_len; i++) printf("%d%s", aa_opa[i], i < aa_len-1 ? ", " : "");
-        printf("]\n");
-        
-        for(int i = 0; i < aa_len; i++) {
-            lv_opa_t opa = aa_opa[aa_len - i - 1];
-            int left_idx = cir_x_left - i;
-            if(left_idx >= 0 && left_idx < width) {
-                printf("  i=%d: left_idx=%d, opa=%d (from aa_opa[%d]=%d), old_mask=%d, new_mask=%d\n",
-                       i, left_idx, opa, aa_len-i-1, aa_opa[aa_len-i-1], 
-                       mask_buf[left_idx], mask_mix(opa, mask_buf[left_idx]));
-                mask_buf[left_idx] = mask_mix(opa, mask_buf[left_idx]);
-            }
-        }
-        
-        int right_clear = cir_x_right + aa_len;
-        if(right_clear < 0) right_clear = 0;
-        if(right_clear < width) memset(&mask_buf[right_clear], 0, width - right_clear);
-        
-        int left_clear = cir_x_left - aa_len + 1;
-        if(left_clear > width) left_clear = width;
-        if(left_clear > 0) memset(&mask_buf[0], 0, left_clear);
-    }
-    
-    printf("\nAfter outer mask at x=26 (idx=6): %d\n", mask_buf[6]);
-    
-    free(outer_mask.circle.buf);
-    free(inner_mask.circle.buf);
+    free(outer_mask.circle->buf);
+    free(outer_mask.circle);
+    free(inner_mask.circle->buf);
+    free(inner_mask.circle);
     return 0;
 }

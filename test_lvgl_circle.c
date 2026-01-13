@@ -185,20 +185,34 @@ static void circ_calc_aa4(lv_draw_sw_mask_radius_circle_dsc_t * c, int32_t radiu
     free(cir_x);
 }
 
-int main() {
+int main(int argc, char **argv) {
     lv_draw_sw_mask_radius_circle_dsc_t circle = {0};
-    circ_calc_aa4(&circle, 10);
+    int radius = 10;
+    if(argc > 1) radius = atoi(argv[1]);
+    circ_calc_aa4(&circle, radius);
 
-    printf("Circle cache for radius=10:\n");
-    for(int y = 0; y <= 10; y++) {
+    printf("Circle cache for radius=%d:\n", radius);
+    for(int y = 0; y <= radius; y++) {
         int start = circle.opa_start_on_y[y];
-        int end = (y < 10) ? circle.opa_start_on_y[y+1] : circle.opa_start_on_y[y] + 1;
+        int end = circle.opa_start_on_y[y + 1];
         printf("y=%d: x_start=%d, opa=[", y, circle.x_start_on_y[y]);
         for(int i = start; i < end; i++) {
             printf("%d", circle.cir_opa[i]);
             if(i < end - 1) printf(", ");
         }
-        printf("]\n");
+        printf("] (start=%d end=%d)\n", start, end);
+    }
+
+    int rect_h = radius * 2 + 1;
+    printf("\nDerived cir_y values for abs_y 0..%d:\n", rect_h - 1);
+    for(int abs_y = 0; abs_y < rect_h; abs_y++) {
+        int cir_y;
+        if(abs_y < radius) {
+            cir_y = radius - abs_y - 1;
+        } else {
+            cir_y = abs_y - (rect_h - radius);
+        }
+        printf("abs_y=%2d -> cir_y=%2d\n", abs_y, cir_y);
     }
 
     free(circle.buf);

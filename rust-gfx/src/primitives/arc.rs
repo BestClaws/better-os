@@ -93,12 +93,10 @@ pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
         }
 
         // Blend pixels
-        for (i, &opa) in mask_buf.iter().enumerate() {
-            if opa > 0 {
-                let x = blend_area.x1 + i as i32;
-                let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.color, final_opa);
-            }
+        for (i, &mask_val) in mask_buf.iter().enumerate() {
+            let x = blend_area.x1 + i as i32;
+            let final_opa = ((dsc.opa as u32 * mask_val as u32) / 255) as Opa;
+            rast.blend_pixel(x, y, dsc.color, final_opa);
         }
     }
 

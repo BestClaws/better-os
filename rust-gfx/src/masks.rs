@@ -177,8 +177,12 @@ impl AngleMask {
 
             let mut res1 = MaskResult::FullCover;
             if tmp > 0 {
-                res1 =
-                    apply_line_segment(&self.end_line, &mut mask_buf[..tmp as usize], abs_x, abs_y);
+                res1 = apply_line_segment(
+                    &self.end_line,
+                    &mut mask_buf[..tmp as usize],
+                    abs_x,
+                    abs_y,
+                );
                 if res1 == MaskResult::Transparent {
                     mask_buf[..tmp as usize].fill(0);
                 }
@@ -739,118 +743,149 @@ impl RadiusCircle {
             return;
         }
 
-        let mut circ_points: Vec<(i32, i32, i32)> = Vec::new();
+        let radius = self.radius;
+        let cir_capacity = ((radius + 1) * 2 * 2) as usize;
+        let mut cir_x = vec![0i32; cir_capacity];
+        let mut cir_y = vec![0i32; cir_capacity];
+        let mut cir_opa_vals = vec![0i32; (radius * 6 + 6) as usize];
+        let mut cir_size: usize = 0;
 
-        let mut x = self.radius * 4;
-        let mut y = 0;
-        let mut tmp = 1 - x;
+        let mut cp_x = radius * 4;
+        let mut cp_y = 0;
+        let mut tmp = 1 - cp_x;
 
-        let mut y_cnt = 0;
+        let mut y_8th_cnt = 0i32;
         let mut x_int = [0i32; 4];
         let mut x_fract = [0i32; 4];
+        x_int[0] = cp_x >> 2;
+        x_fract[0] = 0;
 
-        'outer: while y <= x {
-            for i in 0..4 {
+        while cp_y <= cp_x {
+            let mut i = 0;
+            while i < 4 {
                 if tmp <= 0 {
-                    tmp += 2 * y + 3;
+                    tmp += 2 * cp_y + 3;
                 } else {
-                    tmp += 2 * (y - x) + 5;
-                    x -= 1;
+                    tmp += 2 * (cp_y - cp_x) + 5;
+                    cp_x -= 1;
                 }
-                y += 1;
+                cp_y += 1;
 
-                if y > x {
-                    break 'outer;
+                if cp_y > cp_x {
+                    break;
                 }
 
-                x_int[i] = x >> 2;
-                x_fract[i] = x & 0x3;
+                x_int[i] = cp_x >> 2;
+                x_fract[i] = cp_x & 0x3;
+                i += 1;
             }
 
-            let mut push_entry =
-                |cir_points: &mut Vec<(i32, i32, i32)>, x: i32, y: i32, opa: i32| {
-                    cir_points.push((x, y, opa * 16));
-                };
+            if i != 4 {
+                break;
+            }
+
+            let mut push_entry = |vx: i32, vy: i32, opa: i32, cir_size: &mut usize| {
+                cir_x[*cir_size] = vx;
+                cir_y[*cir_size] = vy;
+                cir_opa_vals[*cir_size] = opa * 16;
+                *cir_size += 1;
+            };
 
             if x_int[0] == x_int[3] {
                 push_entry(
-                    &mut circ_points,
                     x_int[0],
-                    y_cnt,
+                    y_8th_cnt,
                     x_fract[0] + x_fract[1] + x_fract[2] + x_fract[3],
+                    &mut cir_size,
                 );
             } else if x_int[0] != x_int[1] {
-                push_entry(&mut circ_points, x_int[0], y_cnt, x_fract[0]);
+                push_entry(x_int[0], y_8th_cnt, x_fract[0], &mut cir_size);
                 push_entry(
-                    &mut circ_points,
                     x_int[0] - 1,
-                    y_cnt,
+                    y_8th_cnt,
                     4 + x_fract[1] + x_fract[2] + x_fract[3],
+                    &mut cir_size,
                 );
             } else if x_int[0] != x_int[2] {
-                push_entry(&mut circ_points, x_int[0], y_cnt, x_fract[0] + x_fract[1]);
                 push_entry(
-                    &mut circ_points,
-                    x_int[0] - 1,
-                    y_cnt,
-                    8 + x_fract[2] + x_fract[3],
-                );
-            } else {
-                push_entry(
-                    &mut circ_points,
                     x_int[0],
-                    y_cnt,
-                    x_fract[0] + x_fract[1] + x_fract[2],
+                    y_8th_cnt,
+                    x_fract[0] + x_fract[1],
+                    &mut cir_size,
                 );
-                push_entry(&mut circ_points, x_int[0] - 1, y_cnt, 12 + x_fract[3]);
-            }
-
-            y_cnt += 1;
-        }
-
-        let mid = self.radius * 723;
-        let mid_int = mid >> 10;
-        let mut tmp_val = mid - (mid_int << 10);
-        let mut calc_opa = |val: i32| {
-            let mut v = val;
-            if v <= 512 {
-                v = (v * v * 2) >> (10 + 6);
+                push_entry(
+                    x_int[0] - 1,
+                    y_8th_cnt,
+                    8 + x_fract[2] + x_fract[3],
+                    &mut cir_size,
+                );
             } else {
-                v = 1024 - v;
-                v = (v * v * 2) >> (10 + 6);
-                v = 15 - v;
+                push_entry(
+                    x_int[0],
+                    y_8th_cnt,
+                    x_fract[0] + x_fract[1] + x_fract[2],
+                    &mut cir_size,
+                );
+                push_entry(x_int[0] - 1, y_8th_cnt, 12 + x_fract[3], &mut cir_size);
             }
-            v * 16
-        };
-        circ_points.push((mid_int, mid_int, calc_opa(tmp_val)));
 
-        let mut mirrored = Vec::with_capacity(circ_points.len() * 2);
-        for &(x, y, opa) in &circ_points {
-            mirrored.push((x, y, opa));
-            if x != y {
-                mirrored.push((y, x, opa));
-            }
+            y_8th_cnt += 1;
         }
 
-        mirrored.sort_by_key(|&(x, y, _)| (y, x));
+        let mid = radius * 723;
+        let mid_int = mid >> 10;
+        if cir_size == 0
+            || cir_x[cir_size - 1] != mid_int
+            || cir_y[cir_size - 1] != mid_int
+        {
+            let mut tmp_val = mid - (mid_int << 10);
+            if tmp_val <= 512 {
+                tmp_val = (tmp_val * tmp_val * 2) >> (10 + 6);
+            } else {
+                tmp_val = 1024 - tmp_val;
+                tmp_val = (tmp_val * tmp_val * 2) >> (10 + 6);
+                tmp_val = 15 - tmp_val;
+            }
+
+            cir_x[cir_size] = mid_int;
+            cir_y[cir_size] = mid_int;
+            cir_opa_vals[cir_size] = tmp_val * 16;
+            cir_size += 1;
+        }
+
+        if cir_size >= 2 {
+            let mut i = cir_size as isize - 2;
+            while i >= 0 {
+                let idx = i as usize;
+                cir_x[cir_size] = cir_y[idx];
+                cir_y[cir_size] = cir_x[idx];
+                cir_opa_vals[cir_size] = cir_opa_vals[idx];
+                cir_size += 1;
+                if i == 0 {
+                    break;
+                }
+                i -= 1;
+            }
+        }
 
         self.cir_opa.clear();
         self.x_start_on_y.clear();
         self.opa_start_on_y.clear();
 
-        let mut cur_y = -1;
-        for (x, y, opa) in mirrored {
-            if y != cur_y {
-                cur_y = y;
-                self.opa_start_on_y.push(self.cir_opa.len());
-                self.x_start_on_y.push(x);
-            } else {
-                if let Some(last) = self.x_start_on_y.last_mut() {
-                    *last = min(*last, x);
-                }
+        let mut i = 0usize;
+        let mut y = 0i32;
+        while i < cir_size {
+            self.opa_start_on_y.push(self.cir_opa.len());
+            let mut min_x = cir_x[i];
+            while i < cir_size && cir_y[i] == y {
+                min_x = min(min_x, cir_x[i]);
+                self.cir_opa.push(cir_opa_vals[i].min(255) as Opa);
+                i += 1;
             }
-            self.cir_opa.push(opa.min(255) as Opa);
+            self.x_start_on_y.push(min_x);
+            y += 1;
         }
+
         self.opa_start_on_y.push(self.cir_opa.len());
     }
 
@@ -861,9 +896,6 @@ impl RadiusCircle {
         let idx = y as usize;
         let start = self.opa_start_on_y[idx];
         let end = self.opa_start_on_y[idx + 1];
-        if start >= end {
-            return None;
-        }
         let x_start = self.x_start_on_y[idx];
         Some((end - start, x_start, &self.cir_opa[start..end]))
     }
@@ -984,14 +1016,17 @@ impl RadiusMask {
         let cir_x_left = k + self.radius - x_start - 1;
 
         if !self.outer {
-            for (idx, &opa) in opa_slice.iter().enumerate() {
+            for idx in 0..aa_len {
+                let opa = opa_slice[aa_len - idx - 1];
                 let right_idx = cir_x_right + idx as i32;
                 if right_idx >= 0 && right_idx < len {
-                    mask_buf[right_idx as usize] = mask_mix(opa, mask_buf[right_idx as usize]);
+                    let buf_idx = right_idx as usize;
+                    mask_buf[buf_idx] = mask_mix(opa, mask_buf[buf_idx]);
                 }
                 let left_idx = cir_x_left - idx as i32;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] = mask_mix(opa, mask_buf[left_idx as usize]);
+                    let buf_idx = left_idx as usize;
+                    mask_buf[buf_idx] = mask_mix(opa, mask_buf[buf_idx]);
                 }
             }
 
@@ -1005,26 +1040,41 @@ impl RadiusMask {
                 mask_buf[..left_clean as usize].fill(0);
             }
         } else {
-            for (idx, &opa) in opa_slice.iter().enumerate() {
-                let opa_val = 255 - opa;
+            for idx in 0..aa_len {
+                let opa_val = 255 - opa_slice[aa_len - idx - 1];
                 let right_idx = cir_x_right + idx as i32;
                 if right_idx >= 0 && right_idx < len {
-                    mask_buf[right_idx as usize] = mask_mix(opa_val, mask_buf[right_idx as usize]);
+                    let buf_idx = right_idx as usize;
+                    mask_buf[buf_idx] = mask_mix(opa_val, mask_buf[buf_idx]);
                 }
                 let left_idx = cir_x_left - idx as i32;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] = mask_mix(opa_val, mask_buf[left_idx as usize]);
+                    let buf_idx = left_idx as usize;
+                    mask_buf[buf_idx] = mask_mix(opa_val, mask_buf[buf_idx]);
                 }
             }
 
             let clr_start = clamp_i32(0, cir_x_left + 1, len);
-            let clr_end = clamp_i32(clr_start, cir_x_right, len);
-            if clr_end > clr_start {
-                mask_buf[clr_start as usize..clr_end as usize].fill(0);
+            let clr_len = clamp_i32(0, cir_x_right - clr_start, len - clr_start);
+            if clr_len > 0 {
+                mask_buf[clr_start as usize..(clr_start + clr_len) as usize].fill(0);
             }
         }
 
         MaskResult::Changed
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn debug_line_info(&self, rel_y: i32) -> Option<(i32, Vec<Opa>)> {
+        let circle = self.circle.as_ref()?;
+        let h = self.rect.height();
+        let cir_y = if rel_y < self.radius {
+            self.radius - rel_y - 1
+        } else {
+            rel_y - (h - self.radius)
+        };
+        let (len, x_start, slice) = circle.get_line(cir_y)?;
+        Some((x_start, slice[..len].to_vec()))
     }
 }
 

@@ -7,13 +7,15 @@ import struct
 
 def read_bmp(filename):
     with open(filename, 'rb') as f:
-        # Read BMP header
+        # Read BMP header (minimum 54 bytes, but offset may be larger)
         header = f.read(54)
         if header[0:2] != b'BM':
             raise ValueError("Not a BMP file")
         
         width = struct.unpack('<i', header[18:22])[0]
         height_raw = struct.unpack('<i', header[22:26])[0]
+
+        data_offset = struct.unpack('<I', header[10:14])[0]
         
         # Height can be negative (top-down) or positive (bottom-up)
         if height_raw < 0:
@@ -23,8 +25,8 @@ def read_bmp(filename):
             height = height_raw
             top_down = False
         
-        # Read pixel data
-        f.seek(54)
+        # Seek to pixel data (respecting offset for different header sizes)
+        f.seek(data_offset)
         pixels = []
         for y in range(height):
             row = []
