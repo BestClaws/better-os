@@ -178,9 +178,6 @@ pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
         }
 
         for (i, &mask_val) in mask_buf.iter().enumerate() {
-            if mask_val == 0 {
-                continue;
-            }
             let final_opa = if mask_val >= OPA_COVER {
                 dsc.opa
             } else {
