@@ -223,13 +223,11 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             continue;
         }
         
-        // Blend pixels
+        // Blend pixels (including opa=0 to preserve color for non-premultiplied alpha)
         for (i, &opa) in mask_buf.iter().enumerate() {
-            if opa > 0 {
-                let x = blend_area.x1 + i as i32;
-                let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
-                rast.blend_pixel(x, y, dsc.color, final_opa);
-            }
+            let x = blend_area.x1 + i as i32;
+            let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
+            rast.blend_pixel(x, y, dsc.color, final_opa);
         }
     }
     

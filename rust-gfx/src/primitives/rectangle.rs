@@ -203,9 +203,6 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
                 OPA_COVER
             };
 
-            // LVGL writes ALL pixels in the rect, even if mask==0
-            // This preserves color info in transparent pixels (non-premultiplied alpha)
-
             // Get color (possibly from gradient)
             let (color, grad_opa) = if has_grad {
                 let rel_x = x - area.x1;
@@ -218,7 +215,8 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             // Combine opacities: dsc.bg_opa * grad_opa * mask_val
             let opa = ((dsc.bg_opa as u32 * grad_opa as u32 * mask_val as u32) / (255 * 255)) as Opa;
 
-            // Write pixel even if opa==0 (LVGL behavior for non-premultiplied alpha)
+            // LVGL writes ALL pixels in the bg area, even if opa==0
+            // This preserves color info for non-premultiplied alpha
             rast.blend_pixel(x, y, color, opa);
         }
     }
@@ -262,12 +260,16 @@ fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     draw_border_complex(rast, dsc, area, &inner_area, rout, rin);
 }
 
-/// Simple border without rounded corners
+/// Simple border without rounded corners (matches LVGL exactly)
 fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, inner: &Area) {
     let sides = dsc.border_side;
+    let top_side = outer.y1 <= inner.y1;
+    let bottom_side = outer.y2 >= inner.y2;
+    let left_side = outer.x1 <= inner.x1;
+    let right_side = outer.x2 >= inner.x2;
     
     // Top edge
-    if sides.has_top() && outer.y1 <= inner.y1 {
+    if top_side && sides.has_top() {
         for y in outer.y1..inner.y1 {
             for x in outer.x1..=outer.x2 {
                 rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
@@ -276,7 +278,7 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
     }
     
     // Bottom edge
-    if sides.has_bottom() && outer.y2 >= inner.y2 {
+    if bottom_side && sides.has_bottom() {
         for y in (inner.y2 + 1)..=outer.y2 {
             for x in outer.x1..=outer.x2 {
                 rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
@@ -284,18 +286,22 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
         }
     }
     
-    // Left edge
-    if sides.has_left() && outer.x1 <= inner.x1 {
-        for y in inner.y1..=inner.y2 {
+    // Left edge - adjust Y range based on top/bottom sides (LVGL behavior)
+    if left_side && sides.has_left() {
+        let y_start = if top_side { inner.y1 } else { outer.y1 };
+        let y_end = if bottom_side { inner.y2 } else { outer.y2 };
+        for y in y_start..=y_end {
             for x in outer.x1..inner.x1 {
                 rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
         }
     }
     
-    // Right edge
-    if sides.has_right() && outer.x2 >= inner.x2 {
-        for y in inner.y1..=inner.y2 {
+    // Right edge - adjust Y range based on top/bottom sides (LVGL behavior)
+    if right_side && sides.has_right() {
+        let y_start = if top_side { inner.y1 } else { outer.y1 };
+        let y_end = if bottom_side { inner.y2 } else { outer.y2 };
+        for y in y_start..=y_end {
             for x in (inner.x2 + 1)..=outer.x2 {
                 rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
@@ -303,19 +309,19 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
     }
 }
 
-/// Complex border with rounded corners (LVGL approach)
+/// Complex border with rounded corners (matches LVGL exactly - scanline approach)
 fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, inner: &Area, rout: i32, rin: i32) {
-    let sides = dsc.border_side;
+    // Note: border_side logic is already in inner_area calculation, don't recheck here
     
-    // Create masks
-    let inner_mask = RadiusMask::new(*inner, rin, true);
+    // Create masks (matching LVGL)
+    let inner_mask = RadiusMask::new(*inner, rin, true);  // outer=true means inverted
     let outer_mask = if rout > 0 {
-        Some(RadiusMask::new(*outer, rout, false))
+        Some(RadiusMask::new(*outer, rout, false))  // outer=false means normal
     } else {
         None
     };
 
-    // Calculate core area (non-rounded part)
+    // Calculate core area (non-rounded straight edge region) - matches LVGL
     let core_area = Area::new(
         outer.x1.max(outer.x1 + rout).max(inner.x1),
         outer.y1.max(outer.y1 + rout).max(inner.y1),
@@ -328,15 +334,17 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
     let left_side = outer.x1 <= inner.x1;
     let right_side = outer.x2 >= inner.x2;
 
-    // Draw straight edges without masks (LVGL optimization)
+    // Draw straight edges WITHOUT masks (LVGL optimization for non-corner regions)
+    // Top straight edge (if border goes all the way across)
     if top_side && core_area.x1 <= core_area.x2 {
-        for y in outer.y1..inner.y1 {
+        for y in outer.y1..=inner.y1.saturating_sub(1) {
             for x in core_area.x1..=core_area.x2 {
                 rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
         }
     }
 
+    // Bottom straight edge
     if bottom_side && core_area.x1 <= core_area.x2 {
         for y in (inner.y2 + 1)..=outer.y2 {
             for x in core_area.x1..=core_area.x2 {
@@ -345,14 +353,16 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
         }
     }
 
+    // Left straight edge
     if left_side && core_area.y1 <= core_area.y2 {
         for y in core_area.y1..=core_area.y2 {
-            for x in outer.x1..inner.x1 {
+            for x in outer.x1..=inner.x1.saturating_sub(1) {
                 rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
             }
         }
     }
 
+    // Right straight edge
     if right_side && core_area.y1 <= core_area.y2 {
         for y in core_area.y1..=core_area.y2 {
             for x in (inner.x2 + 1)..=outer.x2 {
@@ -361,67 +371,76 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
         }
     }
 
-    // Draw corners with masks
-    // Background is already drawn by draw_bg(), we only need to draw the border on top
+    // Draw corners WITH masks (LVGL scanline approach)
     let corner_width = (outer.x2 - outer.x1 + 1) as usize;
-    let mut border_mask_buf: alloc::vec::Vec<Opa> = alloc::vec![255; corner_width];
+    let mut mask_buf: alloc::vec::Vec<Opa> = alloc::vec![255; corner_width];
 
-    // Top corners (left and right)
+    // Top corners (left and right together per scanline)
     if (top_side && left_side) || (top_side && right_side) {
         for y in outer.y1..core_area.y1 {
-            // Calculate border mask (inner + outer)
-            for m in border_mask_buf.iter_mut() { *m = 255; }
-            inner_mask.apply_to_line(y, outer.x1, &mut border_mask_buf);
+            // Initialize mask buffer to full coverage
+            for m in mask_buf.iter_mut() { *m = 255; }
+            
+            // Apply inner mask (inverted - clears the inside)
+            inner_mask.apply_to_line(y, outer.x1, &mut mask_buf);
+            
+            // Apply outer mask if present (clears the outside)
             if let Some(ref om) = outer_mask {
-                om.apply_to_line(y, outer.x1, &mut border_mask_buf);
+                om.apply_to_line(y, outer.x1, &mut mask_buf);
             }
 
-            // Draw border pixels - only draw in actual curved corner regions
-            // Check distance from corner centers to determine if pixel is in corner or straight edge
-            // Left corner (center at outer.x1 + rout, outer.y1 + rout)
+            // Draw border pixels with mask applied
+            // IMPORTANT: Write ALL pixels even with opa=0 (non-premultiplied alpha)
+            // Left corner
             if top_side && left_side {
                 for x in outer.x1..core_area.x1 {
-                    let border_m = border_mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    let mask_val = mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
-            // Right corner (center at outer.x2 - rout, outer.y1 + rout)
+            
+            // Right corner
             if top_side && right_side {
                 for x in (core_area.x2 + 1)..=outer.x2 {
-                    let border_m = border_mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    let mask_val = mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
         }
     }
 
-    // Bottom corners (left and right)
+    // Bottom corners (left and right together per scanline)
     if (bottom_side && left_side) || (bottom_side && right_side) {
         for y in (core_area.y2 + 1)..=outer.y2 {
-            // Calculate border mask (inner + outer)
-            for m in border_mask_buf.iter_mut() { *m = 255; }
-            inner_mask.apply_to_line(y, outer.x1, &mut border_mask_buf);
+            // Initialize mask buffer to full coverage
+            for m in mask_buf.iter_mut() { *m = 255; }
+            
+            // Apply inner mask (inverted - clears the inside)
+            inner_mask.apply_to_line(y, outer.x1, &mut mask_buf);
+            
+            // Apply outer mask if present (clears the outside)
             if let Some(ref om) = outer_mask {
-                om.apply_to_line(y, outer.x1, &mut border_mask_buf);
+                om.apply_to_line(y, outer.x1, &mut mask_buf);
             }
 
-            // Draw border pixels - only draw in actual curved corner regions
-            // Check distance from corner centers to determine if pixel is in corner or straight edge
-            // Left corner (center at outer.x1 + rout, outer.y2 - rout)
+            // Draw border pixels with mask applied
+            // IMPORTANT: Write ALL pixels even with opa=0 (non-premultiplied alpha)
+            // Left corner
             if bottom_side && left_side {
                 for x in outer.x1..core_area.x1 {
-                    let border_m = border_mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    let mask_val = mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
-            // Right corner (center at outer.x2 - rout, outer.y2 - rout)
+            
+            // Right corner
             if bottom_side && right_side {
                 for x in (core_area.x2 + 1)..=outer.x2 {
-                    let border_m = border_mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * border_m as u32) / 255) as Opa;
+                    let mask_val = mask_buf[(x - outer.x1) as usize];
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
