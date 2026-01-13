@@ -1,7 +1,7 @@
 /// Gradient computation matching LVGL's system
-use crate::color::{Rgba8888, lerp_color};
-use crate::types::{GradDir, Gradient, Opa};
+use crate::color::{lerp_color, Rgba8888};
 use crate::math::{atan2_deg, frac_255};
+use crate::types::{GradDir, Gradient, Opa};
 
 /// Compute color from gradient at a specific position
 pub fn gradient_get_color(
@@ -46,7 +46,7 @@ pub fn gradient_get_color(
             }
         }
         GradDir::Conical => {
-            // In LVGL simple mode (LV_USE_DRAW_SW_COMPLEX_GRADIENTS=0), conical gradients  
+            // In LVGL simple mode (LV_USE_DRAW_SW_COMPLEX_GRADIENTS=0), conical gradients
             // fall back to horizontal gradients. Match this behavior.
             if width <= 1 {
                 255
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn test_horizontal_gradient() {
         let grad = Gradient::horizontal(Rgba8888::RED, Rgba8888::BLUE);
-        
+
         // At start, should be red
         let (color, _) = gradient_get_color_hor(&grad, 0, 100);
         assert_eq!(color.red(), 255);

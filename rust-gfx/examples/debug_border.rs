@@ -1,6 +1,6 @@
+use rust_gfx::primitives::*;
 /// Debug border rendering to understand pixel differences
 use rust_gfx::*;
-use rust_gfx::primitives::*;
 
 const SPRITE_WIDTH: usize = 102;
 const SPRITE_HEIGHT: usize = 125;
@@ -28,13 +28,13 @@ fn main() {
     println!("Pixel (82,30): {:?}", canvas.get_pixel(82, 30)); // Right edge
     println!("Pixel (30,30): {:?}", canvas.get_pixel(30, 30)); // Inside border, should be yellow
     println!("Pixel (31,31): {:?}", canvas.get_pixel(31, 31)); // Should be bg (gray)
-    
+
     // Check corner pixels
     println!("\nCorner pixels:");
     println!("Pixel (20,40): {:?}", canvas.get_pixel(20, 40)); // Top-left corner region
     println!("Pixel (21,40): {:?}", canvas.get_pixel(21, 40));
     println!("Pixel (22,40): {:?}", canvas.get_pixel(22, 40));
-    
+
     bmp::save_bmp(&canvas, "debug_border_w1_full.bmp").expect("Failed to save");
     println!("\nSaved debug_border_w1_full.bmp");
 }

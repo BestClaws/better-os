@@ -1,10 +1,10 @@
-/// Label/text drawing (simplified stub for now - requires std/alloc for String)
-#[cfg(feature = "std")]
-use crate::Rasterizer;
 #[cfg(feature = "std")]
 use crate::color::Rgba8888;
 #[cfg(feature = "std")]
 use crate::types::*;
+/// Label/text drawing (simplified stub for now - requires std/alloc for String)
+#[cfg(feature = "std")]
+use crate::Rasterizer;
 
 #[cfg(feature = "std")]
 extern crate alloc;
@@ -53,7 +53,7 @@ pub fn draw_label<R: Rasterizer>(_rast: &mut R, dsc: &LabelDsc, area: &Area) {
     // 1. Embedded font data
     // 2. FreeType integration
     // 3. Simple bitmap font
-    
+
     // As a placeholder, draw a filled rect to show the label area
     let _ = (_rast, dsc, area);
 }

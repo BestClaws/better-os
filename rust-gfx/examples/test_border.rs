@@ -1,5 +1,5 @@
-use rust_gfx::*;
 use rust_gfx::primitives::*;
+use rust_gfx::*;
 
 fn main() {
     let mut canvas = Canvas::new(102, 125);
@@ -18,14 +18,15 @@ fn main() {
     draw_rect(&mut canvas, &dsc, &area);
 
     // Check specific pixels
-    let pixels = [
-        (27, 30),
-        (26, 29),
-        (30, 30),
-    ];
+    let pixels = [(27, 30), (26, 29), (30, 30)];
 
     for &(x, y) in &pixels {
         let color = canvas.get_pixel(x, y);
-        println!("({},{}) = {:?}", x, y, (color.r(), color.g(), color.b(), color.a()));
+        println!(
+            "({},{}) = {:?}",
+            x,
+            y,
+            (color.r(), color.g(), color.b(), color.a())
+        );
     }
 }

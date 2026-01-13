@@ -1,6 +1,6 @@
+use crate::types::Area;
 /// Blur effect (simplified stub for now)
 use crate::Rasterizer;
-use crate::types::Area;
 
 /// Blur descriptor matching LVGL
 #[derive(Clone, Debug)]
@@ -26,6 +26,6 @@ pub fn draw_blur<R: Rasterizer>(_rast: &mut R, dsc: &BlurDsc, area: &Area) {
     // - Box blur (fast approximation)
     // - Gaussian blur (more accurate)
     // - Separable convolution for performance
-    
+
     let _ = (_rast, dsc, area);
 }

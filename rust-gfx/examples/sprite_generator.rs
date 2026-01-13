@@ -1,7 +1,7 @@
+use rust_gfx::primitives::*;
 /// Sprite Generator - matches main.c output exactly
 /// Generates all sprite variations for testing
 use rust_gfx::*;
-use rust_gfx::primitives::*;
 use std::fs;
 
 const SPRITE_WIDTH: usize = 102;
@@ -77,7 +77,12 @@ fn generate_rectangles(sprite_index: &mut usize) {
     }
 
     // Gradients (horizontal, vertical, radial, conical)
-    let grad_dirs = [GradDir::Hor, GradDir::Ver, GradDir::Radial, GradDir::Conical];
+    let grad_dirs = [
+        GradDir::Hor,
+        GradDir::Ver,
+        GradDir::Radial,
+        GradDir::Conical,
+    ];
     let grad_names = ["hor", "ver", "radial", "conical"];
 
     for g in 0..4 {
@@ -198,7 +203,10 @@ fn generate_rectangles(sprite_index: &mut usize) {
         let area = Area::new(30, 40, 72, 85);
         draw_rect(&mut canvas, &dsc, &area);
 
-        let name = format!("rect_outline_w{}_pad{}", outline_configs[i][0], outline_configs[i][1]);
+        let name = format!(
+            "rect_outline_w{}_pad{}",
+            outline_configs[i][0], outline_configs[i][1]
+        );
         capture_sprite(&canvas, sprite_index, &name);
     }
 
@@ -618,7 +626,7 @@ fn generate_arcs(sprite_index: &mut usize) {
 fn generate_labels(sprite_index: &mut usize) {
     // Labels are stubs for now (need font rendering)
     // Generate placeholder sprites matching main.c exactly
-    
+
     // Basic text with default font - 6 sprites
     let texts = ["A", "AB", "ABC", "Text", "123", "!@#"];
     let text_names = ["A", "AB", "ABC", "Text", "123", "sym"];
@@ -637,50 +645,50 @@ fn generate_labels(sprite_index: &mut usize) {
 
     // Text decorations - 3 sprites
     let decor_names = ["none", "underline", "strike"];
-    
+
     for d in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
-        
+
         // Placeholder: draw yellow rectangle (255, 255, 0)
         let area = Area::new(25, 50, 77, 75);
         canvas.fill_area(&area, Rgba8888::rgb(255, 255, 0), OPA_COVER);
-        
+
         let name = format!("label_decor_{}", decor_names[d]);
         capture_sprite(&canvas, sprite_index, &name);
     }
-    
+
     // Letter spacing - 3 sprites
     let spacings = [0, 5, 10];
-    
+
     for s in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
-        
+
         // Placeholder: draw cyan rectangle (100, 255, 255)
         let area = Area::new(15, 50, 87, 75);
         canvas.fill_area(&area, Rgba8888::rgb(100, 255, 255), OPA_COVER);
-        
+
         let name = format!("label_spacing{}", spacings[s]);
         capture_sprite(&canvas, sprite_index, &name);
     }
-    
+
     // Opacity - 3 sprites
     let opas = [OPA_COVER, OPA_70, OPA_40];
     let opa_names = ["100", "70", "40"];
-    
+
     for o in 0..3 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
-        
+
         // Placeholder: draw magenta rectangle (255, 100, 255) with opacity
         let area = Area::new(25, 50, 77, 75);
         canvas.fill_area(&area, Rgba8888::rgb(255, 100, 255), opas[o]);
-        
+
         let name = format!("label_opa{}", opa_names[o]);
         capture_sprite(&canvas, sprite_index, &name);
     }
-    
+
     // Different colors - 4 sprites
     let colors = [
         Rgba8888::rgb(255, 0, 0),
@@ -689,15 +697,15 @@ fn generate_labels(sprite_index: &mut usize) {
         Rgba8888::rgb(255, 128, 0),
     ];
     let color_names = ["red", "green", "blue", "orange"];
-    
+
     for c in 0..4 {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
-        
+
         // Placeholder: draw colored rectangles
         let area = Area::new(30, 50, 72, 75);
         canvas.fill_area(&area, colors[c], OPA_COVER);
-        
+
         let name = format!("label_color_{}", color_names[c]);
         capture_sprite(&canvas, sprite_index, &name);
     }
@@ -720,10 +728,7 @@ fn generate_blurs(sprite_index: &mut usize) {
             dsc.radius = corner_radii[c];
             dsc.bg_opa = OPA_COVER;
             dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-            dsc.bg_grad = Gradient::horizontal(
-                Rgba8888::rgb(255, 0, 0),
-                Rgba8888::rgb(0, 0, 255),
-            );
+            dsc.bg_grad = Gradient::horizontal(Rgba8888::rgb(255, 0, 0), Rgba8888::rgb(0, 0, 255));
 
             let area = Area::new(20, 30, 82, 95);
             draw_rect(&mut canvas, &dsc, &area);

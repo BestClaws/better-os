@@ -141,7 +141,7 @@ impl Rasterizer for Rgb565Rasterizer {
         // RGB565 alpha blend
         let idx = ((y as usize) * self.width + (x as usize)) * 2;
         let bg = ((self.buffer[idx] as u16) << 8) | self.buffer[idx + 1] as u16;
-        
+
         let out = if eff == 255 {
             fg_rgb565
         } else {

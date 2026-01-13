@@ -27,7 +27,7 @@ pub enum GradDir {
 pub struct GradStop {
     pub color: Rgba8888,
     pub opa: Opa,
-    pub frac: u8,  // 0-255
+    pub frac: u8, // 0-255
 }
 
 /// Gradient descriptor matching LVGL

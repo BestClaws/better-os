@@ -29,34 +29,34 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
 
     let width = canvas.width as i32;
     let height = canvas.height as i32;
-    let row_size = width * 4;  // 4 bytes per pixel (ARGB8888)
+    let row_size = width * 4; // 4 bytes per pixel (ARGB8888)
     let pixel_data_size = row_size * height;
     let file_size = BMP_PIXEL_DATA_OFFSET + pixel_data_size as usize;
 
     // BMP File Header (14 bytes)
-    file.write_all(&[0x42, 0x4D])?;  // "BM" signature
-    file.write_all(&(file_size as u32).to_le_bytes())?;  // File size
-    file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // Reserved
-    file.write_all(&(BMP_PIXEL_DATA_OFFSET as u32).to_le_bytes())?;  // Pixel data offset
+    file.write_all(&[0x42, 0x4D])?; // "BM" signature
+    file.write_all(&(file_size as u32).to_le_bytes())?; // File size
+    file.write_all(&[0x00, 0x00, 0x00, 0x00])?; // Reserved
+    file.write_all(&(BMP_PIXEL_DATA_OFFSET as u32).to_le_bytes())?; // Pixel data offset
 
     // BITMAPV4HEADER (108 bytes) - matches SDL output
-    file.write_all(&(BMP_INFO_HEADER_V4_SIZE as u32).to_le_bytes())?;  // Header size: 108
-    file.write_all(&width.to_le_bytes())?;  // Width
-    file.write_all(&height.to_le_bytes())?;  // Height
-    file.write_all(&[0x01, 0x00])?;  // Planes: 1
-    file.write_all(&[0x20, 0x00])?;  // Bits per pixel: 32
-    file.write_all(&[0x03, 0x00, 0x00, 0x00])?;  // Compression: BI_BITFIELDS (3)
-    file.write_all(&(pixel_data_size as u32).to_le_bytes())?;  // Image size
-    file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // X pixels per meter: 0
-    file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // Y pixels per meter: 0
-    file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // Colors used: 0
-    file.write_all(&[0x00, 0x00, 0x00, 0x00])?;  // Important colors: 0
+    file.write_all(&(BMP_INFO_HEADER_V4_SIZE as u32).to_le_bytes())?; // Header size: 108
+    file.write_all(&width.to_le_bytes())?; // Width
+    file.write_all(&height.to_le_bytes())?; // Height
+    file.write_all(&[0x01, 0x00])?; // Planes: 1
+    file.write_all(&[0x20, 0x00])?; // Bits per pixel: 32
+    file.write_all(&[0x03, 0x00, 0x00, 0x00])?; // Compression: BI_BITFIELDS (3)
+    file.write_all(&(pixel_data_size as u32).to_le_bytes())?; // Image size
+    file.write_all(&[0x00, 0x00, 0x00, 0x00])?; // X pixels per meter: 0
+    file.write_all(&[0x00, 0x00, 0x00, 0x00])?; // Y pixels per meter: 0
+    file.write_all(&[0x00, 0x00, 0x00, 0x00])?; // Colors used: 0
+    file.write_all(&[0x00, 0x00, 0x00, 0x00])?; // Important colors: 0
 
     // Color masks (for BI_BITFIELDS) - SDL uses BGRA order
-    file.write_all(&[0x00, 0x00, 0xFF, 0x00])?;  // Blue mask: 0x00FF0000
-    file.write_all(&[0x00, 0xFF, 0x00, 0x00])?;  // Green mask: 0x0000FF00
-    file.write_all(&[0xFF, 0x00, 0x00, 0x00])?;  // Red mask: 0x000000FF
-    file.write_all(&[0x00, 0x00, 0x00, 0xFF])?;  // Alpha mask: 0xFF000000
+    file.write_all(&[0x00, 0x00, 0xFF, 0x00])?; // Blue mask: 0x00FF0000
+    file.write_all(&[0x00, 0xFF, 0x00, 0x00])?; // Green mask: 0x0000FF00
+    file.write_all(&[0xFF, 0x00, 0x00, 0x00])?; // Red mask: 0x000000FF
+    file.write_all(&[0x00, 0x00, 0x00, 0xFF])?; // Alpha mask: 0xFF000000
 
     // Color space type: "Win " (0x57696E20)
     file.write_all(&[0x20, 0x6E, 0x69, 0x57])?;
@@ -69,12 +69,12 @@ pub fn save_bmp<P: AsRef<Path>>(canvas: &Canvas, path: P) -> io::Result<()> {
 
     // Write pixel data (bottom-up, as BMP format requires)
     // SDL format is BGRA (Blue, Green, Red, Alpha) in memory
-    
+
     for y in (0..height).rev() {
         let row_start = (y * width) as usize;
         let row_end = row_start + width as usize;
         let row = &canvas.buffer()[row_start..row_end];
-        
+
         // Write as BGRA bytes (SDL format)
         for &pixel in row {
             file.write_all(&[pixel.b(), pixel.g(), pixel.r(), pixel.a()])?;
@@ -93,7 +93,7 @@ mod tests {
     fn test_bmp_save() {
         let mut canvas = Canvas::new(102, 125);
         canvas.clear(Rgba8888::RED);
-        
+
         // Test save (comment out to avoid file I/O in tests)
         // save_bmp(&canvas, "test_output.bmp").unwrap();
     }

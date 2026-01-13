@@ -1,6 +1,5 @@
 /// LVGL-compatible circle cache for anti-aliased rounded corners
 /// This implements LVGL's circ_calc_aa4 algorithm exactly
-
 extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -204,7 +203,7 @@ impl CircleCache {
         let x_start = self.x_start_on_y[y] as i32;
         Some((&self.cir_opa[start..end], x_start))
     }
-    
+
     /// Get circle line data as a struct (for debugging)
     pub fn get_line_data(&self, y: i32) -> Option<CircleLineData> {
         let (opa_slice, x_start) = self.get_line(y)?;

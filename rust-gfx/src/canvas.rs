@@ -1,7 +1,7 @@
 /// Canvas/Framebuffer rendering (internal format converts to ARGB8888 for BMP output)
 /// This is the main rendering target matching LVGL's layer system
 /// Uses Rgba8888 as the color format, converts to ARGB8888 for BMP
-use crate::color::{Rgba8888, blend_colors};
+use crate::color::{blend_colors, Rgba8888};
 use crate::types::{Area, Opa, OPA_COVER};
 use crate::Rasterizer;
 
@@ -55,7 +55,7 @@ impl Canvas {
     pub fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, opa: Opa) {
         self.blend_pixel_internal(x, y, color, opa);
     }
-/// Blend pixel at coordinates with opacity (internal method)
+    /// Blend pixel at coordinates with opacity (internal method)
     #[inline]
     fn blend_pixel_internal(&mut self, x: i32, y: i32, color: Rgba8888, opa: Opa) {
         if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
@@ -151,4 +151,3 @@ impl Rasterizer for Canvas {
         self.fill_area(&area, color, OPA_COVER);
     }
 }
-

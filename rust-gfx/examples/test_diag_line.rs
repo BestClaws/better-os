@@ -1,10 +1,10 @@
-use rust_gfx::*;
 use rust_gfx::primitives::*;
+use rust_gfx::*;
 
 fn main() {
     let mut canvas = Canvas::new(120, 120);
     canvas.clear(Rgba8888::rgb(255, 255, 255));
-    
+
     // Draw diagonal line like reference sprite
     let dsc = LineDsc {
         p1: Point::new(20, 30),
@@ -17,11 +17,11 @@ fn main() {
         round_start: false,
         round_end: false,
     };
-    
+
     draw_line(&mut canvas, &dsc);
-    
+
     bmp::save_bmp(&canvas, "test_diag_line.bmp").expect("Failed to save");
-    
+
     // Print some pixels along the diagonal
     println!("Pixels along diagonal:");
     for i in 0..11 {
@@ -31,4 +31,3 @@ fn main() {
         println!("  ({:3}, {:3}): {:08X}", x, y, color.to_u32());
     }
 }
-

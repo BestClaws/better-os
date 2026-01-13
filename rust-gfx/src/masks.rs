@@ -1,33 +1,279 @@
-/// Mask system matching LVGL's software rendering masks
-/// Masks are used to constrain drawing to specific regions with antialiasing
+//! LVGL-compatible software rendering masks.
+//! This module ports the relevant logic from lv_draw_sw_mask.c.
 
 use alloc::vec;
 use alloc::vec::Vec;
-use crate::types::*;
+use core::cmp::{max, min};
 
-/// Result of applying a mask to a pixel row
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::math::{trigo_cos, trigo_sin};
+use crate::types::{Area, Opa, Point};
+
+/// Result of applying masks to a scanline.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MaskResult {
-    /// Entire row is transparent (all zeros)
     Transparent,
-    /// Entire row is fully opaque (all 255)
     FullCover,
-    /// Mask buffer was modified with per-pixel opacity
     Changed,
 }
 
-/// Trait for all mask types
-pub trait Mask {
-    /// Apply mask to a horizontal line of pixels
-    /// mask_buf: buffer to write mask values (0-255 opacity), must be initialized to 255
-    /// x, y: absolute coordinates of the line start
-    /// len: number of pixels in the line
-    /// Returns: MaskResult indicating if the buffer was modified
-    fn apply(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult;
+/// Angle mask descriptor (port of lv_draw_sw_mask_angle_param_t).
+#[derive(Clone, Debug)]
+pub struct AngleMask {
+    vertex: Point,
+    start_angle: i32,
+    end_angle: i32,
+    delta_deg: i32,
+    start_line: LineMask,
+    end_line: LineMask,
 }
 
-/// Line side for line masks
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl AngleMask {
+    /// Create an angle mask keeping pixels between start and end degrees.
+    pub fn new(vertex_x: i32, vertex_y: i32, start_angle: i32, end_angle: i32) -> Self {
+        let vertex = Point::new(vertex_x, vertex_y);
+        let start_angle = Self::normalize_angle(start_angle);
+        let end_angle = Self::normalize_angle(end_angle);
+
+        let delta_deg = if end_angle < start_angle {
+            360 - start_angle + end_angle
+        } else {
+            (end_angle - start_angle).abs()
+        };
+
+        let start_side = if start_angle < 180 {
+            LineSide::Left
+        } else {
+            LineSide::Right
+        };
+        let end_side = if end_angle < 180 {
+            LineSide::Right
+        } else {
+            LineSide::Left
+        };
+
+        let start_line = LineMask::from_angle(vertex, start_angle, start_side);
+        let end_line = LineMask::from_angle(vertex, end_angle, end_side);
+
+        Self {
+            vertex,
+            start_angle,
+            end_angle,
+            delta_deg,
+            start_line,
+            end_line,
+        }
+    }
+
+    fn normalize_angle(angle: i32) -> i32 {
+        if angle < 0 {
+            0
+        } else if angle > 359 {
+            359
+        } else {
+            angle
+        }
+    }
+
+    fn adjust_cross(value: &mut i32, angle: i32) {
+        if (angle > 270 && angle <= 359 && *value < 0)
+            || (angle > 0 && angle <= 90 && *value < 0)
+            || (angle > 90 && angle < 270 && *value > 0)
+        {
+            *value = 0;
+        }
+    }
+
+    /// Apply angle mask to the provided buffer.
+    pub fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+        if mask_buf.is_empty() {
+            return MaskResult::FullCover;
+        }
+
+        let len = mask_buf.len() as i32;
+        let rel_y = abs_y - self.vertex.y;
+        let rel_x = abs_x - self.vertex.x;
+
+        if self.start_angle < 180
+            && self.end_angle < 180
+            && self.start_angle != 0
+            && self.end_angle != 0
+            && self.start_angle > self.end_angle
+        {
+            if abs_y < self.vertex.y {
+                return MaskResult::FullCover;
+            }
+
+            let end_angle_first = ((rel_y as i64 * self.end_line.xy_steep as i64) >> 10) as i32;
+            let mut start_angle_last =
+                (((rel_y + 1) as i64 * self.start_line.xy_steep as i64) >> 10) as i32;
+
+            Self::adjust_cross(&mut start_angle_last, self.start_angle);
+            Self::adjust_cross(&mut start_angle_last, self.end_angle);
+
+            let dist = (end_angle_first - start_angle_last) >> 1;
+            let mut tmp = start_angle_last + dist - rel_x;
+            if tmp > len {
+                tmp = len;
+            }
+
+            let mut res1 = MaskResult::FullCover;
+            if tmp > 0 {
+                res1 = apply_line_segment(
+                    &self.start_line,
+                    &mut mask_buf[..tmp as usize],
+                    abs_x,
+                    abs_y,
+                );
+                if res1 == MaskResult::Transparent {
+                    mask_buf[..tmp as usize].fill(0);
+                }
+            }
+
+            if tmp > len {
+                tmp = len;
+            }
+            if tmp < 0 {
+                tmp = 0;
+            }
+
+            let mut res2 = MaskResult::FullCover;
+            if tmp < len {
+                res2 = apply_line_segment(
+                    &self.end_line,
+                    &mut mask_buf[tmp as usize..],
+                    abs_x + tmp,
+                    abs_y,
+                );
+                if res2 == MaskResult::Transparent {
+                    mask_buf[tmp as usize..].fill(0);
+                }
+            }
+
+            if res1 == res2 {
+                res1
+            } else {
+                MaskResult::Changed
+            }
+        } else if self.start_angle > 180
+            && self.end_angle > 180
+            && self.start_angle > self.end_angle
+        {
+            if abs_y > self.vertex.y {
+                return MaskResult::FullCover;
+            }
+
+            let end_angle_first = ((rel_y as i64 * self.end_line.xy_steep as i64) >> 10) as i32;
+            let mut start_angle_last =
+                (((rel_y + 1) as i64 * self.start_line.xy_steep as i64) >> 10) as i32;
+
+            Self::adjust_cross(&mut start_angle_last, self.start_angle);
+            Self::adjust_cross(&mut start_angle_last, self.end_angle);
+
+            let dist = (end_angle_first - start_angle_last) >> 1;
+            let mut tmp = start_angle_last + dist - rel_x;
+            if tmp > len {
+                tmp = len;
+            }
+
+            let mut res1 = MaskResult::FullCover;
+            if tmp > 0 {
+                res1 =
+                    apply_line_segment(&self.end_line, &mut mask_buf[..tmp as usize], abs_x, abs_y);
+                if res1 == MaskResult::Transparent {
+                    mask_buf[..tmp as usize].fill(0);
+                }
+            }
+
+            if tmp > len {
+                tmp = len;
+            }
+            if tmp < 0 {
+                tmp = 0;
+            }
+
+            let mut res2 = MaskResult::FullCover;
+            if tmp < len {
+                res2 = apply_line_segment(
+                    &self.start_line,
+                    &mut mask_buf[tmp as usize..],
+                    abs_x + tmp,
+                    abs_y,
+                );
+                if res2 == MaskResult::Transparent {
+                    mask_buf[tmp as usize..].fill(0);
+                }
+            }
+
+            if res1 == res2 {
+                res1
+            } else {
+                MaskResult::Changed
+            }
+        } else {
+            let mut res1 = MaskResult::FullCover;
+            let mut res2 = MaskResult::FullCover;
+            let mut res1_unknown = false;
+            let mut res2_unknown = false;
+
+            if self.start_angle == 180 {
+                if abs_y < self.vertex.y {
+                    res1 = MaskResult::FullCover;
+                } else {
+                    res1_unknown = true;
+                }
+            } else if self.start_angle == 0 {
+                if abs_y < self.vertex.y {
+                    res1_unknown = true;
+                } else {
+                    res1 = MaskResult::FullCover;
+                }
+            } else if (self.start_angle < 180 && abs_y < self.vertex.y)
+                || (self.start_angle > 180 && abs_y >= self.vertex.y)
+            {
+                res1_unknown = true;
+            } else {
+                res1 = self.start_line.apply(mask_buf, abs_x, abs_y);
+            }
+
+            if self.end_angle == 180 {
+                if abs_y < self.vertex.y {
+                    res2_unknown = true;
+                } else {
+                    res2 = MaskResult::FullCover;
+                }
+            } else if self.end_angle == 0 {
+                if abs_y < self.vertex.y {
+                    res2 = MaskResult::FullCover;
+                } else {
+                    res2_unknown = true;
+                }
+            } else if (self.end_angle < 180 && abs_y < self.vertex.y)
+                || (self.end_angle > 180 && abs_y >= self.vertex.y)
+            {
+                res2_unknown = true;
+            } else {
+                res2 = self.end_line.apply(mask_buf, abs_x, abs_y);
+            }
+
+            if res1 == MaskResult::Transparent || res2 == MaskResult::Transparent {
+                MaskResult::Transparent
+            } else if res1_unknown && res2_unknown {
+                MaskResult::Transparent
+            } else if !res1_unknown
+                && !res2_unknown
+                && res1 == MaskResult::FullCover
+                && res2 == MaskResult::FullCover
+            {
+                MaskResult::FullCover
+            } else {
+                MaskResult::Changed
+            }
+        }
+    }
+}
+
+/// Which side of the line to keep when masking.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum LineSide {
     Left,
     Right,
@@ -35,82 +281,86 @@ pub enum LineSide {
     Bottom,
 }
 
-/// Line mask - keeps pixels on one side of a line
-#[derive(Debug, Clone)]
+/// Mask reference used when applying multiple masks.
+pub enum MaskRef<'a> {
+    Line(&'a LineMask),
+    Angle(&'a AngleMask),
+    Radius(&'a RadiusMask),
+}
+
+/// Software line mask descriptor (port of lv_draw_sw_mask_line_param_t).
+#[derive(Clone, Debug)]
 pub struct LineMask {
     p1: Point,
     p2: Point,
-    origo: Point,
-    xy_steep: i32,  // X/(1024*Y) steepness (normalized dx relative to dy=1024)
-    yx_steep: i32,  // Y/(1024*X) steepness (normalized dy relative to dx=1024)
-    steep: i32,     // Helper: yx_steep for flat, xy_steep for steep
-    spx: i32,       // Steepness per pixel (steep >> 2, absolute value)
-    flat: bool,     // Is line near horizontal?
-    inv: bool,      // Invert the mask
     side: LineSide,
+    origo: Point,
+    xy_steep: i32,
+    yx_steep: i32,
+    steep: i32,
+    spx: i32,
+    flat: bool,
+    inv: bool,
 }
 
 impl LineMask {
-    /// Create line mask from two points
+    /// Create mask from two points keeping the specified side.
     pub fn from_points(mut p1: Point, mut p2: Point, side: LineSide) -> Self {
-        // Swap points so p1.y <= p2.y (LVGL does this for consistency)
+        if p1.y == p2.y && matches!(side, LineSide::Bottom) {
+            p1.y -= 1;
+            p2.y -= 1;
+        }
+
         if p1.y > p2.y {
             core::mem::swap(&mut p1, &mut p2);
         }
-        
+
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
-        
         let flat = dx.abs() > dy.abs();
-        
-        // Calculate steepness values with LVGL's normalization
-        // (1 << 20) / delta gives us a multiplier to normalize to 1024 scale
-        let (xy_steep, yx_steep) = if flat {
-            let xy_steep = if dy != 0 {
-                let m = (1i64 << 20) / dy as i64;
-                ((m * dx as i64) >> 10) as i32
-            } else {
-                0
-            };
-            let yx_steep = if dx != 0 {
-                let m = (1i64 << 20) / dx as i64;
-                ((m * dy as i64) >> 10) as i32
-            } else {
-                0
-            };
-            (xy_steep, yx_steep)
+
+        let mut xy_steep = 0;
+        let mut yx_steep = 0;
+
+        if flat {
+            if dx != 0 {
+                let m = ((1i64 << 20) / dx as i64) as i64;
+                yx_steep = ((m * dy as i64) >> 10) as i32;
+            }
+            if dy != 0 {
+                let m = ((1i64 << 20) / dy as i64) as i64;
+                xy_steep = ((m * dx as i64) >> 10) as i32;
+            }
         } else {
-            let xy_steep = if dy != 0 {
-                let m = (1i64 << 20) / dy as i64;
-                ((m * dx as i64) >> 10) as i32
-            } else {
-                0
-            };
-            let yx_steep = if dx != 0 {
-                let m = (1i64 << 20) / dx as i64;
-                ((m * dy as i64) >> 10) as i32
-            } else {
-                0
-            };
-            (xy_steep, yx_steep)
-        };
-        
+            if dy != 0 {
+                let m = ((1i64 << 20) / dy as i64) as i64;
+                xy_steep = ((m * dx as i64) >> 10) as i32;
+            }
+            if dx != 0 {
+                let m = ((1i64 << 20) / dx as i64) as i64;
+                yx_steep = ((m * dy as i64) >> 10) as i32;
+            }
+        }
+
         let steep = if flat { yx_steep } else { xy_steep };
-        
-        // Calculate inv based on side
-        let inv = match side {
-            LineSide::Left => false,
-            LineSide::Right => true,
-            LineSide::Top => steep > 0,
-            LineSide::Bottom => steep <= 0,
-        };
-        
-        // Steepness per pixel for antialiasing
-        let spx = if steep < 0 { -steep >> 2 } else { steep >> 2 };
-        
+        let mut inv = false;
+
+        match side {
+            LineSide::Left => inv = false,
+            LineSide::Right => inv = true,
+            LineSide::Top => inv = steep > 0,
+            LineSide::Bottom => inv = steep <= 0,
+        }
+
+        let mut spx = steep >> 2;
+        if steep < 0 {
+            spx = -spx;
+        }
+
         Self {
             p1,
             p2,
+            side,
             origo: p1,
             xy_steep,
             yx_steep,
@@ -118,557 +368,722 @@ impl LineMask {
             spx,
             flat,
             inv,
-            side,
         }
     }
-    
-    /// Create line mask from point and angle (in degrees)
-    pub fn from_angle(px: i32, py: i32, angle: i32, side: LineSide) -> Self {
-        // Convert angle to second point
-        // Angle 0 is right, 90 is down
-        // Use integer approximation to avoid floating point
-        let len = 100;
-        
-        // Use lookup table or integer trig approximation
-        // For simplicity, use basic approximation
-        let angle_mod = angle % 360;
-        let (dx, dy) = match angle_mod {
-            0 => (len, 0),
-            90 => (0, len),
-            180 => (-len, 0),
-            270 => (0, -len),
-            _ => {
-                // Approximate with small angle steps
-                // This is a simple approximation - LVGL uses proper sin/cos
-                let quadrant = angle_mod / 90;
-                let remainder = angle_mod % 90;
-                match quadrant {
-                    0 => (len - remainder, remainder),
-                    1 => (-remainder, len - remainder),
-                    2 => (-(len - remainder), -remainder),
-                    _ => (remainder, -(len - remainder)),
-                }
-            }
-        };
-        
-        Self::from_points(
-            Point::new(px, py),
-            Point::new(px + dx, py + dy),
-            side
-        )
-    }
-}
 
-impl Mask for LineMask {
-    fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: usize) -> MaskResult {
-        if len == 0 {
-            return MaskResult::FullCover;
+    /// Create mask from vertex and angle in degrees.
+    pub fn from_angle(p: Point, mut angle: i32, side: LineSide) -> Self {
+        if angle > 180 {
+            angle -= 180;
         }
-        
-        // Make points relative to origo
-        let x = abs_x - self.origo.x;
-        let y = abs_y - self.origo.y;
-        
-        // Handle special cases (horizontal/vertical lines)
-        if self.steep == 0 {
-            if self.flat {
-                // Horizontal line
-                match self.side {
-                    LineSide::Left | LineSide::Right => return MaskResult::FullCover,
-                    LineSide::Top if y < 0 => return MaskResult::FullCover,
-                    LineSide::Bottom if y > 0 => return MaskResult::FullCover,
-                    _ => return MaskResult::Transparent,
-                }
+        let p2x = (trigo_cos(angle) >> 5) + p.x;
+        let p2y = (trigo_sin(angle) >> 5) + p.y;
+        Self::from_points(p, Point::new(p2x, p2y), side)
+    }
+
+    fn apply_flat(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+        let len = mask_buf.len() as i32;
+        let mut y_at_x = ((self.yx_steep as i64 * abs_x as i64) >> 10) as i32;
+
+        if self.yx_steep > 0 {
+            if y_at_x > abs_y {
+                return if self.inv {
+                    MaskResult::FullCover
+                } else {
+                    MaskResult::Transparent
+                };
+            }
+        } else if y_at_x < abs_y {
+            return if self.inv {
+                MaskResult::FullCover
             } else {
-                // Vertical line
-                match self.side {
-                    LineSide::Top | LineSide::Bottom => return MaskResult::FullCover,
-                    LineSide::Right if x > 0 => return MaskResult::FullCover,
-                    LineSide::Left => {
-                        if x + (len as i32) < 0 {
-                            return MaskResult::FullCover;
-                        }
-                        let k = -x;
-                        if k < 0 {
-                            return MaskResult::Transparent;
-                        }
-                        if k >= 0 && k < len as i32 {
-                            for i in k as usize..len {
-                                mask_buf[i] = 0;
-                            }
-                            return MaskResult::Changed;
-                        }
-                        return MaskResult::Changed;
-                    }
-                    LineSide::Right => {
-                        if x + (len as i32) < 0 {
-                            return MaskResult::Transparent;
-                        }
-                        let k = -x;
-                        let k = k.max(0);
-                        if k >= len as i32 {
-                            return MaskResult::Transparent;
-                        }
-                        for i in 0..k.min(len as i32) as usize {
-                            mask_buf[i] = 0;
-                        }
-                        return MaskResult::Changed;
-                    }
-                    _ => return MaskResult::FullCover,
-                }
-            }
+                MaskResult::Transparent
+            };
         }
-        
-        if self.flat {
-            self.apply_flat(mask_buf, x, y, len)
-        } else {
-            self.apply_steep(mask_buf, x, y, len)
-        }
-    }
-}
 
-impl LineMask {
-    fn apply_flat(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Port of LVGL's line_mask_flat
-        // Note: x/y are already relative to origo (subtracted in apply())
-        
-        // Check at the beginning of the mask
-        let mut y_at_x = ((self.yx_steep as i64 * x as i64) >> 10) as i32;
-        
+        y_at_x = ((self.yx_steep as i64 * (abs_x + len) as i64) >> 10) as i32;
         if self.yx_steep > 0 {
-            if y_at_x > y {
-                return if self.inv { MaskResult::FullCover } else { MaskResult::Transparent };
+            if y_at_x < abs_y {
+                return if self.inv {
+                    MaskResult::Transparent
+                } else {
+                    MaskResult::FullCover
+                };
             }
-        } else {
-            if y_at_x < y {
-                return if self.inv { MaskResult::FullCover } else { MaskResult::Transparent };
-            }
+        } else if y_at_x > abs_y {
+            return if self.inv {
+                MaskResult::Transparent
+            } else {
+                MaskResult::FullCover
+            };
         }
-        
-        // Check at the end of the mask  
-        y_at_x = ((self.yx_steep as i64 * (x + len as i32) as i64) >> 10) as i32;
-        if self.yx_steep > 0 {
-            if y_at_x < y {
-                return if self.inv { MaskResult::Transparent } else { MaskResult::FullCover };
-            }
-        } else {
-            if y_at_x > y {
-                return if self.inv { MaskResult::Transparent } else { MaskResult::FullCover };
-            }
-        }
-        
-        // Calculate x position where line crosses this y (with subpixel precision)
+
         let xe = if self.yx_steep > 0 {
-            ((y as i64 * 256) * self.xy_steep as i64) >> 10
+            ((abs_y * 256) as i64 * self.xy_steep as i64) >> 10
         } else {
-            (((y + 1) as i64 * 256) * self.xy_steep as i64) >> 10
+            (((abs_y + 1) * 256) as i64 * self.xy_steep as i64) >> 10
         };
-        
+
         let xei = (xe >> 8) as i32;
         let xef = (xe & 0xFF) as i32;
-        
         let mut px_h = if xef == 0 {
             255
         } else {
             255 - (((255 - xef) * self.spx) >> 8)
         };
-        
-        let mut k = xei - x;
-        
-        // First fractional pixel
+        let mut k = xei - abs_x;
+
         if xef != 0 {
-            if k >= 0 && k < len as i32 {
+            if k >= 0 && k < len {
                 let mut m = 255 - (((255 - xef) * (255 - px_h)) >> 9);
                 if self.inv {
                     m = 255 - m;
                 }
-                mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
             }
             k += 1;
         }
-        
-        // Middle pixels
+
         while px_h > self.spx {
-            if k >= 0 && k < len as i32 {
+            if k >= 0 && k < len {
                 let mut m = px_h - (self.spx >> 1);
                 if self.inv {
                     m = 255 - m;
                 }
-                mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
             }
             px_h -= self.spx;
             k += 1;
-            if k >= len as i32 {
+            if k >= len {
                 break;
             }
         }
-        
-        // Final fractional pixel
-        if k < len as i32 && k >= 0 {
+
+        if k < len && k >= 0 {
             let x_inters = ((px_h as i64 * self.xy_steep as i64) >> 10) as i32;
-            let mut m = ((x_inters * px_h) >> 9) as i32;
+            let mut m = (x_inters * px_h) >> 9;
             if self.yx_steep < 0 {
                 m = 255 - m;
             }
             if self.inv {
                 m = 255 - m;
             }
-            mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+            mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
         }
-        
-        // Clear pixels on the appropriate side
+
         if self.inv {
-            let k = xei - x;
-            if k > len as i32 {
+            let mut k = xei - abs_x;
+            if k > len {
                 return MaskResult::Transparent;
             }
-            if k >= 0 {
-                for i in 0..k as usize {
-                    mask_buf[i] = 0;
-                }
+            if k > 0 {
+                mask_buf[..k as usize].fill(0);
             }
         } else {
             k += 1;
             if k < 0 {
                 return MaskResult::Transparent;
             }
-            if k <= len as i32 {
-                for i in k.max(0) as usize..len {
-                    mask_buf[i] = 0;
-                }
+            if k < len {
+                mask_buf[k as usize..].fill(0);
             }
         }
-        
+
         MaskResult::Changed
     }
-    
-    fn apply_steep(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Port of LVGL's line_mask_steep
-        // Note: x/y are already relative to origo (subtracted in apply())
-        
-        // At the beginning of the mask if the limit line is greater than the mask's y
-        let mut x_at_y = ((self.xy_steep as i64 * y as i64) >> 10) as i32;
+
+    fn apply_steep(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+        let len = mask_buf.len() as i32;
+        let mut x_at_y = ((self.xy_steep as i64 * abs_y as i64) >> 10) as i32;
         if self.xy_steep > 0 {
             x_at_y += 1;
         }
-        
-        if x_at_y < x {
-            return if self.inv { MaskResult::FullCover } else { MaskResult::Transparent };
+        if x_at_y < abs_x {
+            return if self.inv {
+                MaskResult::FullCover
+            } else {
+                MaskResult::Transparent
+            };
         }
-        
-        // At the end of the mask if the limit line is smaller than the mask's y
-        x_at_y = ((self.xy_steep as i64 * y as i64) >> 10) as i32;
-        if x_at_y > x + len as i32 {
-            return if self.inv { MaskResult::Transparent } else { MaskResult::FullCover };
+
+        x_at_y = ((self.xy_steep as i64 * abs_y as i64) >> 10) as i32;
+        if x_at_y > abs_x + len {
+            return if self.inv {
+                MaskResult::Transparent
+            } else {
+                MaskResult::FullCover
+            };
         }
-        
-        // X start
-        let xs = ((y * 256) as i64 * self.xy_steep as i64) >> 10;
+
+        let xs = ((abs_y * 256) as i64 * self.xy_steep as i64) >> 10;
         let mut xsi = (xs >> 8) as i32;
         let mut xsf = (xs & 0xFF) as i32;
-        
-        // X end
-        let xe = (((y + 1) * 256) as i64 * self.xy_steep as i64) >> 10;
+
+        let xe = (((abs_y + 1) * 256) as i64 * self.xy_steep as i64) >> 10;
         let xei = (xe >> 8) as i32;
         let xef = (xe & 0xFF) as i32;
-        
-        let mut k = xsi - x;
+
+        let mut k = xsi - abs_x;
         if xsi != xei && self.xy_steep < 0 && xsf == 0 {
             xsf = 0xFF;
             xsi = xei;
             k -= 1;
         }
-        
+
         if xsi == xei {
-            // Line crosses in single pixel
-            if k >= 0 && k < len as i32 {
+            if k >= 0 && k < len {
                 let mut m = (xsf + xef) >> 1;
                 if self.inv {
                     m = 255 - m;
                 }
-                mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
             }
             k += 1;
-            
-            // Clear pixels
+
             if self.inv {
-                let k = xsi - x;
-                if k >= len as i32 {
+                let mut k = xsi - abs_x;
+                if k >= len {
                     return MaskResult::Transparent;
                 }
-                if k >= 0 {
-                    for i in 0..k.min(len as i32) as usize {
-                        mask_buf[i] = 0;
-                    }
+                if k > 0 {
+                    mask_buf[..k as usize].fill(0);
                 }
             } else {
-                let k = k.min(len as i32);
+                if k > len {
+                    k = len;
+                }
                 if k == 0 {
                     return MaskResult::Transparent;
                 }
-                for i in k.max(0) as usize..len {
-                    mask_buf[i] = 0;
+                if k < len {
+                    mask_buf[k as usize..].fill(0);
                 }
             }
         } else {
-            // Line crosses multiple pixels - apply antialiasing
             if self.xy_steep < 0 {
                 let y_inters = ((xsf * (-self.yx_steep)) >> 10) as i32;
-                if k >= 0 && k < len as i32 {
+                if k >= 0 && k < len {
                     let mut m = (y_inters * xsf) >> 9;
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
                 }
                 k -= 1;
-                
+
                 let x_inters = (((255 - y_inters) * (-self.xy_steep)) >> 10) as i32;
-                if k >= 0 && k < len as i32 {
+                if k >= 0 && k < len {
                     let mut m = 255 - (((255 - y_inters) * x_inters) >> 9);
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
                 }
                 k += 2;
-                
+
                 if self.inv {
-                    let k = (xsi - x - 1).min(len as i32);
+                    let mut k = xsi - abs_x - 1;
+                    if k > len {
+                        k = len;
+                    }
                     if k > 0 {
-                        for i in 0..k as usize {
-                            mask_buf[i] = 0;
-                        }
+                        mask_buf[..k as usize].fill(0);
                     }
                 } else {
-                    if k > len as i32 {
+                    if k > len {
                         return MaskResult::FullCover;
                     }
                     if k >= 0 {
-                        for i in k as usize..len {
-                            mask_buf[i] = 0;
-                        }
+                        mask_buf[k as usize..].fill(0);
                     }
                 }
             } else {
                 let y_inters = (((255 - xsf) * self.yx_steep) >> 10) as i32;
-                if k >= 0 && k < len as i32 {
+                if k >= 0 && k < len {
                     let mut m = 255 - ((y_inters * (255 - xsf)) >> 9);
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
                 }
                 k += 1;
-                
+
                 let x_inters = (((255 - y_inters) * self.xy_steep) >> 10) as i32;
-                if k >= 0 && k < len as i32 {
+                if k >= 0 && k < len {
                     let mut m = ((255 - y_inters) * x_inters) >> 9;
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
                 }
                 k += 1;
-                
+
                 if self.inv {
-                    let k = xsi - x;
-                    if k > len as i32 {
-                        return MaskResult::Transparent;
-                    }
-                    if k >= 0 {
-                        for i in 0..k.min(len as i32) as usize {
-                            mask_buf[i] = 0;
-                        }
-                    }
-                } else {
-                    let k = k.min(len as i32);
-                    if k == 0 {
+                    let mut k = xsi - abs_x;
+                    if k > len {
                         return MaskResult::Transparent;
                     }
                     if k > 0 {
-                        for i in k as usize..len {
-                            mask_buf[i] = 0;
-                        }
+                        mask_buf[..k as usize].fill(0);
+                    }
+                } else {
+                    if k > len {
+                        k = len;
+                    }
+                    if k == 0 {
+                        return MaskResult::Transparent;
+                    }
+                    if k < len {
+                        mask_buf[k as usize..].fill(0);
                     }
                 }
             }
         }
-        
+
         MaskResult::Changed
     }
-    
-    #[inline]
-    #[inline]
-    fn mask_mix(current: u8, new: u8) -> u8 {
-        // Early exits for performance and correctness (LVGL does this)
-        if new >= 255 {
-            return current;
-        }
-        if new <= 0 {
-            return 0;
-        }
-        ((current as u32 * new as u32) / 255) as u8
-    }
-}
 
-/// Angle mask - keeps pixels within an angular range
-#[derive(Debug, Clone)]
-pub struct AngleMask {
-    vertex: Point,
-    start_angle: i32,
-    end_angle: i32,
-    delta_deg: u16,
-    start_line: LineMask,
-    end_line: LineMask,
-}
+    /// Apply line mask to a scanline buffer.
+    pub fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+        let len = mask_buf.len() as i32;
 
-impl AngleMask {
-    pub fn new(vertex_x: i32, vertex_y: i32, start_angle: i32, end_angle: i32) -> Self {
-        // Constrain angles to 0-359
-        let start_angle = start_angle.max(0).min(359);
-        let end_angle = end_angle.max(0).min(359);
-        
-        let delta_deg = if end_angle < start_angle {
-            (360 - start_angle + end_angle) as u16
+        let rel_y = abs_y - self.origo.y;
+        let rel_x = abs_x - self.origo.x;
+
+        if self.steep == 0 {
+            if self.flat {
+                match self.side {
+                    LineSide::Left | LineSide::Right => return MaskResult::FullCover,
+                    LineSide::Top if rel_y < 0 => return MaskResult::FullCover,
+                    LineSide::Bottom if rel_y > 0 => return MaskResult::FullCover,
+                    _ => return MaskResult::Transparent,
+                }
+            } else {
+                match self.side {
+                    LineSide::Top | LineSide::Bottom => return MaskResult::FullCover,
+                    LineSide::Right if rel_x > 0 => return MaskResult::FullCover,
+                    LineSide::Left => {
+                        if rel_x + len < 0 {
+                            return MaskResult::FullCover;
+                        }
+                        let k = -rel_x;
+                        if k < 0 {
+                            return MaskResult::Transparent;
+                        }
+                        if k < len {
+                            mask_buf[k as usize..].fill(0);
+                            return MaskResult::Changed;
+                        }
+                        return MaskResult::Changed;
+                    }
+                    LineSide::Right => {
+                        if rel_x + len < 0 {
+                            return MaskResult::Transparent;
+                        }
+                        let mut k = -rel_x;
+                        if k < 0 {
+                            k = 0;
+                        }
+                        if k >= len {
+                            return MaskResult::Transparent;
+                        }
+                        mask_buf[..k as usize].fill(0);
+                        return MaskResult::Changed;
+                    }
+                    _ => return MaskResult::FullCover,
+                }
+            }
+        }
+
+        if self.flat {
+            self.apply_flat(mask_buf, rel_x, rel_y)
         } else {
-            (end_angle - start_angle) as u16
-        };
-        
-        // Determine line sides based on angles
-        let start_side = if start_angle >= 0 && start_angle < 180 {
-            LineSide::Left
-        } else {
-            LineSide::Right
-        };
-        
-        let end_side = if end_angle >= 0 && end_angle < 180 {
-            LineSide::Right
-        } else if end_angle >= 180 && end_angle < 360 {
-            LineSide::Left
-        } else {
-            LineSide::Right
-        };
-        
-        Self {
-            vertex: Point::new(vertex_x, vertex_y),
-            start_angle,
-            end_angle,
-            delta_deg,
-            start_line: LineMask::from_angle(vertex_x, vertex_y, start_angle, start_side),
-            end_line: LineMask::from_angle(vertex_x, vertex_y, end_angle, end_side),
+            self.apply_steep(mask_buf, rel_x, rel_y)
         }
     }
 }
 
-impl Mask for AngleMask {
-    fn apply(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Apply both line masks
-        let res1 = self.start_line.apply(mask_buf, x, y, len);
-        let res2 = self.end_line.apply(mask_buf, x, y, len);
-        
-        if res1 == MaskResult::Transparent || res2 == MaskResult::Transparent {
-            MaskResult::Transparent
-        } else if res1 == MaskResult::Changed || res2 == MaskResult::Changed {
-            MaskResult::Changed
-        } else {
-            MaskResult::FullCover
+/// Cached data for rounded rectangle masks.
+#[derive(Clone, Debug)]
+struct RadiusCircle {
+    radius: i32,
+    cir_opa: Vec<Opa>,
+    opa_start_on_y: Vec<usize>,
+    x_start_on_y: Vec<i32>,
+}
+
+impl RadiusCircle {
+    fn new(radius: i32) -> Self {
+        let mut circle = RadiusCircle {
+            radius,
+            cir_opa: Vec::new(),
+            opa_start_on_y: Vec::new(),
+            x_start_on_y: Vec::new(),
+        };
+        circle.calc_aa4();
+        circle
+    }
+
+    fn calc_aa4(&mut self) {
+        if self.radius <= 0 {
+            self.cir_opa.clear();
+            self.opa_start_on_y.clear();
+            self.x_start_on_y.clear();
+            return;
         }
+
+        if self.radius == 1 {
+            self.cir_opa = vec![180, 0];
+            self.opa_start_on_y = vec![0, 1, 2];
+            self.x_start_on_y = vec![0, 0];
+            return;
+        }
+
+        let mut circ_points: Vec<(i32, i32, i32)> = Vec::new();
+
+        let mut x = self.radius * 4;
+        let mut y = 0;
+        let mut tmp = 1 - x;
+
+        let mut y_cnt = 0;
+        let mut x_int = [0i32; 4];
+        let mut x_fract = [0i32; 4];
+
+        'outer: while y <= x {
+            for i in 0..4 {
+                if tmp <= 0 {
+                    tmp += 2 * y + 3;
+                } else {
+                    tmp += 2 * (y - x) + 5;
+                    x -= 1;
+                }
+                y += 1;
+
+                if y > x {
+                    break 'outer;
+                }
+
+                x_int[i] = x >> 2;
+                x_fract[i] = x & 0x3;
+            }
+
+            let mut push_entry =
+                |cir_points: &mut Vec<(i32, i32, i32)>, x: i32, y: i32, opa: i32| {
+                    cir_points.push((x, y, opa * 16));
+                };
+
+            if x_int[0] == x_int[3] {
+                push_entry(
+                    &mut circ_points,
+                    x_int[0],
+                    y_cnt,
+                    x_fract[0] + x_fract[1] + x_fract[2] + x_fract[3],
+                );
+            } else if x_int[0] != x_int[1] {
+                push_entry(&mut circ_points, x_int[0], y_cnt, x_fract[0]);
+                push_entry(
+                    &mut circ_points,
+                    x_int[0] - 1,
+                    y_cnt,
+                    4 + x_fract[1] + x_fract[2] + x_fract[3],
+                );
+            } else if x_int[0] != x_int[2] {
+                push_entry(&mut circ_points, x_int[0], y_cnt, x_fract[0] + x_fract[1]);
+                push_entry(
+                    &mut circ_points,
+                    x_int[0] - 1,
+                    y_cnt,
+                    8 + x_fract[2] + x_fract[3],
+                );
+            } else {
+                push_entry(
+                    &mut circ_points,
+                    x_int[0],
+                    y_cnt,
+                    x_fract[0] + x_fract[1] + x_fract[2],
+                );
+                push_entry(&mut circ_points, x_int[0] - 1, y_cnt, 12 + x_fract[3]);
+            }
+
+            y_cnt += 1;
+        }
+
+        let mid = self.radius * 723;
+        let mid_int = mid >> 10;
+        let mut tmp_val = mid - (mid_int << 10);
+        let mut calc_opa = |val: i32| {
+            let mut v = val;
+            if v <= 512 {
+                v = (v * v * 2) >> (10 + 6);
+            } else {
+                v = 1024 - v;
+                v = (v * v * 2) >> (10 + 6);
+                v = 15 - v;
+            }
+            v * 16
+        };
+        circ_points.push((mid_int, mid_int, calc_opa(tmp_val)));
+
+        let mut mirrored = Vec::with_capacity(circ_points.len() * 2);
+        for &(x, y, opa) in &circ_points {
+            mirrored.push((x, y, opa));
+            if x != y {
+                mirrored.push((y, x, opa));
+            }
+        }
+
+        mirrored.sort_by_key(|&(x, y, _)| (y, x));
+
+        self.cir_opa.clear();
+        self.x_start_on_y.clear();
+        self.opa_start_on_y.clear();
+
+        let mut cur_y = -1;
+        for (x, y, opa) in mirrored {
+            if y != cur_y {
+                cur_y = y;
+                self.opa_start_on_y.push(self.cir_opa.len());
+                self.x_start_on_y.push(x);
+            } else {
+                if let Some(last) = self.x_start_on_y.last_mut() {
+                    *last = min(*last, x);
+                }
+            }
+            self.cir_opa.push(opa.min(255) as Opa);
+        }
+        self.opa_start_on_y.push(self.cir_opa.len());
+    }
+
+    fn get_line(&self, y: i32) -> Option<(usize, i32, &[Opa])> {
+        if y < 0 || y + 1 >= self.opa_start_on_y.len() as i32 {
+            return None;
+        }
+        let idx = y as usize;
+        let start = self.opa_start_on_y[idx];
+        let end = self.opa_start_on_y[idx + 1];
+        if start >= end {
+            return None;
+        }
+        let x_start = self.x_start_on_y[idx];
+        Some((end - start, x_start, &self.cir_opa[start..end]))
     }
 }
 
-/// Radius mask - keeps pixels inside/outside a rounded rectangle
-#[derive(Debug, Clone)]
+/// Rounded rectangle radius mask descriptor (port of lv_draw_sw_mask_radius_param_t).
+#[derive(Clone, Debug)]
 pub struct RadiusMask {
     rect: Area,
     radius: i32,
-    outer: bool,  // true: keep outside, false: keep inside
+    outer: bool,
+    circle: Option<RadiusCircle>,
 }
 
 impl RadiusMask {
-    pub fn new(rect: Area, radius: i32, outer: bool) -> Self {
+    /// Create a radius mask for the given rectangle.
+    pub fn new(rect: Area, mut radius: i32, outer: bool) -> Self {
+        let w = rect.width();
+        let h = rect.height();
+        let short_side = min(w, h);
+        if radius > short_side / 2 {
+            radius = short_side / 2;
+        }
+        if radius < 0 {
+            radius = 0;
+        }
+
+        let circle = if radius > 0 {
+            Some(RadiusCircle::new(radius))
+        } else {
+            None
+        };
+
         Self {
             rect,
             radius,
             outer,
+            circle,
         }
     }
-}
 
-impl Mask for RadiusMask {
-    fn apply(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Simplified radius mask - full implementation would use circle cache
-        let mut changed = false;
-        
-        for i in 0..len {
-            let xi = x + i as i32;
-            
-            // Check if point is in corner region
-            let in_corner = (xi < self.rect.x1 + self.radius && y < self.rect.y1 + self.radius) ||
-                           (xi > self.rect.x2 - self.radius && y < self.rect.y1 + self.radius) ||
-                           (xi < self.rect.x1 + self.radius && y > self.rect.y2 - self.radius) ||
-                           (xi > self.rect.x2 - self.radius && y > self.rect.y2 - self.radius);
-            
-            if in_corner {
-                // Calculate distance to corner center
-                let cx = if xi < self.rect.x1 + self.radius {
-                    self.rect.x1 + self.radius
-                } else {
-                    self.rect.x2 - self.radius
-                };
-                
-                let cy = if y < self.rect.y1 + self.radius {
-                    self.rect.y1 + self.radius
-                } else {
-                    self.rect.y2 - self.radius
-                };
-                
-                let dx = xi - cx;
-                let dy = y - cy;
-                let dist_sq = dx * dx + dy * dy;
-                let r_sq = self.radius * self.radius;
-                
-                let opa = if self.outer {
-                    // Keep outside
-                    if dist_sq > r_sq { 255 } else { 0 }
-                } else {
-                    // Keep inside
-                    if dist_sq < r_sq { 255 } else { 0 }
-                };
-                
-                if opa < 255 {
-                    changed = true;
-                    mask_buf[i] = ((mask_buf[i] as u32 * opa as u32) / 255) as Opa;
+    /// Apply radius mask to the provided buffer.
+    pub fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+        let len = mask_buf.len() as i32;
+        let rect = self.rect;
+
+        if !self.outer {
+            if abs_y < rect.y1 || abs_y > rect.y2 {
+                return MaskResult::Transparent;
+            }
+        } else if abs_y < rect.y1 || abs_y > rect.y2 {
+            return MaskResult::FullCover;
+        }
+
+        if (abs_x >= rect.x1 + self.radius && abs_x + len <= rect.x2 - self.radius)
+            || (abs_y >= rect.y1 + self.radius && abs_y <= rect.y2 - self.radius)
+        {
+            if !self.outer {
+                let last = rect.x1 - abs_x;
+                if last > len {
+                    return MaskResult::Transparent;
                 }
+                if last > 0 {
+                    mask_buf[..last as usize].fill(0);
+                }
+                let first = rect.x2 - abs_x + 1;
+                if first <= 0 {
+                    return MaskResult::Transparent;
+                }
+                if first < len {
+                    mask_buf[first as usize..].fill(0);
+                }
+                if last == 0 && first == len {
+                    return MaskResult::FullCover;
+                }
+                return MaskResult::Changed;
+            } else {
+                let mut first = rect.x1 - abs_x;
+                if first < 0 {
+                    first = 0;
+                }
+                if first <= len {
+                    let mut last = rect.x2 - abs_x - first + 1;
+                    if first + last > len {
+                        last = len - first;
+                    }
+                    if last > 0 {
+                        mask_buf[first as usize..(first + last) as usize].fill(0);
+                    }
+                }
+                return MaskResult::Changed;
             }
         }
-        
-        if changed {
-            MaskResult::Changed
+
+        let circle = match &self.circle {
+            Some(c) => c,
+            None => return MaskResult::Changed,
+        };
+
+        let k = rect.x1 - abs_x;
+        let w = rect.width();
+        let h = rect.height();
+        let rel_x = abs_x - rect.x1;
+        let rel_y = abs_y - rect.y1;
+
+        let cir_y = if rel_y < self.radius {
+            self.radius - rel_y - 1
         } else {
-            MaskResult::FullCover
+            rel_y - (h - self.radius)
+        };
+
+        let (aa_len, x_start, opa_slice) = match circle.get_line(cir_y) {
+            Some(v) => v,
+            None => return MaskResult::Changed,
+        };
+
+        let cir_x_right = k + w - self.radius + x_start;
+        let cir_x_left = k + self.radius - x_start - 1;
+
+        if !self.outer {
+            for (idx, &opa) in opa_slice.iter().enumerate() {
+                let right_idx = cir_x_right + idx as i32;
+                if right_idx >= 0 && right_idx < len {
+                    mask_buf[right_idx as usize] = mask_mix(opa, mask_buf[right_idx as usize]);
+                }
+                let left_idx = cir_x_left - idx as i32;
+                if left_idx >= 0 && left_idx < len {
+                    mask_buf[left_idx as usize] = mask_mix(opa, mask_buf[left_idx as usize]);
+                }
+            }
+
+            let right_clean = clamp_i32(0, cir_x_right + aa_len as i32, len);
+            if right_clean < len {
+                mask_buf[right_clean as usize..].fill(0);
+            }
+
+            let left_clean = clamp_i32(0, cir_x_left - aa_len as i32 + 1, len);
+            if left_clean > 0 {
+                mask_buf[..left_clean as usize].fill(0);
+            }
+        } else {
+            for (idx, &opa) in opa_slice.iter().enumerate() {
+                let opa_val = 255 - opa;
+                let right_idx = cir_x_right + idx as i32;
+                if right_idx >= 0 && right_idx < len {
+                    mask_buf[right_idx as usize] = mask_mix(opa_val, mask_buf[right_idx as usize]);
+                }
+                let left_idx = cir_x_left - idx as i32;
+                if left_idx >= 0 && left_idx < len {
+                    mask_buf[left_idx as usize] = mask_mix(opa_val, mask_buf[left_idx as usize]);
+                }
+            }
+
+            let clr_start = clamp_i32(0, cir_x_left + 1, len);
+            let clr_end = clamp_i32(clr_start, cir_x_right, len);
+            if clr_end > clr_start {
+                mask_buf[clr_start as usize..clr_end as usize].fill(0);
+            }
         }
+
+        MaskResult::Changed
     }
 }
 
-/// Apply multiple masks to a buffer
-/// Returns MaskResult indicating the combined result
-pub fn apply_masks(masks: &[&dyn Mask], mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
+/// Apply multiple masks to a scanline buffer.
+pub fn apply_masks(
+    masks: &[MaskRef<'_>],
+    mask_buf: &mut [Opa],
+    abs_x: i32,
+    abs_y: i32,
+) -> MaskResult {
     if masks.is_empty() {
         return MaskResult::FullCover;
     }
-    
-    let mut result = MaskResult::FullCover;
-    
+
+    let mut changed = false;
     for mask in masks {
-        let res = mask.apply(mask_buf, x, y, len);
-        if res == MaskResult::Transparent {
-            return MaskResult::Transparent;
-        }
-        if res == MaskResult::Changed {
-            result = MaskResult::Changed;
+        let res = match mask {
+            MaskRef::Line(line) => line.apply(mask_buf, abs_x, abs_y),
+            MaskRef::Angle(angle) => angle.apply(mask_buf, abs_x, abs_y),
+            MaskRef::Radius(radius) => radius.apply(mask_buf, abs_x, abs_y),
+        };
+        match res {
+            MaskResult::Transparent => return MaskResult::Transparent,
+            MaskResult::FullCover => {}
+            MaskResult::Changed => changed = true,
         }
     }
-    
-    result
+
+    if changed {
+        MaskResult::Changed
+    } else {
+        MaskResult::FullCover
+    }
+}
+
+#[inline]
+fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
+    if mask_new >= 255 {
+        return mask_act;
+    }
+    if mask_new == 0 {
+        return 0;
+    }
+    udiv255(mask_act as u32 * mask_new as u32)
+}
+
+#[inline]
+fn clamp_i32(min_v: i32, val: i32, max_v: i32) -> i32 {
+    min(max(val, min_v), max_v)
+}
+
+#[inline]
+fn udiv255(x: u32) -> Opa {
+    ((x * 0x8081) >> 23) as Opa
+}
+
+fn apply_line_segment(line: &LineMask, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+    if mask_buf.is_empty() {
+        return MaskResult::FullCover;
+    }
+    line.apply(mask_buf, abs_x, abs_y)
 }

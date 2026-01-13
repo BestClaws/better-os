@@ -1,6 +1,18 @@
 /// Math utilities matching LVGL's algorithms
 /// These functions must match LVGL exactly for pixel-perfect rendering
 
+/// Sine lookup table for 0..=90 degrees (LVGL compat).
+/// Copied from LVGL (MIT License) to ensure identical trig behavior.
+const SIN0_90_TABLE: [i32; 91] = [
+    0, 572, 1144, 1715, 2286, 2856, 3425, 3993, 4560, 5126, 5690, 6252, 6813, 7371, 7927, 8481,
+    9032, 9580, 10126, 10668, 11207, 11743, 12275, 12803, 13328, 13848, 14365, 14876, 15384, 15886,
+    16384, 16877, 17364, 17847, 18324, 18795, 19261, 19720, 20174, 20622, 21063, 21498, 21926,
+    22348, 22763, 23170, 23571, 23965, 24351, 24730, 25102, 25466, 25822, 26170, 26510, 26842,
+    27166, 27482, 27789, 28088, 28378, 28660, 28932, 29197, 29452, 29698, 29935, 30163, 30382,
+    30592, 30792, 30983, 31164, 31336, 31499, 31651, 31795, 31928, 32052, 32166, 32270, 32365,
+    32449, 32524, 32588, 32643, 32688, 32723, 32748, 32763, 32768,
+];
+
 /// Fast integer square root (using binary search)
 #[inline]
 pub fn isqrt(n: u32) -> u32 {
@@ -17,6 +29,39 @@ pub fn isqrt(n: u32) -> u32 {
     }
 
     x
+}
+
+/// Fixed-point sine matching lv_trigo_sin (returns value scaled by 32768).
+#[inline]
+pub fn trigo_sin(mut angle: i32) -> i32 {
+    while angle < 0 {
+        angle += 360;
+    }
+    while angle >= 360 {
+        angle -= 360;
+    }
+
+    let value = if angle < 90 {
+        SIN0_90_TABLE[angle as usize]
+    } else if angle < 180 {
+        SIN0_90_TABLE[(180 - angle) as usize]
+    } else if angle < 270 {
+        -SIN0_90_TABLE[(angle - 180) as usize]
+    } else {
+        -SIN0_90_TABLE[(360 - angle) as usize]
+    };
+
+    match value {
+        32767 => 32768,
+        -32767 => -32768,
+        _ => value,
+    }
+}
+
+/// Fixed-point cosine matching lv_trigo_cos.
+#[inline]
+pub fn trigo_cos(angle: i32) -> i32 {
+    trigo_sin(angle + 90)
 }
 
 /// Alias for isqrt matching LVGL's naming
@@ -59,15 +104,31 @@ pub fn atan2_deg(x: i32, y: i32) -> i32 {
     // Compensate for error curve (LVGL's compensation table)
     let mut comp = 0;
     if degree > 22 {
-        if degree <= 44 { comp += 1; }
-        if degree <= 41 { comp += 1; }
-        if degree <= 37 { comp += 1; }
-        if degree <= 32 { comp += 1; }
+        if degree <= 44 {
+            comp += 1;
+        }
+        if degree <= 41 {
+            comp += 1;
+        }
+        if degree <= 37 {
+            comp += 1;
+        }
+        if degree <= 32 {
+            comp += 1;
+        }
     } else {
-        if degree >= 2 { comp += 1; }
-        if degree >= 6 { comp += 1; }
-        if degree >= 10 { comp += 1; }
-        if degree >= 15 { comp += 1; }
+        if degree >= 2 {
+            comp += 1;
+        }
+        if degree >= 6 {
+            comp += 1;
+        }
+        if degree >= 10 {
+            comp += 1;
+        }
+        if degree >= 15 {
+            comp += 1;
+        }
     }
     degree += comp;
 
@@ -77,14 +138,19 @@ pub fn atan2_deg(x: i32, y: i32) -> i32 {
     }
 
     // Map to correct quadrant based on sign flags
-    if negflag & 0x02 != 0 {  // -Y
-        if negflag & 0x01 != 0 {  // -Y -X (quadrant 3)
+    if negflag & 0x02 != 0 {
+        // -Y
+        if negflag & 0x01 != 0 {
+            // -Y -X (quadrant 3)
             degree = 180 + degree;
-        } else {  // -Y +X (quadrant 4)
+        } else {
+            // -Y +X (quadrant 4)
             degree = 180 - degree;
         }
-    } else {  // +Y
-        if negflag & 0x01 != 0 {  // +Y -X (quadrant 2)
+    } else {
+        // +Y
+        if negflag & 0x01 != 0 {
+            // +Y -X (quadrant 2)
             degree = 360 - degree;
         }
         // else +Y +X (quadrant 1): degree unchanged
@@ -216,6 +282,6 @@ mod tests {
     fn test_angle_in_range() {
         assert!(angle_in_range(45, 0, 90));
         assert!(!angle_in_range(100, 0, 90));
-        assert!(angle_in_range(10, 350, 20));  // Wraps around
+        assert!(angle_in_range(10, 350, 20)); // Wraps around
     }
 }

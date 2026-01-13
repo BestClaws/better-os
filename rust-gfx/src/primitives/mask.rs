@@ -1,8 +1,8 @@
+use crate::math::{aa_coverage_sq, dist_sq};
+use crate::primitives::circle_cache::CircleCache;
 /// Masking operations for rounded corners and complex shapes
 /// Matches LVGL's mask system
 use crate::types::{Area, Opa, OPA_COVER};
-use crate::primitives::circle_cache::CircleCache;
-use crate::math::{dist_sq, aa_coverage_sq};
 
 /// Radius mask for rounded corners (LVGL-compatible)
 pub struct RadiusMask {
@@ -43,15 +43,15 @@ impl RadiusMask {
     /// This matches lv_draw_mask_radius exactly
     pub fn apply_to_line(&self, y: i32, x_start: i32, mask_buf: &mut [Opa]) {
         let len = mask_buf.len() as i32;
-        
+
         let radius = self.radius;
-        
+
         // Check if line is outside the rect (and not in corner radius region)
         if y < self.area.y1 || y > self.area.y2 {
             // For outer (inverted) masks, check if we're in corner radius region
-            let in_corner_region = (y < self.area.y1 && y >= self.area.y1 - radius) ||
-                                   (y > self.area.y2 && y <= self.area.y2 + radius);
-            
+            let in_corner_region = (y < self.area.y1 && y >= self.area.y1 - radius)
+                || (y > self.area.y2 && y <= self.area.y2 + radius);
+
             if self.outer && in_corner_region {
                 // Continue to apply circle mask for corner regions
             } else if self.outer {
@@ -107,7 +107,7 @@ impl RadiusMask {
 
         // Convert to relative coordinates (matching LVGL)
         let rel_y = y - self.area.y1;
-        
+
         // Determine which y in the circle we're at (matching LVGL exactly)
         // Handle negative rel_y for lines above the rect
         let cir_y = if rel_y < 0 {
@@ -132,7 +132,7 @@ impl RadiusMask {
             // Apply AA to corners
             for i in 0..aa_len {
                 let opa = aa_opa[(aa_len - i - 1) as usize];
-                
+
                 let right_idx = cir_x_right + i;
                 if right_idx >= 0 && right_idx < len {
                     mask_buf[right_idx as usize] =
@@ -141,8 +141,7 @@ impl RadiusMask {
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] =
-                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                    mask_buf[left_idx as usize] = Self::mask_mix(opa, mask_buf[left_idx as usize]);
                 }
             }
 
@@ -160,7 +159,7 @@ impl RadiusMask {
             // Outer mask (inverted)
             for i in 0..aa_len {
                 let opa = 255 - aa_opa[(aa_len - 1 - i) as usize];
-                
+
                 let right_idx = cir_x_right + i;
                 if right_idx >= 0 && right_idx < len {
                     mask_buf[right_idx as usize] =
@@ -169,8 +168,7 @@ impl RadiusMask {
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] =
-                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                    mask_buf[left_idx as usize] = Self::mask_mix(opa, mask_buf[left_idx as usize]);
                 }
             }
 

@@ -1,10 +1,10 @@
+use crate::color::Rgba8888;
+use crate::math::{aa_coverage_sq, dist_sq, isqrt};
+use crate::primitives::{gradient::*, mask::RadiusMask};
+use crate::types::*;
 /// Rectangle drawing matching LVGL's lv_draw_rect functionality
 /// Supports: solid fills, gradients, borders, shadows, outlines, rounded corners
 use crate::Rasterizer;
-use crate::color::Rgba8888;
-use crate::types::*;
-use crate::primitives::{gradient::*, mask::RadiusMask};
-use crate::math::{aa_coverage_sq, dist_sq, isqrt};
 
 extern crate alloc;
 
@@ -19,7 +19,7 @@ pub struct RectDsc {
     pub bg_grad: Gradient,
     /// Corner radius (can be RADIUS_CIRCLE for circular)
     pub radius: i32,
-    
+
     /// Border color
     pub border_color: Rgba8888,
     /// Border opacity
@@ -28,7 +28,7 @@ pub struct RectDsc {
     pub border_width: i32,
     /// Border sides
     pub border_side: BorderSide,
-    
+
     /// Shadow color
     pub shadow_color: Rgba8888,
     /// Shadow opacity
@@ -41,7 +41,7 @@ pub struct RectDsc {
     pub shadow_offset_y: i32,
     /// Shadow spread
     pub shadow_spread: i32,
-    
+
     /// Outline color
     pub outline_color: Rgba8888,
     /// Outline opacity
@@ -60,19 +60,19 @@ impl RectDsc {
             bg_opa: OPA_COVER,
             bg_grad: Gradient::none(),
             radius: 0,
-            
+
             border_color: Rgba8888::BLACK,
             border_opa: 0,
             border_width: 0,
             border_side: BorderSide::FULL,
-            
+
             shadow_color: Rgba8888::BLACK,
             shadow_opa: 0,
             shadow_width: 0,
             shadow_offset_x: 0,
             shadow_offset_y: 0,
             shadow_spread: 0,
-            
+
             outline_color: Rgba8888::BLACK,
             outline_opa: 0,
             outline_width: 0,
@@ -94,7 +94,7 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let mut min_y = area.y1;
     let mut max_x = area.x2;
     let mut max_y = area.y2;
-    
+
     // Extend for shadow
     if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
         min_x = min_x.min(area.x1 + dsc.shadow_offset_x - dsc.shadow_width);
@@ -102,7 +102,7 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         max_x = max_x.max(area.x2 + dsc.shadow_offset_x + dsc.shadow_width);
         max_y = max_y.max(area.y2 + dsc.shadow_offset_y + dsc.shadow_width);
     }
-    
+
     // Extend for outline
     if dsc.outline_opa > 0 && dsc.outline_width > 0 {
         let outline_ext = dsc.outline_pad + dsc.outline_width;
@@ -111,7 +111,7 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         max_x = max_x.max(area.x2 + outline_ext);
         max_y = max_y.max(area.y2 + outline_ext);
     }
-    
+
     // Draw shadow first (if any)
     if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
         draw_shadow(rast, dsc, area);
@@ -142,7 +142,7 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     if dsc.border_opa > 0 && dsc.border_width > 0 {
         draw_border(rast, dsc, area);
     }
-    
+
     // Mark the entire affected area as dirty
     rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
 }
@@ -151,7 +151,7 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
 fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let width = area.width();
     let height = area.height();
-    
+
     if width <= 0 || height <= 0 {
         return;
     }
@@ -159,7 +159,7 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     // Calculate actual radius
     let short_side = width.min(height);
     let mut radius = dsc.radius.min(short_side / 2);
-    
+
     // Handle LV_RADIUS_CIRCLE
     if dsc.radius == RADIUS_CIRCLE {
         radius = short_side / 2;
@@ -207,13 +207,22 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             let (color, grad_opa) = if has_grad {
                 let rel_x = x - area.x1;
                 let rel_y = y - area.y1;
-                gradient_get_color(&dsc.bg_grad, rel_x, rel_y, width, height, width / 2, height / 2)
+                gradient_get_color(
+                    &dsc.bg_grad,
+                    rel_x,
+                    rel_y,
+                    width,
+                    height,
+                    width / 2,
+                    height / 2,
+                )
             } else {
                 (dsc.bg_color, OPA_COVER)
             };
 
             // Combine opacities: dsc.bg_opa * grad_opa * mask_val
-            let opa = ((dsc.bg_opa as u32 * grad_opa as u32 * mask_val as u32) / (255 * 255)) as Opa;
+            let opa =
+                ((dsc.bg_opa as u32 * grad_opa as u32 * mask_val as u32) / (255 * 255)) as Opa;
 
             // LVGL writes ALL pixels in the bg area, even if opa==0
             // This preserves color info for non-premultiplied alpha
@@ -226,14 +235,14 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
 fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let width = area.width();
     let height = area.height();
-    
+
     if width <= 0 || height <= 0 {
         return;
     }
 
     let short_side = width.min(height);
     let mut rout = dsc.radius.min(short_side / 2);
-    
+
     if dsc.radius == RADIUS_CIRCLE {
         rout = short_side / 2;
     }
@@ -267,7 +276,7 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
     let bottom_side = outer.y2 >= inner.y2;
     let left_side = outer.x1 <= inner.x1;
     let right_side = outer.x2 >= inner.x2;
-    
+
     // Top edge
     if top_side && sides.has_top() {
         for y in outer.y1..inner.y1 {
@@ -276,7 +285,7 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
             }
         }
     }
-    
+
     // Bottom edge
     if bottom_side && sides.has_bottom() {
         for y in (inner.y2 + 1)..=outer.y2 {
@@ -285,7 +294,7 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
             }
         }
     }
-    
+
     // Left edge - adjust Y range based on top/bottom sides (LVGL behavior)
     if left_side && sides.has_left() {
         let y_start = if top_side { inner.y1 } else { outer.y1 };
@@ -296,7 +305,7 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
             }
         }
     }
-    
+
     // Right edge - adjust Y range based on top/bottom sides (LVGL behavior)
     if right_side && sides.has_right() {
         let y_start = if top_side { inner.y1 } else { outer.y1 };
@@ -310,13 +319,20 @@ fn draw_border_simple<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, 
 }
 
 /// Complex border with rounded corners (matches LVGL exactly - scanline approach)
-fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area, inner: &Area, rout: i32, rin: i32) {
+fn draw_border_complex<R: Rasterizer>(
+    rast: &mut R,
+    dsc: &RectDsc,
+    outer: &Area,
+    inner: &Area,
+    rout: i32,
+    rin: i32,
+) {
     // Note: border_side logic is already in inner_area calculation, don't recheck here
-    
+
     // Create masks (matching LVGL)
-    let inner_mask = RadiusMask::new(*inner, rin, true);  // outer=true means inverted
+    let inner_mask = RadiusMask::new(*inner, rin, true); // outer=true means inverted
     let outer_mask = if rout > 0 {
-        Some(RadiusMask::new(*outer, rout, false))  // outer=false means normal
+        Some(RadiusMask::new(*outer, rout, false)) // outer=false means normal
     } else {
         None
     };
@@ -379,11 +395,13 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
     if (top_side && left_side) || (top_side && right_side) {
         for y in outer.y1..core_area.y1 {
             // Initialize mask buffer to full coverage
-            for m in mask_buf.iter_mut() { *m = 255; }
-            
+            for m in mask_buf.iter_mut() {
+                *m = 255;
+            }
+
             // Apply inner mask (inverted - clears the inside)
             inner_mask.apply_to_line(y, outer.x1, &mut mask_buf);
-            
+
             // Apply outer mask if present (clears the outside)
             if let Some(ref om) = outer_mask {
                 om.apply_to_line(y, outer.x1, &mut mask_buf);
@@ -395,16 +413,16 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
             if top_side && left_side {
                 for x in outer.x1..core_area.x1 {
                     let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
-            
+
             // Right corner
             if top_side && right_side {
                 for x in (core_area.x2 + 1)..=outer.x2 {
                     let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
@@ -415,11 +433,13 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
     if (bottom_side && left_side) || (bottom_side && right_side) {
         for y in (core_area.y2 + 1)..=outer.y2 {
             // Initialize mask buffer to full coverage
-            for m in mask_buf.iter_mut() { *m = 255; }
-            
+            for m in mask_buf.iter_mut() {
+                *m = 255;
+            }
+
             // Apply inner mask (inverted - clears the inside)
             inner_mask.apply_to_line(y, outer.x1, &mut mask_buf);
-            
+
             // Apply outer mask if present (clears the outside)
             if let Some(ref om) = outer_mask {
                 om.apply_to_line(y, outer.x1, &mut mask_buf);
@@ -431,16 +451,16 @@ fn draw_border_complex<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, outer: &Area,
             if bottom_side && left_side {
                 for x in outer.x1..core_area.x1 {
                     let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
-            
+
             // Right corner
             if bottom_side && right_side {
                 for x in (core_area.x2 + 1)..=outer.x2 {
                     let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) / 255) as Opa;
+                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
                     rast.blend_pixel(x, y, dsc.border_color, border_opa);
                 }
             }
@@ -461,7 +481,7 @@ fn draw_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let height = area.height();
     let short_side = width.min(height);
     let mut radius = dsc.radius.min(short_side / 2);
-    
+
     if dsc.radius == RADIUS_CIRCLE {
         radius = short_side / 2;
     }
@@ -472,9 +492,7 @@ fn draw_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     for y in shadow_area.y1..=shadow_area.y2 {
         for x in shadow_area.x1..=shadow_area.x2 {
             // Calculate distance from rect edge
-            let shadow_opa = calculate_shadow_opa(
-                x, y, area, shadow_radius, dsc.shadow_width
-            );
+            let shadow_opa = calculate_shadow_opa(x, y, area, shadow_radius, dsc.shadow_width);
 
             // Draw even if shadow_opa == 0 to preserve color info (non-premultiplied alpha)
             let final_opa = ((dsc.shadow_opa as u32 * shadow_opa as u32) / 255) as Opa;
@@ -537,7 +555,7 @@ fn draw_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let height = area.height();
     let short_side = width.min(height);
     let mut radius = dsc.radius.min(short_side / 2);
-    
+
     if dsc.radius == RADIUS_CIRCLE {
         radius = short_side / 2;
     }
@@ -547,11 +565,16 @@ fn draw_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     for y in outline_area.y1..=outline_area.y2 {
         for x in outline_area.x1..=outline_area.x2 {
             // Check if in outline ring
-            let in_outer = is_point_in_rounded_rect(x, y, &outline_area, outline_radius + dsc.outline_width);
+            let in_outer =
+                is_point_in_rounded_rect(x, y, &outline_area, outline_radius + dsc.outline_width);
             let in_inner = is_point_in_rounded_rect(x, y, &inner_area, outline_radius);
 
             // Draw with appropriate opacity (0 if outside outline ring)
-            let opa = if in_outer && !in_inner { dsc.outline_opa } else { 0 };
+            let opa = if in_outer && !in_inner {
+                dsc.outline_opa
+            } else {
+                0
+            };
             rast.blend_pixel(x, y, dsc.outline_color, opa);
         }
     }
