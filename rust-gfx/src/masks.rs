@@ -229,41 +229,39 @@ impl Mask for LineMask {
 
 impl LineMask {
     fn apply_flat(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Make coordinates relative to the origo (LVGL does this!)
-        let rel_x = x - self.origo.x;
-        let rel_y = y - self.origo.y;
+        // Port of LVGL's line_mask_flat
+        // Note: x/y are already relative to origo (subtracted in apply())
         
-        let y_at_x = ((self.yx_steep as i64 * rel_x as i64) >> 10) as i32;
+        // Check at the beginning of the mask
+        let mut y_at_x = ((self.yx_steep as i64 * x as i64) >> 10) as i32;
         
-        // Early exit checks
         if self.yx_steep > 0 {
-            if y_at_x > rel_y {
+            if y_at_x > y {
                 return if self.inv { MaskResult::FullCover } else { MaskResult::Transparent };
             }
         } else {
-            if y_at_x < rel_y {
+            if y_at_x < y {
                 return if self.inv { MaskResult::FullCover } else { MaskResult::Transparent };
             }
         }
         
-        // Check at end of scan line
-        let y_at_x_end = ((self.yx_steep as i64 * (rel_x + len as i32) as i64) >> 10) as i32;
+        // Check at the end of the mask  
+        y_at_x = ((self.yx_steep as i64 * (x + len as i32) as i64) >> 10) as i32;
         if self.yx_steep > 0 {
-            if y_at_x_end < rel_y {
+            if y_at_x < y {
                 return if self.inv { MaskResult::Transparent } else { MaskResult::FullCover };
             }
         } else {
-            if y_at_x_end > rel_y {
+            if y_at_x > y {
                 return if self.inv { MaskResult::Transparent } else { MaskResult::FullCover };
             }
         }
         
-        // If we reach here, line crosses this scanline - need antialiasing
-        // Calculate fractional x position where line crosses this y
+        // Calculate x position where line crosses this y (with subpixel precision)
         let xe = if self.yx_steep > 0 {
-            ((rel_y * 256) as i64 * self.xy_steep as i64) >> 10
+            ((y as i64 * 256) * self.xy_steep as i64) >> 10
         } else {
-            (((rel_y + 1) * 256) as i64 * self.xy_steep as i64) >> 10
+            (((y + 1) as i64 * 256) * self.xy_steep as i64) >> 10
         };
         
         let xei = (xe >> 8) as i32;
@@ -275,9 +273,9 @@ impl LineMask {
             255 - (((255 - xef) * self.spx) >> 8)
         };
         
-        let mut k = xei - rel_x;
+        let mut k = xei - x;
         
-        // First pixel with antialiasing
+        // First fractional pixel
         if xef != 0 {
             if k >= 0 && k < len as i32 {
                 let mut m = 255 - (((255 - xef) * (255 - px_h)) >> 9);
@@ -289,7 +287,7 @@ impl LineMask {
             k += 1;
         }
         
-        // Middle pixels with full antialiasing
+        // Middle pixels
         while px_h > self.spx {
             if k >= 0 && k < len as i32 {
                 let mut m = px_h - (self.spx >> 1);
@@ -318,14 +316,14 @@ impl LineMask {
             mask_buf[k as usize] = Self::mask_mix(mask_buf[k as usize], m as u8);
         }
         
-        // Clear remaining pixels on the "wrong" side
+        // Clear pixels on the appropriate side
         if self.inv {
-            let k_clear = xei - rel_x;
-            if k_clear > len as i32 {
+            let k = xei - x;
+            if k > len as i32 {
                 return MaskResult::Transparent;
             }
-            if k_clear >= 0 {
-                for i in 0..k_clear.min(len as i32) as usize {
+            if k >= 0 {
+                for i in 0..k as usize {
                     mask_buf[i] = 0;
                 }
             }
@@ -345,35 +343,36 @@ impl LineMask {
     }
     
     fn apply_steep(&self, mask_buf: &mut [Opa], x: i32, y: i32, len: usize) -> MaskResult {
-        // Make coordinates relative to the origo (LVGL does this!)
-        let rel_x = x - self.origo.x;
-        let rel_y = y - self.origo.y;
+        // Port of LVGL's line_mask_steep
+        // Note: x/y are already relative to origo (subtracted in apply())
         
-        // Calculate x at current y
-        let mut x_at_y = ((self.xy_steep as i64 * rel_y as i64) >> 10) as i32;
+        // At the beginning of the mask if the limit line is greater than the mask's y
+        let mut x_at_y = ((self.xy_steep as i64 * y as i64) >> 10) as i32;
         if self.xy_steep > 0 {
             x_at_y += 1;
         }
         
-        if x_at_y < rel_x {
+        if x_at_y < x {
             return if self.inv { MaskResult::FullCover } else { MaskResult::Transparent };
         }
         
-        x_at_y = ((self.xy_steep as i64 * rel_y as i64) >> 10) as i32;
-        if x_at_y > rel_x + len as i32 {
+        // At the end of the mask if the limit line is smaller than the mask's y
+        x_at_y = ((self.xy_steep as i64 * y as i64) >> 10) as i32;
+        if x_at_y > x + len as i32 {
             return if self.inv { MaskResult::Transparent } else { MaskResult::FullCover };
         }
         
-        // Calculate fractional positions
-        let xs = ((rel_y * 256) as i64 * self.xy_steep as i64) >> 10;
+        // X start
+        let xs = ((y * 256) as i64 * self.xy_steep as i64) >> 10;
         let mut xsi = (xs >> 8) as i32;
         let mut xsf = (xs & 0xFF) as i32;
         
-        let xe = (((rel_y + 1) * 256) as i64 * self.xy_steep as i64) >> 10;
+        // X end
+        let xe = (((y + 1) * 256) as i64 * self.xy_steep as i64) >> 10;
         let xei = (xe >> 8) as i32;
         let xef = (xe & 0xFF) as i32;
         
-        let mut k = xsi - rel_x;
+        let mut k = xsi - x;
         if xsi != xei && self.xy_steep < 0 && xsf == 0 {
             xsf = 0xFF;
             xsi = xei;
@@ -393,7 +392,7 @@ impl LineMask {
             
             // Clear pixels
             if self.inv {
-                let k = xsi - rel_x;
+                let k = xsi - x;
                 if k >= len as i32 {
                     return MaskResult::Transparent;
                 }
@@ -435,7 +434,7 @@ impl LineMask {
                 k += 2;
                 
                 if self.inv {
-                    let k = (xsi - rel_x - 1).min(len as i32);
+                    let k = (xsi - x - 1).min(len as i32);
                     if k > 0 {
                         for i in 0..k as usize {
                             mask_buf[i] = 0;
@@ -473,7 +472,7 @@ impl LineMask {
                 k += 1;
                 
                 if self.inv {
-                    let k = xsi - rel_x;
+                    let k = xsi - x;
                     if k > len as i32 {
                         return MaskResult::Transparent;
                     }
