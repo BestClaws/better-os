@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::cmp::{max, min};
 
 use crate::math::{trigo_cos, trigo_sin};
-use crate::types::{Area, Opa, Point};
+use crate::types::{opa_mix, Area, Opa, Point};
 
 /// Result of applying masks to a scanline.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -177,12 +177,8 @@ impl AngleMask {
 
             let mut res1 = MaskResult::FullCover;
             if tmp > 0 {
-                res1 = apply_line_segment(
-                    &self.end_line,
-                    &mut mask_buf[..tmp as usize],
-                    abs_x,
-                    abs_y,
-                );
+                res1 =
+                    apply_line_segment(&self.end_line, &mut mask_buf[..tmp as usize], abs_x, abs_y);
                 if res1 == MaskResult::Transparent {
                     mask_buf[..tmp as usize].fill(0);
                 }
@@ -807,12 +803,7 @@ impl RadiusCircle {
                     &mut cir_size,
                 );
             } else if x_int[0] != x_int[2] {
-                push_entry(
-                    x_int[0],
-                    y_8th_cnt,
-                    x_fract[0] + x_fract[1],
-                    &mut cir_size,
-                );
+                push_entry(x_int[0], y_8th_cnt, x_fract[0] + x_fract[1], &mut cir_size);
                 push_entry(
                     x_int[0] - 1,
                     y_8th_cnt,
@@ -834,10 +825,7 @@ impl RadiusCircle {
 
         let mid = radius * 723;
         let mid_int = mid >> 10;
-        if cir_size == 0
-            || cir_x[cir_size - 1] != mid_int
-            || cir_y[cir_size - 1] != mid_int
-        {
+        if cir_size == 0 || cir_x[cir_size - 1] != mid_int || cir_y[cir_size - 1] != mid_int {
             let mut tmp_val = mid - (mid_int << 10);
             if tmp_val <= 512 {
                 tmp_val = (tmp_val * tmp_val * 2) >> (10 + 6);
@@ -1118,17 +1106,13 @@ fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
     if mask_new == 0 {
         return 0;
     }
-    udiv255(mask_act as u32 * mask_new as u32)
+    let prod = (mask_act as u32) * (mask_new as u32);
+    ((prod * 0x8081) >> 23) as Opa
 }
 
 #[inline]
 fn clamp_i32(min_v: i32, val: i32, max_v: i32) -> i32 {
     min(max(val, min_v), max_v)
-}
-
-#[inline]
-fn udiv255(x: u32) -> Opa {
-    ((x * 0x8081) >> 23) as Opa
 }
 
 fn apply_line_segment(line: &LineMask, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {

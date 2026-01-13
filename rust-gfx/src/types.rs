@@ -12,6 +12,12 @@ pub const OPA_50: Opa = 127;
 pub const OPA_70: Opa = 178;
 pub const OPA_COVER: Opa = 255;
 
+/// Matches LVGL's LV_OPA_MIX2(a, b) = (a * b) >> 8.
+#[inline]
+pub fn opa_mix(a: Opa, b: Opa) -> Opa {
+    (((a as u16) * (b as u16)) >> 8) as Opa
+}
+
 /// Gradient direction matching LVGL
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum GradDir {

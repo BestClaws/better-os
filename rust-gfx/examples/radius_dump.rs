@@ -15,7 +15,10 @@ fn main() {
             rel_y - (h - radius)
         };
         if let Some((x_start, values)) = mask.debug_line_info(rel_y) {
-            println!("rel_y={} cir_y={} cir_x_start={} opa={:?}", rel_y, cir_y, x_start, values);
+            println!(
+                "rel_y={} cir_y={} cir_x_start={} opa={:?}",
+                rel_y, cir_y, x_start, values
+            );
         } else {
             println!("rel_y={} cir_y={} none", rel_y, cir_y);
         }
