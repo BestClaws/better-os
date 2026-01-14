@@ -1009,12 +1009,12 @@ impl RadiusMask {
                 let right_idx = cir_x_right + idx as i32;
                 if right_idx >= 0 && right_idx < len {
                     let buf_idx = right_idx as usize;
-                    mask_buf[buf_idx] = mask_mix(opa, mask_buf[buf_idx]);
+                    mask_buf[buf_idx] = mask_mix(mask_buf[buf_idx], opa);
                 }
                 let left_idx = cir_x_left - idx as i32;
                 if left_idx >= 0 && left_idx < len {
                     let buf_idx = left_idx as usize;
-                    mask_buf[buf_idx] = mask_mix(opa, mask_buf[buf_idx]);
+                    mask_buf[buf_idx] = mask_mix(mask_buf[buf_idx], opa);
                 }
             }
 
@@ -1033,12 +1033,12 @@ impl RadiusMask {
                 let right_idx = cir_x_right + idx as i32;
                 if right_idx >= 0 && right_idx < len {
                     let buf_idx = right_idx as usize;
-                    mask_buf[buf_idx] = mask_mix(opa_val, mask_buf[buf_idx]);
+                    mask_buf[buf_idx] = mask_mix(mask_buf[buf_idx], opa_val);
                 }
                 let left_idx = cir_x_left - idx as i32;
                 if left_idx >= 0 && left_idx < len {
                     let buf_idx = left_idx as usize;
-                    mask_buf[buf_idx] = mask_mix(opa_val, mask_buf[buf_idx]);
+                    mask_buf[buf_idx] = mask_mix(mask_buf[buf_idx], opa_val);
                 }
             }
 

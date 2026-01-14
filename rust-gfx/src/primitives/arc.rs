@@ -154,20 +154,14 @@ pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
             continue;
         }
 
-        let mut any_coverage = false;
         let mut full_cover_row = mask_res == MaskResult::FullCover;
-        for &mask_val in &mask_buf {
-            if mask_val != OPA_TRANSP {
-                any_coverage = true;
+        if full_cover_row {
+            for &mask_val in &mask_buf {
                 if mask_val < OPA_COVER {
                     full_cover_row = false;
                     break;
                 }
             }
-        }
-
-        if !any_coverage {
-            continue;
         }
 
         if full_cover_row {
@@ -178,8 +172,8 @@ pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
         }
 
         for (i, &mask_val) in mask_buf.iter().enumerate() {
-            let final_opa = if mask_val >= OPA_COVER {
-                dsc.opa
+            let final_opa = if dsc.opa == OPA_COVER {
+                mask_val
             } else {
                 opa_mix(dsc.opa, mask_val)
             };

@@ -12,11 +12,10 @@ pub const OPA_50: Opa = 127;
 pub const OPA_70: Opa = 178;
 pub const OPA_COVER: Opa = 255;
 
-/// Matches LVGL's LV_OPA_MIX2(a, b) using LV_UDIV255 for rounding parity.
+/// Matches LVGL's LV_OPA_MIX2(a, b) = (a * b) >> 8.
 #[inline]
 pub fn opa_mix(a: Opa, b: Opa) -> Opa {
-    let prod = (a as u32) * (b as u32);
-    ((prod * 0x8081) >> 23) as Opa
+    (((a as u16) * (b as u16)) >> 8) as Opa
 }
 
 /// Gradient direction matching LVGL
