@@ -6,14 +6,13 @@ use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
 use heapless::String as HString;
 use rust_gfx::color::Rgba8888;
+use rust_gfx::primitives::triangle::{draw_triangle, TriangleDsc};
 use rust_gfx::primitives::{
-    draw_label,
-    draw_rect,
-    label::{LabelDsc, line_height, measure_text},
+    draw_label, draw_rect,
+    label::{line_height, measure_text, LabelDsc},
     RectDsc,
 };
-use rust_gfx::primitives::triangle::{draw_triangle, TriangleDsc};
-use rust_gfx::types::{Area, Gradient, OPA_COVER, Point, RADIUS_CIRCLE};
+use rust_gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds
@@ -157,29 +156,33 @@ fn draw_interface(
 
     // Background gradient
     let mut bg = RectDsc::new();
-    bg.bg_color = Rgba8888::rgba(32, 34, 40, 255);
+    bg.bg_color = Rgba8888::rgba(248, 249, 252, 255);
     bg.bg_grad = Gradient::vertical(
-        Rgba8888::rgba(38, 41, 48, 255),
-        Rgba8888::rgba(18, 19, 24, 255),
+        Rgba8888::rgba(252, 253, 255, 255),
+        Rgba8888::rgba(232, 234, 240, 255),
     );
     bg.bg_opa = OPA_COVER;
     let bg_area = Area::new(0, 0, width - 1, height - 1);
     draw_rect(surface, &bg, &bg_area);
 
+    draw_background_grid(surface, width, height);
+
     // Header
     let header_height = (height / 6).max(18).min(30);
     let mut header = RectDsc::new();
-    header.bg_color = Rgba8888::rgba(47, 49, 56, 255);
+    header.bg_color = Rgba8888::rgba(255, 255, 255, 255);
     header.bg_grad = Gradient::vertical(
-        Rgba8888::rgba(63, 66, 74, 255),
-        Rgba8888::rgba(35, 37, 42, 255),
+        Rgba8888::rgba(255, 255, 255, 255),
+        Rgba8888::rgba(236, 238, 244, 255),
     );
     header.bg_opa = OPA_COVER;
     let header_area = Area::new(0, 0, width - 1, header_height - 1);
     draw_rect(surface, &header, &header_area);
 
+    draw_header_accent(surface, width, header_height);
+
     let mut divider = RectDsc::new();
-    divider.bg_color = Rgba8888::rgba(0, 0, 0, 90);
+    divider.bg_color = Rgba8888::rgba(200, 202, 210, 200);
     divider.bg_opa = OPA_COVER;
     let divider_area = Area::new(0, header_height, width - 1, header_height);
     draw_rect(surface, &divider, &divider_area);
@@ -187,7 +190,7 @@ fn draw_interface(
     // Header text and status
     let text_height = line_height();
     let mut title_label = LabelDsc::new("Discord".into());
-    title_label.color = Rgba8888::rgba(242, 243, 245, 255);
+    title_label.color = Rgba8888::rgba(60, 64, 80, 255);
     let title_width = measure_text(&title_label.text, title_label.letter_space);
     if title_width > 0 {
         let title_x = (width - title_width) / 2;
@@ -201,12 +204,12 @@ fn draw_interface(
         draw_label(surface, &title_label, &title_area);
     }
 
-    let status_text = if connected { "ONLINE" } else { "OFFLINE" };
+    let status_text = if connected { "SYNCED" } else { "RETRYING" };
     let mut status_label = LabelDsc::new(status_text.into());
     status_label.color = if connected {
-        Rgba8888::rgba(147, 197, 114, 255)
+        Rgba8888::rgba(254, 211, 64, 255)
     } else {
-        Rgba8888::rgba(200, 98, 98, 255)
+        Rgba8888::rgba(172, 176, 188, 255)
     };
     let status_width = measure_text(&status_label.text, status_label.letter_space);
 
@@ -216,9 +219,9 @@ fn draw_interface(
     let dot_y = (header_height - dot_size) / 2;
     let mut dot = RectDsc::new();
     dot.bg_color = if connected {
-        Rgba8888::rgba(78, 201, 138, 255)
+        Rgba8888::rgba(254, 211, 64, 255)
     } else {
-        Rgba8888::rgba(128, 132, 142, 255)
+        Rgba8888::rgba(180, 184, 194, 255)
     };
     dot.bg_opa = OPA_COVER;
     dot.radius = RADIUS_CIRCLE;
@@ -262,21 +265,22 @@ fn draw_interface(
         };
         let y = content_top + idx as i32 * (message_height + message_spacing);
 
-        let bubble_top_color = if align_right {
-            Rgba8888::rgba(88, 101, 242, 255)
+        let (bubble_top_color, bubble_bottom_color, border_color, accent_color) = if align_right {
+            (
+                Rgba8888::rgba(255, 255, 255, 255),
+                Rgba8888::rgba(240, 242, 248, 255),
+                Rgba8888::rgba(254, 211, 64, 230),
+                Rgba8888::rgba(254, 211, 64, 255),
+            )
         } else {
-            Rgba8888::rgba(54, 57, 63, 255)
+            (
+                Rgba8888::rgba(244, 246, 252, 255),
+                Rgba8888::rgba(230, 232, 240, 255),
+                Rgba8888::rgba(200, 204, 216, 220),
+                Rgba8888::rgba(70, 190, 235, 255),
+            )
         };
-        let bubble_bottom_color = if align_right {
-            Rgba8888::rgba(71, 82, 196, 255)
-        } else {
-            Rgba8888::rgba(44, 47, 51, 255)
-        };
-        let text_color = if align_right {
-            Rgba8888::rgba(238, 240, 255, 255)
-        } else {
-            Rgba8888::rgba(219, 222, 225, 255)
-        };
+        let text_color = Rgba8888::rgba(60, 64, 80, 255);
 
         // Tail
         let base_x = if align_right {
@@ -316,7 +320,7 @@ fn draw_interface(
         sy2 = sy2.min(height - 1);
         if sx1 <= sx2 && sy1 <= sy2 {
             let mut shadow = RectDsc::new();
-            shadow.bg_color = Rgba8888::rgba(0, 0, 0, 90);
+            shadow.bg_color = Rgba8888::rgba(130, 140, 160, 35);
             shadow.bg_opa = OPA_COVER;
             shadow.radius = corner_radius;
             let shadow_area = Area::new(sx1, sy1, sx2, sy2);
@@ -330,7 +334,7 @@ fn draw_interface(
         bubble.bg_opa = OPA_COVER;
         bubble.radius = corner_radius;
         bubble.border_width = 1;
-        bubble.border_color = Rgba8888::rgba(0, 0, 0, 120);
+        bubble.border_color = border_color;
         bubble.border_opa = OPA_COVER;
         let bubble_area = Area::new(
             bubble_x,
@@ -339,6 +343,22 @@ fn draw_interface(
             y + message_height - 1,
         );
         draw_rect(surface, &bubble, &bubble_area);
+
+        // Add a thin accent strip to echo the reference styling.
+        if message_height > 6 {
+            let accent_height = 3;
+            let accent_start = bubble_x + text_padding;
+            let accent_end = bubble_x + bubble_width - text_padding - 1;
+            if accent_start <= accent_end {
+                let accent_area =
+                    Area::new(accent_start, y + 2, accent_end, y + 2 + accent_height - 1);
+                let mut accent = RectDsc::new();
+                accent.bg_color = accent_color;
+                accent.bg_opa = OPA_COVER;
+                accent.radius = 1;
+                draw_rect(surface, &accent, &accent_area);
+            }
+        }
 
         // Message text
         let text_width_msg = measure_text(message.as_str(), 0);
@@ -355,4 +375,60 @@ fn draw_interface(
             }
         }
     }
+}
+
+fn draw_background_grid(surface: &mut DrawingSurface, width: i32, height: i32) {
+    if width <= 0 || height <= 0 {
+        return;
+    }
+
+    let spacing = (width.min(height) / 12).max(16);
+    let mut line = RectDsc::new();
+    line.bg_color = Rgba8888::rgba(210, 212, 224, 50);
+    line.bg_opa = OPA_COVER;
+
+    for y in (spacing..height).step_by(spacing as usize) {
+        let area = Area::new(0, y, width - 1, y);
+        draw_rect(surface, &line, &area);
+    }
+
+    let offset = spacing / 2;
+    for x in (offset..width).step_by(spacing as usize) {
+        let area = Area::new(x, 0, x, height - 1);
+        draw_rect(surface, &line, &area);
+    }
+}
+
+fn draw_header_accent(surface: &mut DrawingSurface, width: i32, header_height: i32) {
+    if width <= 0 || header_height <= 0 {
+        return;
+    }
+
+    let accent_width = (width / 20).max(12).min(36);
+    let spacing = 4;
+    let total_width = accent_width * 3 + spacing * 2;
+    let start_x = ((width - total_width) / 2).max(0);
+    let bar_height = (header_height / 4).max(3);
+    let y = (header_height / 3).max(2) - bar_height / 2;
+    let colors = [
+        Rgba8888::rgba(236, 70, 170, 255),
+        Rgba8888::rgba(70, 190, 235, 255),
+        Rgba8888::rgba(254, 211, 64, 255),
+    ];
+
+    for (idx, color) in colors.into_iter().enumerate() {
+        let mut bar = RectDsc::new();
+        bar.bg_color = color;
+        bar.bg_opa = OPA_COVER;
+        bar.radius = 1;
+        let x1 = start_x + idx as i32 * (accent_width + spacing);
+        let area = Area::new(x1, y, x1 + accent_width - 1, y + bar_height - 1);
+        draw_rect(surface, &bar, &area);
+    }
+
+    let mut ribbon = RectDsc::new();
+    ribbon.bg_color = Rgba8888::rgba(254, 211, 64, 140);
+    ribbon.bg_opa = OPA_COVER;
+    let ribbon_area = Area::new(0, header_height - 3, width - 1, header_height - 1);
+    draw_rect(surface, &ribbon, &ribbon_area);
 }

@@ -4,7 +4,7 @@ pub(crate) mod button;
 pub(crate) mod display;
 pub(crate) mod encoder;
 pub(crate) mod imu;
-pub(crate) mod rtc;
 pub(crate) mod radio;
+pub(crate) mod rtc;
 pub(crate) mod touch;
 pub(crate) mod vibrator;

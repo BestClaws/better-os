@@ -7,7 +7,7 @@ pub(crate) mod gyro_accel_srv;
 pub(crate) mod hps_service;
 pub(crate) mod http_service;
 pub(crate) mod input;
+pub(crate) mod rtc_srv;
 pub(crate) mod system_ui_srv;
 pub(crate) mod vibrator_srv;
-pub(crate) mod rtc_srv;
 // display_service replaced by system::ui::display facade

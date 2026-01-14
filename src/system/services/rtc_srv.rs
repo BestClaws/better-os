@@ -18,9 +18,7 @@ pub async fn current_datetime() -> Option<RtcDateTime> {
 }
 
 #[embassy_executor::task]
-pub(crate) async fn rtc_service(
-    rtc: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRtc>>,
-) {
+pub(crate) async fn rtc_service(rtc: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRtc>>) {
     {
         let mut guard = rtc.lock().await;
         if let Err(err) = guard.init().await {
@@ -49,7 +47,7 @@ pub(crate) async fn rtc_service(
                                 if let Err(write_err) = guard.set(&DEFAULT_BOOT_DATETIME).await {
                                     warn!("RTC recovery write failed: {:?}", write_err);
                                 } else {
-                                    info!("RTC default time written" );
+                                    info!("RTC default time written");
                                 }
                             }
                         }
@@ -62,7 +60,10 @@ pub(crate) async fn rtc_service(
 
         if let Some(value) = sample {
             if integrity_warned {
-                info!("RTC recovered; now {:?}-{:?}-{:?} {:?}:{:?}:{:?}", value.year, value.month, value.day, value.hour, value.minute, value.second);
+                info!(
+                    "RTC recovered; now {:?}-{:?}-{:?} {:?}:{:?}:{:?}",
+                    value.year, value.month, value.day, value.hour, value.minute, value.second
+                );
             }
             integrity_warned = false;
             recovery_attempts = 0;
