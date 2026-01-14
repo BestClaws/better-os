@@ -1,6 +1,7 @@
 //! Minimalist watch face optimized for rectangular displays.
 
 use crate::system::app::app_context::AppContext;
+use crate::system::services::rtc_srv::current_datetime;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
@@ -13,7 +14,6 @@ use rust_gfx::primitives::{
     label::{LabelDsc, line_height, measure_text},
     line::LineDsc,
 };
-use rust_gfx::rasterizer::Rasterizer;
 use rust_gfx::types::{Area, Gradient, OPA_COVER, Point, RADIUS_CIRCLE};
 
 extern crate alloc;
@@ -22,12 +22,41 @@ use alloc::format;
 #[embassy_executor::task]
 pub async fn watch_app(ctx: AppContext) {
     info!("Starting watch app");
-    let start = Instant::now();
+    let fallback_start = Instant::now();
     loop {
         if !ctx.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
             continue;
         }
+
+        let rtc_snapshot = current_datetime().await;
+        let fallback_elapsed = Instant::now() - fallback_start;
+        let fallback_micros = fallback_elapsed.as_micros();
+
+        let (hours, minutes, hour_progress, minute_progress, second_progress) =
+            match rtc_snapshot {
+                Some(dt) => {
+                    let second_progress = dt.second as f32;
+                    let minute_progress = dt.minute as f32 + second_progress / 60.0;
+                    let hour_progress = dt.hour as f32 + minute_progress / 60.0;
+                    (
+                        dt.hour as i32,
+                        dt.minute as i32,
+                        hour_progress,
+                        minute_progress,
+                        second_progress,
+                    )
+                }
+                None => {
+                    let second_progress = (fallback_micros as f32 / 1_000_000.0) % 60.0;
+                    let total_seconds = (fallback_micros / 1_000_000) as i32;
+                    let minutes = (total_seconds / 60) % 60;
+                    let hours = (total_seconds / 3600) % 24;
+                    let minute_progress = minutes as f32 + second_progress / 60.0;
+                    let hour_progress = hours as f32 + minute_progress / 60.0;
+                    (hours, minutes, hour_progress, minute_progress, second_progress)
+                }
+            };
 
         let draw_start = Instant::now();
         ctx.draw(|surface: &mut DrawingSurface| {
@@ -36,23 +65,14 @@ pub async fn watch_app(ctx: AppContext) {
             let cx = width / 2;
             let cy = height / 2;
 
-            let elapsed = Instant::now() - start;
-            let total_micros = elapsed.as_micros();
-            let second_fraction = (total_micros as f32 / 1_000_000.0) % 60.0;
-            let total_seconds = (total_micros / 1_000_000) as i32;
-            let minutes = (total_seconds / 60) % 60;
-            let hours = (total_seconds / 3600) % 24;
-            let minute_fraction = minutes as f32 + second_fraction / 60.0;
-            let hour_fraction = hours as f32 + minute_fraction / 60.0;
-
             draw_background(surface, width, height);
             if let Some(layout) = compute_watch_layout(width, height) {
                 draw_watch_face(
                     surface,
                     &layout,
-                    hour_fraction,
-                    minute_fraction,
-                    second_fraction,
+                    hour_progress,
+                    minute_progress,
+                    second_progress,
                 );
                 draw_bottom_label(surface, &layout, hours, minutes);
             }

@@ -5,6 +5,7 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::hal::encoder::AsyncEncoder;
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::system::hal::radio::AsyncRadio;
+use crate::system::hal::rtc::AsyncRtc;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
 use alloc::boxed::Box;
@@ -22,4 +23,5 @@ pub(crate) struct PlatformDevice<'s> {
     pub(crate) gyro_accelerometer:
         Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>>,
     pub(crate) radio: Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>>,
+    pub(crate) rtc: Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncRtc>>>,
 }

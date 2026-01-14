@@ -4,5 +4,6 @@ pub(crate) mod encoder;
 pub(crate) mod ft5336;
 pub(crate) mod ili9341;
 pub(crate) mod qmi8658c;
+pub(crate) mod pcf85063;
 pub(crate) mod vibrator;
 pub(crate) mod xpt2046;

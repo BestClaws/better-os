@@ -6,6 +6,7 @@ use crate::system::hal::display::PixelFormat;
 use crate::system::hal::encoder::AsyncEncoder;
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::system::hal::radio::AsyncRadio;
+use crate::system::hal::rtc::AsyncRtc;
 use crate::system::hal::touch::AsyncTouch;
 use crate::system::hal::vibrator::AsyncVibrator;
 use crate::system::kernel::platform::PlatformDevice;
@@ -14,6 +15,7 @@ use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
+use crate::system::vendor::boby::drivers::pcf85063::Pcf85063;
 use crate::system::vendor::boby::drivers::qmi8658c::Qmi8658C;
 use crate::system::vendor::boby::drivers::vibrator::VibratorDriver;
 use crate::system::vendor::boby::drivers::xpt2046::XPT2046;
@@ -69,6 +71,8 @@ pub(crate) static ADC_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Adc<ADC1
     StaticCell::new();
 pub(crate) static RADIO: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>> =
     StaticCell::new();
+pub(crate) static RTC: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncRtc>>> =
+    StaticCell::new();
 
 pub(crate) fn init_device() -> PlatformDevice<'static> {
     let peripherals = mcu::init();
@@ -96,12 +100,15 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         I2cDevice::new(i2c);
     let i2c_2: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
         I2cDevice::new(i2c);
+    let i2c_3: I2cDevice<'static, CriticalSectionRawMutex, I2c<'static, Async>> =
+        I2cDevice::new(i2c);
 
     // Touch reset pin
     let touch_reset_pin = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
     let mut touch = FT5336::new(i2c_1, Some(touch_reset_pin));
     let accel = Qmi8658C::new(i2c_2);
+    let rtc = Pcf85063::new(i2c_3);
 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(16384);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
@@ -142,6 +149,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
         gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(accel)))),
         button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
+        rtc: Some(RTC.init(Mutex::new(Box::new(rtc)))),
     }
 }
 
