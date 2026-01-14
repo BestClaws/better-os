@@ -22,7 +22,7 @@ fn main() {
     let area = Area::new(20, 30, 82, 95);
     draw_rect(&mut canvas, &dsc, &area);
 
-    // Inspect mask values for top border row
+    // Inspect mask values for top border rows
     let inner_area = Area::new(21, 31, 81, 94);
     let inner_mask = RadiusMask::new(inner_area, 9, true);
     let outer_mask = RadiusMask::new(area, 10, false);

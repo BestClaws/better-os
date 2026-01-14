@@ -56,6 +56,8 @@ pub trait Rasterizer {
         }
     }
 
+    fn stamp_rgb_zero_alpha(&mut self, _x: i32, _y: i32, _color: Rgba8888) {}
+
     /// Unsafe escape hatch to raw buffer. Primitives should not use this.
     unsafe fn unsafe_buffer_mut(&mut self) -> &mut [u8] {
         self.buffer_mut()

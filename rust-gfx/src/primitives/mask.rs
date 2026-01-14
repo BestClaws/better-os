@@ -51,17 +51,6 @@ impl RadiusMask {
         let radius = self.radius;
         let outer = self.outer;
 
-        if !outer {
-            if y < rect.y1 || y > rect.y2 {
-                for m in mask_buf.iter_mut() {
-                    *m = 0;
-                }
-                return;
-            }
-        } else if y < rect.y1 || y > rect.y2 {
-            return;
-        }
-
         let in_straight_section = (x_start >= rect.x1 + radius
             && x_start + len <= rect.x2 - radius)
             || (y >= rect.y1 + radius && y <= rect.y2 - radius);
@@ -125,8 +114,9 @@ impl RadiusMask {
             rel_y - (h - radius)
         };
 
-        let Some((aa_opa, x_offset)) = circle.get_line(cir_y) else {
-            return;
+        let (aa_opa, x_offset) = match circle.get_line(cir_y) {
+            Some((opa, x_offset)) => (opa, x_offset),
+            None => (&[][..], 0),
         };
 
         let aa_len = aa_opa.len() as i32;
@@ -141,20 +131,25 @@ impl RadiusMask {
                 let right_idx = cir_x_right + i;
                 if right_idx >= 0 && right_idx < len {
                     mask_buf[right_idx as usize] =
-                        Self::mask_mix(opa, mask_buf[right_idx as usize]);
+                        Self::mask_mix(mask_buf[right_idx as usize], opa);
                 }
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] = Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                    mask_buf[left_idx as usize] =
+                        Self::mask_mix(mask_buf[left_idx as usize], opa);
                 }
             }
 
-            let right_clear = (cir_x_right + aa_len).clamp(0, len) as usize;
-            mask_buf[right_clear..len as usize].fill(0);
+            let right_clear = (cir_x_right + aa_len).clamp(0, len);
+            if right_clear < len {
+                mask_buf[right_clear as usize..len as usize].fill(0);
+            }
 
-            let left_clear = (cir_x_left - aa_len + 1).clamp(0, len) as usize;
-            mask_buf[..left_clear].fill(0);
+            let left_clear = (cir_x_left - aa_len + 1).clamp(0, len);
+            if left_clear > 0 {
+                mask_buf[..left_clear as usize].fill(0);
+            }
         } else {
             for i in 0..aa_len {
                 let opa = 255 - aa_opa[(aa_len - 1 - i) as usize];
@@ -162,22 +157,20 @@ impl RadiusMask {
                 let right_idx = cir_x_right + i;
                 if right_idx >= 0 && right_idx < len {
                     mask_buf[right_idx as usize] =
-                        Self::mask_mix(opa, mask_buf[right_idx as usize]);
+                        Self::mask_mix(mask_buf[right_idx as usize], opa);
                 }
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] = Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                    mask_buf[left_idx as usize] =
+                        Self::mask_mix(mask_buf[left_idx as usize], opa);
                 }
             }
 
             let clr_start = (cir_x_left + 1).clamp(0, len);
-            let max_len = len - clr_start;
-            if max_len > 0 {
-                let raw_len = cir_x_right - clr_start;
-                let clr_len = raw_len.clamp(0, max_len) as usize;
-                let start = clr_start as usize;
-                mask_buf[start..start + clr_len].fill(0);
+            let clr_end = cir_x_right.clamp(clr_start, len);
+            if clr_end > clr_start {
+                mask_buf[clr_start as usize..clr_end as usize].fill(0);
             }
         }
     }

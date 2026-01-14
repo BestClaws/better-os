@@ -150,4 +150,12 @@ impl Rasterizer for Canvas {
         };
         self.fill_area(&area, color, OPA_COVER);
     }
+
+    fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Rgba8888) {
+        if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
+            return;
+        }
+        let idx = y as usize * self.width + x as usize;
+        self.buffer[idx] = color.with_alpha(0);
+    }
 }

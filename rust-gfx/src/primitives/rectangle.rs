@@ -224,9 +224,12 @@ fn draw_bg<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             let opa =
                 ((dsc.bg_opa as u32 * grad_opa as u32 * mask_val as u32) / (255 * 255)) as Opa;
 
-            // LVGL writes ALL pixels in the bg area, even if opa==0
-            // This preserves color info for non-premultiplied alpha
-            rast.blend_pixel(x, y, color, opa);
+            if opa == 0 {
+                // Match LVGL: retain RGB even when fully masked out
+                rast.stamp_rgb_zero_alpha(x, y, color);
+            } else {
+                rast.blend_pixel(x, y, color, opa);
+            }
         }
     }
 }
@@ -439,7 +442,7 @@ fn draw_border_complex<R: Rasterizer>(
                     &inner_mask,
                     outer_mask_ref,
                     top_y,
-                    draw_area.x1,
+                    mask_origin_x,
                 );
                 draw_masked_span(rast, dsc, mask_buf.as_slice(), draw_area.x1, top_y);
             }
@@ -451,7 +454,7 @@ fn draw_border_complex<R: Rasterizer>(
                     &inner_mask,
                     outer_mask_ref,
                     bottom_y,
-                    draw_area.x1,
+                    mask_origin_x,
                 );
                 draw_masked_span(rast, dsc, mask_buf.as_slice(), draw_area.x1, bottom_y);
             }
@@ -467,15 +470,15 @@ fn draw_border_complex<R: Rasterizer>(
             let span_x1 = draw_area.x1;
             let span_len = (left_span_end - span_x1 + 1) as usize;
             for y in start_y..end_y {
-                let start_idx = (span_x1 - mask_origin_x) as usize;
-                let end_idx = start_idx + span_len;
                 prepare_mask_line(
-                    &mut mask_buf[start_idx..end_idx],
+                    mask_buf.as_mut_slice(),
                     &inner_mask,
                     outer_mask_ref,
                     y,
-                    span_x1,
+                    mask_origin_x,
                 );
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
                 draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
@@ -488,15 +491,15 @@ fn draw_border_complex<R: Rasterizer>(
             let span_x1 = draw_area.x1;
             let span_len = (left_span_end - span_x1 + 1) as usize;
             for y in start_y..=end_y {
-                let start_idx = (span_x1 - mask_origin_x) as usize;
-                let end_idx = start_idx + span_len;
                 prepare_mask_line(
-                    &mut mask_buf[start_idx..end_idx],
+                    mask_buf.as_mut_slice(),
                     &inner_mask,
                     outer_mask_ref,
                     y,
-                    span_x1,
+                    mask_origin_x,
                 );
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
                 draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
@@ -510,15 +513,15 @@ fn draw_border_complex<R: Rasterizer>(
             let span_x1 = right_span_start;
             let span_len = (draw_area.x2 - span_x1 + 1) as usize;
             for y in start_y..end_y {
-                let start_idx = (span_x1 - mask_origin_x) as usize;
-                let end_idx = start_idx + span_len;
                 prepare_mask_line(
-                    &mut mask_buf[start_idx..end_idx],
+                    mask_buf.as_mut_slice(),
                     &inner_mask,
                     outer_mask_ref,
                     y,
-                    span_x1,
+                    mask_origin_x,
                 );
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
                 draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
@@ -531,15 +534,15 @@ fn draw_border_complex<R: Rasterizer>(
             let span_x1 = right_span_start;
             let span_len = (draw_area.x2 - span_x1 + 1) as usize;
             for y in start_y..=end_y {
-                let start_idx = (span_x1 - mask_origin_x) as usize;
-                let end_idx = start_idx + span_len;
                 prepare_mask_line(
-                    &mut mask_buf[start_idx..end_idx],
+                    mask_buf.as_mut_slice(),
                     &inner_mask,
                     outer_mask_ref,
                     y,
-                    span_x1,
+                    mask_origin_x,
                 );
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
                 draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
@@ -594,17 +597,48 @@ fn draw_masked_span<R: Rasterizer>(
     if mask_buf.is_empty() || dsc.border_opa == 0 {
         return;
     }
-    for (i, mask_val) in mask_buf.iter().enumerate() {
-        let x = span_x1 + i as i32;
-        if *mask_val == 0 {
+    let len = mask_buf.len();
+    let mut idx = 0;
+    while idx < len {
+        let mask_val = mask_buf[idx];
+        if mask_val == 0 {
+            let mut run_end = idx + 1;
+            while run_end < len && mask_buf[run_end] == 0 {
+                run_end += 1;
+            }
+            let left = if idx > 0 { mask_buf[idx - 1] } else { 0 };
+            let right = if run_end < len { mask_buf[run_end] } else { 0 };
+            let left_nonzero = left > 0;
+            let right_nonzero = right > 0;
+            if left_nonzero ^ right_nonzero {
+                for offset in idx..run_end {
+                    let x = span_x1 + offset as i32;
+                    rast.stamp_rgb_zero_alpha(x, y, dsc.border_color);
+                }
+            }
+            idx = run_end;
             continue;
         }
-        let product = dsc.border_opa as u32 * *mask_val as u32;
+
+        let product = dsc.border_opa as u32 * mask_val as u32;
         let opa = ((product * 0x8081) >> 23) as Opa;
         if opa == 0 {
+            // Handle extremely small coverage by preserving border RGB on both sides
+            let left = if idx > 0 { mask_buf[idx - 1] } else { 0 };
+            let right = if idx + 1 < len { mask_buf[idx + 1] } else { 0 };
+            let left_nonzero = left > 0;
+            let right_nonzero = right > 0;
+            if left_nonzero ^ right_nonzero {
+                let x = span_x1 + idx as i32;
+                rast.stamp_rgb_zero_alpha(x, y, dsc.border_color);
+            }
+            idx += 1;
             continue;
         }
+
+        let x = span_x1 + idx as i32;
         rast.blend_pixel(x, y, dsc.border_color, opa);
+        idx += 1;
     }
 }
 
