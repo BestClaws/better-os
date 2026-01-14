@@ -4,16 +4,16 @@ use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
-use embedded_graphics::mono_font::ascii::{FONT_4X6, FONT_5X8};
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::*;
-use embedded_graphics::text::Text as EgText;
-use heapless::String;
+use heapless::String as HString;
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::{draw_rect, RectDsc};
-use rust_gfx::rasterizer::Rasterizer;
-use rust_gfx::types::{Area, Gradient, OPA_COVER};
+use rust_gfx::primitives::{
+    draw_label,
+    draw_rect,
+    label::{LabelDsc, line_height, measure_text},
+    RectDsc,
+};
+use rust_gfx::primitives::triangle::{draw_triangle, TriangleDsc};
+use rust_gfx::types::{Area, Gradient, OPA_COVER, Point, RADIUS_CIRCLE};
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds
@@ -22,7 +22,7 @@ const MAX_DISPLAY_CHARS: usize = 36;
 
 #[task]
 pub async fn discord_app(ctx: AppContext) {
-    info!("Starting Posts viewer app");
+    info!("Starting Discord app");
 
     let client = http::Client::new();
     let mut messages = [
@@ -34,10 +34,10 @@ pub async fn discord_app(ctx: AppContext) {
     let mut ticker = Ticker::every(Duration::from_millis(POLL_INTERVAL_MS));
     let mut needs_redraw = true;
 
-    info!("Posts: Entering main loop");
+    info!("Discord: Entering main loop");
     loop {
         if needs_redraw && ctx.is_focused().await {
-            info!("Posts: Drawing interface");
+            info!("Discord: Drawing interface");
             ctx.draw(|surface| draw_interface(surface, &messages, connected))
                 .await;
             needs_redraw = false;
@@ -72,9 +72,9 @@ pub async fn discord_app(ctx: AppContext) {
     }
 }
 
-fn update_messages_from_posts(messages: &mut [String<MESSAGE_CAPACITY>; 3], body: &[u8]) -> bool {
+fn update_messages_from_posts(messages: &mut [HString<MESSAGE_CAPACITY>; 3], body: &[u8]) -> bool {
     let text = core::str::from_utf8(body).unwrap_or("");
-    info!("Posts: Parsing {} bytes of JSON text", text.len());
+    info!("Discord: Parsing {} bytes of JSON text", text.len());
     let mut changed = false;
 
     // Simple JSON parsing - look for "title": "..." patterns
@@ -118,8 +118,8 @@ fn update_messages_from_posts(messages: &mut [String<MESSAGE_CAPACITY>; 3], body
     changed
 }
 
-fn sanitize_line(line: &str) -> String<MESSAGE_CAPACITY> {
-    let mut sanitized = String::<MESSAGE_CAPACITY>::new();
+fn sanitize_line(line: &str) -> HString<MESSAGE_CAPACITY> {
+    let mut sanitized = HString::<MESSAGE_CAPACITY>::new();
     for ch in line.chars() {
         if !ch.is_ascii() {
             continue;
@@ -137,117 +137,222 @@ fn sanitize_line(line: &str) -> String<MESSAGE_CAPACITY> {
     sanitized
 }
 
-fn placeholder_message() -> String<MESSAGE_CAPACITY> {
-    let mut s = String::<MESSAGE_CAPACITY>::new();
+fn placeholder_message() -> HString<MESSAGE_CAPACITY> {
+    let mut s = HString::<MESSAGE_CAPACITY>::new();
     let _ = s.push_str("...");
     s
 }
 
 fn draw_interface(
     surface: &mut DrawingSurface,
-    messages: &[String<MESSAGE_CAPACITY>; 3],
+    messages: &[HString<MESSAGE_CAPACITY>; 3],
     connected: bool,
 ) {
     let width = surface.width() as i32;
     let height = surface.height() as i32;
 
-    // Clean gradient background - use RectDsc with 0 radius instead of fill_rect
+    if width <= 0 || height <= 0 {
+        return;
+    }
+
+    // Background gradient
     let mut bg = RectDsc::new();
-    bg.bg_color = Rgba8888::rgba(24, 25, 28, 255);
+    bg.bg_color = Rgba8888::rgba(32, 34, 40, 255);
+    bg.bg_grad = Gradient::vertical(
+        Rgba8888::rgba(38, 41, 48, 255),
+        Rgba8888::rgba(18, 19, 24, 255),
+    );
     bg.bg_opa = OPA_COVER;
-    bg.radius = 0;
-    let bg_area = Area::new(0, 0, width, height);
+    let bg_area = Area::new(0, 0, width - 1, height - 1);
     draw_rect(surface, &bg, &bg_area);
 
-    // Simple, clean header - scale based on height
-    let header_height = (height / 6).max(14).min(24);
+    // Header
+    let header_height = (height / 6).max(18).min(30);
     let mut header = RectDsc::new();
-    header.bg_color = Rgba8888::rgba(32, 34, 37, 255);
+    header.bg_color = Rgba8888::rgba(47, 49, 56, 255);
+    header.bg_grad = Gradient::vertical(
+        Rgba8888::rgba(63, 66, 74, 255),
+        Rgba8888::rgba(35, 37, 42, 255),
+    );
     header.bg_opa = OPA_COVER;
-    header.radius = 0;
-    let header_area = Area::new(0, 0, width, header_height);
+    let header_area = Area::new(0, 0, width - 1, header_height - 1);
     draw_rect(surface, &header, &header_area);
 
     let mut divider = RectDsc::new();
-    divider.bg_color = Rgba8888::rgba(0, 0, 0, 60);
+    divider.bg_color = Rgba8888::rgba(0, 0, 0, 90);
     divider.bg_opa = OPA_COVER;
-    divider.radius = 0;
-    let divider_area = Area::new(0, header_height, width, 1);
+    let divider_area = Area::new(0, header_height, width - 1, header_height);
     draw_rect(surface, &divider, &divider_area);
 
-    // Choose font based on resolution
-    let (title_font, message_font) = if width <= 110 {
-        (&FONT_4X6, &FONT_4X6)
+    // Header text and status
+    let text_height = line_height();
+    let mut title_label = LabelDsc::new("Discord".into());
+    title_label.color = Rgba8888::rgba(242, 243, 245, 255);
+    let title_width = measure_text(&title_label.text, title_label.letter_space);
+    if title_width > 0 {
+        let title_x = (width - title_width) / 2;
+        let title_y = (header_height - text_height) / 2;
+        let title_area = Area::new(
+            title_x,
+            title_y,
+            title_x + title_width - 1,
+            title_y + text_height - 1,
+        );
+        draw_label(surface, &title_label, &title_area);
+    }
+
+    let status_text = if connected { "ONLINE" } else { "OFFLINE" };
+    let mut status_label = LabelDsc::new(status_text.into());
+    status_label.color = if connected {
+        Rgba8888::rgba(147, 197, 114, 255)
     } else {
-        (&FONT_5X8, &FONT_5X8)
+        Rgba8888::rgba(200, 98, 98, 255)
     };
+    let status_width = measure_text(&status_label.text, status_label.letter_space);
 
-    let title_style = MonoTextStyle::new(title_font, Rgb888::new(242, 243, 245));
-    let message_style = MonoTextStyle::new(message_font, Rgb888::new(219, 222, 225));
-
-    // Centered title
-    let title_text = "Posts";
-    let char_width = title_font.character_size.width as i32;
-    let title_width = title_text.len() as i32 * char_width;
-    let title_x = (width - title_width) / 2;
-    let title_y =
-        (header_height - title_font.character_size.height as i32) / 2 + title_font.baseline as i32;
-
-    // Small status dot - scale with resolution
-    let dot_size = (width / 20).max(4).min(8);
-    let dot_x = width - dot_size - 4;
+    // Status dot
+    let dot_size = (width / 18).max(4).min(10);
+    let dot_x = width - dot_size - 6;
     let dot_y = (header_height - dot_size) / 2;
-    let dot_radius = dot_size / 2;
-
     let mut dot = RectDsc::new();
     dot.bg_color = if connected {
-        Rgba8888::rgba(67, 181, 129, 255)
+        Rgba8888::rgba(78, 201, 138, 255)
     } else {
         Rgba8888::rgba(128, 132, 142, 255)
     };
     dot.bg_opa = OPA_COVER;
-    dot.radius = dot_radius;
-    let dot_area = Area::new(dot_x, dot_y, dot_size, dot_size);
+    dot.radius = RADIUS_CIRCLE;
+    let dot_area = Area::new(dot_x, dot_y, dot_x + dot_size - 1, dot_y + dot_size - 1);
     draw_rect(surface, &dot, &dot_area);
 
-    // Clean message list - scale with resolution
-    let content_top = header_height + (height / 25).max(2).min(8);
-    let padding = (width / 30).max(2).min(6);
-    let message_width = width - (padding * 2);
-    let message_height = (height / 6).max(14).min(24);
-    let message_spacing = (height / 60).max(1).min(4);
-    let corner_radius = (width / 30).max(3).min(10);
-
-    for (idx, message) in messages.iter().enumerate() {
-        let x = padding;
-        let y = content_top + idx as i32 * (message_height + message_spacing);
-
-        // Clean message bubble
-        let mut bubble = RectDsc::new();
-        bubble.bg_color = Rgba8888::rgba(43, 45, 49, 255);
-        bubble.bg_opa = OPA_COVER;
-        bubble.radius = corner_radius;
-        let bubble_area = Area::new(x, y, message_width, message_height);
-        draw_rect(surface, &bubble, &bubble_area);
-
-        // TODO: Text rendering disabled - requires embedded-graphics
-        // let text_padding = (width / 40).max(2).min(8);
-        // let text_x = x + text_padding;
-        // let text_y = y
-        //     + (message_height - message_font.character_size.height as i32) / 2
-        //     + message_font.baseline as i32;
-        // {
-        //     let mut text_target = SurfaceDrawTarget::new(surface);
-        //     let _ = EgText::new(message.as_str(), Point::new(text_x, text_y), message_style)
-        //         .draw(&mut text_target);
-        // }
+    if status_width > 0 {
+        let status_x = (dot_x - status_width - 6).max(6);
+        let status_y = (header_height - text_height) / 2;
+        let status_area = Area::new(
+            status_x,
+            status_y,
+            status_x + status_width - 1,
+            status_y + text_height - 1,
+        );
+        draw_label(surface, &status_label, &status_area);
     }
 
-    // TODO: Text rendering disabled - requires embedded-graphics
-    // Draw title text last to avoid surface state issues
-    // {
-    //     let mut target = SurfaceDrawTarget::new(surface);
-    //     let _ =
-    //         EgText::new(title_text, Point::new(title_x, title_y), title_style).draw(&mut target);
-    // }
+    // Message list layout
+    let padding = (width / 18).max(6).min(18);
+    let content_top = header_height + (height / 30).max(6).min(16);
+    let available_height = (height - content_top).max(30);
+    let message_spacing = (height / 50).max(4).min(10);
+    let message_height = (available_height / 3 - message_spacing).max(18).min(40);
+    let tail_width = (message_height / 2).max(5).min(12);
+    let tail_half_height = (message_height / 3).max(5);
+    let corner_radius = (width / 28).max(4).min(14);
+    let text_padding = (message_height / 4).max(4).min(12);
+
+    for (idx, message) in messages.iter().enumerate() {
+        let align_right = idx % 2 == 1;
+        let bubble_width = (width - padding * 2 - tail_width).max(message_height);
+        if bubble_width <= 0 {
+            continue;
+        }
+
+        let bubble_x = if align_right {
+            width - padding - tail_width - bubble_width
+        } else {
+            padding + tail_width
+        };
+        let y = content_top + idx as i32 * (message_height + message_spacing);
+
+        let bubble_top_color = if align_right {
+            Rgba8888::rgba(88, 101, 242, 255)
+        } else {
+            Rgba8888::rgba(54, 57, 63, 255)
+        };
+        let bubble_bottom_color = if align_right {
+            Rgba8888::rgba(71, 82, 196, 255)
+        } else {
+            Rgba8888::rgba(44, 47, 51, 255)
+        };
+        let text_color = if align_right {
+            Rgba8888::rgba(238, 240, 255, 255)
+        } else {
+            Rgba8888::rgba(219, 222, 225, 255)
+        };
+
+        // Tail
+        let base_x = if align_right {
+            bubble_x + bubble_width - 1
+        } else {
+            bubble_x
+        };
+        let tip_x = if align_right {
+            (base_x + tail_width).min(width - 1)
+        } else {
+            (bubble_x - tail_width).max(0)
+        };
+        let mid_y = y + message_height / 2;
+        let top_y = (mid_y - tail_half_height).max(y);
+        let bottom_y = (mid_y + tail_half_height).min(y + message_height - 1);
+
+        let mut tail = TriangleDsc::new(
+            Point::new(base_x, top_y),
+            Point::new(base_x, bottom_y),
+            Point::new(tip_x, mid_y),
+        );
+        tail.color = bubble_top_color;
+        tail.opa = OPA_COVER;
+        tail.grad = Gradient::vertical(bubble_top_color, bubble_bottom_color);
+        draw_triangle(surface, &tail);
+
+        // Shadow
+        let shadow_dx = if align_right { -2 } else { 2 };
+        let shadow_dy = 2;
+        let mut sx1 = bubble_x + shadow_dx;
+        let mut sx2 = sx1 + bubble_width - 1;
+        let mut sy1 = y + shadow_dy;
+        let mut sy2 = sy1 + message_height - 1;
+        sx1 = sx1.max(0);
+        sx2 = sx2.min(width - 1);
+        sy1 = sy1.max(0);
+        sy2 = sy2.min(height - 1);
+        if sx1 <= sx2 && sy1 <= sy2 {
+            let mut shadow = RectDsc::new();
+            shadow.bg_color = Rgba8888::rgba(0, 0, 0, 90);
+            shadow.bg_opa = OPA_COVER;
+            shadow.radius = corner_radius;
+            let shadow_area = Area::new(sx1, sy1, sx2, sy2);
+            draw_rect(surface, &shadow, &shadow_area);
+        }
+
+        // Bubble body
+        let mut bubble = RectDsc::new();
+        bubble.bg_color = bubble_top_color;
+        bubble.bg_grad = Gradient::vertical(bubble_top_color, bubble_bottom_color);
+        bubble.bg_opa = OPA_COVER;
+        bubble.radius = corner_radius;
+        bubble.border_width = 1;
+        bubble.border_color = Rgba8888::rgba(0, 0, 0, 120);
+        bubble.border_opa = OPA_COVER;
+        let bubble_area = Area::new(
+            bubble_x,
+            y,
+            bubble_x + bubble_width - 1,
+            y + message_height - 1,
+        );
+        draw_rect(surface, &bubble, &bubble_area);
+
+        // Message text
+        let text_width_msg = measure_text(message.as_str(), 0);
+        if text_width_msg > 0 {
+            let mut text_label = LabelDsc::new(message.as_str().into());
+            text_label.color = text_color;
+            let text_x = bubble_x + text_padding;
+            let text_y = y + (message_height - text_height) / 2;
+            let max_x = bubble_x + bubble_width - text_padding - 1;
+            let text_x2 = (text_x + text_width_msg - 1).min(max_x);
+            if text_x <= text_x2 {
+                let text_area = Area::new(text_x, text_y, text_x2, text_y + text_height - 1);
+                draw_label(surface, &text_label, &text_area);
+            }
+        }
+    }
 }
