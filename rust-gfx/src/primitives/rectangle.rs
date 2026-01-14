@@ -435,41 +435,25 @@ fn draw_border_complex<R: Rasterizer>(
             let top_y = outer.y1 + h;
             if top_y >= draw_area.y1 && top_y <= draw_area.y2 {
                 prepare_mask_line(
-                    &mut mask_buf,
+                    mask_buf.as_mut_slice(),
                     &inner_mask,
                     outer_mask_ref,
                     top_y,
-                    mask_origin_x,
-                );
-                draw_masked_span(
-                    rast,
-                    dsc,
-                    &mask_buf,
-                    mask_origin_x,
                     draw_area.x1,
-                    draw_area.x2,
-                    top_y,
                 );
+                draw_masked_span(rast, dsc, mask_buf.as_slice(), draw_area.x1, top_y);
             }
 
             let bottom_y = outer.y2 - h;
             if bottom_y >= draw_area.y1 && bottom_y <= draw_area.y2 && bottom_y != top_y {
                 prepare_mask_line(
-                    &mut mask_buf,
+                    mask_buf.as_mut_slice(),
                     &inner_mask,
                     outer_mask_ref,
                     bottom_y,
-                    mask_origin_x,
-                );
-                draw_masked_span(
-                    rast,
-                    dsc,
-                    &mask_buf,
-                    mask_origin_x,
                     draw_area.x1,
-                    draw_area.x2,
-                    bottom_y,
                 );
+                draw_masked_span(rast, dsc, mask_buf.as_slice(), draw_area.x1, bottom_y);
             }
         }
         return;
@@ -480,17 +464,19 @@ fn draw_border_complex<R: Rasterizer>(
         let start_y = draw_area.y1;
         let end_y = core_area.y1.min(draw_area.y2 + 1);
         if start_y < end_y {
+            let span_x1 = draw_area.x1;
+            let span_len = (left_span_end - span_x1 + 1) as usize;
             for y in start_y..end_y {
-                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
-                draw_masked_span(
-                    rast,
-                    dsc,
-                    &mask_buf,
-                    mask_origin_x,
-                    draw_area.x1,
-                    left_span_end,
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
+                prepare_mask_line(
+                    &mut mask_buf[start_idx..end_idx],
+                    &inner_mask,
+                    outer_mask_ref,
                     y,
+                    span_x1,
                 );
+                draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
     }
@@ -499,17 +485,19 @@ fn draw_border_complex<R: Rasterizer>(
         let start_y = (core_area.y2 + 1).max(draw_area.y1);
         let end_y = draw_area.y2;
         if start_y <= end_y {
+            let span_x1 = draw_area.x1;
+            let span_len = (left_span_end - span_x1 + 1) as usize;
             for y in start_y..=end_y {
-                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
-                draw_masked_span(
-                    rast,
-                    dsc,
-                    &mask_buf,
-                    mask_origin_x,
-                    draw_area.x1,
-                    left_span_end,
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
+                prepare_mask_line(
+                    &mut mask_buf[start_idx..end_idx],
+                    &inner_mask,
+                    outer_mask_ref,
                     y,
+                    span_x1,
                 );
+                draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
     }
@@ -519,17 +507,19 @@ fn draw_border_complex<R: Rasterizer>(
         let start_y = draw_area.y1;
         let end_y = core_area.y1.min(draw_area.y2 + 1);
         if start_y < end_y {
+            let span_x1 = right_span_start;
+            let span_len = (draw_area.x2 - span_x1 + 1) as usize;
             for y in start_y..end_y {
-                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
-                draw_masked_span(
-                    rast,
-                    dsc,
-                    &mask_buf,
-                    mask_origin_x,
-                    right_span_start,
-                    draw_area.x2,
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
+                prepare_mask_line(
+                    &mut mask_buf[start_idx..end_idx],
+                    &inner_mask,
+                    outer_mask_ref,
                     y,
+                    span_x1,
                 );
+                draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
     }
@@ -538,17 +528,19 @@ fn draw_border_complex<R: Rasterizer>(
         let start_y = (core_area.y2 + 1).max(draw_area.y1);
         let end_y = draw_area.y2;
         if start_y <= end_y {
+            let span_x1 = right_span_start;
+            let span_len = (draw_area.x2 - span_x1 + 1) as usize;
             for y in start_y..=end_y {
-                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
-                draw_masked_span(
-                    rast,
-                    dsc,
-                    &mask_buf,
-                    mask_origin_x,
-                    right_span_start,
-                    draw_area.x2,
+                let start_idx = (span_x1 - mask_origin_x) as usize;
+                let end_idx = start_idx + span_len;
+                prepare_mask_line(
+                    &mut mask_buf[start_idx..end_idx],
+                    &inner_mask,
+                    outer_mask_ref,
                     y,
+                    span_x1,
                 );
+                draw_masked_span(rast, dsc, &mask_buf[start_idx..end_idx], span_x1, y);
             }
         }
     }
@@ -596,24 +588,19 @@ fn draw_masked_span<R: Rasterizer>(
     rast: &mut R,
     dsc: &RectDsc,
     mask_buf: &[Opa],
-    mask_origin_x: i32,
     span_x1: i32,
-    span_x2: i32,
     y: i32,
 ) {
-    if span_x1 > span_x2 || dsc.border_opa == 0 {
+    if mask_buf.is_empty() || dsc.border_opa == 0 {
         return;
     }
-    for x in span_x1..=span_x2 {
-        let idx = (x - mask_origin_x) as usize;
-        if idx >= mask_buf.len() {
+    for (i, mask_val) in mask_buf.iter().enumerate() {
+        let x = span_x1 + i as i32;
+        if *mask_val == 0 {
             continue;
         }
-        let mask_val = mask_buf[idx];
-        if mask_val == 0 {
-            continue;
-        }
-        let opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
+        let product = dsc.border_opa as u32 * *mask_val as u32;
+        let opa = ((product * 0x8081) >> 23) as Opa;
         if opa == 0 {
             continue;
         }

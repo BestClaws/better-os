@@ -43,71 +43,83 @@ impl RadiusMask {
     /// This matches lv_draw_mask_radius exactly
     pub fn apply_to_line(&self, y: i32, x_start: i32, mask_buf: &mut [Opa]) {
         let len = mask_buf.len() as i32;
+        if len <= 0 {
+            return;
+        }
 
+        let rect = self.area;
         let radius = self.radius;
+        let outer = self.outer;
 
-        // Check if line is outside the rect (and not in corner radius region)
-        if y < self.area.y1 || y > self.area.y2 {
-            if self.outer {
-                // Inverted mask: outside vertical range means no change (full cover)
-                return;
-            } else {
-                // Non-inverted mask outside rect - clear all (transparent)
+        if !outer {
+            if y < rect.y1 || y > rect.y2 {
                 for m in mask_buf.iter_mut() {
                     *m = 0;
                 }
                 return;
             }
+        } else if y < rect.y1 || y > rect.y2 {
+            return;
         }
 
-        let w = self.area.x2 - self.area.x1 + 1;
-        let h = self.area.y2 - self.area.y1 + 1;
+        let in_straight_section = (x_start >= rect.x1 + radius
+            && x_start + len <= rect.x2 - radius)
+            || (y >= rect.y1 + radius && y <= rect.y2 - radius);
 
-        // If in the middle vertical area (no rounding needed)
-        if (x_start >= self.area.x1 + radius && x_start + len <= self.area.x2 - radius + 1)
-            || (y >= self.area.y1 + radius && y <= self.area.y2 - radius)
-        {
-            if !self.outer {
-                // Clear edges outside rect
-                let last = self.area.x1 - x_start;
-                if last > 0 && last < len {
-                    for i in 0..last {
-                        mask_buf[i as usize] = 0;
+        if in_straight_section {
+            if !outer {
+                let mut last = rect.x1 - x_start;
+                if last > len {
+                    for m in mask_buf.iter_mut() {
+                        *m = 0;
                     }
+                    return;
                 }
-                let first = self.area.x2 - x_start + 1;
-                if first < len && first > 0 {
-                    for i in first..len {
-                        mask_buf[i as usize] = 0;
+                if last > 0 {
+                    mask_buf[..last as usize].fill(0);
+                }
+
+                let mut first = rect.x2 - x_start + 1;
+                if first <= 0 {
+                    for m in mask_buf.iter_mut() {
+                        *m = 0;
                     }
+                    return;
+                }
+                if first < len {
+                    mask_buf[first as usize..len as usize].fill(0);
                 }
             } else {
-                // Clear middle
-                let first = (self.area.x1 - x_start).max(0);
-                let last = (self.area.x2 - x_start + 1).min(len);
-                if first < last {
-                    for i in first..last {
-                        mask_buf[i as usize] = 0;
+                let mut first = rect.x1 - x_start;
+                if first < 0 {
+                    first = 0;
+                }
+                if first <= len {
+                    let mut last = rect.x2 - x_start - first + 1;
+                    if first + last > len {
+                        last = len - first;
+                    }
+                    if last > 0 {
+                        let start = first as usize;
+                        let end = (first + last) as usize;
+                        mask_buf[start..end].fill(0);
                     }
                 }
             }
             return;
         }
 
-        // Get circle data
-        let Some(ref circle) = self.circle else {
-            return;
+        let circle = match self.circle.as_ref() {
+            Some(c) => c,
+            None => return,
         };
 
-        // Convert to relative coordinates (matching LVGL)
-        let rel_y = y - self.area.y1;
+        let w = rect.x2 - rect.x1 + 1;
+        let h = rect.y2 - rect.y1 + 1;
 
-        // Determine which y in the circle we're at (matching LVGL exactly)
-        // Handle negative rel_y for lines above the rect
-        let cir_y = if rel_y < 0 {
-            // Above rect - mirror the calculation
-            radius + rel_y
-        } else if rel_y < radius {
+        let rel_y = y - rect.y1;
+
+        let cir_y = if rel_y < radius {
             radius - rel_y - 1
         } else {
             rel_y - (h - radius)
@@ -118,12 +130,11 @@ impl RadiusMask {
         };
 
         let aa_len = aa_opa.len() as i32;
-        let k = self.area.x1 - x_start;
-        let cir_x_right = k + w - radius + x_offset;
-        let cir_x_left = k + radius - x_offset - 1;
+        let k = rect.x1 - x_start;
+        let mut cir_x_right = k + w - radius + x_offset;
+        let mut cir_x_left = k + radius - x_offset - 1;
 
-        if !self.outer {
-            // Apply AA to corners
+        if !outer {
             for i in 0..aa_len {
                 let opa = aa_opa[(aa_len - i - 1) as usize];
 
@@ -139,18 +150,12 @@ impl RadiusMask {
                 }
             }
 
-            // Clear outside areas
-            let right_clear = (cir_x_right + aa_len).max(0).min(len);
-            for i in right_clear..len {
-                mask_buf[i as usize] = 0;
-            }
+            let right_clear = (cir_x_right + aa_len).clamp(0, len) as usize;
+            mask_buf[right_clear..len as usize].fill(0);
 
-            let left_clear = (cir_x_left - aa_len + 1).max(0).min(len);
-            for i in 0..left_clear {
-                mask_buf[i as usize] = 0;
-            }
+            let left_clear = (cir_x_left - aa_len + 1).clamp(0, len) as usize;
+            mask_buf[..left_clear].fill(0);
         } else {
-            // Outer mask (inverted)
             for i in 0..aa_len {
                 let opa = 255 - aa_opa[(aa_len - 1 - i) as usize];
 
@@ -166,11 +171,13 @@ impl RadiusMask {
                 }
             }
 
-            // Clear middle
-            let clr_start = (cir_x_left + 1).max(0).min(len);
-            let clr_end = cir_x_right.max(0).min(len);
-            for i in clr_start..clr_end {
-                mask_buf[i as usize] = 0;
+            let clr_start = (cir_x_left + 1).clamp(0, len);
+            let max_len = len - clr_start;
+            if max_len > 0 {
+                let raw_len = cir_x_right - clr_start;
+                let clr_len = raw_len.clamp(0, max_len) as usize;
+                let start = clr_start as usize;
+                mask_buf[start..start + clr_len].fill(0);
             }
         }
     }
