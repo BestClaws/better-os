@@ -48,14 +48,8 @@ impl RadiusMask {
 
         // Check if line is outside the rect (and not in corner radius region)
         if y < self.area.y1 || y > self.area.y2 {
-            // For outer (inverted) masks, check if we're in corner radius region
-            let in_corner_region = (y < self.area.y1 && y >= self.area.y1 - radius)
-                || (y > self.area.y2 && y <= self.area.y2 + radius);
-
-            if self.outer && in_corner_region {
-                // Continue to apply circle mask for corner regions
-            } else if self.outer {
-                // Far outside rect - keep as is (full cover)
+            if self.outer {
+                // Inverted mask: outside vertical range means no change (full cover)
                 return;
             } else {
                 // Non-inverted mask outside rect - clear all (transparent)
@@ -189,7 +183,8 @@ impl RadiusMask {
         if mask_new <= 0 {
             return 0;
         }
-        ((mask_act as u32 * mask_new as u32) / 255) as Opa
+        let product = mask_act as u32 * mask_new as u32;
+        ((product * 0x8081) >> 23) as Opa
     }
 
     /// Legacy per-pixel mask (slower, but compatible)

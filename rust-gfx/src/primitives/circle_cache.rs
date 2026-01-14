@@ -171,13 +171,18 @@ impl CircleCache {
             opa_start_on_y[y] = i as u16;
             x_start_on_y[y] = cir_x[i] as u16;
 
-            // Find minimum x for this y
+            // Find minimum x for this y while copying opacity values
             while i < cir_size && cir_y[i] == y as i32 {
                 x_start_on_y[y] = x_start_on_y[y].min(cir_x[i] as u16);
                 cir_opa[i] = cir_opa_temp[i];
                 i += 1;
             }
             y += 1;
+        }
+
+        // Sentinel entry required for get_line (matches LVGL)
+        if y < opa_start_on_y.len() {
+            opa_start_on_y[y] = cir_size as u16;
         }
 
         Self {

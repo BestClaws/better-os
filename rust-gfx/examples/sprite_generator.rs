@@ -1,5 +1,5 @@
-use rust_gfx::primitives::*;
 use rust_gfx::primitives::TextDecor as LabelDecor;
+use rust_gfx::primitives::*;
 /// Sprite Generator - matches main.c output exactly
 /// Generates all sprite variations for testing
 use rust_gfx::*;
@@ -643,7 +643,11 @@ fn generate_labels(sprite_index: &mut usize) {
         capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
-    let decors = [LabelDecor::None, LabelDecor::Underline, LabelDecor::Strikethrough];
+    let decors = [
+        LabelDecor::None,
+        LabelDecor::Underline,
+        LabelDecor::Strikethrough,
+    ];
     let decor_names = ["none", "underline", "strike"];
 
     for (decor, name) in decors.iter().zip(decor_names.iter()) {

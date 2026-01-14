@@ -327,144 +327,297 @@ fn draw_border_complex<R: Rasterizer>(
     rout: i32,
     rin: i32,
 ) {
-    // Note: border_side logic is already in inner_area calculation, don't recheck here
+    const SPLIT_LIMIT: i32 = 50;
 
-    // Create masks (matching LVGL)
-    let inner_mask = RadiusMask::new(*inner, rin, true); // outer=true means inverted
+    if rast.width() == 0 || rast.height() == 0 {
+        return;
+    }
+
+    let raster_bounds = Area::new(0, 0, rast.width() as i32 - 1, rast.height() as i32 - 1);
+    let Some(draw_area) = outer.intersect(&raster_bounds) else {
+        return;
+    };
+    if draw_area.width() <= 0 || draw_area.height() <= 0 {
+        return;
+    }
+
+    let inner_mask = RadiusMask::new(*inner, rin, true);
     let outer_mask = if rout > 0 {
-        Some(RadiusMask::new(*outer, rout, false)) // outer=false means normal
+        Some(RadiusMask::new(*outer, rout, false))
     } else {
         None
     };
+    let outer_mask_ref = outer_mask.as_ref();
 
-    // Calculate core area (non-rounded straight edge region) - matches LVGL
-    let core_area = Area::new(
-        outer.x1.max(outer.x1 + rout).max(inner.x1),
-        outer.y1.max(outer.y1 + rout).max(inner.y1),
-        outer.x2.min(outer.x2 - rout).min(inner.x2),
-        outer.y2.min(outer.y2 - rout).min(inner.y2),
-    );
+    let mut core_area = Area::new(0, 0, -1, -1);
+    core_area.x1 = (outer.x1 + rout).max(inner.x1);
+    core_area.x2 = (outer.x2 - rout).min(inner.x2);
+    core_area.y1 = (outer.y1 + rout).max(inner.y1);
+    core_area.y2 = (outer.y2 - rout).min(inner.y2);
 
     let top_side = outer.y1 <= inner.y1;
     let bottom_side = outer.y2 >= inner.y2;
     let left_side = outer.x1 <= inner.x1;
     let right_side = outer.x2 >= inner.x2;
 
-    // Draw straight edges WITHOUT masks (LVGL optimization for non-corner regions)
-    // Top straight edge (if border goes all the way across)
+    let core_w = core_area.width();
+
+    let mut split_hor = true;
+    if left_side && right_side && top_side && bottom_side && core_w < SPLIT_LIMIT {
+        split_hor = false;
+    }
+
     if top_side && core_area.x1 <= core_area.x2 {
-        for y in outer.y1..=inner.y1.saturating_sub(1) {
-            for x in core_area.x1..=core_area.x2 {
-                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
-            }
-        }
+        let top_area = Area::new(core_area.x1, outer.y1, core_area.x2, inner.y1 - 1);
+        blend_rect_clipped(
+            rast,
+            &top_area,
+            &draw_area,
+            dsc.border_color,
+            dsc.border_opa,
+        );
     }
 
-    // Bottom straight edge
     if bottom_side && core_area.x1 <= core_area.x2 {
-        for y in (inner.y2 + 1)..=outer.y2 {
-            for x in core_area.x1..=core_area.x2 {
-                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+        let bottom_area = Area::new(core_area.x1, inner.y2 + 1, core_area.x2, outer.y2);
+        blend_rect_clipped(
+            rast,
+            &bottom_area,
+            &draw_area,
+            dsc.border_color,
+            dsc.border_opa,
+        );
+    }
+
+    if inner.x1 >= inner.x2 && left_side && right_side {
+        let middle_area = Area::new(outer.x1, core_area.y1, outer.x2, core_area.y2);
+        blend_rect_clipped(
+            rast,
+            &middle_area,
+            &draw_area,
+            dsc.border_color,
+            dsc.border_opa,
+        );
+    } else {
+        if left_side && core_area.y1 <= core_area.y2 {
+            let left_area = Area::new(outer.x1, core_area.y1, inner.x1 - 1, core_area.y2);
+            blend_rect_clipped(
+                rast,
+                &left_area,
+                &draw_area,
+                dsc.border_color,
+                dsc.border_opa,
+            );
+        }
+
+        if right_side && core_area.y1 <= core_area.y2 {
+            let right_area = Area::new(inner.x2 + 1, core_area.y1, outer.x2, core_area.y2);
+            blend_rect_clipped(
+                rast,
+                &right_area,
+                &draw_area,
+                dsc.border_color,
+                dsc.border_opa,
+            );
+        }
+    }
+
+    let draw_width = draw_area.width() as usize;
+    if draw_width == 0 {
+        return;
+    }
+    let mut mask_buf: alloc::vec::Vec<Opa> = alloc::vec![255; draw_width];
+    let mask_origin_x = draw_area.x1;
+
+    if !split_hor {
+        let max_h = rout.max(inner.y1 - outer.y1);
+        for h in 0..=max_h {
+            let top_y = outer.y1 + h;
+            if top_y >= draw_area.y1 && top_y <= draw_area.y2 {
+                prepare_mask_line(
+                    &mut mask_buf,
+                    &inner_mask,
+                    outer_mask_ref,
+                    top_y,
+                    mask_origin_x,
+                );
+                draw_masked_span(
+                    rast,
+                    dsc,
+                    &mask_buf,
+                    mask_origin_x,
+                    draw_area.x1,
+                    draw_area.x2,
+                    top_y,
+                );
+            }
+
+            let bottom_y = outer.y2 - h;
+            if bottom_y >= draw_area.y1 && bottom_y <= draw_area.y2 && bottom_y != top_y {
+                prepare_mask_line(
+                    &mut mask_buf,
+                    &inner_mask,
+                    outer_mask_ref,
+                    bottom_y,
+                    mask_origin_x,
+                );
+                draw_masked_span(
+                    rast,
+                    dsc,
+                    &mask_buf,
+                    mask_origin_x,
+                    draw_area.x1,
+                    draw_area.x2,
+                    bottom_y,
+                );
+            }
+        }
+        return;
+    }
+
+    let left_span_end = (core_area.x1 - 1).min(draw_area.x2);
+    if (left_side || top_side) && left_span_end >= draw_area.x1 {
+        let start_y = draw_area.y1;
+        let end_y = core_area.y1.min(draw_area.y2 + 1);
+        if start_y < end_y {
+            for y in start_y..end_y {
+                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
+                draw_masked_span(
+                    rast,
+                    dsc,
+                    &mask_buf,
+                    mask_origin_x,
+                    draw_area.x1,
+                    left_span_end,
+                    y,
+                );
             }
         }
     }
 
-    // Left straight edge
-    if left_side && core_area.y1 <= core_area.y2 {
-        for y in core_area.y1..=core_area.y2 {
-            for x in outer.x1..=inner.x1.saturating_sub(1) {
-                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+    if (left_side || bottom_side) && left_span_end >= draw_area.x1 {
+        let start_y = (core_area.y2 + 1).max(draw_area.y1);
+        let end_y = draw_area.y2;
+        if start_y <= end_y {
+            for y in start_y..=end_y {
+                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
+                draw_masked_span(
+                    rast,
+                    dsc,
+                    &mask_buf,
+                    mask_origin_x,
+                    draw_area.x1,
+                    left_span_end,
+                    y,
+                );
             }
         }
     }
 
-    // Right straight edge
-    if right_side && core_area.y1 <= core_area.y2 {
-        for y in core_area.y1..=core_area.y2 {
-            for x in (inner.x2 + 1)..=outer.x2 {
-                rast.blend_pixel(x, y, dsc.border_color, dsc.border_opa);
+    let right_span_start = (core_area.x2 + 1).max(draw_area.x1);
+    if (right_side || top_side) && right_span_start <= draw_area.x2 {
+        let start_y = draw_area.y1;
+        let end_y = core_area.y1.min(draw_area.y2 + 1);
+        if start_y < end_y {
+            for y in start_y..end_y {
+                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
+                draw_masked_span(
+                    rast,
+                    dsc,
+                    &mask_buf,
+                    mask_origin_x,
+                    right_span_start,
+                    draw_area.x2,
+                    y,
+                );
             }
         }
     }
 
-    // Draw corners WITH masks (LVGL scanline approach)
-    let corner_width = (outer.x2 - outer.x1 + 1) as usize;
-    let mut mask_buf: alloc::vec::Vec<Opa> = alloc::vec![255; corner_width];
-
-    // Top corners (left and right together per scanline)
-    if (top_side && left_side) || (top_side && right_side) {
-        for y in outer.y1..core_area.y1 {
-            // Initialize mask buffer to full coverage
-            for m in mask_buf.iter_mut() {
-                *m = 255;
-            }
-
-            // Apply inner mask (inverted - clears the inside)
-            inner_mask.apply_to_line(y, outer.x1, &mut mask_buf);
-
-            // Apply outer mask if present (clears the outside)
-            if let Some(ref om) = outer_mask {
-                om.apply_to_line(y, outer.x1, &mut mask_buf);
-            }
-
-            // Draw border pixels with mask applied
-            // IMPORTANT: Write ALL pixels even with opa=0 (non-premultiplied alpha)
-            // Left corner
-            if top_side && left_side {
-                for x in outer.x1..core_area.x1 {
-                    let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
-                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
-                }
-            }
-
-            // Right corner
-            if top_side && right_side {
-                for x in (core_area.x2 + 1)..=outer.x2 {
-                    let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
-                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
-                }
+    if (right_side || bottom_side) && right_span_start <= draw_area.x2 {
+        let start_y = (core_area.y2 + 1).max(draw_area.y1);
+        let end_y = draw_area.y2;
+        if start_y <= end_y {
+            for y in start_y..=end_y {
+                prepare_mask_line(&mut mask_buf, &inner_mask, outer_mask_ref, y, mask_origin_x);
+                draw_masked_span(
+                    rast,
+                    dsc,
+                    &mask_buf,
+                    mask_origin_x,
+                    right_span_start,
+                    draw_area.x2,
+                    y,
+                );
             }
         }
     }
+}
 
-    // Bottom corners (left and right together per scanline)
-    if (bottom_side && left_side) || (bottom_side && right_side) {
-        for y in (core_area.y2 + 1)..=outer.y2 {
-            // Initialize mask buffer to full coverage
-            for m in mask_buf.iter_mut() {
-                *m = 255;
-            }
+fn prepare_mask_line(
+    mask_buf: &mut [Opa],
+    inner_mask: &RadiusMask,
+    outer_mask: Option<&RadiusMask>,
+    y: i32,
+    x_start: i32,
+) {
+    for m in mask_buf.iter_mut() {
+        *m = 255;
+    }
+    inner_mask.apply_to_line(y, x_start, mask_buf);
+    if let Some(mask) = outer_mask {
+        mask.apply_to_line(y, x_start, mask_buf);
+    }
+}
 
-            // Apply inner mask (inverted - clears the inside)
-            inner_mask.apply_to_line(y, outer.x1, &mut mask_buf);
-
-            // Apply outer mask if present (clears the outside)
-            if let Some(ref om) = outer_mask {
-                om.apply_to_line(y, outer.x1, &mut mask_buf);
-            }
-
-            // Draw border pixels with mask applied
-            // IMPORTANT: Write ALL pixels even with opa=0 (non-premultiplied alpha)
-            // Left corner
-            if bottom_side && left_side {
-                for x in outer.x1..core_area.x1 {
-                    let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
-                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
-                }
-            }
-
-            // Right corner
-            if bottom_side && right_side {
-                for x in (core_area.x2 + 1)..=outer.x2 {
-                    let mask_val = mask_buf[(x - outer.x1) as usize];
-                    let border_opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
-                    rast.blend_pixel(x, y, dsc.border_color, border_opa);
-                }
+fn blend_rect_clipped<R: Rasterizer>(
+    rast: &mut R,
+    area: &Area,
+    clip: &Area,
+    color: Rgba8888,
+    opa: Opa,
+) {
+    if opa == 0 {
+        return;
+    }
+    if let Some(clamped) = area.intersect(clip) {
+        if clamped.width() <= 0 || clamped.height() <= 0 {
+            return;
+        }
+        for y in clamped.y1..=clamped.y2 {
+            for x in clamped.x1..=clamped.x2 {
+                rast.blend_pixel(x, y, color, opa);
             }
         }
+    }
+}
+
+fn draw_masked_span<R: Rasterizer>(
+    rast: &mut R,
+    dsc: &RectDsc,
+    mask_buf: &[Opa],
+    mask_origin_x: i32,
+    span_x1: i32,
+    span_x2: i32,
+    y: i32,
+) {
+    if span_x1 > span_x2 || dsc.border_opa == 0 {
+        return;
+    }
+    for x in span_x1..=span_x2 {
+        let idx = (x - mask_origin_x) as usize;
+        if idx >= mask_buf.len() {
+            continue;
+        }
+        let mask_val = mask_buf[idx];
+        if mask_val == 0 {
+            continue;
+        }
+        let opa = ((dsc.border_opa as u32 * mask_val as u32) >> 8) as Opa;
+        if opa == 0 {
+            continue;
+        }
+        rast.blend_pixel(x, y, dsc.border_color, opa);
     }
 }
 
