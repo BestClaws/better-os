@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 // Re-export core graphics from rust-gfx library
-pub use rust_gfx::{
-    Rasterizer, Rgb565Rasterizer, Rgba8888,
-};
+pub use rust_gfx::{Rasterizer, Rgb565Rasterizer, Rgba8888};
 
 pub const BLACK: u16 = 0x0000;
 

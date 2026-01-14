@@ -121,15 +121,29 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             continue;
         }
 
+        let mask_full_cover = mask_res == MaskResult::FullCover;
+
         // Blend pixels with mask applied
         for i in 0..area_w {
             let x = min_x + i as i32;
-            let mask_opa = mask_buf[i];
+            let mut mask_opa = if mask_full_cover {
+                OPA_COVER
+            } else {
+                mask_buf[i]
+            };
+            if mask_opa <= 2 {
+                mask_opa = OPA_TRANSP;
+            } else if mask_opa >= 253 {
+                mask_opa = OPA_COVER;
+            }
+            let mut base_opa = dsc.opa;
+            let mut final_color = dsc.color;
+            let mut use_mask = !mask_full_cover;
 
-            let (color, grad_opa) = if has_grad {
+            if has_grad {
                 let rel_x = x - min_x;
                 let rel_y = y - min_y;
-                gradient_get_color(
+                let (grad_color, grad_opa) = gradient_get_color(
                     &dsc.grad,
                     rel_x,
                     rel_y,
@@ -137,28 +151,55 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
                     height,
                     width / 2,
                     height / 2,
-                )
-            } else {
-                (dsc.color, OPA_COVER)
-            };
+                );
 
-            // Combine descriptor opacity, gradient opacity, and mask opacity
-            // LVGL uses LV_OPA_MIX2 (>> 8) for BOTH gradient and mask combination!
-            // First combine dsc.opa + grad_opa using LV_OPA_MIX2
-            let combined_opa = if grad_opa < 255 {
-                ((dsc.opa as u32 * grad_opa as u32) >> 8) as u8
+                final_color = grad_color;
+                match dsc.grad.dir {
+                    GradDir::Ver => {
+                        base_opa = if dsc.opa < OPA_COVER {
+                            opa_mix(grad_opa, dsc.opa)
+                        } else {
+                            grad_opa
+                        };
+                        use_mask = !mask_full_cover;
+                    }
+                    GradDir::Hor => {
+                        if mask_full_cover {
+                            mask_opa = grad_opa;
+                            use_mask = true;
+                        } else if grad_opa < OPA_COVER {
+                            mask_opa = opa_mix(mask_opa, grad_opa);
+                        }
+                        base_opa = dsc.opa;
+                    }
+                    _ => {
+                        base_opa = if dsc.opa < OPA_COVER {
+                            opa_mix(grad_opa, dsc.opa)
+                        } else {
+                            grad_opa
+                        };
+                        if mask_full_cover {
+                            mask_opa = grad_opa;
+                            use_mask = true;
+                        } else if grad_opa < OPA_COVER {
+                            mask_opa = opa_mix(mask_opa, grad_opa);
+                        }
+                    }
+                }
+            }
+
+            let final_opa = if use_mask {
+                if mask_opa >= OPA_COVER {
+                    base_opa
+                } else {
+                    opa_mix(base_opa, mask_opa)
+                }
             } else {
-                dsc.opa
-            };
-            // Then combine with mask using LV_OPA_MIX2
-            let final_opa = if combined_opa < 255 {
-                ((combined_opa as u32 * mask_opa as u32) >> 8) as Opa
-            } else {
-                mask_opa
+                base_opa
             };
 
             // Write all pixels for non-premultiplied alpha (even if final_opa=0)
-            rast.blend_pixel(x, y, color, final_opa);
+            rast.blend_pixel(x, y, final_color, final_opa);
         }
     }
 

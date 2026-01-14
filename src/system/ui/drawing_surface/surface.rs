@@ -1,10 +1,10 @@
 use alloc::vec::Vec;
 
 use super::util::{clip_rect, intersects_or_touches, union_rect};
-use rust_gfx::color::Rgba8888;
 use crate::libs::gfx::rgba8888_to_gray4_and_alpha;
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::{Point, Rect, Size};
+use rust_gfx::color::Rgba8888;
 
 /// Convert RGBA8888 to RGB565 + separate alpha (inline helper)
 #[inline(always)]

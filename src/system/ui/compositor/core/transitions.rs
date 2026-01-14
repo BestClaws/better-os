@@ -5,9 +5,9 @@ use micromath::F32Ext;
 use super::super::animation::{SlideZoomAnimation, TransitionDirection, WindowAnimation};
 use super::super::blitter::SurfaceBlitter;
 use super::state::{TransitionSession, UICompositor};
-use rust_gfx::color::Rgba8888;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
+use rust_gfx::color::Rgba8888;
 
 impl UICompositor {
     pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) {

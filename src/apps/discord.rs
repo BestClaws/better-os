@@ -1,7 +1,3 @@
-use rust_gfx::color::Rgba8888;
-use rust_gfx::rasterizer::Rasterizer;
-use rust_gfx::primitives::{RectDsc, draw_rect};
-use rust_gfx::types::{Area, Gradient, OPA_COVER};
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -14,6 +10,10 @@ use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text as EgText;
 use heapless::String;
+use rust_gfx::color::Rgba8888;
+use rust_gfx::primitives::{draw_rect, RectDsc};
+use rust_gfx::rasterizer::Rasterizer;
+use rust_gfx::types::{Area, Gradient, OPA_COVER};
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds
@@ -167,7 +167,7 @@ fn draw_interface(
     header.radius = 0;
     let header_area = Area::new(0, 0, width, header_height);
     draw_rect(surface, &header, &header_area);
-    
+
     let mut divider = RectDsc::new();
     divider.bg_color = Rgba8888::rgba(0, 0, 0, 60);
     divider.bg_opa = OPA_COVER;

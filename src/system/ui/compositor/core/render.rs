@@ -2,10 +2,10 @@ use defmt::debug;
 use embassy_time::Instant;
 
 use super::state::UICompositor;
-use rust_gfx::color::Rgba8888;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
 use crate::util::math::primitives::Rect;
+use rust_gfx::color::Rgba8888;
 
 use super::super::blitter::SurfaceBlitter;
 use super::super::region::extract_region_buffer_format;

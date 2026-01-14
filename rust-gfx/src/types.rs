@@ -15,7 +15,8 @@ pub const OPA_COVER: Opa = 255;
 /// Matches LVGL's LV_OPA_MIX2(a, b) = (a * b) >> 8.
 #[inline]
 pub fn opa_mix(a: Opa, b: Opa) -> Opa {
-    (((a as u16) * (b as u16)) >> 8) as Opa
+    let prod = (a as u32) * (b as u32);
+    (((prod * 0x8081) >> 23) & 0xFF) as Opa
 }
 
 /// Gradient direction matching LVGL

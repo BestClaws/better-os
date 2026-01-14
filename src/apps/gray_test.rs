@@ -1,10 +1,10 @@
 //! Gray test app - cycles through different gray levels
 
-use rust_gfx::color::Rgba8888;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Timer};
+use rust_gfx::color::Rgba8888;
 
 #[embassy_executor::task]
 pub async fn gray_test_app(ctx: AppContext) {
