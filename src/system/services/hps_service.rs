@@ -126,7 +126,7 @@ pub(crate) async fn hps_service(
         scan_config.timeout = Duration::from_secs(10);
         scan_config.filter_accept_list = &[]; // Scan for any device
 
-        let target_addr = loop {
+        let (target_kind, target_addr) = loop {
             handler.prepare_for_scan();
             info!("HPS: Scanning up to 10s for HTTP Proxy advertisements...");
             match scanner.scan(&scan_config).await {
@@ -149,17 +149,32 @@ pub(crate) async fn hps_service(
                         .name
                         .as_deref()
                         .unwrap_or("(unknown)");
+                    let addr_kind = describe_addr_kind(entry.addr_kind);
                     if entry.has_hps {
-                        info!("HPS:   [HTTP Proxy] {} @ {=[u8]:02X}", name, entry.addr);
+                        info!(
+                            "HPS:   [HTTP Proxy] {} ({}) @ {=[u8]:02X}",
+                            name,
+                            addr_kind,
+                            entry.addr
+                        );
                     } else {
-                        info!("HPS:   [generic] {} @ {=[u8]:02X}", name, entry.addr);
+                        info!(
+                            "HPS:   [generic] {} ({}) @ {=[u8]:02X}",
+                            name,
+                            addr_kind,
+                            entry.addr
+                        );
                     }
                 }
             }
 
-            if let Some(addr) = handler.take_found_device() {
-                info!("HPS: Selecting HTTP Proxy peripheral at {=[u8]:02X}", addr);
-                break addr;
+            if let Some((addr_kind, addr)) = handler.take_found_device() {
+                info!(
+                    "HPS: Selecting HTTP Proxy peripheral at {=[u8]:02X} ({})",
+                    addr,
+                    describe_addr_kind(addr_kind)
+                );
+                break (addr_kind, addr);
             }
 
             warn!("HPS: HTTP Proxy service not observed during scan window; retrying after 2s...");
@@ -167,11 +182,15 @@ pub(crate) async fn hps_service(
         };
 
         let target = Address {
-            kind: AddrKind::PUBLIC,
+            kind: target_kind,
             addr: BdAddr::new(target_addr),
         };
 
-        info!("HPS: Targeting PUBLIC address {=[u8]:02X}", target_addr);
+        info!(
+            "HPS: Targeting {} address {=[u8]:02X}",
+            describe_addr_kind(target_kind),
+            target_addr
+        );
 
         // Get central back for connection
         let mut central = scanner.into_inner();
@@ -185,8 +204,12 @@ pub(crate) async fn hps_service(
                 }
 
                 HpsServiceState::Connecting => {
-                    info!("HPS: Initiating BLE link with HTTP Proxy at {=[u8]:02X}", target_addr);
-                    info!("HPS: Using PUBLIC address type; scanning until peer responds");
+                    info!(
+                        "HPS: Initiating BLE link with HTTP Proxy at {=[u8]:02X} ({})",
+                        target_addr,
+                        describe_addr_kind(target_kind)
+                    );
+                    info!("HPS: Using {} address type; scanning until peer responds", describe_addr_kind(target_kind));
 
                     let config = ConnectConfig {
                         connect_params: ConnectParams {
@@ -777,6 +800,22 @@ fn has_hps_service(ad_data: &[u8]) -> bool {
     false
 }
 
+fn describe_addr_kind(kind: AddrKind) -> &'static str {
+    if kind == AddrKind::PUBLIC {
+        "public"
+    } else if kind == AddrKind::RANDOM {
+        "random"
+    } else if kind == AddrKind::RESOLVABLE_PRIVATE_OR_PUBLIC {
+        "resolvable/public"
+    } else if kind == AddrKind::RESOLVABLE_PRIVATE_OR_RANDOM {
+        "resolvable/random"
+    } else if kind == AddrKind::ANONYMOUS_ADV {
+        "anonymous"
+    } else {
+        "unknown"
+    }
+}
+
 /// Extract device name (short or complete) from advertising data
 fn extract_device_name(ad_data: &[u8]) -> Option<String> {
     let mut offset = 0;
@@ -809,6 +848,7 @@ fn extract_device_name(ad_data: &[u8]) -> Option<String> {
 #[derive(Clone)]
 struct ScanObservation {
     addr: [u8; 6],
+    addr_kind: AddrKind,
     name: Option<String>,
     has_hps: bool,
 }
@@ -816,7 +856,7 @@ struct ScanObservation {
 /// Event handler for HPS scanning (for future dynamic discovery)
 /// Currently unused since we use direct connection with configured address
 struct HpsScanHandler {
-    found_addr: RefCell<Option<[u8; 6]>>,
+    found_addr: RefCell<Option<(AddrKind, [u8; 6])>>,
     results: RefCell<Vec<ScanObservation>>,
 }
 
@@ -837,7 +877,7 @@ impl HpsScanHandler {
         }
     }
 
-    fn take_found_device(&self) -> Option<[u8; 6]> {
+    fn take_found_device(&self) -> Option<(AddrKind, [u8; 6])> {
         self.found_addr.borrow_mut().take()
     }
 
@@ -849,11 +889,13 @@ impl HpsScanHandler {
         // Check if this device advertises HPS service
         let mut addr = [0u8; 6];
         addr.copy_from_slice(report.addr.raw());
+        let addr_kind = report.addr_kind;
         let has_hps = has_hps_service(report.data);
         let mut name_opt = extract_device_name(report.data);
 
         let mut results = self.results.borrow_mut();
         if let Some(existing) = results.iter_mut().find(|entry| entry.addr == addr) {
+            existing.addr_kind = addr_kind;
             if let Some(name) = name_opt.take() {
                 existing.name = Some(name);
             }
@@ -863,14 +905,19 @@ impl HpsScanHandler {
         } else {
             results.push(ScanObservation {
                 addr,
+                addr_kind,
                 name: name_opt.take(),
                 has_hps,
             });
         }
 
         if has_hps && self.found_addr.borrow().is_none() {
-            info!("HPS: Advertisement from HTTP Proxy candidate at {=[u8]:02X}", addr);
-            *self.found_addr.borrow_mut() = Some(addr);
+            info!(
+                "HPS: Advertisement from HTTP Proxy candidate at {=[u8]:02X} ({})",
+                addr,
+                describe_addr_kind(addr_kind)
+            );
+            *self.found_addr.borrow_mut() = Some((addr_kind, addr));
         }
     }
 }
