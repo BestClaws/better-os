@@ -1,4 +1,5 @@
 use rust_gfx::primitives::*;
+use rust_gfx::primitives::TextDecor as LabelDecor;
 /// Sprite Generator - matches main.c output exactly
 /// Generates all sprite variations for testing
 use rust_gfx::*;
@@ -624,72 +625,79 @@ fn generate_arcs(sprite_index: &mut usize) {
 }
 
 fn generate_labels(sprite_index: &mut usize) {
-    // Labels are stubs for now (need font rendering)
-    // Generate placeholder sprites matching main.c exactly
-
-    // Basic text with default font - 6 sprites
     let texts = ["A", "AB", "ABC", "Text", "123", "!@#"];
     let text_names = ["A", "AB", "ABC", "Text", "123", "sym"];
 
-    for t in 0..6 {
+    for (text, name) in texts.iter().zip(text_names.iter()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        // Placeholder: draw white rectangle (255, 255, 255)
-        let area = Area::new(30, 50, 72, 75);
-        canvas.fill_area(&area, Rgba8888::rgb(255, 255, 255), OPA_COVER);
+        let mut dsc = LabelDsc::new((*text).to_string());
+        dsc.color = Rgba8888::rgb(255, 255, 255);
+        dsc.opa = OPA_COVER;
 
-        let name = format!("label_text_{}", text_names[t]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let area = Area::new(30, 50, 72, 75);
+        draw_label(&mut canvas, &dsc, &area);
+
+        let sprite_name = format!("label_text_{}", name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
-    // Text decorations - 3 sprites
+    let decors = [LabelDecor::None, LabelDecor::Underline, LabelDecor::Strikethrough];
     let decor_names = ["none", "underline", "strike"];
 
-    for d in 0..3 {
+    for (decor, name) in decors.iter().zip(decor_names.iter()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        // Placeholder: draw yellow rectangle (255, 255, 0)
-        let area = Area::new(25, 50, 77, 75);
-        canvas.fill_area(&area, Rgba8888::rgb(255, 255, 0), OPA_COVER);
+        let mut dsc = LabelDsc::new("Test".to_string());
+        dsc.color = Rgba8888::rgb(255, 255, 0);
+        dsc.opa = OPA_COVER;
+        dsc.decor = *decor;
 
-        let name = format!("label_decor_{}", decor_names[d]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let area = Area::new(25, 50, 77, 75);
+        draw_label(&mut canvas, &dsc, &area);
+
+        let sprite_name = format!("label_decor_{}", name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
-    // Letter spacing - 3 sprites
     let spacings = [0, 5, 10];
 
-    for s in 0..3 {
+    for spacing in spacings.iter() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        // Placeholder: draw cyan rectangle (100, 255, 255)
-        let area = Area::new(15, 50, 87, 75);
-        canvas.fill_area(&area, Rgba8888::rgb(100, 255, 255), OPA_COVER);
+        let mut dsc = LabelDsc::new("Abc".to_string());
+        dsc.color = Rgba8888::rgb(100, 255, 255);
+        dsc.opa = OPA_COVER;
+        dsc.letter_space = *spacing;
 
-        let name = format!("label_spacing{}", spacings[s]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let area = Area::new(15, 50, 87, 75);
+        draw_label(&mut canvas, &dsc, &area);
+
+        let sprite_name = format!("label_spacing{}", spacing);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
-    // Opacity - 3 sprites
     let opas = [OPA_COVER, OPA_70, OPA_40];
     let opa_names = ["100", "70", "40"];
 
-    for o in 0..3 {
+    for (opa, name) in opas.iter().zip(opa_names.iter()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        // Placeholder: draw magenta rectangle (255, 100, 255) with opacity
-        let area = Area::new(25, 50, 77, 75);
-        canvas.fill_area(&area, Rgba8888::rgb(255, 100, 255), opas[o]);
+        let mut dsc = LabelDsc::new("Text".to_string());
+        dsc.color = Rgba8888::rgb(255, 100, 255);
+        dsc.opa = *opa;
 
-        let name = format!("label_opa{}", opa_names[o]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let area = Area::new(25, 50, 77, 75);
+        draw_label(&mut canvas, &dsc, &area);
+
+        let sprite_name = format!("label_opa{}", name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
-    // Different colors - 4 sprites
     let colors = [
         Rgba8888::rgb(255, 0, 0),
         Rgba8888::rgb(0, 255, 0),
@@ -698,16 +706,19 @@ fn generate_labels(sprite_index: &mut usize) {
     ];
     let color_names = ["red", "green", "blue", "orange"];
 
-    for c in 0..4 {
+    for (color, name) in colors.iter().zip(color_names.iter()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        // Placeholder: draw colored rectangles
-        let area = Area::new(30, 50, 72, 75);
-        canvas.fill_area(&area, colors[c], OPA_COVER);
+        let mut dsc = LabelDsc::new("123".to_string());
+        dsc.color = *color;
+        dsc.opa = OPA_COVER;
 
-        let name = format!("label_color_{}", color_names[c]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let area = Area::new(30, 50, 72, 75);
+        draw_label(&mut canvas, &dsc, &area);
+
+        let sprite_name = format!("label_color_{}", name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 }
 
