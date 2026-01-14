@@ -6,26 +6,43 @@ use crate::libs::hps::types::{
 use crate::libs::http::client::Client;
 use crate::libs::http::error::{Error, Result};
 use crate::libs::http::response::Response;
-use defmt::Format;
-use heapless::{String, Vec};
+use alloc::string::String;
+use alloc::vec::Vec;
+use defmt::{write, Format, Formatter};
 
 /// HTTP Request builder
 ///
 /// Build and send HTTP requests similar to reqwest::RequestBuilder
-#[derive(Format)]
 pub struct RequestBuilder {
     client: Client,
     method: HttpMethod,
-    url: String<MAX_URI_SIZE>,
-    headers: String<MAX_HEADERS_SIZE>,
-    body: Vec<u8, MAX_BODY_SIZE>,
+    url: String,
+    headers: String,
+    body: Vec<u8>,
+}
+
+impl Format for RequestBuilder {
+    fn format(&self, fmt: Formatter) {
+        // Log minimal details to avoid formatting large buffers
+        write!(
+            fmt,
+            "RequestBuilder {{ method: {}, url: {=str}, headers_len: {}, body_len: {} }}",
+            self.method,
+            self.url.as_str(),
+            self.headers.len(),
+            self.body.len()
+        );
+    }
 }
 
 impl RequestBuilder {
     /// Create a new request builder
     pub(crate) fn new(client: Client, method: HttpMethod, url: &str) -> Result<Self> {
         // Parse URL and ensure it fits
-        let url_string = String::try_from(url).map_err(|_| Error::InvalidUrl)?;
+        if url.len() > MAX_URI_SIZE {
+            return Err(Error::InvalidUrl);
+        }
+        let url_string = String::from(url);
 
         Ok(Self {
             client,
@@ -39,18 +56,27 @@ impl RequestBuilder {
     /// Add a header to the request
     pub fn header(mut self, key: &str, value: &str) -> Self {
         // Append "Key: Value\r\n" to headers string
-        if !self.headers.is_empty() {
-            let _ = self.headers.push_str("\r\n");
+        let needs_newline = !self.headers.is_empty();
+        let additional_len = key.len() + value.len() + 2 + if needs_newline { 2 } else { 0 };
+
+        if self.headers.len() + additional_len <= MAX_HEADERS_SIZE {
+            if needs_newline {
+                self.headers.push_str("\r\n");
+            }
+            self.headers.push_str(key);
+            self.headers.push_str(": ");
+            self.headers.push_str(value);
         }
-        let _ = self.headers.push_str(key);
-        let _ = self.headers.push_str(": ");
-        let _ = self.headers.push_str(value);
         self
     }
 
     /// Set the request body from bytes
     pub fn body(mut self, body: &[u8]) -> Result<Self> {
-        self.body = Vec::from_slice(body).map_err(|_| Error::RequestTooLarge)?;
+        if body.len() > MAX_BODY_SIZE {
+            return Err(Error::RequestTooLarge);
+        }
+        self.body.clear();
+        self.body.extend_from_slice(body);
         Ok(self)
     }
 
@@ -64,7 +90,10 @@ impl RequestBuilder {
     pub fn json<T: serde::Serialize>(mut self, json: &T) -> Result<Self> {
         // Serialize to heapless Vec
         let json_bytes = serde_json::to_vec(json).map_err(|_| Error::JsonError)?;
-        self.body = Vec::from_slice(&json_bytes).map_err(|_| Error::RequestTooLarge)?;
+        if json_bytes.len() > MAX_BODY_SIZE {
+            return Err(Error::RequestTooLarge);
+        }
+        self.body = json_bytes;
 
         // Add Content-Type header
         self = self.header("Content-Type", "application/json");
