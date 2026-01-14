@@ -20,6 +20,7 @@ use crate::system::services::gyro_accel_srv::gyro_accelerometer_service;
 use crate::system::services::hps_service::hps_service;
 use crate::system::services::http_service::http_service;
 use crate::system::services::rtc_srv::rtc_service;
+use crate::system::services::rtc_sync_srv::rtc_sync_service;
 use crate::system::services::vibrator_srv::vibrator_service;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
@@ -101,6 +102,14 @@ pub(crate) fn start(spawner: Spawner) {
             Instant::now().as_millis() as f32 / 1000f32
         );
         spawner.spawn(http_service()).unwrap();
+
+        if device.rtc.is_some() {
+            info!(
+                "[{}s] spawning RTC sync service",
+                Instant::now().as_millis() as f32 / 1000f32
+            );
+            spawner.spawn(rtc_sync_service()).unwrap();
+        }
     }
 
     if let Some(rtc) = device.rtc {

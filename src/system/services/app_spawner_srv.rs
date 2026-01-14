@@ -46,11 +46,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         id: 1,
         spawn_fn: spawn_watch_app,
     },
-    AppDescriptor {
-        name: "GFX Benchmark",
-        id: 3,
-        spawn_fn: spawn_gfx_bench_app,
-    },
+    // AppDescriptor {
+    //     name: "GFX Benchmark",
+    //     id: 3,
+    //     spawn_fn: spawn_gfx_bench_app,
+    // },
     // AppDescriptor {
     //     name: "3D Arrow",
     //     id: 5,
