@@ -31,6 +31,12 @@ impl TriangleDsc {
     }
 }
 
+#[inline]
+fn triangle_opa_mix(a: Opa, b: Opa) -> Opa {
+    let prod = (a as u32) * (b as u32);
+    (((prod * 0x8081) >> 23) & 0xFF) as Opa
+}
+
 /// Draw a filled triangle with anti-aliased edges using LVGL's 3-line-mask approach
 pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
     // Sort points: p[0] has smallest y, p[1] has largest y, p[2] is middle
@@ -138,7 +144,7 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             }
             let mut base_opa = dsc.opa;
             let mut final_color = dsc.color;
-            let mut use_mask = !mask_full_cover;
+            let mut use_mask = !mask_full_cover || dsc.opa < OPA_COVER;
 
             if has_grad {
                 let rel_x = x - min_x;
@@ -189,8 +195,8 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             }
 
             let final_opa = if use_mask {
-                if mask_opa >= OPA_COVER {
-                    base_opa
+                if base_opa >= OPA_COVER {
+                    triangle_opa_mix(base_opa, mask_opa)
                 } else {
                     opa_mix(base_opa, mask_opa)
                 }
