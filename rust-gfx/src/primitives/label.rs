@@ -1,25 +1,15 @@
-#[cfg(feature = "std")]
 mod label_font;
 
-#[cfg(feature = "std")]
 use crate::color::Rgba8888;
-#[cfg(feature = "std")]
-use crate::types::*;
-/// Label/text drawing (simplified stub for now - requires std/alloc for String)
-#[cfg(feature = "std")]
-use crate::Rasterizer;
-
-#[cfg(feature = "std")]
 extern crate alloc;
-#[cfg(feature = "std")]
 use alloc::string::String;
-#[cfg(feature = "std")]
 use alloc::vec::Vec;
 
-#[cfg(feature = "std")]
+use crate::types::*;
+use crate::Rasterizer;
+
 use label_font::{glyph_for_char, kerning, FontMetrics, METRICS};
 
-#[cfg(feature = "std")]
 /// Text decoration
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TextDecor {
@@ -28,7 +18,6 @@ pub enum TextDecor {
     Strikethrough,
 }
 
-#[cfg(feature = "std")]
 /// Label descriptor matching LVGL
 #[derive(Clone, Debug)]
 pub struct LabelDsc {
@@ -39,7 +28,6 @@ pub struct LabelDsc {
     pub letter_space: i32,
 }
 
-#[cfg(feature = "std")]
 impl LabelDsc {
     pub fn new(text: String) -> Self {
         Self {
@@ -52,7 +40,6 @@ impl LabelDsc {
     }
 }
 
-#[cfg(feature = "std")]
 pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
     if dsc.opa == 0 || dsc.text.is_empty() {
         return;
@@ -136,7 +123,6 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
     }
 }
 
-#[cfg(feature = "std")]
 fn draw_decoration_line<R: Rasterizer>(
     rast: &mut R,
     x1: i32,
@@ -156,7 +142,6 @@ fn draw_decoration_line<R: Rasterizer>(
     }
 }
 
-#[cfg(feature = "std")]
 #[inline]
 fn mul_opa(a: u8, b: u8) -> u8 {
     if a == 0 || b == 0 {
@@ -164,4 +149,38 @@ fn mul_opa(a: u8, b: u8) -> u8 {
     }
     let prod = (a as u32) * (b as u32);
     ((prod + 127) / 255) as u8
+}
+
+/// Compute the pixel width of the provided text using the embedded font.
+pub fn measure_text(text: &str, letter_space: i32) -> i32 {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return 0;
+    }
+
+    let mut width = 0;
+    for (idx, ch) in chars.iter().enumerate() {
+        let glyph = match glyph_for_char(*ch) {
+            Some(g) => g,
+            None => continue,
+        };
+
+        let kern_raw = chars
+            .get(idx + 1)
+            .map(|next| kerning(*ch, *next) as i32)
+            .unwrap_or(0);
+        let advance_raw = glyph.adv_w_raw as i32 + kern_raw;
+        let advance_px = (advance_raw + 8) >> 4;
+        width += advance_px;
+        if idx + 1 < chars.len() {
+            width += letter_space;
+        }
+    }
+
+    width
+}
+
+/// Returns the baseline-to-baseline height of the embedded font.
+pub fn line_height() -> i32 {
+    METRICS.line_height
 }

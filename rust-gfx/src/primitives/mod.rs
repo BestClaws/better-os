@@ -16,9 +16,7 @@ pub use arc::*;
 #[cfg(feature = "std")]
 pub use blur::*;
 pub use gradient::*;
-#[cfg(feature = "std")]
 pub use label::*;
-#[cfg(feature = "std")]
 pub use line::*;
 pub use mask::*;
 pub use rectangle::*;
