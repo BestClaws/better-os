@@ -2,12 +2,12 @@
 // Manages BLE connection to HPS server and handles HTTP requests via GATT
 
 use bt_hci::param::LeAdvReport;
-use defmt::{debug, info, warn, Debug2Format};
+use defmt::{info, warn, Debug2Format};
 use embassy_futures::join::join;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
-use embassy_time::{with_timeout, Duration, Timer};
+use embassy_time::{with_timeout, Duration, Instant, Timer};
 use trouble_host::prelude::*;
 
 use crate::libs::hps::error::HpsError;
@@ -20,6 +20,10 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
+
+const STATUS_POLL_INTERVAL_MS: u64 = 120;
+const STATUS_WAIT_TIMEOUT_MS: u64 = 5_000;
+const SLOW_STAGE_LOG_THRESHOLD_MS: u64 = 250;
 
 /// HPS request message (heap-allocated to avoid stack overflow)
 #[derive(Debug)]
@@ -72,14 +76,14 @@ enum HpsServiceState {
 pub(crate) async fn hps_service(
     radio: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>,
 ) {
-    debug!("HPS service starting");
+    info!("HPS service starting");
 
     // Get BLE stack
-    debug!("HPS: Acquiring radio lock...");
+    info!("HPS: Acquiring radio lock...");
     let mut _radio_guard = radio.lock().await;
-    debug!("HPS: Radio lock acquired, getting stack...");
+    info!("HPS: Radio lock acquired, getting stack...");
     let stack = _radio_guard.get_stack().await;
-    debug!("HPS: Stack acquired, building host...");
+    info!("HPS: Stack acquired, building host...");
 
     // Build host components - this borrows stack, doesn't consume it
     let Host {
@@ -89,7 +93,7 @@ pub(crate) async fn hps_service(
         ..
     } = stack.build();
 
-    debug!("HPS: Host built successfully");
+    info!("HPS: Host built successfully");
 
     let request_rx = HPS_REQUEST_CHANNEL.receiver();
     let response_tx = HPS_RESPONSE_CHANNEL.sender();
@@ -98,9 +102,9 @@ pub(crate) async fn hps_service(
     let handler = HpsScanHandler::new();
 
     // Run BLE stack with event handler to receive scan results
-    debug!("HPS: Starting runner task...");
+    info!("HPS: Launching BLE host runner...");
     let runner_task = async {
-        debug!("HPS: Runner task started, calling run_with_handler...");
+        info!("HPS: BLE host runner active; processing controller events");
         let result = runner.run_with_handler(&handler).await;
         warn!("HPS: Runner task ended with: {:?}", Debug2Format(&result));
         result
@@ -111,7 +115,7 @@ pub(crate) async fn hps_service(
         let mut state = HpsServiceState::Disconnected;
 
         // Scan for HPS server first
-        debug!("HPS: Scanning for HPS server...");
+        info!("HPS: Scanning for HPS server...");
         let mut scanner = Scanner::new(central);
 
         let mut scan_config = ScanConfig::default();
@@ -122,26 +126,44 @@ pub(crate) async fn hps_service(
         scan_config.timeout = Duration::from_secs(10);
         scan_config.filter_accept_list = &[]; // Scan for any device
 
-        debug!("HPS: Starting 10-second scan to discover HPS server...");
-        let hps_server_addr: Option<[u8; 6]> = match scanner.scan(&scan_config).await {
-            Ok(_session) => {
-                Timer::after(Duration::from_secs(10)).await;
-                debug!("HPS: Scan completed, checking if HPS server was found...");
-                handler.take_found_device()
+        let target_addr = loop {
+            handler.prepare_for_scan();
+            info!("HPS: Scanning up to 10s for HTTP Proxy advertisements...");
+            match scanner.scan(&scan_config).await {
+                Ok(_session) => {
+                    Timer::after(Duration::from_secs(10)).await;
+                    info!("HPS: Scan finished; compiling advertisement list...");
+                }
+                Err(e) => {
+                    warn!("HPS: Failed to start scan: {:?}", Debug2Format(&e));
+                }
             }
-            Err(e) => {
-                warn!("HPS: Failed to start scan: {:?}", Debug2Format(&e));
-                None
-            }
-        };
 
-        let target_addr = if let Some(addr) = hps_server_addr {
-            debug!("HPS: Found HPS server at {=[u8]:02X}", addr);
-            addr
-        } else {
-            warn!("HPS: HPS server not found during scan, using default address");
-            // BLE addresses are LITTLE-ENDIAN: 14:13:33:36:4F:DA becomes [DA, 4F, 36, 33, 13, 14]
-            [0xDA, 0x4F, 0x36, 0x33, 0x13, 0x14]
+            let observations = handler.snapshot_results();
+            if observations.is_empty() {
+                info!("HPS: Scan observed no advertising devices");
+            } else {
+                info!("HPS: Scan observed {} advertising devices", observations.len());
+                for entry in &observations {
+                    let name = entry
+                        .name
+                        .as_deref()
+                        .unwrap_or("(unknown)");
+                    if entry.has_hps {
+                        info!("HPS:   [HTTP Proxy] {} @ {=[u8]:02X}", name, entry.addr);
+                    } else {
+                        info!("HPS:   [generic] {} @ {=[u8]:02X}", name, entry.addr);
+                    }
+                }
+            }
+
+            if let Some(addr) = handler.take_found_device() {
+                info!("HPS: Selecting HTTP Proxy peripheral at {=[u8]:02X}", addr);
+                break addr;
+            }
+
+            warn!("HPS: HTTP Proxy service not observed during scan window; retrying after 2s...");
+            Timer::after(Duration::from_secs(2)).await;
         };
 
         let target = Address {
@@ -149,20 +171,22 @@ pub(crate) async fn hps_service(
             addr: BdAddr::new(target_addr),
         };
 
+        info!("HPS: Targeting PUBLIC address {=[u8]:02X}", target_addr);
+
         // Get central back for connection
         let mut central = scanner.into_inner();
 
         loop {
             match state {
                 HpsServiceState::Disconnected => {
-                    debug!("HPS: Disconnected, will attempt connection...");
+                    info!("HPS: Link idle; scheduling reconnect attempt in 2s...");
                     Timer::after(Duration::from_secs(2)).await;
                     state = HpsServiceState::Connecting;
                 }
 
                 HpsServiceState::Connecting => {
-                    debug!("HPS: Connecting to HPS server at {=[u8]:02X}", target_addr);
-                    debug!("HPS: Target address kind: PUBLIC, trying connection...");
+                    info!("HPS: Initiating BLE link with HTTP Proxy at {=[u8]:02X}", target_addr);
+                    info!("HPS: Using PUBLIC address type; scanning until peer responds");
 
                     let config = ConnectConfig {
                         connect_params: ConnectParams {
@@ -183,14 +207,14 @@ pub(crate) async fn hps_service(
                         },
                     };
 
-                    debug!("HPS: Calling central.connect() with 20s scan timeout...");
+                    info!("HPS: Awaiting connection (scan timeout 20s, overall 25s)");
                     // Wrap in timeout to ensure we don't hang forever
                     let result =
                         with_timeout(Duration::from_secs(25), central.connect(&config)).await;
 
                     match result {
                         Ok(Ok(conn)) => {
-                            debug!("HPS: Connection established! Creating GATT client...");
+                            info!("HPS: Link established; preparing GATT client session");
 
                             // Create GATT client - type inference will figure out the types
                             let gatt_client = match GattClient::<_, _, 10>::new(&stack, &conn).await
@@ -209,31 +233,31 @@ pub(crate) async fn hps_service(
                             };
 
                             // Run GATT client task concurrently with service discovery and operations
-                            debug!("HPS: Starting GATT client tasks...");
+                            info!("HPS: Managing GATT session and HTTP Proxy discovery");
                             let _ = join(
                                 async {
-                                    debug!("HPS: GATT client task starting...");
+                                    info!("HPS: ATT event pump active for connected peer");
                                     let result = gatt_client.task().await;
                                     warn!("HPS: GATT client task ended: {:?}", Debug2Format(&result));
                                     result
                                 },
                                 async {
                                     // Give GATT client task time to initialize
-                                    debug!("HPS: Waiting 2s for GATT client to initialize...");
+                                    info!("HPS: Allowing peer to settle before discovery (2s grace period)...");
                                     Timer::after(Duration::from_secs(2)).await;
-                                    
-                                    debug!("HPS: Starting GATT service discovery for HPS (UUID 0x1823)...");
+
+                                    info!("HPS: Discovering HTTP Proxy service (UUID 0x1823)...");
                                     let hps_uuid = Uuid::new_short(0x1823);
-                                
-                                    debug!("HPS: Calling services_by_uuid() with 15s timeout...");
+
+                                    info!("HPS: Querying remote GATT database for service definition (timeout 15s)...");
                                     let services_result = with_timeout(
                                         Duration::from_secs(15),
                                         gatt_client.services_by_uuid(&hps_uuid)
                                     ).await;
-                                
+
                                 let services = match services_result {
                                     Ok(Ok(svcs)) => {
-                                        debug!("HPS: Service discovery succeeded, found {} services", svcs.len());
+                                        info!("HPS: HTTP Proxy service present; {} matching entries discovered", svcs.len());
                                         svcs
                                     }
                                     Ok(Err(e)) => {
@@ -247,24 +271,24 @@ pub(crate) async fn hps_service(
                                         return;
                                     }
                                 };
-                                
+
                                 if services.is_empty() {
                                     warn!("HPS: HPS service not found on server");
                                     drop(conn);
                                     return;
                                 }
-                                
+
                                 let service = services.first().unwrap().clone();
-                                debug!("HPS: Service found, discovering characteristics...");
-                                
+                                info!("HPS: Inspecting HTTP Proxy characteristic set for selected service...");
+
                                 // Discover HPS characteristics
                                 let uri_uuid = Uuid::new_short(HpsUuids::URI);
                                 let headers_uuid = Uuid::new_short(HpsUuids::HTTP_HEADERS);
                                 let control_uuid = Uuid::new_short(HpsUuids::HTTP_CONTROL_POINT);
                                 let status_uuid = Uuid::new_short(HpsUuids::HTTP_STATUS_CODE);
                                 let body_uuid = Uuid::new_short(HpsUuids::HTTP_ENTITY_BODY);
-                                
-                                debug!("HPS: Looking for URI characteristic (0x{:04X})...", HpsUuids::URI);
+
+                                info!("HPS: Resolving URI characteristic (0x{:04X}) for request paths...", HpsUuids::URI);
                                 let uri_char = match gatt_client.characteristic_by_uuid::<u8>(&service, &uri_uuid).await {
                                     Ok(c) => c,
                                     Err(e) => {
@@ -273,8 +297,8 @@ pub(crate) async fn hps_service(
                                         return;
                                     }
                                 };
-                                
-                                debug!("HPS: Looking for Headers characteristic (0x{:04X})...", HpsUuids::HTTP_HEADERS);
+
+                                info!("HPS: Resolving Headers characteristic (0x{:04X}) for outbound metadata...", HpsUuids::HTTP_HEADERS);
                                 let headers_char = match gatt_client.characteristic_by_uuid::<u8>(&service, &headers_uuid).await {
                                     Ok(c) => c,
                                     Err(e) => {
@@ -283,8 +307,8 @@ pub(crate) async fn hps_service(
                                         return;
                                     }
                                 };
-                                
-                                debug!("HPS: Looking for Control Point characteristic (0x{:04X})...", HpsUuids::HTTP_CONTROL_POINT);
+
+                                info!("HPS: Resolving Control Point characteristic (0x{:04X}) for method dispatch...", HpsUuids::HTTP_CONTROL_POINT);
                                 let control_char = match gatt_client.characteristic_by_uuid::<u8>(&service, &control_uuid).await {
                                     Ok(c) => c,
                                     Err(e) => {
@@ -293,8 +317,8 @@ pub(crate) async fn hps_service(
                                         return;
                                     }
                                 };
-                                
-                                debug!("HPS: Looking for Status Code characteristic (0x{:04X})...", HpsUuids::HTTP_STATUS_CODE);
+
+                                info!("HPS: Resolving Status Code characteristic (0x{:04X}) for response status...", HpsUuids::HTTP_STATUS_CODE);
                                 let status_char = match gatt_client.characteristic_by_uuid::<u8>(&service, &status_uuid).await {
                                     Ok(c) => c,
                                     Err(e) => {
@@ -303,8 +327,8 @@ pub(crate) async fn hps_service(
                                         return;
                                     }
                                 };
-                                
-                                debug!("HPS: Looking for Entity Body characteristic (0x{:04X})...", HpsUuids::HTTP_ENTITY_BODY);
+
+                                info!("HPS: Resolving Entity Body characteristic (0x{:04X}) for payload transfer...", HpsUuids::HTTP_ENTITY_BODY);
                                 let body_char = match gatt_client.characteristic_by_uuid::<u8>(&service, &body_uuid).await {
                                     Ok(c) => c,
                                     Err(e) => {
@@ -313,18 +337,17 @@ pub(crate) async fn hps_service(
                                         return;
                                     }
                                 };
-                                
-                                debug!("HPS: All characteristics discovered successfully");
-                                
+                                info!("HPS: Characteristic map ready (URI, headers, control point, status, body)");
+
                                 // Signal ready
-                                debug!("HPS: Service discovery complete, signaling ready");
+                                info!("HPS: HTTP Proxy link ready; notifying waiters");
                                 HPS_READY_CHANNEL.sender().try_send(true).ok();
-                                
+
                                 // Keep connection alive and handle requests
                                 loop {
                                     if let Ok(request) = request_rx.try_receive() {
-                                        debug!("HPS: Received {} request to {}", request.method, request.uri.as_str());
-                                        
+                                        info!("HPS: Received {} request to {}", request.method, request.uri.as_str());
+
                                         // Execute HPS request via GATT (keep boxed to avoid stack overflow)
                                         let response = execute_hps_request(
                                             &gatt_client,
@@ -335,7 +358,7 @@ pub(crate) async fn hps_service(
                                             &body_char,
                                             request  // Pass Box, extract fields inside
                                         ).await;
-                                        
+
                                         let _ = response_tx.send(response).await;
                                     } else {
                                         Timer::after(Duration::from_millis(100)).await;
@@ -344,7 +367,7 @@ pub(crate) async fn hps_service(
                             }).await;
 
                             // Connection dropped or error occurred
-                            warn!("HPS: Connection lost");
+                            warn!("HPS: Peer disconnected; retrying after backoff");
                             Timer::after(Duration::from_secs(5)).await;
                             state = HpsServiceState::Disconnected;
                         }
@@ -387,7 +410,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
     chars: &HpsCharacteristics,
     request: HpsRequest,
 ) -> Result<HttpResponse, HpsError> {
-    debug!(
+    info!(
         "HPS: Processing HTTP {} request to {}",
         request.method,
         request.uri.as_str()
@@ -395,7 +418,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
 
     // Step 1: Write URI characteristic
     let uri_handle = chars.uri.ok_or(HpsError::NotFound)?;
-    debug!("HPS: Writing URI ({} bytes)", request.uri.len());
+    info!("HPS: Writing URI ({} bytes)", request.uri.len());
 
     // Convert heapless::String to &[u8]
     let uri_bytes = request.uri.as_bytes();
@@ -404,7 +427,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
     // Step 2: Write HTTP Headers characteristic (if non-empty)
     if !request.headers.is_empty() {
         let headers_handle = chars.headers.ok_or(HpsError::NotFound)?;
-        debug!("HPS: Writing Headers ({} bytes)", request.headers.len());
+        info!("HPS: Writing Headers ({} bytes)", request.headers.len());
         let headers_bytes = request.headers.as_bytes();
         gatt_write_raw(gatt, headers_handle, headers_bytes).await?;
     }
@@ -412,26 +435,26 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
     // Step 3: Write HTTP Entity Body characteristic (if non-empty)
     if !request.body.is_empty() {
         let body_handle = chars.entity_body.ok_or(HpsError::NotFound)?;
-        debug!("HPS: Writing Body ({} bytes)", request.body.len());
+        info!("HPS: Writing Body ({} bytes)", request.body.len());
         gatt_write_raw(gatt, body_handle, &request.body).await?;
     }
 
     // Step 4: Enable notifications on HTTP Status Code characteristic (CCCD)
     let cccd_handle = chars.status_code_cccd.ok_or(HpsError::NotFound)?;
-    debug!("HPS: Enabling notifications on CCCD");
+    info!("HPS: Enabling notifications on CCCD");
     // CCCD value: 0x0001 for notifications, little-endian
     gatt_write_raw(gatt, cccd_handle, &[0x01, 0x00]).await?;
 
     // Step 5: Write HTTP Control Point to initiate request
     let control_handle = chars.control_point.ok_or(HpsError::NotFound)?;
     let method_opcode = request.method as u8;
-    debug!("HPS: Writing Control Point (opcode={})", method_opcode);
+    info!("HPS: Writing Control Point (opcode={})", method_opcode);
     gatt_write_raw(gatt, control_handle, &[method_opcode]).await?;
 
     // Step 6: Wait for HTTP Status Code notification
     // TODO: Implement proper notification waiting mechanism
     // For now, we'll just read the status code directly after a delay
-    debug!("HPS: Waiting for response...");
+    info!("HPS: Waiting for response...");
     Timer::after(Duration::from_secs(2)).await;
 
     let status_handle = chars.status_code.unwrap_or(0);
@@ -439,7 +462,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
     gatt_read_raw(gatt, status_handle, &mut status_buf).await?;
 
     let status_code = HttpStatusCode::from_bytes(&status_buf).ok_or(HpsError::BleError)?;
-    debug!("HPS: Got status code: {}", status_code.status_code);
+    info!("HPS: Got status code: {}", status_code.status_code);
 
     // Step 7: Read HTTP Headers if available
     let headers_handle = chars.headers.ok_or(HpsError::NotFound)?;
@@ -456,7 +479,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
                 .await
                 .unwrap_or(0);
 
-            debug!("HPS: Read {} bytes of response body", body_len);
+            info!("HPS: Read {} bytes of response body", body_len);
 
             Ok(HttpResponse {
                 status_code: status_code.status_code,
@@ -473,7 +496,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
                 .await
                 .unwrap_or(0);
 
-            debug!("HPS: Read {} bytes of response body", body_len);
+            info!("HPS: Read {} bytes of response body", body_len);
 
             Ok(HttpResponse {
                 status_code: status_code.status_code,
@@ -572,7 +595,7 @@ async fn gatt_read_raw<T: Controller, P: PacketPool>(
 async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: usize>(
     gatt: &mut GattClient<'_, T, P, MAX_SERVICES>,
 ) -> Result<HpsCharacteristics, HpsError> {
-    debug!("HPS: Discovering service and characteristics");
+    info!("HPS: Discovering service and characteristics");
 
     // Find HPS service by UUID (0x1823)
     let hps_uuid = Uuid::Uuid16(HpsUuids::SERVICE.to_le_bytes());
@@ -588,7 +611,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     }
 
     let service = &services[0];
-    debug!("HPS: Found HPS service");
+    info!("HPS: Found HPS service");
 
     // Discover all 6 mandatory characteristics
     let mut chars = HpsCharacteristics::default();
@@ -601,7 +624,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     {
         Ok(char) => {
             chars.uri = Some(char.handle);
-            debug!("HPS: Found URI characteristic (handle={})", char.handle);
+            info!("HPS: Found URI characteristic (handle={})", char.handle);
         }
         Err(_) => {
             warn!("HPS: URI characteristic not found (mandatory)");
@@ -617,7 +640,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     {
         Ok(char) => {
             chars.headers = Some(char.handle);
-            debug!(
+            info!(
                 "HPS: Found HTTP Headers characteristic (handle={})",
                 char.handle
             );
@@ -638,7 +661,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
             chars.status_code = Some(char.handle);
             // Get CCCD handle for notifications
             chars.status_code_cccd = char.cccd_handle;
-            debug!(
+            info!(
                 "HPS: Found HTTP Status Code characteristic (handle={}, CCCD={:?})",
                 char.handle, char.cccd_handle
             );
@@ -657,7 +680,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     {
         Ok(char) => {
             chars.entity_body = Some(char.handle);
-            debug!(
+            info!(
                 "HPS: Found HTTP Entity Body characteristic (handle={})",
                 char.handle
             );
@@ -676,7 +699,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     {
         Ok(char) => {
             chars.control_point = Some(char.handle);
-            debug!(
+            info!(
                 "HPS: Found HTTP Control Point characteristic (handle={})",
                 char.handle
             );
@@ -695,7 +718,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     {
         Ok(char) => {
             chars.https_security = Some(char.handle);
-            debug!(
+            info!(
                 "HPS: Found HTTPS Security characteristic (handle={})",
                 char.handle
             );
@@ -712,7 +735,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
         return Err(HpsError::NotFound);
     }
 
-    debug!("HPS: Successfully discovered all HPS characteristics");
+    info!("HPS: Successfully discovered all HPS characteristics");
     Ok(chars)
 }
 
@@ -754,16 +777,63 @@ fn has_hps_service(ad_data: &[u8]) -> bool {
     false
 }
 
+/// Extract device name (short or complete) from advertising data
+fn extract_device_name(ad_data: &[u8]) -> Option<String> {
+    let mut offset = 0;
+
+    while offset < ad_data.len() {
+        let len = ad_data[offset] as usize;
+        if len == 0 {
+            break;
+        }
+
+        let segment_end = offset + 1 + len;
+        if segment_end > ad_data.len() {
+            break;
+        }
+
+        let ad_type = ad_data[offset + 1];
+        if matches!(ad_type, 0x08 | 0x09) {
+            let name_data = &ad_data[(offset + 2)..segment_end];
+            if let Ok(name_str) = core::str::from_utf8(name_data) {
+                return Some(String::from(name_str));
+            }
+        }
+
+        offset = segment_end;
+    }
+
+    None
+}
+
+#[derive(Clone)]
+struct ScanObservation {
+    addr: [u8; 6],
+    name: Option<String>,
+    has_hps: bool,
+}
+
 /// Event handler for HPS scanning (for future dynamic discovery)
 /// Currently unused since we use direct connection with configured address
 struct HpsScanHandler {
     found_addr: RefCell<Option<[u8; 6]>>,
+    results: RefCell<Vec<ScanObservation>>,
 }
 
 impl HpsScanHandler {
     fn new() -> Self {
         Self {
             found_addr: RefCell::new(None),
+            results: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn prepare_for_scan(&self) {
+        if let Ok(mut found) = self.found_addr.try_borrow_mut() {
+            *found = None;
+        }
+        if let Ok(mut results) = self.results.try_borrow_mut() {
+            results.clear();
         }
     }
 
@@ -771,17 +841,35 @@ impl HpsScanHandler {
         self.found_addr.borrow_mut().take()
     }
 
+    fn snapshot_results(&self) -> Vec<ScanObservation> {
+        self.results.borrow().clone()
+    }
+
     fn handle_report(&self, report: &LeAdvReport<'_>) {
-        // Skip if already found HPS device
-        if self.found_addr.borrow().is_some() {
-            return;
+        // Check if this device advertises HPS service
+        let mut addr = [0u8; 6];
+        addr.copy_from_slice(report.addr.raw());
+        let has_hps = has_hps_service(report.data);
+        let mut name_opt = extract_device_name(report.data);
+
+        let mut results = self.results.borrow_mut();
+        if let Some(existing) = results.iter_mut().find(|entry| entry.addr == addr) {
+            if let Some(name) = name_opt.take() {
+                existing.name = Some(name);
+            }
+            if has_hps {
+                existing.has_hps = true;
+            }
+        } else {
+            results.push(ScanObservation {
+                addr,
+                name: name_opt.take(),
+                has_hps,
+            });
         }
 
-        // Check if this device advertises HPS service
-        if has_hps_service(report.data) {
-            let mut addr = [0u8; 6];
-            addr.copy_from_slice(report.addr.raw());
-            debug!("HPS: Found HPS server at {=[u8]:02X}", addr);
+        if has_hps && self.found_addr.borrow().is_none() {
+            info!("HPS: Advertisement from HTTP Proxy candidate at {=[u8]:02X}", addr);
             *self.found_addr.borrow_mut() = Some(addr);
         }
     }
@@ -806,71 +894,69 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
     body_char: &Characteristic<u8>,
     request: HpsRequest,
 ) -> HpsResponse {
-    debug!(
-        "HPS: Executing {} request to {}",
+    let request_start = Instant::now();
+    info!(
+        "HPS: Request start method={} uri={} headers={} bytes body={} bytes",
         request.method,
-        request.uri.as_str()
+        request.uri.as_str(),
+        request.headers.len(),
+        request.body.len()
     );
 
-    // Use references to avoid any moves
     let method = request.method;
     let uri_bytes = request.uri.as_bytes();
-    let has_headers = !request.headers.is_empty();
     let headers_bytes = request.headers.as_bytes();
-    let has_body = !request.body.is_empty();
     let body_slice = request.body.as_slice();
 
-    // 1. Write URI (mandatory)
-    debug!("HPS: Writing URI ({} bytes)...", uri_bytes.len());
+    let log_stage_timing = |label: &'static str, elapsed_ms: u64| {
+        if elapsed_ms > SLOW_STAGE_LOG_THRESHOLD_MS {
+            info!("HPS: {} took {} ms (slow)", label, elapsed_ms);
+        } else {
+            info!("HPS: {} took {} ms", label, elapsed_ms);
+        }
+    };
+
+    let stage_start = Instant::now();
     if let Err(e) = gatt.write_characteristic(uri_char, uri_bytes).await {
         warn!("HPS: Failed to write URI: {:?}", Debug2Format(&e));
         return Err(HpsError::BleError);
     }
+    log_stage_timing("write_uri", stage_start.elapsed().as_millis());
 
-    // 2. Write Request Headers (if present)
-    if has_headers {
-        debug!(
-            "HPS: Writing request headers ({} bytes)...",
-            headers_bytes.len()
-        );
+    if !headers_bytes.is_empty() {
+        let stage_start = Instant::now();
         if let Err(e) = gatt.write_characteristic(headers_char, headers_bytes).await {
             warn!("HPS: Failed to write headers: {:?}", Debug2Format(&e));
             return Err(HpsError::BleError);
         }
+        log_stage_timing("write_headers", stage_start.elapsed().as_millis());
     } else {
-        // Write zero-length headers as per HPS spec requirement
-        debug!("HPS: Writing empty headers (required by spec)...");
+        let stage_start = Instant::now();
         if let Err(e) = gatt.write_characteristic(headers_char, &[]).await {
             warn!("HPS: Failed to write empty headers: {:?}", Debug2Format(&e));
             return Err(HpsError::BleError);
         }
+        log_stage_timing("write_headers_empty", stage_start.elapsed().as_millis());
     }
 
-    // 3. Write Request Body (for POST/PUT methods)
-    if !request.body.is_empty() {
-        debug!(
-            "HPS: Writing request body ({} bytes)...",
-            request.body.len()
-        );
-        if let Err(e) = gatt.write_characteristic(body_char, &request.body).await {
+    if !body_slice.is_empty() {
+        let stage_start = Instant::now();
+        if let Err(e) = gatt.write_characteristic(body_char, body_slice).await {
             warn!("HPS: Failed to write body: {:?}", Debug2Format(&e));
             return Err(HpsError::BleError);
         }
+        log_stage_timing("write_body", stage_start.elapsed().as_millis());
     } else {
-        // Write zero-length body as per HPS spec requirement
-        debug!("HPS: Writing empty body (required by spec)...");
+        let stage_start = Instant::now();
         if let Err(e) = gatt.write_characteristic(body_char, &[]).await {
             warn!("HPS: Failed to write empty body: {:?}", Debug2Format(&e));
             return Err(HpsError::BleError);
         }
+        log_stage_timing("write_body_empty", stage_start.elapsed().as_millis());
     }
 
-    // 4. Write Control Point to trigger request execution
+    let stage_start = Instant::now();
     let method_opcode = method as u8;
-    debug!(
-        "HPS: Writing Control Point (opcode: 0x{:02X})...",
-        method_opcode
-    );
     if let Err(e) = gatt
         .write_characteristic(control_char, &[method_opcode])
         .await
@@ -878,43 +964,82 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
         warn!("HPS: Failed to write Control Point: {:?}", Debug2Format(&e));
         return Err(HpsError::BleError);
     }
+    log_stage_timing("write_control_point", stage_start.elapsed().as_millis());
 
-    debug!("HPS: Request sent, waiting for server to process...");
-    Timer::after(Duration::from_secs(3)).await;
+    let status_wait_start = Instant::now();
+    let status_result = with_timeout(Duration::from_millis(STATUS_WAIT_TIMEOUT_MS), async {
+        let mut attempts: u32 = 0;
+        loop {
+            attempts += 1;
+            let mut status_buf = [0u8; 3];
+            match gatt.read_characteristic(status_char, &mut status_buf).await {
+                Ok(len) if len >= 3 => {
+                    let status_code = u16::from_le_bytes([status_buf[0], status_buf[1]]);
+                    let data_status = DataStatus::from_byte(status_buf[2]);
+                    if status_code != 0 || data_status.headers_received || data_status.body_received
+                    {
+                        return Ok((status_code, data_status, attempts));
+                    }
 
-    // 5. Read Status Code (3 bytes: u16 status + u8 data_status)
-    debug!("HPS: Reading Status Code...");
-    let mut status_buf = [0u8; 3];
-    if let Err(e) = gatt.read_characteristic(status_char, &mut status_buf).await {
-        warn!("HPS: Failed to read Status Code: {:?}", Debug2Format(&e));
-        return Err(HpsError::BleError);
+                    if attempts == 1 {
+                        info!("HPS: Status pending (initial read)");
+                    } else if attempts % 5 == 0 {
+                        info!("HPS: Status still pending after {} polls", attempts);
+                    }
+                }
+                Ok(len) => {
+                    warn!("HPS: Status read returned unexpected length {}", len);
+                }
+                Err(e) => {
+                    warn!("HPS: Failed to read Status Code: {:?}", Debug2Format(&e));
+                    return Err(HpsError::BleError);
+                }
+            }
+
+            Timer::after(Duration::from_millis(STATUS_POLL_INTERVAL_MS)).await;
+        }
+    })
+    .await;
+
+    let (status_code, data_status, poll_attempts) = match status_result {
+        Ok(Ok(tuple)) => tuple,
+        Ok(Err(e)) => return Err(e),
+        Err(_) => {
+            warn!(
+                "HPS: Status wait timed out after {} ms",
+                STATUS_WAIT_TIMEOUT_MS
+            );
+            return Err(HpsError::Timeout);
+        }
+    };
+
+    let status_wait_ms = status_wait_start.elapsed().as_millis();
+    log_stage_timing("wait_status", status_wait_ms);
+    if poll_attempts > 1 {
+        info!(
+            "HPS: Status available after {} polls ({} ms)",
+            poll_attempts, status_wait_ms
+        );
     }
 
-    let status_code = u16::from_le_bytes([status_buf[0], status_buf[1]]);
-    let data_status_byte = status_buf[2];
-    let data_status = DataStatus::from_byte(data_status_byte);
-
-    debug!(
-        "HPS: Status {}, headers_rx={}, body_rx={}, headers_trunc={}, body_trunc={}",
+    info!(
+        "HPS: Status {} data_status=0x{:02X}",
         status_code,
-        data_status.headers_received,
-        data_status.body_received,
-        data_status.headers_truncated,
-        data_status.body_truncated
+        data_status.to_byte()
     );
 
-    // 6. Read Response Headers (if present)
     let mut headers = heapless::String::new();
     if data_status.headers_received {
-        debug!("HPS: Reading response headers...");
-        // Allocate large buffer on heap
+        let stage_start = Instant::now();
         let mut headers_buf = alloc::vec![0u8; MAX_HEADERS_SIZE];
         match gatt
             .read_characteristic(headers_char, &mut headers_buf)
             .await
         {
             Ok(len) => {
-                debug!(
+                let elapsed_ms = stage_start.elapsed().as_millis();
+                log_stage_timing("read_headers", elapsed_ms);
+                info!(
                     "HPS: Read {} bytes of headers{}",
                     len,
                     if data_status.headers_truncated {
@@ -933,15 +1058,15 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
         }
     }
 
-    // 7. Read Response Body (if present)
     let mut body = heapless::Vec::new();
     if data_status.body_received {
-        debug!("HPS: Reading response body...");
-        // Allocate large buffer on heap
+        let stage_start = Instant::now();
         let mut body_buf = alloc::vec![0u8; MAX_BODY_SIZE];
         match gatt.read_characteristic(body_char, &mut body_buf).await {
             Ok(len) => {
-                debug!(
+                let elapsed_ms = stage_start.elapsed().as_millis();
+                log_stage_timing("read_body", elapsed_ms);
+                info!(
                     "HPS: Read {} bytes of body{}",
                     len,
                     if data_status.body_truncated {
@@ -958,11 +1083,13 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
         }
     }
 
-    debug!(
-        "HPS: Request complete - Status: {}, Headers: {} bytes, Body: {} bytes",
+    let total_ms = request_start.elapsed().as_millis();
+    info!(
+        "HPS: Request complete - status={} headers={} bytes body={} bytes total={} ms",
         status_code,
         headers.len(),
-        body.len()
+        body.len(),
+        total_ms
     );
 
     Ok(HttpResponse {
