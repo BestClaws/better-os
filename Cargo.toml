@@ -64,8 +64,6 @@ embassy-sync = { version = "0.7.0" }
 log = "0.4.27"
 async-trait = "0.1.88"
 
-font8x8 = { version = "0.3", default-features = false, features = ["unicode"] }
-
 tinybmp = { version = "0.6.0", features = [] }
 libm = "0.2.15"
 

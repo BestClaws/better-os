@@ -89,9 +89,7 @@ pub fn render_scene<R: Rasterizer>(
 
     for node in scene.nodes.iter() {
         if let Some(mesh) = scene.meshes.get(node.mesh) {
-            let material = mesh
-                .material
-                .and_then(|idx| scene.materials.get(idx));
+            let material = mesh.material.and_then(|idx| scene.materials.get(idx));
             render_mesh(
                 rasterizer,
                 mesh,
@@ -218,18 +216,8 @@ fn render_mesh<R: Rasterizer>(
             }
             ShadingMode::Lit => {
                 rasterize_triangle(
-                    rasterizer,
-                    v0,
-                    v1,
-                    v2,
-                    material,
-                    textures,
-                    camera,
-                    options,
-                    light_dir,
-                    ambient,
-                    diffuse,
-                    specular,
+                    rasterizer, v0, v1, v2, material, textures, camera, options, light_dir,
+                    ambient, diffuse, specular,
                 );
                 if options.overlay_wireframe {
                     draw_wireframe_triangle(rasterizer, v0, v1, v2, options.wireframe_color);
@@ -482,8 +470,7 @@ fn compute_normal_matrix(model: &Mat4) -> [[f32; 3]; 3] {
     let a21 = model.m[2][1];
     let a22 = model.m[2][2];
 
-    let det = a00 * (a11 * a22 - a12 * a21)
-        - a01 * (a10 * a22 - a12 * a20)
+    let det = a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20)
         + a02 * (a10 * a21 - a11 * a20);
 
     if det.abs() < 1.0e-8 {

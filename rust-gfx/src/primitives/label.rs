@@ -8,7 +8,9 @@ use alloc::vec::Vec;
 use crate::types::*;
 use crate::Rasterizer;
 
-use label_font::{glyph_for_char, kerning, FontMetrics, METRICS};
+use label_font::{default_font, font, glyph_for_char, kerning, Font};
+
+pub use label_font::FontId;
 
 /// Text decoration
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -26,6 +28,7 @@ pub struct LabelDsc {
     pub opa: Opa,
     pub decor: TextDecor,
     pub letter_space: i32,
+    pub font: FontId,
 }
 
 impl LabelDsc {
@@ -36,6 +39,7 @@ impl LabelDsc {
             opa: OPA_COVER,
             decor: TextDecor::None,
             letter_space: 0,
+            font: FontId::Montserrat14,
         }
     }
 }
@@ -50,30 +54,47 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
         return;
     }
 
-    let FontMetrics {
-        line_height,
-        base_line,
-        underline_position,
-        underline_thickness,
-    } = METRICS;
+    let font = font(dsc.font);
+    let line_height = font.line_height;
+    let base_line = font.base_line;
+    let underline_position = font.underline_position;
+    let underline_thickness = font.underline_thickness;
 
     let mut cursor_x = area.x1;
     let line_start_x = cursor_x;
     let baseline_y = area.y1 + line_height - base_line;
     let mut line_end_x = cursor_x;
+    let mut prev_glyph_id: Option<u16> = None;
 
     for (idx, ch) in chars.iter().enumerate() {
-        let glyph = match glyph_for_char(*ch) {
+        let glyph_info = match glyph_for_char(font, *ch) {
             Some(g) => g,
-            None => continue,
+            None => {
+                prev_glyph_id = None;
+                continue;
+            }
         };
+
+        if let Some(prev_id) = prev_glyph_id {
+            let kern_raw = kerning(font, prev_id, glyph_info.glyph_id) as i32;
+            cursor_x += ((kern_raw + 8) >> 4);
+        }
+
+        let glyph = glyph_info.glyph;
 
         let glyph_x = cursor_x + glyph.ofs_x as i32;
         let glyph_y = baseline_y - glyph.box_h as i32 - glyph.ofs_y as i32;
 
         let bitmap_width = glyph.box_w as usize;
         let bitmap_height = glyph.box_h as usize;
-        let bitmap = glyph.bitmap;
+        let start = glyph.bitmap_offset as usize;
+        let end = start + glyph.bitmap_len as usize;
+        let bitmap = &font.bitmap[start..end];
+
+        if bitmap.len() != bitmap_width * bitmap_height {
+            prev_glyph_id = Some(glyph_info.glyph_id);
+            continue;
+        }
 
         for row in 0..bitmap_height {
             for col in 0..bitmap_width {
@@ -91,18 +112,14 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
             }
         }
 
-        let kern_raw = chars
-            .get(idx + 1)
-            .map(|next| kerning(*ch, *next) as i32)
-            .unwrap_or(0);
-        let advance_raw = glyph.adv_w_raw as i32 + kern_raw;
-        let advance_px = (advance_raw + 8) >> 4;
+        let advance_px = (glyph.adv_w_raw as i32 + 8) >> 4;
         cursor_x += advance_px;
         if idx + 1 < chars.len() {
             cursor_x += dsc.letter_space;
         }
         let glyph_end_x = glyph_x + glyph.box_w as i32;
         line_end_x = line_end_x.max(glyph_end_x).max(cursor_x);
+        prev_glyph_id = Some(glyph_info.glyph_id);
     }
 
     if matches!(dsc.decor, TextDecor::None) || line_end_x <= line_start_x {
@@ -153,34 +170,58 @@ fn mul_opa(a: u8, b: u8) -> u8 {
 
 /// Compute the pixel width of the provided text using the embedded font.
 pub fn measure_text(text: &str, letter_space: i32) -> i32 {
+    measure_text_with_font(text, letter_space, FontId::Montserrat14)
+}
+
+pub fn measure_text_with_font(text: &str, letter_space: i32, font_id: FontId) -> i32 {
+    let font = font(font_id);
+    measure_text_for_font(font, text, letter_space)
+}
+
+/// Return the baseline-to-baseline height for the given font.
+pub fn line_height_for_font(font_id: FontId) -> i32 {
+    font(font_id).line_height
+}
+
+/// Return the default font identifier used by labels.
+pub fn default_font_id() -> FontId {
+    FontId::Montserrat14
+}
+
+/// Returns the baseline-to-baseline height of the embedded font.
+pub fn line_height() -> i32 {
+    default_font().line_height
+}
+
+fn measure_text_for_font(font: &'static Font, text: &str, letter_space: i32) -> i32 {
     let chars: Vec<char> = text.chars().collect();
     if chars.is_empty() {
         return 0;
     }
 
     let mut width = 0;
+    let mut prev_glyph_id: Option<u16> = None;
     for (idx, ch) in chars.iter().enumerate() {
-        let glyph = match glyph_for_char(*ch) {
+        let glyph_info = match glyph_for_char(font, *ch) {
             Some(g) => g,
-            None => continue,
+            None => {
+                prev_glyph_id = None;
+                continue;
+            }
         };
 
-        let kern_raw = chars
-            .get(idx + 1)
-            .map(|next| kerning(*ch, *next) as i32)
-            .unwrap_or(0);
-        let advance_raw = glyph.adv_w_raw as i32 + kern_raw;
-        let advance_px = (advance_raw + 8) >> 4;
-        width += advance_px;
+        if let Some(prev_id) = prev_glyph_id {
+            let kern_raw = kerning(font, prev_id, glyph_info.glyph_id) as i32;
+            width += (kern_raw + 8) >> 4;
+        }
+
+        width += (glyph_info.glyph.adv_w_raw as i32 + 8) >> 4;
         if idx + 1 < chars.len() {
             width += letter_space;
         }
+
+        prev_glyph_id = Some(glyph_info.glyph_id);
     }
 
     width
-}
-
-/// Returns the baseline-to-baseline height of the embedded font.
-pub fn line_height() -> i32 {
-    METRICS.line_height
 }

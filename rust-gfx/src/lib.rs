@@ -8,8 +8,8 @@ pub mod masks;
 pub mod math;
 pub mod primitives;
 pub mod rasterizer;
-pub mod types;
 pub mod three_d;
+pub mod types;
 
 #[cfg(feature = "std")]
 pub mod bmp;

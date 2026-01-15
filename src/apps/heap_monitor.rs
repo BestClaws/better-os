@@ -1,4 +1,3 @@
-use crate::apps::text::{ascii_text_width, draw_ascii_text, FONT_HEIGHT};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use alloc::{format, string::String};
@@ -6,7 +5,11 @@ use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
 use esp_alloc::{HeapStats, HEAP};
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::{draw_rect, RectDsc};
+use rust_gfx::primitives::{
+    draw_rect,
+    label::{draw_label, line_height_for_font, measure_text_with_font, FontId, LabelDsc},
+    RectDsc,
+};
 use rust_gfx::types::{Area, Gradient, OPA_COVER};
 
 #[task]
@@ -32,6 +35,11 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         return;
     }
 
+    let header_font = font_for_role(width, height, FontRole::Header);
+    let body_font = font_for_role(width, height, FontRole::Body);
+    let header_height = font_height(header_font);
+    let body_height = font_height(body_font);
+
     let mut background = RectDsc::new();
     background.bg_color = Rgba8888::rgba(248, 249, 252, 255);
     background.bg_grad = Gradient::vertical(
@@ -43,14 +51,14 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
     draw_rect(surface, &background, &full_area);
 
     let header_text = "Heap Monitor";
-    let header_width = ascii_text_width(header_text);
-    let header_height = FONT_HEIGHT;
+    let header_width = text_width(header_text, header_font);
     if header_width > 0 {
         let hx = (width - header_width) / 2;
-        let hy = 16;
-        draw_ascii_text(
+        let hy = 12;
+        draw_text(
             surface,
             header_text,
+            header_font,
             hx,
             hy,
             Rgba8888::rgba(60, 64, 80, 255),
@@ -73,20 +81,27 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         format!("Usage: {}%", percent),
     ];
 
-    let mut y = 16 + header_height + 12;
-    let line_spacing = FONT_HEIGHT + 4;
+    let mut y = 12 + header_height + 8;
+    let line_spacing = body_height + 2;
 
     for line in &lines {
-        let text_width = ascii_text_width(line);
+        let text_width = text_width(line, body_font);
         if text_width > 0 {
             let x = (width - text_width) / 2;
-            draw_ascii_text(surface, line, x, y, Rgba8888::rgba(86, 92, 110, 255));
+            draw_text(
+                surface,
+                line,
+                body_font,
+                x,
+                y,
+                Rgba8888::rgba(86, 92, 110, 255),
+            );
         }
         y += line_spacing;
     }
 
-    let bar_width = (width - 32).max(16);
-    let bar_height = 16;
+    let bar_width = (width - 24).max(12);
+    let bar_height = (font_height(body_font) + 4).min(14).max(10);
     let bar_x1 = (width - bar_width) / 2;
     let bar_y1 = y + 8;
     let bar_area = Area::new(
@@ -122,6 +137,47 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
             draw_rect(surface, &bar_fill, &fill_area);
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum FontRole {
+    Header,
+    Body,
+}
+
+fn font_for_role(_width: i32, _height: i32, role: FontRole) -> FontId {
+    match role {
+        FontRole::Header => FontId::Montserrat12,
+        FontRole::Body => FontId::Montserrat8,
+    }
+}
+
+fn text_width(text: &str, font: FontId) -> i32 {
+    if text.is_empty() {
+        0
+    } else {
+        measure_text_with_font(text, 0, font)
+    }
+}
+
+fn font_height(font: FontId) -> i32 {
+    line_height_for_font(font)
+}
+
+fn draw_text(surface: &mut DrawingSurface, text: &str, font: FontId, x: i32, y: i32, color: Rgba8888) {
+    let width = text_width(text, font);
+    if width <= 0 {
+        return;
+    }
+    let height = font_height(font);
+    if height <= 0 {
+        return;
+    }
+    let mut label = LabelDsc::new(String::from(text));
+    label.font = font;
+    label.color = color;
+    let area = Area::new(x, y, x + width - 1, y + height - 1);
+    draw_label(surface, &label, &area);
 }
 
 fn format_size(bytes: usize) -> String {

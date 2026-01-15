@@ -1,422 +1,192 @@
-// Auto-generated glyph subset for Montserrat 14 (LVGL)
-// Contains characters required for watch rendering and test sprites.
+// Auto-generated LVGL font data loader. Do not edit by hand.
+
+extern crate alloc;
+
+use alloc::vec::Vec;
+
+mod fonts;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FontId {
+    Montserrat8,
+    Montserrat10,
+    Montserrat12,
+    Montserrat14,
+    Montserrat16,
+    Montserrat18,
+    Montserrat20,
+    Montserrat22,
+    Montserrat24,
+    Montserrat26,
+    Montserrat28,
+    Montserrat30,
+    Montserrat32,
+    Montserrat34,
+    Montserrat36,
+    Montserrat38,
+    Montserrat40,
+    Montserrat42,
+    Montserrat44,
+    Montserrat46,
+    Montserrat48,
+}
 
 pub struct Glyph {
-    pub ch: char,
     pub adv_w_raw: u16,
     pub box_w: u8,
     pub box_h: u8,
     pub ofs_x: i8,
     pub ofs_y: i8,
-    pub bitmap: &'static [u8],
+    pub bitmap_offset: u32,
+    pub bitmap_len: u16,
 }
 
-#[derive(Copy, Clone)]
-pub struct FontMetrics {
+pub struct GlyphMap {
+    pub ch: char,
+    pub glyph_index: u16,
+}
+
+pub struct FontKerning {
+    pub left_class_mapping: &'static [u8],
+    pub right_class_mapping: &'static [u8],
+    pub class_pair_values: &'static [i8],
+    pub left_class_cnt: u8,
+    pub right_class_cnt: u8,
+    pub scale: u8,
+}
+
+pub struct Font {
+    pub id: FontId,
+    pub name: &'static str,
     pub line_height: i32,
     pub base_line: i32,
     pub underline_position: i32,
     pub underline_thickness: i32,
+    pub glyphs: &'static [Glyph],
+    pub glyph_map: &'static [GlyphMap],
+    pub bitmap: &'static [u8],
+    pub kerning: Option<&'static FontKerning>,
 }
 
-pub const METRICS: FontMetrics = FontMetrics {
-    line_height: 16,
-    base_line: 3,
-    underline_position: -1,
-    underline_thickness: 1,
-};
-
-const BITMAP_21: [u8; 30] = [
-    0, 228, 166, 0, 219, 157, 0, 210, 147, 0, 201, 138, 0, 192, 128, 0, 183, 119, 0, 174, 109, 0,
-    26, 16, 0, 190, 129, 0, 210, 149,
-];
-
-const BITMAP_23: [u8; 100] = [
-    0, 0, 0, 221, 35, 0, 61, 195, 0, 0, 0, 0, 7, 245, 3, 0, 100, 155, 0, 0, 44, 255, 255, 255, 255,
-    255, 255, 255, 255, 120, 4, 24, 87, 192, 24, 24, 173, 105, 24, 11, 0, 0, 98, 157, 0, 0, 192,
-    61, 0, 0, 0, 0, 128, 128, 0, 0, 221, 32, 0, 0, 152, 244, 250, 249, 244, 244, 255, 244, 244, 3,
-    22, 36, 197, 91, 36, 57, 232, 36, 36, 0, 0, 0, 215, 39, 0, 51, 203, 0, 0, 0, 0, 0, 242, 13, 0,
-    78, 177, 0, 0, 0,
-];
-
-const BITMAP_30: [u8; 90] = [
-    0, 0, 72, 201, 245, 224, 125, 3, 0, 0, 75, 253, 178, 99, 136, 249, 156, 0, 0, 218, 177, 0, 0,
-    0, 91, 255, 48, 41, 255, 70, 0, 0, 0, 2, 235, 127, 73, 255, 34, 0, 0, 0, 0, 202, 160, 73, 255,
-    33, 0, 0, 0, 0, 203, 159, 41, 255, 70, 0, 0, 0, 3, 236, 127, 0, 217, 179, 1, 0, 0, 93, 255, 46,
-    0, 74, 252, 182, 103, 139, 250, 154, 0, 0, 0, 72, 201, 246, 224, 125, 3, 0,
-];
-
-const BITMAP_31: [u8; 40] = [
-    228, 255, 255, 180, 67, 76, 196, 180, 0, 0, 172, 180, 0, 0, 172, 180, 0, 0, 172, 180, 0, 0,
-    172, 180, 0, 0, 172, 180, 0, 0, 172, 180, 0, 0, 172, 180, 0, 0, 172, 180,
-];
-
-const BITMAP_32: [u8; 80] = [
-    5, 116, 211, 247, 231, 162, 25, 0, 135, 237, 131, 90, 121, 236, 199, 0, 9, 30, 0, 0, 0, 96,
-    255, 20, 0, 0, 0, 0, 0, 103, 250, 11, 0, 0, 0, 0, 14, 215, 155, 0, 0, 0, 0, 15, 197, 198, 11,
-    0, 0, 0, 19, 205, 195, 14, 0, 0, 0, 24, 212, 188, 10, 0, 0, 0, 30, 219, 229, 84, 76, 76, 76,
-    42, 124, 255, 255, 255, 255, 255, 255, 144,
-];
-
-const BITMAP_33: [u8; 80] = [
-    124, 255, 255, 255, 255, 255, 252, 0, 36, 76, 76, 76, 94, 247, 151, 0, 0, 0, 0, 4, 189, 194, 5,
-    0, 0, 0, 0, 148, 225, 21, 0, 0, 0, 0, 50, 255, 223, 142, 21, 0, 0, 0, 15, 70, 99, 210, 219, 10,
-    0, 0, 0, 0, 0, 33, 255, 73, 30, 4, 0, 0, 0, 43, 255, 76, 187, 216, 127, 94, 118, 223, 223, 9,
-    29, 150, 223, 250, 235, 165, 30, 0,
-];
-
-const BITMAP_34: [u8; 100] = [
-    0, 0, 0, 0, 11, 209, 167, 0, 0, 0, 0, 0, 0, 0, 170, 207, 10, 0, 0, 0, 0, 0, 0, 123, 235, 31, 0,
-    0, 0, 0, 0, 0, 76, 249, 64, 0, 27, 9, 0, 0, 0, 40, 241, 108, 0, 0, 252, 88, 0, 0, 16, 217, 167,
-    12, 12, 12, 252, 95, 12, 2, 116, 255, 255, 255, 255, 255, 255, 255, 255, 52, 28, 60, 60, 60,
-    60, 63, 255, 127, 60, 12, 0, 0, 0, 0, 0, 4, 255, 88, 0, 0, 0, 0, 0, 0, 0, 4, 255, 88, 0, 0,
-];
-
-const BITMAP_35: [u8; 80] = [
-    0, 149, 255, 255, 255, 255, 255, 0, 0, 174, 184, 76, 76, 76, 76, 0, 0, 199, 132, 0, 0, 0, 0, 0,
-    0, 224, 114, 9, 0, 0, 0, 0, 0, 248, 255, 255, 248, 196, 67, 0, 2, 60, 60, 67, 93, 193, 246, 40,
-    0, 0, 0, 0, 0, 7, 243, 117, 19, 13, 0, 0, 0, 13, 245, 118, 143, 231, 138, 95, 109, 206, 242,
-    31, 14, 131, 214, 248, 240, 183, 50, 0,
-];
-
-const BITMAP_36: [u8; 90] = [
-    0, 0, 40, 166, 231, 247, 215, 92, 0, 0, 49, 242, 209, 109, 80, 119, 68, 0, 0, 200, 201, 6, 0,
-    0, 0, 0, 0, 33, 255, 79, 0, 0, 0, 0, 0, 0, 69, 255, 84, 191, 249, 243, 172, 29, 0, 78, 255,
-    238, 129, 65, 88, 216, 213, 3, 51, 255, 134, 0, 0, 0, 54, 255, 52, 5, 234, 135, 0, 0, 0, 57,
-    255, 45, 0, 103, 251, 132, 69, 90, 218, 197, 0, 0, 0, 93, 209, 249, 235, 156, 19, 0,
-];
-
-const BITMAP_37: [u8; 80] = [
-    148, 255, 255, 255, 255, 255, 255, 208, 148, 213, 76, 76, 76, 77, 238, 152, 148, 196, 0, 0, 0,
-    74, 254, 41, 11, 15, 0, 0, 0, 188, 182, 0, 0, 0, 0, 0, 47, 255, 69, 0, 0, 0, 0, 0, 161, 212, 0,
-    0, 0, 0, 0, 25, 249, 99, 0, 0, 0, 0, 0, 134, 234, 8, 0, 0, 0, 0, 10, 237, 129, 0, 0, 0, 0, 0,
-    107, 248, 23, 0, 0, 0,
-];
-
-const BITMAP_38: [u8; 90] = [
-    0, 19, 152, 229, 250, 229, 153, 20, 0, 0, 190, 229, 99, 63, 99, 228, 194, 0, 1, 253, 108, 0, 0,
-    0, 101, 254, 3, 0, 198, 194, 32, 0, 32, 190, 199, 0, 0, 37, 238, 255, 253, 255, 238, 38, 0, 9,
-    217, 204, 79, 47, 79, 204, 217, 10, 81, 255, 32, 0, 0, 0, 29, 255, 84, 82, 255, 41, 0, 0, 0,
-    38, 255, 84, 11, 225, 215, 94, 63, 95, 215, 226, 12, 0, 29, 161, 231, 251, 231, 161, 30, 0,
-];
-
-const BITMAP_39: [u8; 80] = [
-    0, 54, 190, 245, 239, 175, 39, 0, 36, 244, 173, 71, 76, 182, 236, 27, 131, 225, 3, 0, 0, 4,
-    226, 146, 144, 212, 0, 0, 0, 0, 214, 214, 73, 255, 123, 20, 32, 144, 252, 241, 0, 119, 245,
-    255, 255, 195, 150, 231, 0, 0, 10, 44, 28, 0, 166, 194, 0, 0, 0, 0, 0, 42, 250, 104, 0, 122,
-    98, 87, 132, 242, 191, 3, 3, 161, 232, 248, 217, 126, 6, 0,
-];
-
-const BITMAP_3A: [u8; 24] = [
-    47, 238, 83, 51, 247, 85, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 51, 248, 89, 46, 238, 79,
-];
-
-const BITMAP_40: [u8; 182] = [
-    0, 0, 0, 13, 108, 196, 232, 246, 221, 165, 65, 0, 0, 0, 0, 0, 48, 219, 168, 65, 19, 4, 30, 100,
-    213, 160, 6, 0, 0, 25, 230, 87, 13, 156, 239, 239, 153, 131, 199, 165, 155, 0, 0, 163, 132, 0,
-    185, 216, 77, 53, 160, 246, 192, 7, 214, 49, 14, 241, 19, 52, 252, 38, 0, 0, 1, 201, 192, 0,
-    106, 144, 55, 205, 0, 103, 218, 0, 0, 0, 0, 126, 192, 0, 56, 183, 76, 183, 0, 103, 217, 0, 0,
-    0, 0, 125, 192, 0, 43, 193, 54, 204, 0, 51, 252, 38, 0, 0, 0, 199, 192, 0, 76, 166, 13, 240,
-    19, 0, 184, 215, 74, 49, 157, 228, 233, 56, 192, 85, 0, 161, 131, 0, 13, 157, 239, 239, 153,
-    24, 194, 246, 154, 2, 0, 25, 230, 87, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 222, 167, 66, 20,
-    10, 44, 130, 7, 0, 0, 0, 0, 0, 0, 15, 112, 199, 235, 247, 219, 147, 16, 0, 0, 0,
-];
-
-const BITMAP_41: [u8; 120] = [
-    0, 0, 0, 0, 0, 205, 245, 18, 0, 0, 0, 0, 0, 0, 0, 0, 63, 247, 219, 122, 0, 0, 0, 0, 0, 0, 0, 0,
-    176, 152, 97, 230, 6, 0, 0, 0, 0, 0, 0, 36, 251, 38, 6, 229, 94, 0, 0, 0, 0, 0, 0, 148, 174, 0,
-    0, 119, 208, 0, 0, 0, 0, 0, 16, 244, 58, 0, 0, 15, 242, 66, 0, 0, 0, 0, 119, 255, 255, 255,
-    255, 255, 255, 180, 0, 0, 0, 4, 227, 119, 48, 48, 48, 48, 74, 254, 39, 0, 0, 90, 243, 11, 0, 0,
-    0, 0, 0, 200, 152, 0, 0, 203, 157, 0, 0, 0, 0, 0, 0, 101, 246, 20,
-];
-
-const BITMAP_42: [u8; 90] = [
-    136, 255, 255, 255, 255, 238, 192, 67, 0, 136, 230, 52, 52, 52, 74, 179, 248, 35, 136, 224, 0,
-    0, 0, 0, 20, 255, 85, 136, 224, 0, 0, 0, 21, 135, 244, 29, 136, 255, 255, 255, 255, 255, 255,
-    130, 0, 136, 230, 48, 48, 48, 59, 121, 251, 101, 136, 224, 0, 0, 0, 0, 0, 159, 205, 136, 224,
-    0, 0, 0, 0, 0, 159, 208, 136, 231, 56, 56, 56, 66, 125, 251, 126, 136, 255, 255, 255, 255, 245,
-    213, 117, 2,
-];
-
-const BITMAP_43: [u8; 100] = [
-    0, 0, 6, 115, 207, 244, 240, 188, 73, 0, 0, 15, 205, 246, 153, 96, 99, 170, 253, 80, 0, 165,
-    237, 43, 0, 0, 0, 0, 56, 3, 24, 252, 104, 0, 0, 0, 0, 0, 0, 0, 68, 255, 35, 0, 0, 0, 0, 0, 0,
-    0, 69, 255, 35, 0, 0, 0, 0, 0, 0, 0, 24, 252, 105, 0, 0, 0, 0, 0, 0, 0, 0, 165, 237, 44, 0, 0,
-    0, 0, 62, 4, 0, 16, 207, 246, 154, 100, 103, 175, 254, 80, 0, 0, 8, 121, 210, 245, 240, 187,
-    71, 0,
-];
-
-const BITMAP_54: [u8; 90] = [
-    240, 255, 255, 255, 255, 255, 255, 255, 40, 71, 76, 76, 180, 219, 76, 76, 76, 11, 0, 0, 0, 148,
-    204, 0, 0, 0, 0, 0, 0, 0, 148, 204, 0, 0, 0, 0, 0, 0, 0, 148, 204, 0, 0, 0, 0, 0, 0, 0, 148,
-    204, 0, 0, 0, 0, 0, 0, 0, 148, 204, 0, 0, 0, 0, 0, 0, 0, 148, 204, 0, 0, 0, 0, 0, 0, 0, 148,
-    204, 0, 0, 0, 0, 0, 0, 0, 148, 204, 0, 0, 0, 0,
-];
-
-const BITMAP_62: [u8; 88] = [
-    184, 160, 0, 0, 0, 0, 0, 0, 184, 160, 0, 0, 0, 0, 0, 0, 184, 160, 0, 0, 0, 0, 0, 0, 184, 162,
-    130, 230, 245, 193, 59, 0, 184, 247, 208, 90, 79, 183, 250, 51, 184, 237, 17, 0, 0, 2, 203,
-    175, 184, 170, 0, 0, 0, 0, 116, 230, 184, 171, 0, 0, 0, 0, 117, 229, 184, 238, 19, 0, 0, 3,
-    205, 175, 184, 241, 211, 94, 83, 186, 250, 51, 184, 146, 129, 231, 245, 193, 59, 0,
-];
-
-const BITMAP_63: [u8; 64] = [
-    0, 2, 114, 217, 248, 217, 105, 0, 0, 148, 245, 121, 72, 128, 249, 73, 33, 254, 90, 0, 0, 0, 40,
-    0, 89, 253, 5, 0, 0, 0, 0, 0, 89, 253, 6, 0, 0, 0, 0, 0, 32, 254, 91, 0, 0, 0, 43, 0, 0, 147,
-    245, 123, 75, 131, 250, 72, 0, 2, 114, 218, 248, 216, 99, 0,
-];
-
-const BITMAP_65: [u8; 64] = [
-    0, 4, 128, 225, 247, 203, 77, 0, 0, 160, 220, 92, 63, 131, 251, 76, 36, 254, 39, 0, 0, 0, 136,
-    199, 90, 254, 236, 236, 236, 236, 242, 243, 90, 254, 41, 28, 28, 28, 28, 26, 34, 254, 113, 0,
-    0, 0, 24, 0, 0, 152, 251, 142, 78, 110, 234, 71, 0, 2, 118, 217, 249, 225, 131, 5,
-];
-
-const BITMAP_73: [u8; 56] = [
-    0, 90, 210, 246, 226, 172, 31, 51, 254, 125, 63, 86, 167, 13, 97, 248, 13, 0, 0, 0, 0, 30, 231,
-    227, 154, 99, 24, 0, 0, 18, 108, 160, 224, 245, 57, 1, 0, 0, 0, 3, 217, 144, 98, 193, 103, 71,
-    107, 246, 96, 46, 170, 234, 249, 220, 120, 0,
-];
-
-const BITMAP_74: [u8; 60] = [
-    0, 136, 208, 0, 0, 0, 0, 136, 208, 0, 0, 0, 204, 255, 255, 255, 240, 0, 38, 158, 217, 48, 45,
-    0, 0, 136, 208, 0, 0, 0, 0, 136, 208, 0, 0, 0, 0, 136, 208, 0, 0, 0, 0, 132, 212, 0, 0, 0, 0,
-    89, 252, 94, 88, 23, 0, 3, 158, 241, 225, 55,
-];
-
-const BITMAP_78: [u8; 64] = [
-    77, 249, 51, 0, 0, 114, 235, 25, 0, 151, 216, 10, 45, 247, 77, 0, 0, 9, 215, 158, 210, 149, 0,
-    0, 0, 0, 49, 251, 215, 9, 0, 0, 0, 0, 77, 254, 233, 23, 0, 0, 0, 24, 234, 119, 189, 184, 1, 0,
-    1, 184, 190, 2, 29, 239, 114, 0, 113, 238, 28, 0, 0, 89, 249, 49,
-];
-
-const GLYPHS: [Glyph; 24] = [
-    Glyph {
-        ch: '!',
-        adv_w_raw: 60,
-        box_w: 3,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_21,
-    },
-    Glyph {
-        ch: '#',
-        adv_w_raw: 157,
-        box_w: 10,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_23,
-    },
-    Glyph {
-        ch: '0',
-        adv_w_raw: 149,
-        box_w: 9,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_30,
-    },
-    Glyph {
-        ch: '1',
-        adv_w_raw: 83,
-        box_w: 4,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_31,
-    },
-    Glyph {
-        ch: '2',
-        adv_w_raw: 129,
-        box_w: 8,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_32,
-    },
-    Glyph {
-        ch: '3',
-        adv_w_raw: 128,
-        box_w: 8,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_33,
-    },
-    Glyph {
-        ch: '4',
-        adv_w_raw: 150,
-        box_w: 10,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_34,
-    },
-    Glyph {
-        ch: '5',
-        adv_w_raw: 129,
-        box_w: 8,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_35,
-    },
-    Glyph {
-        ch: '6',
-        adv_w_raw: 138,
-        box_w: 9,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_36,
-    },
-    Glyph {
-        ch: '7',
-        adv_w_raw: 134,
-        box_w: 8,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_37,
-    },
-    Glyph {
-        ch: '8',
-        adv_w_raw: 144,
-        box_w: 9,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_38,
-    },
-    Glyph {
-        ch: '9',
-        adv_w_raw: 138,
-        box_w: 8,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_39,
-    },
-    Glyph {
-        ch: ':',
-        adv_w_raw: 51,
-        box_w: 3,
-        box_h: 8,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_3A,
-    },
-    Glyph {
-        ch: '@',
-        adv_w_raw: 232,
-        box_w: 14,
-        box_h: 13,
-        ofs_x: 0,
-        ofs_y: -3,
-        bitmap: &BITMAP_40,
-    },
-    Glyph {
-        ch: 'A',
-        adv_w_raw: 164,
-        box_w: 12,
-        box_h: 10,
-        ofs_x: -1,
-        ofs_y: 0,
-        bitmap: &BITMAP_41,
-    },
-    Glyph {
-        ch: 'B',
-        adv_w_raw: 170,
-        box_w: 9,
-        box_h: 10,
-        ofs_x: 1,
-        ofs_y: 0,
-        bitmap: &BITMAP_42,
-    },
-    Glyph {
-        ch: 'C',
-        adv_w_raw: 162,
-        box_w: 10,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_43,
-    },
-    Glyph {
-        ch: 'T',
-        adv_w_raw: 131,
-        box_w: 9,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_54,
-    },
-    Glyph {
-        ch: 'b',
-        adv_w_raw: 153,
-        box_w: 8,
-        box_h: 11,
-        ofs_x: 1,
-        ofs_y: 0,
-        bitmap: &BITMAP_62,
-    },
-    Glyph {
-        ch: 'c',
-        adv_w_raw: 128,
-        box_w: 8,
-        box_h: 8,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_63,
-    },
-    Glyph {
-        ch: 'e',
-        adv_w_raw: 137,
-        box_w: 8,
-        box_h: 8,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_65,
-    },
-    Glyph {
-        ch: 's',
-        adv_w_raw: 112,
-        box_w: 7,
-        box_h: 8,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_73,
-    },
-    Glyph {
-        ch: 't',
-        adv_w_raw: 93,
-        box_w: 6,
-        box_h: 10,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_74,
-    },
-    Glyph {
-        ch: 'x',
-        adv_w_raw: 124,
-        box_w: 8,
-        box_h: 8,
-        ofs_x: 0,
-        ofs_y: 0,
-        bitmap: &BITMAP_78,
-    },
-];
-
-pub fn glyph_for_char(ch: char) -> Option<&'static Glyph> {
-    GLYPHS.iter().find(|g| g.ch == ch)
+pub struct GlyphInfo {
+    pub glyph: &'static Glyph,
+    pub glyph_id: u16,
 }
 
-pub fn kerning(left: char, right: char) -> i8 {
-    match (left, right) {
-        ('T', 'e') => -12,
-        ('e', 'x') => -3,
-        _ => 0,
+pub fn font(id: FontId) -> &'static Font {
+    match id {
+        FontId::Montserrat8 => &fonts::montserrat_8::FONT,
+        FontId::Montserrat10 => &fonts::montserrat_10::FONT,
+        FontId::Montserrat12 => &fonts::montserrat_12::FONT,
+        FontId::Montserrat14 => &fonts::montserrat_14::FONT,
+        FontId::Montserrat16 => &fonts::montserrat_16::FONT,
+        FontId::Montserrat18 => &fonts::montserrat_18::FONT,
+        FontId::Montserrat20 => &fonts::montserrat_20::FONT,
+        FontId::Montserrat22 => &fonts::montserrat_22::FONT,
+        FontId::Montserrat24 => &fonts::montserrat_24::FONT,
+        FontId::Montserrat26 => &fonts::montserrat_26::FONT,
+        FontId::Montserrat28 => &fonts::montserrat_28::FONT,
+        FontId::Montserrat30 => &fonts::montserrat_30::FONT,
+        FontId::Montserrat32 => &fonts::montserrat_32::FONT,
+        FontId::Montserrat34 => &fonts::montserrat_34::FONT,
+        FontId::Montserrat36 => &fonts::montserrat_36::FONT,
+        FontId::Montserrat38 => &fonts::montserrat_38::FONT,
+        FontId::Montserrat40 => &fonts::montserrat_40::FONT,
+        FontId::Montserrat42 => &fonts::montserrat_42::FONT,
+        FontId::Montserrat44 => &fonts::montserrat_44::FONT,
+        FontId::Montserrat46 => &fonts::montserrat_46::FONT,
+        FontId::Montserrat48 => &fonts::montserrat_48::FONT,
     }
+}
+
+pub fn default_font_id() -> FontId {
+    FontId::Montserrat14
+}
+
+pub fn default_font() -> &'static Font {
+    font(default_font_id())
+}
+
+pub fn glyph_for_char(font: &'static Font, ch: char) -> Option<GlyphInfo> {
+    match font.glyph_map.binary_search_by(|entry| entry.ch.cmp(&ch)) {
+        Ok(idx) => {
+            let entry = &font.glyph_map[idx];
+            font.glyphs
+                .get(entry.glyph_index as usize)
+                .map(|glyph| GlyphInfo {
+                    glyph,
+                    glyph_id: entry.glyph_index,
+                })
+        }
+        Err(_) => None,
+    }
+}
+
+pub fn kerning(font: &'static Font, left_id: u16, right_id: u16) -> i16 {
+    let Some(k) = font.kerning else {
+        return 0;
+    };
+    let left = k
+        .left_class_mapping
+        .get(left_id as usize)
+        .copied()
+        .unwrap_or(0);
+    let right = k
+        .right_class_mapping
+        .get(right_id as usize)
+        .copied()
+        .unwrap_or(0);
+    if left == 0 || right == 0 {
+        return 0;
+    }
+    let idx = (left as usize - 1) * k.right_class_cnt as usize + (right as usize - 1);
+    let raw = k.class_pair_values.get(idx).copied().unwrap_or(0) as i16;
+    ((raw as i32 * k.scale as i32) >> 4) as i16
+}
+
+pub fn measure_text(text: &str, letter_space: i32) -> i32 {
+    measure_text_with_font(text, letter_space, default_font_id())
+}
+
+pub fn measure_text_with_font(text: &str, letter_space: i32, font_id: FontId) -> i32 {
+    let font = font(font_id);
+    measure_text_for_font(font, text, letter_space)
+}
+
+pub fn line_height_for_font(font_id: FontId) -> i32 {
+    font(font_id).line_height
+}
+
+pub fn line_height() -> i32 {
+    default_font().line_height
+}
+
+fn measure_text_for_font(font: &'static Font, text: &str, letter_space: i32) -> i32 {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return 0;
+    }
+
+    let mut width = 0;
+    let mut prev_glyph_id: Option<u16> = None;
+
+    for (idx, ch) in chars.iter().enumerate() {
+        let Some(info) = glyph_for_char(font, *ch) else {
+            prev_glyph_id = None;
+            continue;
+        };
+
+        if let Some(prev) = prev_glyph_id {
+            width += kerning(font, prev, info.glyph_id) as i32;
+        }
+
+        width += ((info.glyph.adv_w_raw as i32 + 8) >> 4);
+        if idx + 1 < chars.len() {
+            width += letter_space;
+        }
+
+        prev_glyph_id = Some(info.glyph_id);
+    }
+
+    width
 }

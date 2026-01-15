@@ -1,14 +1,17 @@
-use crate::apps::text::{ascii_text_width, draw_ascii_text, CHAR_WIDTH, FONT_HEIGHT, SPACE_WIDTH};
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use alloc::string::String;
+use alloc::{borrow::Cow, string::{String, ToString}};
 use defmt::{info, warn};
 use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::triangle::{draw_triangle, TriangleDsc};
-use rust_gfx::primitives::{draw_rect, RectDsc};
+use rust_gfx::primitives::{
+    draw_rect,
+    label::{draw_label, line_height_for_font, measure_text_with_font, FontId, LabelDsc},
+    triangle::{draw_triangle, TriangleDsc},
+    RectDsc,
+};
 use rust_gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
 
 const MESSAGE_CAPACITY: usize = 64;
@@ -145,6 +148,11 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
         return;
     }
 
+    let header_font = font_for_role(width, height, FontRole::Header);
+    let body_font = font_for_role(width, height, FontRole::Body);
+    let text_height = font_height(body_font);
+    let small_screen = width <= 120 || height <= 140;
+
     // Background gradient
     let mut bg = RectDsc::new();
     bg.bg_color = Rgba8888::rgba(248, 249, 252, 255);
@@ -159,7 +167,11 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
     draw_background_grid(surface, width, height);
 
     // Header
-    let header_height = (height / 6).max(18).min(30);
+    let header_height = if small_screen {
+        (height / 5).max(16).min(26)
+    } else {
+        (height / 6).max(18).min(32)
+    };
     let mut header = RectDsc::new();
     header.bg_color = Rgba8888::rgba(255, 255, 255, 255);
     header.bg_grad = Gradient::vertical(
@@ -170,7 +182,7 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
     let header_area = Area::new(0, 0, width - 1, header_height - 1);
     draw_rect(surface, &header, &header_area);
 
-    draw_header_accent(surface, width, header_height);
+    draw_header_accent(surface, width, header_height, small_screen);
 
     let mut divider = RectDsc::new();
     divider.bg_color = Rgba8888::rgba(200, 202, 210, 200);
@@ -179,15 +191,19 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
     draw_rect(surface, &divider, &divider_area);
 
     // Header text and status
-    let text_height = FONT_HEIGHT;
     let title_text = "Discord";
-    let title_width = ascii_text_width(title_text);
+    let title_width = text_width(title_text, header_font);
     if title_width > 0 {
         let title_x = (width - title_width) / 2;
-        let title_y = (header_height - text_height) / 2;
-        draw_ascii_text(
+        let title_y = if small_screen {
+            2
+        } else {
+            (header_height - font_height(header_font)) / 2
+        };
+        draw_text(
             surface,
             title_text,
+            header_font,
             title_x,
             title_y,
             Rgba8888::rgba(60, 64, 80, 255),
@@ -200,12 +216,46 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
     } else {
         Rgba8888::rgba(172, 176, 188, 255)
     };
-    let status_width = ascii_text_width(status_text);
+    let status_width = text_width(status_text, body_font);
 
-    // Status dot
     let dot_size = (width / 18).max(4).min(10);
-    let dot_x = width - dot_size - 6;
-    let dot_y = (header_height - dot_size) / 2;
+    let mut dot_x = width - dot_size - 6;
+    let mut dot_y = (header_height - dot_size) / 2;
+
+    if small_screen {
+        let status_y = header_height - text_height - 2;
+        let status_x = 6;
+        if status_width > 0 {
+            draw_text(
+                surface,
+                status_text,
+                body_font,
+                status_x,
+                status_y,
+                status_color,
+            );
+        }
+        dot_x = (status_x + status_width + 4).min(width - dot_size - 2);
+        let offset = if text_height > dot_size {
+            (text_height - dot_size) / 2
+        } else {
+            0
+        };
+        dot_y = status_y + offset;
+        dot_y = dot_y.max(2);
+    } else if status_width > 0 {
+        let status_y = (header_height - text_height) / 2;
+        let status_x = (dot_x - status_width - 6).max(6);
+        draw_text(
+            surface,
+            status_text,
+            body_font,
+            status_x,
+            status_y,
+            status_color,
+        );
+    }
+
     let mut dot = RectDsc::new();
     dot.bg_color = if connected {
         Rgba8888::rgba(254, 211, 64, 255)
@@ -217,22 +267,41 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
     let dot_area = Area::new(dot_x, dot_y, dot_x + dot_size - 1, dot_y + dot_size - 1);
     draw_rect(surface, &dot, &dot_area);
 
-    if status_width > 0 {
-        let status_x = (dot_x - status_width - 6).max(6);
-        let status_y = (header_height - text_height) / 2;
-        draw_ascii_text(surface, status_text, status_x, status_y, status_color);
-    }
-
     // Message list layout
-    let padding = (width / 18).max(6).min(18);
-    let content_top = header_height + (height / 30).max(6).min(16);
+    let padding = if small_screen {
+        (width / 20).max(4).min(14)
+    } else {
+        (width / 18).max(6).min(18)
+    };
+    let content_top = header_height
+        + if small_screen {
+            6
+        } else {
+            (height / 30).max(6).min(16)
+        };
     let available_height = (height - content_top).max(30);
-    let message_spacing = (height / 50).max(4).min(10);
-    let message_height = (available_height / 3 - message_spacing).max(18).min(40);
-    let tail_width = (message_height / 2).max(5).min(12);
-    let tail_half_height = (message_height / 3).max(5);
-    let corner_radius = (width / 28).max(4).min(14);
-    let text_padding = (message_height / 4).max(4).min(12);
+    let message_spacing = if small_screen {
+        (height / 60).max(3).min(8)
+    } else {
+        (height / 50).max(4).min(10)
+    };
+    let message_height = if small_screen {
+        (available_height / 3 - message_spacing).max(14).min(28)
+    } else {
+        (available_height / 3 - message_spacing).max(18).min(40)
+    };
+    let tail_width = (message_height / 2).max(4).min(10);
+    let tail_half_height = (message_height / 3).max(4);
+    let corner_radius = if small_screen {
+        (width / 32).max(3).min(10)
+    } else {
+        (width / 28).max(4).min(14)
+    };
+    let text_padding = if small_screen {
+        (text_height / 2).max(2).min(6)
+    } else {
+        (text_height / 2).max(3).min(8)
+    };
 
     for (idx, message) in messages.iter().enumerate() {
         let align_right = idx % 2 == 1;
@@ -348,22 +417,18 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
         if available_width > 0 {
             let text_y = y + (message_height - text_height) / 2;
             let text_x = bubble_x + text_padding;
-            let mut text_to_draw = message.as_str();
-            let mut text_width_msg = ascii_text_width(text_to_draw);
-            let mut truncated: Option<String> = None;
-
-            if text_width_msg > available_width {
-                let temp = truncate_ascii_to_width(text_to_draw, available_width);
-                text_width_msg = ascii_text_width(temp.as_str());
-                truncated = Some(temp);
-            }
-
-            if let Some(ref owned) = truncated {
-                text_to_draw = owned.as_str();
-            }
+            let (text_to_draw, text_width_msg) =
+                clamp_text_to_width(message.as_str(), available_width, body_font);
 
             if text_width_msg > 0 {
-                draw_ascii_text(surface, text_to_draw, text_x, text_y, text_color);
+                draw_text(
+                    surface,
+                    text_to_draw.as_ref(),
+                    body_font,
+                    text_x,
+                    text_y,
+                    text_color,
+                );
             }
         }
     }
@@ -391,17 +456,35 @@ fn draw_background_grid(surface: &mut DrawingSurface, width: i32, height: i32) {
     }
 }
 
-fn draw_header_accent(surface: &mut DrawingSurface, width: i32, header_height: i32) {
+fn draw_header_accent(
+    surface: &mut DrawingSurface,
+    width: i32,
+    header_height: i32,
+    small_screen: bool,
+) {
     if width <= 0 || header_height <= 0 {
         return;
     }
 
-    let accent_width = (width / 20).max(12).min(36);
-    let spacing = 4;
+    let accent_width = if small_screen {
+        (width / 24).max(8).min(20)
+    } else {
+        (width / 20).max(12).min(36)
+    };
+    let spacing = if small_screen { 3 } else { 4 };
     let total_width = accent_width * 3 + spacing * 2;
     let start_x = ((width - total_width) / 2).max(0);
-    let bar_height = (header_height / 4).max(3);
-    let y = (header_height / 3).max(2) - bar_height / 2;
+    let bar_height = if small_screen {
+        (header_height / 5).max(2)
+    } else {
+        (header_height / 4).max(3)
+    };
+    let base_y = if small_screen {
+        2
+    } else {
+        (header_height / 3).max(2)
+    };
+    let y = base_y - bar_height / 2;
     let colors = [
         Rgba8888::rgba(236, 70, 170, 255),
         Rgba8888::rgba(70, 190, 235, 255),
@@ -425,18 +508,71 @@ fn draw_header_accent(surface: &mut DrawingSurface, width: i32, header_height: i
     draw_rect(surface, &ribbon, &ribbon_area);
 }
 
-fn truncate_ascii_to_width(text: &str, max_width: i32) -> String {
-    let mut width = 0;
-    let mut result = String::new();
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum FontRole {
+    Header,
+    Body,
+}
 
-    for ch in text.chars() {
-        let char_width = if ch == ' ' { SPACE_WIDTH } else { CHAR_WIDTH };
-        if width + char_width > max_width {
-            break;
-        }
-        result.push(ch);
-        width += char_width;
+fn font_for_role(_width: i32, _height: i32, role: FontRole) -> FontId {
+    match role {
+        FontRole::Header => FontId::Montserrat12,
+        FontRole::Body => FontId::Montserrat8,
+    }
+}
+
+fn text_width(text: &str, font: FontId) -> i32 {
+    if text.is_empty() {
+        0
+    } else {
+        measure_text_with_font(text, 0, font)
+    }
+}
+
+fn font_height(font: FontId) -> i32 {
+    line_height_for_font(font)
+}
+
+fn draw_text(surface: &mut DrawingSurface, text: &str, font: FontId, x: i32, y: i32, color: Rgba8888) {
+    let width = text_width(text, font);
+    if width <= 0 {
+        return;
+    }
+    let height = font_height(font);
+    if height <= 0 {
+        return;
+    }
+    let mut label = LabelDsc::new(String::from(text));
+    label.font = font;
+    label.color = color;
+    let area = Area::new(x, y, x + width - 1, y + height - 1);
+    draw_label(surface, &label, &area);
+}
+
+fn clamp_text_to_width<'a>(text: &'a str, max_width: i32, font: FontId) -> (Cow<'a, str>, i32) {
+    if max_width <= 0 || text.is_empty() {
+        return (Cow::Borrowed(""), 0);
     }
 
-    result
+    let mut last_good_idx = 0;
+    let mut last_width = 0;
+
+    for (idx, ch) in text.char_indices() {
+        let end = idx + ch.len_utf8();
+        let candidate = &text[..end];
+        let width = measure_text_with_font(candidate, 0, font);
+        if width > max_width {
+            break;
+        }
+        last_good_idx = end;
+        last_width = width;
+    }
+
+    if last_good_idx == 0 {
+        (Cow::Borrowed(""), 0)
+    } else if last_good_idx == text.len() {
+        (Cow::Borrowed(text), last_width)
+    } else {
+        (Cow::Owned(text[..last_good_idx].to_string()), last_width)
+    }
 }

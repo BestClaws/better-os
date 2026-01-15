@@ -449,12 +449,8 @@ fn build_node_transform(node: &NodeDef<'_>) -> Mat4 {
         return Mat4 { m };
     }
 
-    let translation = node
-        .translation
-        .unwrap_or([0.0, 0.0, 0.0]);
-    let rotation = node
-        .rotation
-        .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+    let translation = node.translation.unwrap_or([0.0, 0.0, 0.0]);
+    let rotation = node.rotation.unwrap_or([0.0, 0.0, 0.0, 1.0]);
     let scale = node.scale.unwrap_or([1.0, 1.0, 1.0]);
 
     let t = Mat4::from_translation(Vec3::new(translation[0], translation[1], translation[2]));
@@ -518,8 +514,7 @@ fn read_vec3(
     }
     let view_idx = accessor
         .buffer_view
-        .ok_or(ModelError::Unsupported("accessor missing bufferView"))?
-        as usize;
+        .ok_or(ModelError::Unsupported("accessor missing bufferView"))? as usize;
     let view = views
         .get(view_idx)
         .ok_or(ModelError::Unsupported("accessor buffer view"))?;
@@ -555,8 +550,7 @@ fn read_vec2(
     }
     let view_idx = accessor
         .buffer_view
-        .ok_or(ModelError::Unsupported("accessor missing bufferView"))?
-        as usize;
+        .ok_or(ModelError::Unsupported("accessor missing bufferView"))? as usize;
     let view = views
         .get(view_idx)
         .ok_or(ModelError::Unsupported("accessor buffer view"))?;
@@ -591,18 +585,19 @@ fn read_indices(
     }
     let view_idx = accessor
         .buffer_view
-        .ok_or(ModelError::Unsupported("accessor missing bufferView"))?
-        as usize;
+        .ok_or(ModelError::Unsupported("accessor missing bufferView"))? as usize;
     let view = views
         .get(view_idx)
         .ok_or(ModelError::Unsupported("accessor buffer view"))?;
 
-    let stride = view.byte_stride.unwrap_or_else(|| match accessor.component_type {
-        5121 => 1,
-        5123 => 2,
-        5125 => 4,
-        _ => 0,
-    }) as usize;
+    let stride = view
+        .byte_stride
+        .unwrap_or_else(|| match accessor.component_type {
+            5121 => 1,
+            5123 => 2,
+            5125 => 4,
+            _ => 0,
+        }) as usize;
     if stride == 0 {
         return Err(ModelError::Unsupported("unsupported index component type"));
     }
@@ -678,7 +673,9 @@ fn decode_png(data: &[u8]) -> Result<(u32, u32, Vec<Rgba8888>), ModelError> {
     }
 
     if color_type != 2 || bit_depth != 8 || compression != 0 || filter != 0 || interlace != 0 {
-        return Err(ModelError::Unsupported("only RGB8 non-interlaced PNG supported"));
+        return Err(ModelError::Unsupported(
+            "only RGB8 non-interlaced PNG supported",
+        ));
     }
 
     let decompressed = decompress_to_vec_zlib(&idat_data).map_err(|_| ModelError::Decompression)?;
@@ -711,7 +708,12 @@ fn decode_png(data: &[u8]) -> Result<(u32, u32, Vec<Rgba8888>), ModelError> {
 
         for px in 0..width as usize {
             let idx = px * bytes_per_pixel;
-            output.push(Rgba8888::rgba(cur_row[idx], cur_row[idx + 1], cur_row[idx + 2], 255));
+            output.push(Rgba8888::rgba(
+                cur_row[idx],
+                cur_row[idx + 1],
+                cur_row[idx + 2],
+                255,
+            ));
         }
 
         core::mem::swap(&mut cur_row, &mut prev_row);
