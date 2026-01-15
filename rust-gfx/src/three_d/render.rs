@@ -268,9 +268,9 @@ fn rasterize_triangle<R: Rasterizer>(
     area *= orient;
     let inv_area = 1.0 / area;
 
-    let step_x0 = (p1.y - p2.y) * orient;
-    let step_x1 = (p2.y - p0.y) * orient;
-    let step_x2 = (p0.y - p1.y) * orient;
+    let step_x0 = (p2.y - p1.y) * orient;
+    let step_x1 = (p0.y - p2.y) * orient;
+    let step_x2 = (p1.y - p0.y) * orient;
 
     let min_x = p0.x.min(p1.x.min(p2.x)).floor() as i32;
     let max_x = p0.x.max(p1.x.max(p2.x)).ceil() as i32;
