@@ -140,11 +140,7 @@ fn placeholder_message() -> String {
     s
 }
 
-fn draw_interface(
-    surface: &mut DrawingSurface,
-    messages: &[String; 3],
-    connected: bool,
-) {
+fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connected: bool) {
     let width = surface.width() as i32;
     let height = surface.height() as i32;
 

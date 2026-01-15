@@ -1,6 +1,7 @@
 use crate::system::app::app_context::AppContext;
 use crate::system::services::gyro_accel_srv::{latest_orientation, wait_for_orientation_update};
 use crate::system::ui::drawing_surface::DrawingSurface;
+use crate::util::math::primitives as util_math;
 use alloc::vec::Vec;
 use defmt::{error, info};
 use embassy_time::{with_timeout, Duration, Instant, Timer};
@@ -8,7 +9,6 @@ use rust_gfx::color::Rgba8888;
 use rust_gfx::three_d::{
     load_glb, render_scene, Camera, Mat4, Quaternion, RenderOptions, ShadingMode, Vec3,
 };
-use crate::util::math::primitives as util_math;
 
 const GLB_DATA: &[u8] = include_bytes!("../assets/arrow2.glb");
 
@@ -64,7 +64,9 @@ pub async fn arrow_app(context: AppContext) {
     let mut last_log = Instant::now();
     let mut frame_counter = 0u32;
 
-    let mut orientation = latest_orientation().await.unwrap_or_else(util_math::Quaternion::identity);
+    let mut orientation = latest_orientation()
+        .await
+        .unwrap_or_else(util_math::Quaternion::identity);
     let mut reference_orientation: Option<util_math::Quaternion> = None;
 
     let render_options = RenderOptions {
@@ -102,12 +104,7 @@ pub async fn arrow_app(context: AppContext) {
         let adjusted = util_conjugate(relative);
         let adjusted = util_normalize(adjusted);
 
-        let gfx_orientation = Quaternion::new(
-            adjusted.w,
-            adjusted.x,
-            adjusted.y,
-            adjusted.z,
-        );
+        let gfx_orientation = Quaternion::new(adjusted.w, adjusted.x, adjusted.y, adjusted.z);
         let rotation = Mat4::from_quaternion(gfx_orientation);
         for (node, base) in scene.nodes.iter_mut().zip(base_transforms.iter()) {
             let mut updated = rotation.mul_mat4(base);

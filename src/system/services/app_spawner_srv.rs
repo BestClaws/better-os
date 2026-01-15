@@ -6,6 +6,7 @@ use crate::system::ui::windowing::WindowManager;
 
 use crate::apps::arrow::arrow_app;
 use crate::apps::discord::discord_app;
+use crate::apps::heap_monitor::heap_monitor_app;
 // TODO: Re-enable after HPS integration complete
 // use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::gfx_bench::gfx_bench_app; // Disabled - uses Text
@@ -28,11 +29,16 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 1,
     //     spawn_fn: spawn_gray_test_app,
     // },
-    // AppDescriptor {
-    //     name: "Discord",
-    //     id: 2,
-    //     spawn_fn: spawn_discord_app,
-    // },
+    AppDescriptor {
+        name: "Discord",
+        id: 2,
+        spawn_fn: spawn_discord_app,
+    },
+    AppDescriptor {
+        name: "Heap Monitor",
+        id: 6,
+        spawn_fn: spawn_heap_monitor_app,
+    },
     // AppDescriptor {
     //     name: "Bluetooth Scanner",
     //     id: 5,
@@ -43,11 +49,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 4,
     //     spawn_fn: spawn_text_demo_app,
     // },
-    // AppDescriptor {
-    //     name: "Watch",
-    //     id: 1,
-    //     spawn_fn: spawn_watch_app,
-    // },
+    AppDescriptor {
+        name: "Watch",
+        id: 1,
+        spawn_fn: spawn_watch_app,
+    },
     // AppDescriptor {
     //     name: "GFX Benchmark",
     //     id: 3,
@@ -255,6 +261,13 @@ fn spawn_discord_app(
     spawner.spawn(discord_app(context))
 }
 
+fn spawn_heap_monitor_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(heap_monitor_app(context))
+}
+
 // TODO: Re-enable after HPS integration complete
 /*
 fn spawn_bluetooth_scanner_app(
@@ -333,8 +346,8 @@ impl DynamicAppSpawner {
 #[cfg(feature = "app-health-monitoring")]
 mod health_monitor {
     use super::*;
-    use embassy_time::{Duration, Timer};
     use alloc::collections::BTreeMap;
+    use embassy_time::{Duration, Timer};
 
     /// Application health status
     #[derive(Debug, Clone, Copy)]

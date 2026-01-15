@@ -58,20 +58,14 @@ impl HpsGattConnector {
     }
 
     /// Read from a characteristic
-    pub async fn read_characteristic(
-        &mut self,
-        handle: u16,
-    ) -> Result<Vec<u8>, HpsError> {
+    pub async fn read_characteristic(&mut self, handle: u16) -> Result<Vec<u8>, HpsError> {
         debug!("HPS GATT: Reading from handle {}", handle);
         warn!("HPS GATT: read_characteristic() - stub, moving to service task");
         Ok(Vec::new())
     }
 
     /// Read from a characteristic using Read Long procedure
-    pub async fn read_long_characteristic(
-        &mut self,
-        handle: u16,
-    ) -> Result<Vec<u8>, HpsError> {
+    pub async fn read_long_characteristic(&mut self, handle: u16) -> Result<Vec<u8>, HpsError> {
         debug!("HPS GATT: Reading (long) from handle {}", handle);
         warn!("HPS GATT: read_long_characteristic() - stub, moving to service task");
         Ok(Vec::new())
@@ -92,10 +86,7 @@ impl HpsGattConnector {
     }
 
     /// Wait for next notification on a specific characteristic
-    pub async fn wait_for_notification(
-        &mut self,
-        handle: u16,
-    ) -> Result<Vec<u8>, HpsError> {
+    pub async fn wait_for_notification(&mut self, handle: u16) -> Result<Vec<u8>, HpsError> {
         debug!("HPS GATT: Waiting for notification on handle {}", handle);
         warn!("HPS GATT: wait_for_notification() - stub, moving to service task");
         Err(HpsError::Timeout)

@@ -8,8 +8,7 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 
 pub static ORIENTATION_CHANNEL: Signal<CriticalSectionRawMutex, Quaternion> = Signal::new();
-static ORIENTATION_STATE: Mutex<CriticalSectionRawMutex, Option<Quaternion>> =
-    Mutex::new(None);
+static ORIENTATION_STATE: Mutex<CriticalSectionRawMutex, Option<Quaternion>> = Mutex::new(None);
 
 /// Returns the latest orientation sample if available.
 pub async fn latest_orientation() -> Option<Quaternion> {

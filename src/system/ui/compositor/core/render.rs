@@ -76,11 +76,7 @@ impl UICompositor {
         );
     }
 
-    fn collect_dirty_regions(
-        &mut self,
-        wm: &mut WindowManager,
-        handle: WindowHandle,
-    ) -> Vec<Rect> {
+    fn collect_dirty_regions(&mut self, wm: &mut WindowManager, handle: WindowHandle) -> Vec<Rect> {
         let mut out = Vec::with_capacity(8);
         let _ = wm.with_surface(handle, |surface| {
             for region in surface.dirty_regions() {

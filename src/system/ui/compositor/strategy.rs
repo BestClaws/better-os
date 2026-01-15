@@ -8,10 +8,7 @@ pub enum UpdateStrategy {
     Partial(Vec<Rect>),
 }
 
-pub fn determine_update_strategy(
-    full_area: u32,
-    dirty_regions: &[Rect],
-) -> UpdateStrategy {
+pub fn determine_update_strategy(full_area: u32, dirty_regions: &[Rect]) -> UpdateStrategy {
     if dirty_regions.is_empty() {
         return UpdateStrategy::FullScreen;
     }

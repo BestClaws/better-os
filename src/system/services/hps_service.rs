@@ -165,26 +165,22 @@ pub(crate) async fn hps_service(
             if observations.is_empty() {
                 info!("HPS: Scan observed no advertising devices");
             } else {
-                info!("HPS: Scan observed {} advertising devices", observations.len());
+                info!(
+                    "HPS: Scan observed {} advertising devices",
+                    observations.len()
+                );
                 for entry in &observations {
-                    let name = entry
-                        .name
-                        .as_deref()
-                        .unwrap_or("(unknown)");
+                    let name = entry.name.as_deref().unwrap_or("(unknown)");
                     let addr_kind = describe_addr_kind(entry.addr_kind);
                     if entry.has_hps {
                         info!(
                             "HPS:   [HTTP Proxy] {} ({}) @ {=[u8]:02X}",
-                            name,
-                            addr_kind,
-                            entry.addr
+                            name, addr_kind, entry.addr
                         );
                     } else {
                         info!(
                             "HPS:   [generic] {} ({}) @ {=[u8]:02X}",
-                            name,
-                            addr_kind,
-                            entry.addr
+                            name, addr_kind, entry.addr
                         );
                     }
                 }
@@ -231,7 +227,10 @@ pub(crate) async fn hps_service(
                         target_addr,
                         describe_addr_kind(target_kind)
                     );
-                    info!("HPS: Using {} address type; scanning until peer responds", describe_addr_kind(target_kind));
+                    info!(
+                        "HPS: Using {} address type; scanning until peer responds",
+                        describe_addr_kind(target_kind)
+                    );
 
                     let config = ConnectConfig {
                         connect_params: ConnectParams {

@@ -17,9 +17,7 @@ pub(super) struct ScratchFrame {
 
 impl ScratchFrame {
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     pub fn acquire(&mut self, width: u32, height: u32, format: PixelFormat) -> &mut [u8] {
