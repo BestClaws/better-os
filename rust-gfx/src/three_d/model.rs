@@ -4,24 +4,10 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::TryInto;
-use heapless::Vec as HeapVec;
 use micromath::F32Ext;
 use miniz_oxide::inflate::decompress_to_vec_zlib;
 use serde::Deserialize;
 use serde_json_core::de::from_slice;
-
-const MAX_BUFFERS: usize = 4;
-const MAX_BUFFER_VIEWS: usize = 128;
-const MAX_ACCESSORS: usize = 128;
-const MAX_MESHES: usize = 32;
-const MAX_PRIMITIVES: usize = 16;
-const MAX_NODES: usize = 64;
-const MAX_NODE_CHILDREN: usize = 16;
-const MAX_SCENES: usize = 8;
-const MAX_SCENE_NODES: usize = 32;
-const MAX_MATERIALS: usize = 32;
-const MAX_TEXTURES: usize = 32;
-const MAX_IMAGES: usize = 32;
 
 #[derive(Clone, Debug, Default)]
 pub struct Vertex {
@@ -150,7 +136,7 @@ struct MeshDef<'a> {
     #[serde(default)]
     #[serde(borrow)]
     name: Option<&'a str>,
-    primitives: HeapVec<MeshPrimitive, MAX_PRIMITIVES>,
+    primitives: Vec<MeshPrimitive>,
 }
 
 #[derive(Deserialize, Default)]
@@ -169,13 +155,13 @@ struct NodeDef<'a> {
     #[serde(default)]
     matrix: Option<[f32; 16]>,
     #[serde(default)]
-    children: Option<HeapVec<u32, MAX_NODE_CHILDREN>>,
+    children: Option<Vec<u32>>,
 }
 
 #[derive(Deserialize, Default)]
 struct SceneDef {
     #[serde(default)]
-    nodes: HeapVec<u32, MAX_SCENE_NODES>,
+    nodes: Vec<u32>,
 }
 
 #[derive(Deserialize, Default)]
@@ -223,26 +209,26 @@ struct ImageDef<'a> {
 #[serde(bound(deserialize = "'de: 'a"))]
 struct Gltf<'a> {
     #[serde(default)]
-    buffers: HeapVec<Buffer, MAX_BUFFERS>,
+    buffers: Vec<Buffer>,
     #[serde(rename = "bufferViews")]
     #[serde(default)]
-    buffer_views: HeapVec<BufferView, MAX_BUFFER_VIEWS>,
+    buffer_views: Vec<BufferView>,
     #[serde(default)]
-    accessors: HeapVec<Accessor<'a>, MAX_ACCESSORS>,
+    accessors: Vec<Accessor<'a>>,
     #[serde(default)]
-    meshes: HeapVec<MeshDef<'a>, MAX_MESHES>,
+    meshes: Vec<MeshDef<'a>>,
     #[serde(default)]
-    nodes: HeapVec<NodeDef<'a>, MAX_NODES>,
+    nodes: Vec<NodeDef<'a>>,
     #[serde(default)]
-    scenes: HeapVec<SceneDef, MAX_SCENES>,
+    scenes: Vec<SceneDef>,
     #[serde(default)]
     scene: Option<u32>,
     #[serde(default)]
-    materials: HeapVec<MaterialDef<'a>, MAX_MATERIALS>,
+    materials: Vec<MaterialDef<'a>>,
     #[serde(default)]
-    textures: HeapVec<TextureDef, MAX_TEXTURES>,
+    textures: Vec<TextureDef>,
     #[serde(default)]
-    images: HeapVec<ImageDef<'a>, MAX_IMAGES>,
+    images: Vec<ImageDef<'a>>,
 }
 
 pub fn load_glb(bytes: &[u8]) -> Result<Scene, ModelError> {
@@ -430,12 +416,7 @@ pub fn load_glb(bytes: &[u8]) -> Result<Scene, ModelError> {
     })
 }
 
-fn gather_nodes(
-    node_idx: usize,
-    nodes: &HeapVec<NodeDef<'_>, MAX_NODES>,
-    output: &mut Vec<Node>,
-    parent: Mat4,
-) {
+fn gather_nodes(node_idx: usize, nodes: &[NodeDef<'_>], output: &mut Vec<Node>, parent: Mat4) {
     if let Some(node_def) = nodes.get(node_idx) {
         let local = build_node_transform(node_def);
         let world = parent.mul_mat4(&local);
@@ -488,7 +469,7 @@ fn build_node_transform(node: &NodeDef<'_>) -> Mat4 {
 
 fn decode_png_from_view(
     image: &ImageDef<'_>,
-    views: &HeapVec<BufferView, MAX_BUFFER_VIEWS>,
+    views: &[BufferView],
     binary: &[u8],
 ) -> Result<(u32, u32, Vec<Rgba8888>, Option<String>), ModelError> {
     let view = views
@@ -518,8 +499,8 @@ fn slice_view<'a>(
 
 fn read_vec3(
     accessor_idx: usize,
-    accessors: &HeapVec<Accessor<'_>, MAX_ACCESSORS>,
-    views: &HeapVec<BufferView, MAX_BUFFER_VIEWS>,
+    accessors: &[Accessor<'_>],
+    views: &[BufferView],
     binary: &[u8],
 ) -> Result<Vec<Vec3>, ModelError> {
     let accessor = accessors
@@ -555,8 +536,8 @@ fn read_vec3(
 
 fn read_vec2(
     accessor_idx: usize,
-    accessors: &HeapVec<Accessor<'_>, MAX_ACCESSORS>,
-    views: &HeapVec<BufferView, MAX_BUFFER_VIEWS>,
+    accessors: &[Accessor<'_>],
+    views: &[BufferView],
     binary: &[u8],
 ) -> Result<Vec<Vec2>, ModelError> {
     let accessor = accessors
@@ -591,8 +572,8 @@ fn read_vec2(
 
 fn read_indices(
     accessor_idx: usize,
-    accessors: &HeapVec<Accessor<'_>, MAX_ACCESSORS>,
-    views: &HeapVec<BufferView, MAX_BUFFER_VIEWS>,
+    accessors: &[Accessor<'_>],
+    views: &[BufferView],
     binary: &[u8],
 ) -> Result<Vec<u32>, ModelError> {
     let accessor = accessors
