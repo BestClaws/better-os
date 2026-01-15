@@ -42,6 +42,10 @@ impl HpsScanHandler {
         self.found_addr.borrow_mut().take()
     }
 
+    pub(crate) fn peek_found_device(&self) -> Option<(AddrKind, [u8; 6])> {
+        self.found_addr.borrow().clone()
+    }
+
     pub(crate) fn snapshot_results(&self) -> Vec<ScanObservation> {
         self.results.borrow().clone()
     }

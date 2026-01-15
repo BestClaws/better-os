@@ -72,9 +72,26 @@ pub(crate) async fn hps_service(
         let (target_kind, target_addr) = loop {
             handler.prepare_for_scan();
             info!("HPS: Scanning up to 10s for HTTP Proxy advertisements...");
+
+            let mut session_active = false;
             match scanner.scan(&scan_config).await {
-                Ok(_session) => {
-                    Timer::after(Duration::from_secs(10)).await;
+                Ok(session) => {
+                    session_active = true;
+                    let mut session = Some(session);
+                    let poll_interval = Duration::from_millis(200);
+                    let mut elapsed = Duration::from_millis(0);
+                    let timeout = scan_config.timeout;
+
+                    while elapsed < timeout {
+                        if handler.peek_found_device().is_some() {
+                            info!("HPS: HTTP Proxy candidate observed; ending scan early");
+                            break;
+                        }
+                        Timer::after(poll_interval).await;
+                        elapsed += poll_interval;
+                    }
+
+                    drop(session.take());
                     info!("HPS: Scan finished; compiling advertisement list...");
                 }
                 Err(e) => {
@@ -116,7 +133,11 @@ pub(crate) async fn hps_service(
                 break (addr_kind, addr);
             }
 
-            warn!("HPS: HTTP Proxy service not observed during scan window; retrying after 2s...");
+            if session_active {
+                warn!(
+                    "HPS: HTTP Proxy service not observed during scan window; retrying after 2s..."
+                );
+            }
             Timer::after(Duration::from_secs(2)).await;
         };
 
@@ -236,7 +257,12 @@ pub(crate) async fn hps_service(
                                     signal_ready();
 
                                     loop {
-                                        match request_rx.try_receive() {
+                                        match with_timeout(
+                                            Duration::from_millis(250),
+                                            request_rx.receive(),
+                                        )
+                                        .await
+                                        {
                                             Ok(request) => {
                                                 info!(
                                                     "HPS: Received {} request to {}",
@@ -252,7 +278,10 @@ pub(crate) async fn hps_service(
                                                 let _ = response_tx.send(response).await;
                                             }
                                             Err(_) => {
-                                                Timer::after(Duration::from_millis(100)).await;
+                                                if !conn.is_connected() {
+                                                    info!("HPS: Link lost during idle wait");
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
