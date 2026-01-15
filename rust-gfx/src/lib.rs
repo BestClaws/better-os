@@ -9,6 +9,7 @@ pub mod math;
 pub mod primitives;
 pub mod rasterizer;
 pub mod types;
+pub mod three_d;
 
 #[cfg(feature = "std")]
 pub mod bmp;

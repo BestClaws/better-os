@@ -26,11 +26,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 1,
     //     spawn_fn: spawn_gray_test_app,
     // },
-    AppDescriptor {
-        name: "Discord",
-        id: 2,
-        spawn_fn: spawn_discord_app,
-    },
+    // AppDescriptor {
+    //     name: "Discord",
+    //     id: 2,
+    //     spawn_fn: spawn_discord_app,
+    // },
     // AppDescriptor {
     //     name: "Bluetooth Scanner",
     //     id: 5,
@@ -41,21 +41,21 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
     //     id: 4,
     //     spawn_fn: spawn_text_demo_app,
     // },
-    AppDescriptor {
-        name: "Watch",
-        id: 1,
-        spawn_fn: spawn_watch_app,
-    },
+    // AppDescriptor {
+    //     name: "Watch",
+    //     id: 1,
+    //     spawn_fn: spawn_watch_app,
+    // },
     // AppDescriptor {
     //     name: "GFX Benchmark",
     //     id: 3,
     //     spawn_fn: spawn_gfx_bench_app,
     // },
-    // AppDescriptor {
-    //     name: "3D Arrow",
-    //     id: 5,
-    //     spawn_fn: spawn_arrow_app,
-    // },
+    AppDescriptor {
+        name: "3D Arrow",
+        id: 5,
+        spawn_fn: spawn_arrow_app,
+    },
 ];
 
 /// Application descriptor for registration
