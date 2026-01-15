@@ -8,7 +8,7 @@ use rust_gfx::three_d::{
     load_glb, render_scene, Camera, Mat4, Quaternion, RenderOptions, ShadingMode, Vec3,
 };
 
-const GLB_DATA: &[u8] = include_bytes!("../assets/arrow2.glb");
+const GLB_DATA: &[u8] = include_bytes!("../assets/arrow3.glb");
 
 #[embassy_executor::task]
 pub async fn arrow_app(context: AppContext) {
@@ -33,7 +33,7 @@ pub async fn arrow_app(context: AppContext) {
 
     let render_options = RenderOptions {
         mode: ShadingMode::Lit,
-        overlay_wireframe: true,
+        overlay_wireframe: false,
         wireframe_color: Rgba8888::rgb(90, 200, 255),
         light_direction: Vec3::new(0.4, -0.6, -1.0),
         ambient_intensity: 0.25,
@@ -52,7 +52,7 @@ pub async fn arrow_app(context: AppContext) {
         angle += 0.04;
         for (node, base) in scene.nodes.iter_mut().zip(base_transforms.iter()) {
             let rotation = Mat4::from_quaternion(Quaternion::from_axis_angle(
-                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 1.0, 1.0),
                 angle,
             ));
             node.transform = rotation.mul_mat4(base);
@@ -65,7 +65,7 @@ pub async fn arrow_app(context: AppContext) {
                 let aspect = if height > 0.0 { width / height } else { 1.0 };
 
                 let camera = Camera::look_at_perspective(
-                    Vec3::new(0.0, 0.0, 4.0),
+                    Vec3::new(0.0, 0.0, 3.0),
                     Vec3::new(0.0, 0.0, 0.0),
                     Vec3::new(0.0, 1.0, 0.0),
                     45.0f32.to_radians(),

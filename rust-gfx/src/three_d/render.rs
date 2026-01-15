@@ -142,6 +142,7 @@ fn render_mesh<R: Rasterizer>(
 
     let model_view = camera.view.mul_mat4(model_matrix);
     let mvp = camera.projection.mul_mat4(&model_view);
+    let normal_matrix = compute_normal_matrix(model_matrix);
 
     let mut prepared: Vec<PreparedVertex> = Vec::with_capacity(mesh.vertices.len());
     for v in mesh.vertices.iter() {
@@ -166,7 +167,7 @@ fn render_mesh<R: Rasterizer>(
         let ndc_z = clip.z * inv_w;
         let sx = (ndc_x * 0.5 + 0.5) * (width - 1.0);
         let sy = (1.0 - (ndc_y * 0.5 + 0.5)) * (height - 1.0);
-        let normal_world = model_matrix.transform_direction(v.normal).normalize();
+        let normal_world = transform_normal(&normal_matrix, v.normal).normalize();
 
         prepared.push(PreparedVertex {
             clip,
@@ -468,6 +469,48 @@ fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Rgba8
     if min_x <= max_x && min_y <= max_y {
         rasterizer.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
     }
+}
+
+fn compute_normal_matrix(model: &Mat4) -> [[f32; 3]; 3] {
+    let a00 = model.m[0][0];
+    let a01 = model.m[0][1];
+    let a02 = model.m[0][2];
+    let a10 = model.m[1][0];
+    let a11 = model.m[1][1];
+    let a12 = model.m[1][2];
+    let a20 = model.m[2][0];
+    let a21 = model.m[2][1];
+    let a22 = model.m[2][2];
+
+    let det = a00 * (a11 * a22 - a12 * a21)
+        - a01 * (a10 * a22 - a12 * a20)
+        + a02 * (a10 * a21 - a11 * a20);
+
+    if det.abs() < 1.0e-8 {
+        return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    }
+
+    let inv_det = 1.0 / det;
+
+    let i00 = (a11 * a22 - a12 * a21) * inv_det;
+    let i01 = (a02 * a21 - a01 * a22) * inv_det;
+    let i02 = (a01 * a12 - a02 * a11) * inv_det;
+    let i10 = (a12 * a20 - a10 * a22) * inv_det;
+    let i11 = (a00 * a22 - a02 * a20) * inv_det;
+    let i12 = (a02 * a10 - a00 * a12) * inv_det;
+    let i20 = (a10 * a21 - a11 * a20) * inv_det;
+    let i21 = (a01 * a20 - a00 * a21) * inv_det;
+    let i22 = (a00 * a11 - a01 * a10) * inv_det;
+
+    [[i00, i10, i20], [i01, i11, i21], [i02, i12, i22]]
+}
+
+fn transform_normal(matrix: &[[f32; 3]; 3], normal: Vec3) -> Vec3 {
+    Vec3::new(
+        matrix[0][0] * normal.x + matrix[0][1] * normal.y + matrix[0][2] * normal.z,
+        matrix[1][0] * normal.x + matrix[1][1] * normal.y + matrix[1][2] * normal.z,
+        matrix[2][0] * normal.x + matrix[2][1] * normal.y + matrix[2][2] * normal.z,
+    )
 }
 
 fn edge_fn(a: &Vec3, b: &Vec3, x: f32, y: f32) -> f32 {

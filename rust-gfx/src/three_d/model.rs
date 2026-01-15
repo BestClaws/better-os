@@ -8,6 +8,10 @@ use micromath::F32Ext;
 use miniz_oxide::inflate::decompress_to_vec_zlib;
 use serde::Deserialize;
 use serde_json_core::de::from_slice;
+use zune_core::bytestream::ZCursor;
+use zune_core::colorspace::ColorSpace;
+use zune_core::options::DecoderOptions;
+use zune_jpeg::JpegDecoder;
 
 #[derive(Clone, Debug, Default)]
 pub struct Vertex {
@@ -288,10 +292,7 @@ pub fn load_glb(bytes: &[u8]) -> Result<Scene, ModelError> {
             .images
             .get(image_idx)
             .ok_or(ModelError::Unsupported("texture source index"))?;
-        if image_def.mime_type != "image/png" {
-            return Err(ModelError::Unsupported("only PNG textures are supported"));
-        }
-        let (w, h, data, name) = decode_png_from_view(image_def, &doc.buffer_views, binary)?;
+        let (w, h, data, name) = decode_image_from_view(image_def, &doc.buffer_views, binary)?;
         textures.push(Texture {
             name,
             width: w,
@@ -467,7 +468,7 @@ fn build_node_transform(node: &NodeDef<'_>) -> Mat4 {
     t.mul_mat4(&r).mul_mat4(&s)
 }
 
-fn decode_png_from_view(
+fn decode_image_from_view(
     image: &ImageDef<'_>,
     views: &[BufferView],
     binary: &[u8],
@@ -476,8 +477,14 @@ fn decode_png_from_view(
         .get(image.buffer_view as usize)
         .ok_or(ModelError::Unsupported("image buffer view index"))?;
     let slice = slice_view(view, binary, 0, view.byte_length as usize)?;
-    let (w, h, data) = decode_png(slice)?;
-    Ok((w, h, data, image.name.map(|s| s.to_string())))
+
+    let (width, height, data) = match image.mime_type {
+        "image/png" => decode_png(slice)?,
+        "image/jpeg" | "image/jpg" => decode_jpeg(slice)?,
+        _ => return Err(ModelError::Unsupported("unsupported image mime type")),
+    };
+
+    Ok((width, height, data, image.name.map(|s| s.to_string())))
 }
 
 fn slice_view<'a>(
@@ -708,6 +715,31 @@ fn decode_png(data: &[u8]) -> Result<(u32, u32, Vec<Rgba8888>), ModelError> {
         }
 
         core::mem::swap(&mut cur_row, &mut prev_row);
+    }
+
+    Ok((width, height, output))
+}
+
+fn decode_jpeg(data: &[u8]) -> Result<(u32, u32, Vec<Rgba8888>), ModelError> {
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::RGBA);
+    let mut decoder = JpegDecoder::new_with_options(ZCursor::new(data), options);
+    let pixels = decoder
+        .decode()
+        .map_err(|_| ModelError::Unsupported("jpeg decode failed"))?;
+    let info = decoder
+        .info()
+        .ok_or(ModelError::Unsupported("jpeg info unavailable"))?;
+
+    let width = info.width as u32;
+    let height = info.height as u32;
+    let expected = width as usize * height as usize * 4;
+    if pixels.len() != expected {
+        return Err(ModelError::Unsupported("jpeg pixel count mismatch"));
+    }
+
+    let mut output = Vec::with_capacity(width as usize * height as usize);
+    for chunk in pixels.chunks_exact(4) {
+        output.push(Rgba8888::rgba(chunk[0], chunk[1], chunk[2], chunk[3]));
     }
 
     Ok((width, height, output))
