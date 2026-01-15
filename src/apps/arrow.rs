@@ -12,38 +12,6 @@ use rust_gfx::three_d::{
 
 const GLB_DATA: &[u8] = include_bytes!("../assets/arrow2.glb");
 
-fn util_conjugate(q: util_math::Quaternion) -> util_math::Quaternion {
-    util_math::Quaternion {
-        w: q.w,
-        x: -q.x,
-        y: -q.y,
-        z: -q.z,
-    }
-}
-
-fn util_mul(a: util_math::Quaternion, b: util_math::Quaternion) -> util_math::Quaternion {
-    util_math::Quaternion {
-        w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
-        x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-        y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-        z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-    }
-}
-
-fn util_normalize(q: util_math::Quaternion) -> util_math::Quaternion {
-    let mag = q.magnitude();
-    if mag > 1.0e-6 {
-        util_math::Quaternion {
-            w: q.w / mag,
-            x: q.x / mag,
-            y: q.y / mag,
-            z: q.z / mag,
-        }
-    } else {
-        util_math::Quaternion::identity()
-    }
-}
-
 #[embassy_executor::task]
 pub async fn arrow_app(context: AppContext) {
     let mut scene = match load_glb(GLB_DATA) {
@@ -93,16 +61,15 @@ pub async fn arrow_app(context: AppContext) {
             orientation = new_orientation;
         }
 
-        orientation = util_normalize(orientation);
+        orientation = orientation.normalize();
         if reference_orientation.is_none() {
             // Capture the initial pose so the arrow starts level when the device rests.
             reference_orientation = Some(orientation);
         }
 
         let reference = reference_orientation.unwrap();
-        let relative = util_mul(util_conjugate(reference), orientation);
-        let adjusted = util_conjugate(relative);
-        let adjusted = util_normalize(adjusted);
+        let relative = reference.conjugate().mul(&orientation);
+        let adjusted = relative.conjugate().normalize();
 
         let gfx_orientation = Quaternion::new(adjusted.w, adjusted.x, adjusted.y, adjusted.z);
         let rotation = Mat4::from_quaternion(gfx_orientation);

@@ -90,8 +90,8 @@ pub async fn ui_compositor_service(
     loop {
         let frame_start = Instant::now();
 
-        // Idle refresh for dynamic content updates.
-        Timer::after(Duration::from_millis(0)).await;
+        // Idle refresh for dynamic content updates without spinning.
+        Timer::after(Duration::from_millis(1)).await;
 
         let redraw_duration = {
             let redraw_start = Instant::now();

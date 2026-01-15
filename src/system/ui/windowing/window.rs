@@ -4,7 +4,7 @@ use crate::system::resources::framebuffer::{FrameBufferHandle, FRAMEBUFFER_POOL}
 use crate::system::resources::input_channels::CHANNEL_CAPACITY;
 use crate::system::resources::input_channels::{InputChannelHandle, INPUT_CHANNEL_POOL};
 use crate::system::ui::drawing_surface::DrawingSurface;
-use defmt::Format;
+use defmt::{warn, Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 
@@ -99,15 +99,19 @@ impl Window {
 
     /// Release held framebuffer and input channel.
     pub fn relax(&mut self) {
-        assert!(self.fb.is_some());
-        assert!(self.input_channel.is_some());
-
         if let Some(surface) = self.surface.as_mut() {
             surface.detach_buffer();
         }
-        FRAMEBUFFER_POOL.release(self.fb.as_mut().unwrap());
-        INPUT_CHANNEL_POOL.release(self.input_channel.as_ref().unwrap());
-        self.fb = None;
-        self.input_channel = None;
+        if let Some(fb_handle) = self.fb.take() {
+            FRAMEBUFFER_POOL.release(&fb_handle);
+        } else {
+            warn!("Window {:?} released without framebuffer", self.handle());
+        }
+
+        if let Some(channel_handle) = self.input_channel.take() {
+            INPUT_CHANNEL_POOL.release(&channel_handle);
+        } else {
+            warn!("Window {:?} released without input channel", self.handle());
+        }
     }
 }

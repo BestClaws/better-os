@@ -83,11 +83,16 @@ impl Quaternion {
     /// The process divides each component by the quaternion's magnitude.
     pub fn normalize(&self) -> Self {
         let m = self.magnitude();
-        Self {
-            w: self.w / m,
-            x: self.x / m,
-            y: self.y / m,
-            z: self.z / m,
+        if m > 1.0e-6 {
+            let inv = 1.0 / m;
+            Self {
+                w: self.w * inv,
+                x: self.x * inv,
+                y: self.y * inv,
+                z: self.z * inv,
+            }
+        } else {
+            Self::identity()
         }
     }
 
@@ -98,6 +103,26 @@ impl Quaternion {
             x: 0.0,
             y: 0.0,
             z: 0.0,
+        }
+    }
+
+    /// Returns the conjugate (inverse for unit quaternions).
+    pub fn conjugate(&self) -> Self {
+        Self {
+            w: self.w,
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+
+    /// Multiplies two quaternions using Hamilton product rules.
+    pub fn mul(&self, rhs: &Self) -> Self {
+        Self {
+            w: self.w * rhs.w - self.x * rhs.x - self.y * rhs.y - self.z * rhs.z,
+            x: self.w * rhs.x + self.x * rhs.w + self.y * rhs.z - self.z * rhs.y,
+            y: self.w * rhs.y - self.x * rhs.z + self.y * rhs.w + self.z * rhs.x,
+            z: self.w * rhs.z + self.x * rhs.y - self.y * rhs.x + self.z * rhs.w,
         }
     }
 }
