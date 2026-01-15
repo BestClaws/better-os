@@ -11,8 +11,9 @@ use embedded_hal_async::i2c::{I2c, SevenBitAddress};
 // CONSTANTS AND REGISTER DEFINITIONS
 // ============================================================================
 
-/// QMI8658C I2C device address
-const DEVICE_ADDRESS: SevenBitAddress = 0x6B;
+/// QMI8658C I2C device addresses (see datasheet §12.2)
+const DEVICE_ADDRESS_LOW: SevenBitAddress = 0x6A;
+const DEVICE_ADDRESS_HIGH: SevenBitAddress = 0x6B;
 
 /// Expected WHO_AM_I register response for device identification
 const EXPECTED_CHIP_ID: u8 = 0x05;
@@ -29,12 +30,35 @@ const OPERATION_TIMEOUT_MS: u64 = 500;
 /// Data ready polling interval (milliseconds)
 const DATA_READY_POLL_MS: u64 = 1;
 
+/// Supported I2C address options configured via the SA0 strap.
+#[derive(Clone, Copy, Debug, Format)]
+pub enum Qmi8658Address {
+    /// SA0 pulled low (device address 0x6A)
+    Low,
+    /// SA0 pulled high (device address 0x6B)
+    High,
+    /// Explicit 7-bit address for custom wiring
+    Custom(SevenBitAddress),
+}
+
+impl Qmi8658Address {
+    fn as_u8(self) -> SevenBitAddress {
+        match self {
+            Qmi8658Address::Low => DEVICE_ADDRESS_LOW,
+            Qmi8658Address::High => DEVICE_ADDRESS_HIGH,
+            Qmi8658Address::Custom(addr) => addr,
+        }
+    }
+}
+
 // Register addresses - following datasheet naming convention
 mod registers {
     pub const WHO_AM_I: u8 = 0x00;
     pub const REVISION: u8 = 0x01;
     pub const CTRL1: u8 = 0x02;
     pub const CTRL2: u8 = 0x03;
+    pub const CTRL3: u8 = 0x04;
+    pub const CTRL5: u8 = 0x06;
     pub const CTRL7: u8 = 0x08;
     pub const RESET: u8 = 0x60;
     pub const RESET_RESULT: u8 = 0x4D;
@@ -52,11 +76,24 @@ mod registers {
 // Register bit masks and values
 mod register_bits {
     // CTRL1 register bits
+    pub const CTRL1_SPI_3WIRE: u8 = 1 << 7;
     pub const CTRL1_ADDR_AUTO_INCREMENT: u8 = 1 << 6;
+    pub const CTRL1_SENSOR_DISABLE: u8 = 1 << 0;
 
     // CTRL7 register bits - sensor enable/disable
+    pub const CTRL7_SYNC_SAMPLE: u8 = 1 << 7;
+    pub const CTRL7_SYS_HS: u8 = 1 << 6;
+    pub const CTRL7_GYRO_SNOOZE: u8 = 1 << 4;
     pub const CTRL7_ACCEL_ENABLE: u8 = 1 << 0;
     pub const CTRL7_GYRO_ENABLE: u8 = 1 << 1;
+
+    // CTRL5 register bits - low pass filters
+    pub const CTRL5_ACCEL_LPF_ENABLE: u8 = 1 << 0;
+    pub const CTRL5_ACCEL_LPF_MODE_MASK: u8 = 0b0000_0110;
+    pub const CTRL5_ACCEL_LPF_MODE_SHIFT: u8 = 1;
+    pub const CTRL5_GYRO_LPF_ENABLE: u8 = 1 << 4;
+    pub const CTRL5_GYRO_LPF_MODE_MASK: u8 = 0b0110_0000;
+    pub const CTRL5_GYRO_LPF_MODE_SHIFT: u8 = 5;
 
     // STATUS0 register bits - data ready flags
     pub const STATUS0_ACCEL_READY: u8 = 1 << 0;
@@ -67,8 +104,8 @@ mod register_bits {
 // CONFIGURATION ENUMS
 // ============================================================================
 
-/// Accelerometer measurement range configuration
-#[derive(Debug, Clone, Copy)]
+/// Accelerometer measurement range configuration (CTRL2 aFS)
+#[derive(Debug, Clone, Copy, Format)]
 #[repr(u8)]
 pub enum AccelRange {
     /// ±2g range, highest resolution
@@ -97,9 +134,15 @@ impl AccelRange {
 }
 
 /// Accelerometer output data rate (ODR) configuration
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Format)]
 #[repr(u8)]
 pub enum AccelODR {
+    /// 8000 Hz - maximum bandwidth
+    Freq8000Hz = 0,
+    /// 4000 Hz - reduced bandwidth
+    Freq4000Hz = 1,
+    /// 2000 Hz - reduced bandwidth
+    Freq2000Hz = 2,
     /// 1000 Hz - high frequency sampling
     Freq1000Hz = 3,
     /// 500 Hz - balanced power and performance
@@ -108,10 +151,22 @@ pub enum AccelODR {
     Freq250Hz = 5,
     /// 125 Hz - low power mode
     Freq125Hz = 6,
+    /// 62.5 Hz - low power mode
+    Freq62Hz5 = 7,
+    /// 31.25 Hz - low power mode
+    Freq31Hz25 = 8,
+    /// 128 Hz - accelerometer low power mode (gyro disabled)
+    LowPower128Hz = 0xC,
+    /// 21 Hz - accelerometer low power mode (gyro disabled)
+    LowPower21Hz = 0xD,
+    /// 11 Hz - accelerometer low power mode (gyro disabled)
+    LowPower11Hz = 0xE,
+    /// 3 Hz - accelerometer low power mode (gyro disabled)
+    LowPower3Hz = 0xF,
 }
 
 /// Gyroscope measurement range configuration
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Format)]
 #[repr(u8)]
 pub enum GyroRange {
     /// ±16 degrees per second
@@ -126,8 +181,10 @@ pub enum GyroRange {
     Range256DPS = 4,
     /// ±512 degrees per second
     Range512DPS = 5,
-    /// ±1024 degrees per second - maximum range
+    /// ±1024 degrees per second
     Range1024DPS = 6,
+    /// ±2048 degrees per second - maximum range
+    Range2048DPS = 7,
 }
 
 impl GyroRange {
@@ -141,22 +198,98 @@ impl GyroRange {
             GyroRange::Range256DPS => 256.0 / 32768.0,
             GyroRange::Range512DPS => 512.0 / 32768.0,
             GyroRange::Range1024DPS => 1024.0 / 32768.0,
+            GyroRange::Range2048DPS => 2048.0 / 32768.0,
         }
     }
 }
 
 /// Gyroscope output data rate configuration
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Format)]
 #[repr(u8)]
 pub enum GyroODR {
-    /// 896.8 Hz - high performance mode
-    Freq896Hz = 3,
-    /// 448.4 Hz - balanced mode
-    Freq448Hz = 4,
-    /// 224.2 Hz - moderate power
-    Freq224Hz = 5,
-    /// 112.1 Hz - low power mode
-    Freq112Hz = 6,
+    /// 8000 Hz - maximum bandwidth
+    Freq8000Hz = 0,
+    /// 4000 Hz - reduced bandwidth
+    Freq4000Hz = 1,
+    /// 2000 Hz - reduced bandwidth
+    Freq2000Hz = 2,
+    /// 1000 Hz - high performance mode
+    Freq1000Hz = 3,
+    /// 500 Hz - balanced mode
+    Freq500Hz = 4,
+    /// 250 Hz - moderate power
+    Freq250Hz = 5,
+    /// 125 Hz - low power mode
+    Freq125Hz = 6,
+    /// 62.5 Hz - low power mode
+    Freq62Hz5 = 7,
+    /// 31.25 Hz - low power mode
+    Freq31Hz25 = 8,
+}
+
+/// On-die low-pass filter selection (CTRL5 aLPF/gLPF)
+#[derive(Debug, Clone, Copy, Format)]
+#[repr(u8)]
+pub enum FilterBandwidth {
+    Percent2_62 = 0,
+    Percent3_59 = 1,
+    Percent5_32 = 2,
+    Percent14_0 = 3,
+}
+
+/// Bias calibration offsets in engineering units.
+#[derive(Debug, Clone, Copy, Format)]
+pub struct Calibration {
+    pub accel_bias: Vec3,
+    pub gyro_bias: Vec3,
+}
+
+impl Default for Calibration {
+    fn default() -> Self {
+        Self {
+            accel_bias: Vec3(0.0, 0.0, 0.0),
+            gyro_bias: Vec3(0.0, 0.0, 0.0),
+        }
+    }
+}
+
+/// Runtime configuration applied during initialization (derived from datasheet §5.4).
+#[derive(Debug, Clone, Copy, Format)]
+pub struct Qmi8658Config {
+    pub accel_range: AccelRange,
+    pub accel_odr: AccelODR,
+    pub accel_lpf: Option<FilterBandwidth>,
+    pub gyro_range: GyroRange,
+    pub gyro_odr: GyroODR,
+    pub gyro_lpf: Option<FilterBandwidth>,
+    pub sync_sample: bool,
+    pub high_speed_clock: bool,
+    pub enable_gyro: bool,
+    pub gyro_snooze: bool,
+}
+
+impl Default for Qmi8658Config {
+    fn default() -> Self {
+        Self {
+            accel_range: AccelRange::Range4G,
+            accel_odr: AccelODR::Freq500Hz,
+            accel_lpf: Some(FilterBandwidth::Percent5_32),
+            gyro_range: GyroRange::Range512DPS,
+            gyro_odr: GyroODR::Freq500Hz,
+            gyro_lpf: Some(FilterBandwidth::Percent5_32),
+            sync_sample: true,
+            high_speed_clock: true,
+            enable_gyro: true,
+            gyro_snooze: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Format)]
+pub struct SensorSample {
+    pub accel: Vec3,
+    pub gyro: Vec3,
+    pub temp_c: f32,
 }
 
 // ============================================================================
@@ -207,6 +340,9 @@ pub struct Qmi8658C<I2C> {
     /// I2C peripheral handle for device communication
     i2c_bus: I2C,
 
+    /// Selected 7-bit address for I2C transactions
+    address: SevenBitAddress,
+
     /// Sensor initialization state tracking
     is_initialized: bool,
 
@@ -216,6 +352,12 @@ pub struct Qmi8658C<I2C> {
     /// Current gyroscope range configuration
     gyro_range: GyroRange,
 
+    /// Cached configuration for re-application after fault recovery
+    config: Qmi8658Config,
+
+    /// Optional calibration offsets applied to measurements
+    calibration: Calibration,
+
     /// Accelerometer enable state
     accel_enabled: bool,
 
@@ -224,6 +366,9 @@ pub struct Qmi8658C<I2C> {
 
     /// Device revision ID for compatibility checking
     revision_id: u8,
+
+    /// Last coherent sample fetched from the device (accel + gyro + temp)
+    last_sample: Option<SensorSample>,
 }
 
 impl<I2C> Qmi8658C<I2C>
@@ -238,15 +383,128 @@ where
     /// # Returns
     /// New driver instance in uninitialized state
     pub fn new(i2c_bus: I2C) -> Self {
+        Self::with_config(i2c_bus, Qmi8658Address::High, Qmi8658Config::default())
+    }
+
+    /// Create a driver with an explicit address selection.
+    pub fn with_address(i2c_bus: I2C, address: Qmi8658Address) -> Self {
+        Self::with_config(i2c_bus, address, Qmi8658Config::default())
+    }
+
+    /// Create a driver with a fully specified configuration.
+    pub fn with_config(i2c_bus: I2C, address: Qmi8658Address, config: Qmi8658Config) -> Self {
         Self {
             i2c_bus,
+            address: address.as_u8(),
             is_initialized: false,
-            accel_range: AccelRange::Range4G, // Conservative default
-            gyro_range: GyroRange::Range64DPS, // Conservative default
+            accel_range: config.accel_range,
+            gyro_range: config.gyro_range,
+            config,
+            calibration: Calibration::default(),
             accel_enabled: false,
             gyro_enabled: false,
             revision_id: 0,
+            last_sample: None,
         }
+    }
+
+    /// Update calibration offsets applied to all subsequent samples.
+    pub fn set_calibration(&mut self, calibration: Calibration) {
+        self.calibration = calibration;
+    }
+
+    /// Fetch the currently applied calibration.
+    pub fn calibration(&self) -> Calibration {
+        self.calibration
+    }
+
+    /// Retrieve the active configuration snapshot.
+    pub fn config(&self) -> Qmi8658Config {
+        self.config
+    }
+
+    /// Apply a new runtime configuration (requires sensor to be initialized).
+    pub async fn reconfigure(&mut self, config: Qmi8658Config) -> Result<(), Qmi8658Error> {
+        self.config = config;
+        self.accel_range = config.accel_range;
+        self.gyro_range = config.gyro_range;
+        if self.is_initialized {
+            self.apply_configuration().await?;
+        }
+        Ok(())
+    }
+
+    /// Retrieve the most recent coherent sample captured by the driver.
+    pub fn last_sample(&self) -> Option<SensorSample> {
+        self.last_sample
+    }
+
+    fn upsert_last_sample(&mut self, accel: Option<Vec3>, gyro: Option<Vec3>, temp: Option<f32>) {
+        let mut current = self.last_sample.unwrap_or(SensorSample {
+            accel: Vec3(0.0, 0.0, 0.0),
+            gyro: Vec3(0.0, 0.0, 0.0),
+            temp_c: 0.0,
+        });
+
+        if let Some(a) = accel {
+            current.accel = a;
+        }
+        if let Some(g) = gyro {
+            current.gyro = g;
+        }
+        if let Some(t) = temp {
+            current.temp_c = t;
+        }
+
+        self.last_sample = Some(current);
+    }
+
+    fn orientation_from_gravity(accel: Vec3) -> Quaternion {
+        let gravity = accel.normalize();
+        if gravity.length_squared() < 1.0e-6 {
+            return Quaternion::identity();
+        }
+
+        let world_up = Vec3(0.0, 1.0, 0.0);
+        let target = Vec3(-gravity.0, -gravity.1, -gravity.2).normalize();
+        Self::rotation_between(world_up, target)
+    }
+
+    fn rotation_between(from: Vec3, to: Vec3) -> Quaternion {
+        let from_norm = from.normalize();
+        let to_norm = to.normalize();
+        let mut dot = from_norm.dot(to_norm);
+        if dot.is_nan() {
+            return Quaternion::identity();
+        }
+        dot = dot.clamp(-1.0, 1.0);
+
+        if dot > 0.999_999 {
+            return Quaternion::identity();
+        }
+
+        if dot < -0.999_999 {
+            let mut axis = Vec3(1.0, 0.0, 0.0).cross(from_norm);
+            if axis.length_squared() < 1.0e-6 {
+                axis = Vec3(0.0, 0.0, 1.0).cross(from_norm);
+            }
+            axis = axis.normalize();
+            return Quaternion {
+                w: 0.0,
+                x: axis.0,
+                y: axis.1,
+                z: axis.2,
+            };
+        }
+
+        let cross = from_norm.cross(to_norm);
+        let q = Quaternion {
+            w: 1.0 + dot,
+            x: cross.0,
+            y: cross.1,
+            z: cross.2,
+        };
+        q.normalize()
     }
 
     /// Perform a soft reset of the sensor
@@ -313,6 +571,65 @@ where
         Ok(())
     }
 
+    async fn apply_configuration(&mut self) -> Result<(), Qmi8658Error> {
+        debug!(
+            "Applying configuration: accel_range={:?} accel_odr={:?} gyro_range={:?} gyro_odr={:?}",
+            self.config.accel_range,
+            self.config.accel_odr,
+            self.config.gyro_range,
+            self.config.gyro_odr
+        );
+
+        // Ensure auto-increment is enabled for burst transfers (datasheet Table 24 CTRL1)
+        let ctrl1_value = register_bits::CTRL1_ADDR_AUTO_INCREMENT;
+        self.write_register(registers::CTRL1, ctrl1_value).await?;
+
+        // Configure accelerometer dynamic range and ODR
+        let ctrl2_value = ((self.config.accel_range as u8) << 4) | (self.config.accel_odr as u8);
+        self.write_register(registers::CTRL2, ctrl2_value).await?;
+        self.accel_range = self.config.accel_range;
+
+        // Configure gyroscope dynamic range and ODR
+        let ctrl3_value = ((self.config.gyro_range as u8) << 4) | (self.config.gyro_odr as u8);
+        self.write_register(registers::CTRL3, ctrl3_value).await?;
+        self.gyro_range = self.config.gyro_range;
+
+        // Program low-pass filter selections
+        let mut ctrl5_value = 0u8;
+        if let Some(mode) = self.config.accel_lpf {
+            ctrl5_value |= register_bits::CTRL5_ACCEL_LPF_ENABLE;
+            ctrl5_value |= (mode as u8) << register_bits::CTRL5_ACCEL_LPF_MODE_SHIFT;
+        }
+        if let Some(mode) = self.config.gyro_lpf {
+            ctrl5_value |= register_bits::CTRL5_GYRO_LPF_ENABLE;
+            ctrl5_value |= (mode as u8) << register_bits::CTRL5_GYRO_LPF_MODE_SHIFT;
+        }
+        self.write_register(registers::CTRL5, ctrl5_value).await?;
+
+        // Enable requested sensors and timing behavior (CTRL7)
+        let mut ctrl7_value = 0u8;
+        if self.config.sync_sample {
+            ctrl7_value |= register_bits::CTRL7_SYNC_SAMPLE;
+        }
+        if self.config.high_speed_clock {
+            ctrl7_value |= register_bits::CTRL7_SYS_HS;
+        }
+        if self.config.gyro_snooze {
+            ctrl7_value |= register_bits::CTRL7_GYRO_SNOOZE;
+        }
+        if self.config.enable_gyro {
+            ctrl7_value |= register_bits::CTRL7_GYRO_ENABLE;
+        }
+        ctrl7_value |= register_bits::CTRL7_ACCEL_ENABLE;
+        self.write_register(registers::CTRL7, ctrl7_value).await?;
+
+        self.accel_enabled = true;
+        self.gyro_enabled = self.config.enable_gyro;
+        self.last_sample = None;
+
+        Ok(())
+    }
+
     /// Configure accelerometer with specified range and output data rate
     pub async fn configure_accelerometer(
         &mut self,
@@ -336,6 +653,8 @@ where
 
         // Update driver state
         self.accel_range = range;
+        self.config.accel_range = range;
+        self.config.accel_odr = odr;
 
         // Re-enable if it was previously enabled
         if was_enabled {
@@ -343,6 +662,73 @@ where
         }
 
         debug!("Accelerometer configuration completed");
+        Ok(())
+    }
+
+    /// Configure gyroscope with specified range and output data rate
+    pub async fn configure_gyroscope(
+        &mut self,
+        range: GyroRange,
+        odr: GyroODR,
+    ) -> Result<(), Qmi8658Error> {
+        debug!("Configuring gyroscope: range={:?}, odr={:?}", range, odr);
+
+        if !self.config.enable_gyro {
+            warn!("Gyroscope disabled; enabling temporarily for configuration");
+        }
+
+        let was_enabled = self.gyro_enabled;
+        if was_enabled {
+            self.disable_gyroscope().await?;
+        }
+
+        let ctrl3_value = ((range as u8) << 4) | (odr as u8);
+        self.write_register(registers::CTRL3, ctrl3_value).await?;
+
+        self.gyro_range = range;
+        self.config.gyro_range = range;
+        self.config.gyro_odr = odr;
+
+        if was_enabled {
+            self.enable_gyroscope().await?;
+        }
+
+        debug!("Gyroscope configuration completed");
+        Ok(())
+    }
+
+    /// Configure accelerometer and gyroscope low-pass filters (CTRL5)
+    pub async fn configure_low_pass(
+        &mut self,
+        accel: Option<FilterBandwidth>,
+        gyro: Option<FilterBandwidth>,
+    ) -> Result<(), Qmi8658Error> {
+        debug!("Configuring LPF: accel={:?} gyro={:?}", accel, gyro);
+
+        let mut ctrl5 = self.read_register(registers::CTRL5).await?;
+
+        ctrl5 &= !register_bits::CTRL5_ACCEL_LPF_MODE_MASK;
+        ctrl5 &= !register_bits::CTRL5_GYRO_LPF_MODE_MASK;
+
+        if let Some(mode) = accel {
+            ctrl5 |= register_bits::CTRL5_ACCEL_LPF_ENABLE;
+            ctrl5 |= (mode as u8) << register_bits::CTRL5_ACCEL_LPF_MODE_SHIFT;
+            self.config.accel_lpf = Some(mode);
+        } else {
+            ctrl5 &= !register_bits::CTRL5_ACCEL_LPF_ENABLE;
+            self.config.accel_lpf = None;
+        }
+
+        if let Some(mode) = gyro {
+            ctrl5 |= register_bits::CTRL5_GYRO_LPF_ENABLE;
+            ctrl5 |= (mode as u8) << register_bits::CTRL5_GYRO_LPF_MODE_SHIFT;
+            self.config.gyro_lpf = Some(mode);
+        } else {
+            ctrl5 &= !register_bits::CTRL5_GYRO_LPF_ENABLE;
+            self.config.gyro_lpf = None;
+        }
+
+        self.write_register(registers::CTRL5, ctrl5).await?;
         Ok(())
     }
 
@@ -377,6 +763,38 @@ where
         Ok(())
     }
 
+    /// Enable gyroscope measurements
+    pub async fn enable_gyroscope(&mut self) -> Result<(), Qmi8658Error> {
+        debug!("Enabling gyroscope");
+
+        let mut ctrl7 = self.read_register(registers::CTRL7).await?;
+        ctrl7 |= register_bits::CTRL7_GYRO_ENABLE;
+        self.write_register(registers::CTRL7, ctrl7).await?;
+
+        self.gyro_enabled = true;
+        self.config.enable_gyro = true;
+
+        Timer::after_millis(10).await;
+
+        info!("Gyroscope enabled");
+        Ok(())
+    }
+
+    /// Disable gyroscope measurements
+    pub async fn disable_gyroscope(&mut self) -> Result<(), Qmi8658Error> {
+        debug!("Disabling gyroscope");
+
+        let mut ctrl7 = self.read_register(registers::CTRL7).await?;
+        ctrl7 &= !register_bits::CTRL7_GYRO_ENABLE;
+        self.write_register(registers::CTRL7, ctrl7).await?;
+
+        self.gyro_enabled = false;
+        self.config.enable_gyro = false;
+
+        info!("Gyroscope disabled");
+        Ok(())
+    }
+
     /// Check if accelerometer data is ready for reading
     async fn is_accel_data_ready(&mut self) -> Result<bool, Qmi8658Error> {
         let status = self.read_register(registers::STATUS0).await?;
@@ -404,16 +822,47 @@ where
         Ok((x, y, z))
     }
 
+    /// Read raw gyroscope data from sensor registers
+    async fn read_gyro_raw(&mut self) -> Result<(i16, i16, i16), Qmi8658Error> {
+        if !self.gyro_enabled {
+            return Err(Qmi8658Error::DataNotReady);
+        }
+
+        let mut buffer = [0u8; 6];
+        self.read_registers(registers::GYRO_X_L, &mut buffer)
+            .await?;
+        let x = i16::from_le_bytes([buffer[0], buffer[1]]);
+        let y = i16::from_le_bytes([buffer[2], buffer[3]]);
+        let z = i16::from_le_bytes([buffer[4], buffer[5]]);
+
+        Ok((x, y, z))
+    }
+
+    /// Read scaled gyroscope data in degrees per second
+    async fn read_gyro_scaled(&mut self) -> Result<Vec3, Qmi8658Error> {
+        let (raw_x, raw_y, raw_z) = self.read_gyro_raw().await?;
+        let scale = self.gyro_range.scale_factor();
+        let measurement = Vec3(
+            raw_x as f32 * scale,
+            raw_y as f32 * scale,
+            raw_z as f32 * scale,
+        );
+
+        Ok(measurement.sub(self.calibration.gyro_bias))
+    }
+
     /// Read scaled accelerometer data in g units
-    async fn read_accel_scaled(&mut self) -> Result<(f32, f32, f32), Qmi8658Error> {
+    async fn read_accel_scaled(&mut self) -> Result<Vec3, Qmi8658Error> {
         let (raw_x, raw_y, raw_z) = self.read_accel_raw().await?;
         let scale = self.accel_range.scale_factor();
 
-        let x_g = raw_x as f32 * scale;
-        let y_g = raw_y as f32 * scale;
-        let z_g = raw_z as f32 * scale;
+        let measurement = Vec3(
+            raw_x as f32 * scale,
+            raw_y as f32 * scale,
+            raw_z as f32 * scale,
+        );
 
-        Ok((x_g, y_g, z_g))
+        Ok(measurement.sub(self.calibration.accel_bias))
     }
 
     /// Read temperature from internal sensor
@@ -424,17 +873,14 @@ where
         self.read_registers(registers::TEMPERATURE_L, &mut buffer)
             .await?;
 
-        // Temperature format: signed integer + fractional part
-        // Formula from datasheet: temp = integer_part + (fractional_part / 256)
-        let temp_celsius = buffer[1] as f32 + (buffer[0] as f32 / 256.0);
-
-        Ok(temp_celsius)
+        let raw = i16::from_le_bytes(buffer);
+        Ok(raw as f32 / 256.0)
     }
 
     /// Low-level register write operation with error handling
     async fn write_register(&mut self, register: u8, value: u8) -> Result<(), Qmi8658Error> {
         self.i2c_bus
-            .write(DEVICE_ADDRESS, &[register, value])
+            .write(self.address, &[register, value])
             .await
             .map_err(|_| Qmi8658Error::BusCommunication)
     }
@@ -443,7 +889,7 @@ where
     async fn read_register(&mut self, register: u8) -> Result<u8, Qmi8658Error> {
         let mut buffer = [0u8; 1];
         self.i2c_bus
-            .write_read(DEVICE_ADDRESS, &[register], &mut buffer)
+            .write_read(self.address, &[register], &mut buffer)
             .await
             .map_err(|_| Qmi8658Error::BusCommunication)?;
         Ok(buffer[0])
@@ -456,7 +902,7 @@ where
         buffer: &mut [u8],
     ) -> Result<(), Qmi8658Error> {
         self.i2c_bus
-            .write_read(DEVICE_ADDRESS, &[start_register], buffer)
+            .write_read(self.address, &[start_register], buffer)
             .await
             .map_err(|_| Qmi8658Error::BusCommunication)
     }
@@ -517,18 +963,9 @@ where
             return Err(());
         }
 
-        // Configure accelerometer with safe defaults for space applications
-        if let Err(e) = self
-            .configure_accelerometer(AccelRange::Range4G, AccelODR::Freq500Hz)
-            .await
-        {
-            error!("Accelerometer configuration failed: {:?}", e);
-            return Err(());
-        }
-
-        // Enable accelerometer
-        if let Err(e) = self.enable_accelerometer().await {
-            error!("Failed to enable accelerometer: {:?}", e);
+        // Apply runtime configuration
+        if let Err(e) = self.apply_configuration().await {
+            error!("Failed to apply configuration: {:?}", e);
             return Err(());
         }
 
@@ -560,24 +997,58 @@ where
 
         // Read and return scaled acceleration values
         match self.read_accel_scaled().await {
-            Ok((x, y, z)) => {
+            Ok(vec) => {
+                let Vec3(x, y, z) = vec;
                 debug!("Accel: x={:?}g, y={:?}g, z={:?}g", x, y, z);
+                self.upsert_last_sample(Some(vec), None, None);
                 (x, y, z)
             }
             Err(e) => {
                 warn!("Failed to read accelerometer: {:?}", e);
-                (0.0, 0.0, 0.0)
+                if let Some(sample) = self.last_sample {
+                    let Vec3(x, y, z) = sample.accel;
+                    (x, y, z)
+                } else {
+                    (0.0, 0.0, 0.0)
+                }
             }
         }
     }
 
     /// Read gyroscope data in degrees per second
-    ///
-    /// Currently returns zeros - gyroscope implementation reserved for future enhancement
     async fn read_gyro(&mut self) -> (f32, f32, f32) {
-        // TODO: Implement gyroscope functionality when needed
-        debug!("Gyroscope functionality not yet implemented");
-        (0.0, 0.0, 0.0)
+        if !self.config.enable_gyro {
+            warn!("Gyroscope disabled in configuration");
+            return (0.0, 0.0, 0.0);
+        }
+
+        if let Err(e) = self.wait_for_data_ready(false, true).await {
+            warn!("Data ready timeout: {:?}", e);
+            return if let Some(sample) = self.last_sample {
+                let Vec3(x, y, z) = sample.gyro;
+                (x, y, z)
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+        }
+
+        match self.read_gyro_scaled().await {
+            Ok(vec) => {
+                let Vec3(x, y, z) = vec;
+                debug!("Gyro: x={:?}dps, y={:?}dps, z={:?}dps", x, y, z);
+                self.upsert_last_sample(None, Some(vec), None);
+                (x, y, z)
+            }
+            Err(e) => {
+                warn!("Failed to read gyroscope: {:?}", e);
+                if let Some(sample) = self.last_sample {
+                    let Vec3(x, y, z) = sample.gyro;
+                    (x, y, z)
+                } else {
+                    (0.0, 0.0, 0.0)
+                }
+            }
+        }
     }
 
     /// Read internal temperature sensor
@@ -592,6 +1063,7 @@ where
         match self.read_temperature_celsius().await {
             Ok(temp) => {
                 debug!("Temperature: {:?}°C", temp);
+                self.upsert_last_sample(None, None, Some(temp));
                 temp
             }
             Err(e) => {
@@ -603,15 +1075,36 @@ where
 
     /// Read sensor orientation as quaternion
     ///
-    /// Currently returns identity quaternion - orientation fusion reserved for future enhancement
     async fn read_orientation(&mut self) -> Quaternion {
-        // TODO: Implement sensor fusion for orientation when needed
-        // This would typically require:
-        // 1. Calibrated accelerometer and gyroscope data
-        // 2. Sensor fusion algorithm (e.g., Madgwick, Mahony)
-        // 3. Integration over time for orientation tracking
+        if !self.is_initialized {
+            warn!("Sensor not initialized");
+            return Quaternion::identity();
+        }
 
-        debug!("Orientation fusion not yet implemented");
-        Quaternion::identity()
+        let accel = if let Some(sample) = self.last_sample {
+            sample.accel
+        } else {
+            if let Err(e) = self.wait_for_data_ready(true, false).await {
+                warn!("Data ready timeout while fetching orientation: {:?}", e);
+                return Quaternion::identity();
+            }
+            match self.read_accel_scaled().await {
+                Ok(vec) => {
+                    self.upsert_last_sample(Some(vec), None, None);
+                    vec
+                }
+                Err(e) => {
+                    warn!("Failed to read accelerometer for orientation: {:?}", e);
+                    return Quaternion::identity();
+                }
+            }
+        };
+
+        let orientation = Self::orientation_from_gravity(accel);
+        debug!(
+            "Orientation estimate: w={:?} x={:?} y={:?} z={:?}",
+            orientation.w, orientation.x, orientation.y, orientation.z
+        );
+        orientation
     }
 }

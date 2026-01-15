@@ -7,6 +7,7 @@ use crate::system::ui::windowing::WindowManager;
 use crate::apps::arrow::arrow_app;
 use crate::apps::discord::discord_app;
 use crate::apps::heap_monitor::heap_monitor_app;
+use crate::apps::imu_demo::imu_demo_app;
 // TODO: Re-enable after HPS integration complete
 // use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::gfx_bench::gfx_bench_app; // Disabled - uses Text
@@ -38,6 +39,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         name: "Heap Monitor",
         id: 6,
         spawn_fn: spawn_heap_monitor_app,
+    },
+    AppDescriptor {
+        name: "IMU Monitor",
+        id: 7,
+        spawn_fn: spawn_imu_demo_app,
     },
     // AppDescriptor {
     //     name: "Bluetooth Scanner",
@@ -266,6 +272,13 @@ fn spawn_heap_monitor_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(heap_monitor_app(context))
+}
+
+fn spawn_imu_demo_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(imu_demo_app(context))
 }
 
 // TODO: Re-enable after HPS integration complete

@@ -1,7 +1,7 @@
 use crate::system::hal::imu::AsyncGyroAccelerometer;
 use crate::util::math::primitives::{Quaternion, Vec3};
 use alloc::boxed::Box;
-use defmt::{debug, info};
+use defmt::{debug, info, Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
@@ -9,6 +9,17 @@ use embassy_time::{Duration, Timer};
 
 pub static ORIENTATION_CHANNEL: Signal<CriticalSectionRawMutex, Quaternion> = Signal::new();
 static ORIENTATION_STATE: Mutex<CriticalSectionRawMutex, Option<Quaternion>> = Mutex::new(None);
+
+pub static IMU_SNAPSHOT_CHANNEL: Signal<CriticalSectionRawMutex, ImuSnapshot> = Signal::new();
+static IMU_SNAPSHOT_STATE: Mutex<CriticalSectionRawMutex, Option<ImuSnapshot>> = Mutex::new(None);
+
+#[derive(Copy, Clone, Debug, Format)]
+pub struct ImuSnapshot {
+    pub accel: Vec3,
+    pub gyro: Vec3,
+    pub temperature_c: f32,
+    pub orientation: Quaternion,
+}
 
 /// Returns the latest orientation sample if available.
 pub async fn latest_orientation() -> Option<Quaternion> {
@@ -21,6 +32,17 @@ pub async fn wait_for_orientation_update() -> Quaternion {
     ORIENTATION_CHANNEL.wait().await
 }
 
+/// Returns the latest IMU snapshot if available.
+pub async fn latest_imu_snapshot() -> Option<ImuSnapshot> {
+    let state = IMU_SNAPSHOT_STATE.lock().await;
+    *state
+}
+
+/// Waits for the next IMU snapshot from the service.
+pub async fn wait_for_imu_snapshot() -> ImuSnapshot {
+    IMU_SNAPSHOT_CHANNEL.wait().await
+}
+
 #[embassy_executor::task]
 pub(crate) async fn gyro_accelerometer_service(
     sensor: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>,
@@ -31,15 +53,34 @@ pub(crate) async fn gyro_accelerometer_service(
     info!("gyro accelerometer service initialized");
 
     loop {
-        let (x, y, z) = sensor_g.read_accel().await;
-        debug!("gyro: x: {}, y: {}, z: {}", x, y, z);
+        let (ax, ay, az) = sensor_g.read_accel().await;
+        let accel = Vec3(ax, ay, az);
+        debug!("accel: x: {}, y: {}, z: {}", ax, ay, az);
 
-        let orientation = orientation_from_accel(Vec3(x, y, z));
+        let (gx, gy, gz) = sensor_g.read_gyro().await;
+        let gyro = Vec3(gx, gy, gz);
+
+        let temperature_c = sensor_g.read_temp().await;
+
+        let orientation = orientation_from_accel(accel);
         {
             let mut state = ORIENTATION_STATE.lock().await;
             *state = Some(orientation);
         }
         ORIENTATION_CHANNEL.signal(orientation);
+
+        let snapshot = ImuSnapshot {
+            accel,
+            gyro,
+            temperature_c,
+            orientation,
+        };
+
+        {
+            let mut state = IMU_SNAPSHOT_STATE.lock().await;
+            *state = Some(snapshot);
+        }
+        IMU_SNAPSHOT_CHANNEL.signal(snapshot);
 
         Timer::after(Duration::from_millis(50)).await;
     }
