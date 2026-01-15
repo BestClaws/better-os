@@ -1,8 +1,8 @@
+use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use bt_hci::param::LeAdvReport;
 use defmt::debug;
-use heapless::Vec;
 use trouble_host::prelude::{EventHandler, LeAdvReportsIter};
 
 use crate::libs::bluetooth::{
@@ -19,14 +19,14 @@ struct KnownDevice {
 /// Handles BLE advertising reports and emits discovery events without duplicates.
 pub struct ScanEventHandler {
     events: EventSender,
-    seen: RefCell<Vec<KnownDevice, MAX_TRACKED_DEVICES>>,
+    seen: RefCell<Vec<KnownDevice>>,
 }
 
 impl ScanEventHandler {
     pub fn new(events: EventSender) -> Self {
         Self {
             events,
-            seen: RefCell::new(Vec::new()),
+            seen: RefCell::new(Vec::with_capacity(MAX_TRACKED_DEVICES)),
         }
     }
 
@@ -55,14 +55,13 @@ impl ScanEventHandler {
                 self.emit_device(addr, name, rssi);
             }
         } else {
-            if seen.is_full() {
+            if seen.len() >= MAX_TRACKED_DEVICES {
                 let _ = seen.remove(0);
             }
             seen.push(KnownDevice {
                 addr,
                 name: name.clone(),
-            })
-            .ok();
+            });
             self.emit_device(addr, name, rssi);
         }
     }

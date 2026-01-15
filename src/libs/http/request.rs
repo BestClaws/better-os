@@ -88,7 +88,7 @@ impl RequestBuilder {
     /// Set the request body as JSON
     #[cfg(feature = "json")]
     pub fn json<T: serde::Serialize>(mut self, json: &T) -> Result<Self> {
-        // Serialize to heapless Vec
+        // Serialize to alloc Vec
         let json_bytes = serde_json::to_vec(json).map_err(|_| Error::JsonError)?;
         if json_bytes.len() > MAX_BODY_SIZE {
             return Err(Error::RequestTooLarge);

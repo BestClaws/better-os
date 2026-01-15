@@ -1,11 +1,10 @@
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt::Write;
 
 use crate::libs::bluetooth::{
     bluetooth, BlePacket, BluetoothEvent, DiscoveredDevice, GattServiceStatus, ScanStatus,
 };
-use rust_gfx::color::Rgba8888;
-use rust_gfx::rasterizer::Rasterizer;
-// use rust_gfx::SurfaceDrawTarget; // Removed - requires embedded-graphics
 use crate::libs::http_bridge::{HttpBridgeError, HttpClient};
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
@@ -18,7 +17,8 @@ use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text as EgText;
-use heapless::{String, Vec};
+use rust_gfx::color::Rgba8888;
+use rust_gfx::rasterizer::Rasterizer;
 
 const MAX_LISTED_DEVICES: usize = 12;
 const HTTP_POLL_INTERVAL_MS: u64 = 30_000;
@@ -29,12 +29,12 @@ const REMOTE_EMAIL_CAPACITY: usize = 64;
 const REMOTE_LINE_CAPACITY: usize = 96;
 const HTTP_STATUS_CAPACITY: usize = 64;
 
-type RemoteUserList = Vec<RemoteUser, REMOTE_USER_CAPACITY>;
+type RemoteUserList = Vec<RemoteUser>;
 
 #[derive(Default)]
 struct RemoteUser {
-    name: String<REMOTE_NAME_CAPACITY>,
-    email: String<REMOTE_EMAIL_CAPACITY>,
+    name: String,
+    email: String,
 }
 
 impl RemoteUser {
@@ -44,12 +44,13 @@ impl RemoteUser {
             if !ch.is_ascii() {
                 continue;
             }
-            if self.name.push(ch).is_err() {
+            if self.name.len() >= REMOTE_NAME_CAPACITY {
                 break;
             }
+            self.name.push(ch);
         }
         if self.name.is_empty() {
-            let _ = self.name.push_str("Unknown");
+            self.name.push_str("Unknown");
         }
     }
 
@@ -59,9 +60,10 @@ impl RemoteUser {
             if !ch.is_ascii() {
                 continue;
             }
-            if self.email.push(ch).is_err() {
+            if self.email.len() >= REMOTE_EMAIL_CAPACITY {
                 break;
             }
+            self.email.push(ch);
         }
     }
 }
@@ -70,7 +72,7 @@ impl RemoteUser {
 pub async fn bluetooth_scanner_app(ctx: AppContext) {
     let bt = bluetooth();
     let mut events = bt.events();
-    let mut devices: Vec<DiscoveredDevice, MAX_LISTED_DEVICES> = Vec::new();
+    let mut devices: Vec<DiscoveredDevice> = Vec::with_capacity(MAX_LISTED_DEVICES);
     let mut status = ScanStatus::Starting;
     let mut gatt_status = GattServiceStatus::Idle;
     let mut last_sent: Option<BlePacket> = None;
@@ -80,8 +82,8 @@ pub async fn bluetooth_scanner_app(ctx: AppContext) {
     let mut needs_redraw = true;
 
     let http = HttpClient::new();
-    let mut http_status = String::<HTTP_STATUS_CAPACITY>::new();
-    let mut remote_users: RemoteUserList = Vec::new();
+    let mut http_status = String::with_capacity(HTTP_STATUS_CAPACITY);
+    let mut remote_users: RemoteUserList = Vec::with_capacity(REMOTE_USER_CAPACITY);
 
     if let Err(e) = bt.start_scan().await {
         warn!("Failed to start BLE scan: {:?}", Debug2Format(&e));
@@ -169,7 +171,7 @@ pub async fn bluetooth_scanner_app(ctx: AppContext) {
 }
 
 fn upsert_device(
-    devices: &mut Vec<DiscoveredDevice, MAX_LISTED_DEVICES>,
+    devices: &mut Vec<DiscoveredDevice>,
     device: DiscoveredDevice,
 ) {
     if let Some(entry) = devices
@@ -183,16 +185,16 @@ fn upsert_device(
         return;
     }
 
-    if devices.is_full() {
-        let _ = devices.pop();
+    if devices.len() >= MAX_LISTED_DEVICES {
+        devices.remove(0);
     }
-    let _ = devices.push(device);
+    devices.push(device);
 }
 
 fn draw_interface(
     surface: &mut DrawingSurface,
     status: ScanStatus,
-    devices: &Vec<DiscoveredDevice, MAX_LISTED_DEVICES>,
+    devices: &[DiscoveredDevice],
     gatt_status: GattServiceStatus,
     last_sent: Option<&BlePacket>,
     last_received: Option<&BlePacket>,
@@ -322,26 +324,26 @@ fn draw_interface(
     }
 }
 
-fn format_status(status: ScanStatus) -> String<48> {
-    let mut s = String::new();
+fn format_status(status: ScanStatus) -> String {
+    let mut s = String::with_capacity(48);
     match status {
         ScanStatus::Idle => {
-            let _ = s.push_str("Idle");
+            s.push_str("Idle");
         }
         ScanStatus::Starting => {
-            let _ = s.push_str("Starting scan...");
+            s.push_str("Starting scan...");
         }
         ScanStatus::Running => {
-            let _ = s.push_str("Scanning for devices");
+            s.push_str("Scanning for devices");
         }
         ScanStatus::Stopping => {
-            let _ = s.push_str("Stopping scan...");
+            s.push_str("Stopping scan...");
         }
         ScanStatus::AlreadyRunning => {
-            let _ = s.push_str("Scan already running");
+            s.push_str("Scan already running");
         }
         ScanStatus::BlockedByPeripheral => {
-            let _ = s.push_str("Scan paused for GATT service");
+            s.push_str("Scan paused for GATT service");
         }
         ScanStatus::Failed(err) => {
             let _ = write!(&mut s, "Scan failed ({:?})", err);
@@ -350,62 +352,62 @@ fn format_status(status: ScanStatus) -> String<48> {
     s
 }
 
-fn format_device_line(index: usize, device: &DiscoveredDevice) -> String<64> {
-    let mut line = String::new();
+fn format_device_line(index: usize, device: &DiscoveredDevice) -> String {
+    let mut line = String::with_capacity(64);
     let _ = write!(&mut line, "{:02}. ", index + 1);
 
     if let Some(name) = device.name() {
-        let _ = line.push_str(name);
+        line.push_str(name);
     } else {
         let addr = format_address(device.address);
-        let _ = line.push_str(addr.as_str());
+        line.push_str(addr.as_str());
     }
 
     let _ = write!(&mut line, " ({:+} dBm)", device.rssi);
     line
 }
 
-fn format_address(addr: [u8; 6]) -> String<18> {
-    let mut out = String::new();
+fn format_address(addr: [u8; 6]) -> String {
+    let mut out = String::with_capacity(18);
     for (i, byte) in addr.iter().enumerate() {
         if i != 0 {
-            let _ = out.push(':');
+            out.push(':');
         }
         let _ = write!(&mut out, "{:02X}", byte);
     }
     out
 }
 
-fn format_gatt_status(status: GattServiceStatus) -> String<48> {
-    let mut s = String::new();
+fn format_gatt_status(status: GattServiceStatus) -> String {
+    let mut s = String::with_capacity(48);
     match status {
         GattServiceStatus::Idle => {
-            let _ = s.push_str("Service idle");
+            s.push_str("Service idle");
         }
         GattServiceStatus::Advertising => {
-            let _ = s.push_str("Advertising HTTP bridge");
+            s.push_str("Advertising HTTP bridge");
         }
         GattServiceStatus::Connected => {
-            let _ = s.push_str("Central connected");
+            s.push_str("Central connected");
         }
         GattServiceStatus::SendingRequest => {
-            let _ = s.push_str("Sending HTTP request");
+            s.push_str("Sending HTTP request");
         }
         GattServiceStatus::AwaitingResponse => {
-            let _ = s.push_str("Awaiting HTTP response");
+            s.push_str("Awaiting HTTP response");
         }
         GattServiceStatus::ResponseComplete => {
-            let _ = s.push_str("Response received");
+            s.push_str("Response received");
         }
         GattServiceStatus::Error => {
-            let _ = s.push_str("Service error");
+            s.push_str("Service error");
         }
     }
     s
 }
 
-fn format_packet(prefix: &str, packet: Option<&BlePacket>) -> String<64> {
-    let mut line = String::new();
+fn format_packet(prefix: &str, packet: Option<&BlePacket>) -> String {
+    let mut line = String::with_capacity(64);
     let _ = write!(&mut line, "{}: ", prefix);
     match packet {
         Some(data) if !data.is_empty() => {
@@ -416,21 +418,21 @@ fn format_packet(prefix: &str, packet: Option<&BlePacket>) -> String<64> {
                 } else {
                     '.'
                 };
-                let _ = line.push(ch);
+                line.push(ch);
             }
         }
         Some(_) => {
-            let _ = line.push_str("0b");
+            line.push_str("0b");
         }
         None => {
-            let _ = line.push_str("--");
+            line.push_str("--");
         }
     }
     line
 }
 
-fn format_remote_user_line(index: usize, user: &RemoteUser) -> String<REMOTE_LINE_CAPACITY> {
-    let mut line = String::new();
+fn format_remote_user_line(index: usize, user: &RemoteUser) -> String {
+    let mut line = String::with_capacity(REMOTE_LINE_CAPACITY);
     let _ = write!(&mut line, "{:02}. {}", index + 1, user.name.as_str());
     if !user.email.is_empty() {
         let _ = write!(&mut line, " <{}>", user.email.as_str());
@@ -456,13 +458,17 @@ fn parse_remote_users(body: &[u8]) -> Result<RemoteUserList, HttpBridgeError> {
         let name = extract_field(object, "\"name\"").ok_or(HttpBridgeError::InvalidJson)?;
         let email = extract_field(object, "\"email\"").unwrap_or("");
 
-        let mut entry = RemoteUser::default();
-        entry.set_name(name);
-        entry.set_email(email);
-        results.push(entry).ok();
-        if results.is_full() {
+        if results.len() >= REMOTE_USER_CAPACITY {
             break;
         }
+
+        let mut entry = RemoteUser {
+            name: String::with_capacity(REMOTE_NAME_CAPACITY),
+            email: String::with_capacity(REMOTE_EMAIL_CAPACITY),
+        };
+        entry.set_name(name);
+        entry.set_email(email);
+        results.push(entry);
 
         remainder = &remainder[end + 1..];
     }

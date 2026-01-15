@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use defmt::debug;
 use embassy_time::Instant;
 
@@ -28,7 +29,7 @@ impl UICompositor {
         };
         let frame_area = width * height;
 
-        let mut dirty_regions = heapless::Vec::<Rect, 8>::new();
+        let mut dirty_regions = Vec::with_capacity(8);
         let mut active_window = None;
         if let Some((current, _prev, _next)) = self.current_prev_next() {
             dirty_regions = self.collect_dirty_regions(wm, current);
@@ -79,11 +80,11 @@ impl UICompositor {
         &mut self,
         wm: &mut WindowManager,
         handle: WindowHandle,
-    ) -> heapless::Vec<Rect, 8> {
-        let mut out = heapless::Vec::new();
+    ) -> Vec<Rect> {
+        let mut out = Vec::with_capacity(8);
         let _ = wm.with_surface(handle, |surface| {
             for region in surface.dirty_regions() {
-                let _ = out.push(*region);
+                out.push(*region);
             }
         });
         out

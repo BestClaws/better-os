@@ -1,16 +1,17 @@
-use heapless::{String, Vec};
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Maximum UTF-8 bytes stored for a device name.
 pub const MAX_DEVICE_NAME_LEN: usize = 32;
 
 /// Heap-allocated string used for device names without relying on a system allocator.
-pub type DeviceName = String<MAX_DEVICE_NAME_LEN>;
+pub type DeviceName = String;
 
 /// Maximum bytes transferred per BLE packet over the GATT bridge.
 pub const BLE_PACKET_CAPACITY: usize = 128;
 
 /// Packet type used for BLE channel payloads.
-pub type BlePacket = Vec<u8, BLE_PACKET_CAPACITY>;
+pub type BlePacket = Vec<u8>;
 
 /// Commands issued to the Bluetooth service task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

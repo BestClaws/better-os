@@ -1,14 +1,16 @@
+use alloc::vec::Vec;
+
 use crate::util::math::primitives::Rect;
 
 #[derive(Debug)]
 pub enum UpdateStrategy {
     FullScreen,
-    Partial(heapless::Vec<Rect, 8>),
+    Partial(Vec<Rect>),
 }
 
 pub fn determine_update_strategy(
     full_area: u32,
-    dirty_regions: &heapless::Vec<Rect, 8>,
+    dirty_regions: &[Rect],
 ) -> UpdateStrategy {
     if dirty_regions.is_empty() {
         return UpdateStrategy::FullScreen;
@@ -20,9 +22,9 @@ pub fn determine_update_strategy(
     if dirty_regions.len() > 6 || (full_area != 0 && total_area * 3 > full_area) {
         UpdateStrategy::FullScreen
     } else {
-        let mut regions = heapless::Vec::new();
+        let mut regions = Vec::with_capacity(dirty_regions.len());
         for region in dirty_regions.iter() {
-            let _ = regions.push(*region);
+            regions.push(*region);
         }
         UpdateStrategy::Partial(regions)
     }

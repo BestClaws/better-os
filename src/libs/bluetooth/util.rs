@@ -20,14 +20,13 @@ pub(crate) fn parse_device_name(data: &[u8]) -> Option<DeviceName> {
         if matches!(ty, 0x08 | 0x09) {
             let value = &data[(offset + 2)..segment_end];
             if let Ok(s) = core::str::from_utf8(value) {
-                let mut name = DeviceName::new();
+                let mut name = DeviceName::with_capacity(MAX_DEVICE_NAME_LEN);
                 for ch in s.chars() {
-                    if name.push(ch).is_err() {
+                    let ch_len = ch.len_utf8();
+                    if name.len() + ch_len > MAX_DEVICE_NAME_LEN {
                         break;
                     }
-                    if name.len() >= MAX_DEVICE_NAME_LEN {
-                        break;
-                    }
+                    name.push(ch);
                 }
 
                 if !name.is_empty() {

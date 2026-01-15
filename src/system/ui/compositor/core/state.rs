@@ -1,4 +1,4 @@
-use alloc::vec::Vec as AllocVec;
+use alloc::vec::Vec;
 use defmt::warn;
 
 use crate::system::hal::display::PixelFormat;
@@ -12,13 +12,13 @@ pub(super) const MAX_REDRAW_REQUESTS: usize = 4;
 
 /// Growable framebuffer reused by the compositor to avoid per-frame heap churn.
 pub(super) struct ScratchFrame {
-    buffer: AllocVec<u8>,
+    buffer: Vec<u8>,
 }
 
 impl ScratchFrame {
     pub fn new() -> Self {
         Self {
-            buffer: AllocVec::new(),
+            buffer: Vec::new(),
         }
     }
 
@@ -42,10 +42,10 @@ pub(super) struct TransitionSession {
 
 /// Core compositor state machine. Keeps window ordering, active triplets, and display binding.
 pub struct UICompositor {
-    pub(super) windows_order: heapless::Vec<WindowHandle, MAX_WINDOWS>,
+    pub(super) windows_order: Vec<WindowHandle>,
     pub(super) current_index: usize,
     pub(super) display_service: Option<Display>,
-    pub(super) pending_redraws: heapless::Vec<WindowHandle, MAX_REDRAW_REQUESTS>,
+    pub(super) pending_redraws: Vec<WindowHandle>,
     pub(super) animation_config: AnimationConfig,
     pub(super) active_transition: Option<TransitionSession>,
     pub(super) scratch: ScratchFrame,
@@ -54,10 +54,10 @@ pub struct UICompositor {
 impl UICompositor {
     pub fn new() -> Self {
         Self {
-            windows_order: heapless::Vec::new(),
+            windows_order: Vec::with_capacity(MAX_WINDOWS),
             current_index: 0,
             display_service: None,
-            pending_redraws: heapless::Vec::new(),
+            pending_redraws: Vec::with_capacity(MAX_REDRAW_REQUESTS),
             animation_config: AnimationConfig::default(),
             active_transition: None,
             scratch: ScratchFrame::new(),
@@ -77,7 +77,7 @@ impl UICompositor {
             warn!("Compositor window order full");
             return;
         }
-        self.windows_order.push(handle).ok();
+        self.windows_order.push(handle);
         if self.windows_order.len() == 1 {
             self.current_index = 0;
             self.apply_active_triplet(wm).await;
@@ -103,7 +103,9 @@ impl UICompositor {
 
     pub fn request_redraw(&mut self, window_handle: WindowHandle) {
         if !self.pending_redraws.contains(&window_handle) {
-            let _ = self.pending_redraws.push(window_handle);
+            if self.pending_redraws.len() < MAX_REDRAW_REQUESTS {
+                self.pending_redraws.push(window_handle);
+            }
         }
     }
 

@@ -167,18 +167,18 @@ mod animation_presets {
 #[cfg(feature = "debug-performance")]
 mod debug_utils {
     use super::*;
-    use heapless::Vec;
+    use alloc::vec::Vec;
 
     /// Track frame timing statistics.
     pub struct PerformanceMonitor {
-        frame_times: Vec<u32, 60>,
+        frame_times: Vec<u32>,
         frame_count: u32,
     }
 
     impl PerformanceMonitor {
         pub fn new() -> Self {
             Self {
-                frame_times: Vec::new(),
+                frame_times: Vec::with_capacity(60),
                 frame_count: 0,
             }
         }
@@ -190,7 +190,7 @@ mod debug_utils {
                 self.frame_times.remove(0);
             }
 
-            self.frame_times.push(micros).ok();
+            self.frame_times.push(micros);
             self.frame_count += 1;
 
             if self.frame_count % 60 == 0 {

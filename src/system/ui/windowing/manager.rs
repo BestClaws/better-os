@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use defmt::{debug, warn};
 
 use super::window::{Window, WindowHandle};
@@ -18,7 +19,7 @@ const MAX_WINDOWS: usize = 8;
 /// - Provide access to canvases and input channels
 /// - Track one-shot initial paint requests for pre-active (next/previous) windows
 pub struct WindowManager {
-    windows: heapless::Vec<Window, MAX_WINDOWS>,
+    windows: Vec<Window>,
     display_format: PixelFormat,
     default_resolution: Option<DisplayResolution>,
 }
@@ -27,7 +28,7 @@ impl WindowManager {
     /// Create a new empty window manager with a fallback PixelFormat.
     pub fn new(default_format: PixelFormat) -> Self {
         Self {
-            windows: heapless::Vec::new(),
+            windows: Vec::with_capacity(MAX_WINDOWS),
             display_format: default_format,
             default_resolution: None,
         }
@@ -114,7 +115,7 @@ impl WindowManager {
 
         let window = Window::new(width, height, id, self.display_format).await;
         let handle = window.handle();
-        self.windows.push(window).ok()?;
+        self.windows.push(window);
         debug!("Window created: id={}, size={}x{}", id, width, height);
         Some(handle)
     }

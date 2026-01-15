@@ -12,7 +12,6 @@ name = "sprite_generator"
 path = "examples/sprite_generator.rs"
 
 [dependencies]
-heapless = { version = "0.9", default-features = false, features = ["serde"] }
 libm = "0.2.15"
 micromath = "2.1.0"
 miniz_oxide = { version = "0.7", default-features = false, features = ["with-alloc"] }

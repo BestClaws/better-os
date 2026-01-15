@@ -1,5 +1,6 @@
-use defmt::Format;
-use heapless::{String, Vec};
+use alloc::string::String;
+use alloc::vec::Vec;
+use defmt::{write, Format, Formatter};
 
 /// HPS Service and Characteristic UUIDs (Bluetooth SIG Assigned Numbers)
 pub struct HpsUuids;
@@ -174,12 +175,12 @@ impl<'a> HttpRequest<'a> {
 }
 
 /// HTTP Response received via HPS
-#[derive(Debug, Clone, Format)]
+#[derive(Debug, Clone)]
 pub struct HttpResponse {
     pub status_code: u16,
     pub data_status: DataStatus,
-    pub headers: String<MAX_HEADERS_SIZE>,
-    pub body: Vec<u8, MAX_BODY_SIZE>,
+    pub headers: String,
+    pub body: Vec<u8>,
 }
 
 impl Default for HttpResponse {
@@ -196,6 +197,19 @@ impl Default for HttpResponse {
 impl HttpResponse {
     pub fn is_success(&self) -> bool {
         self.status_code >= 200 && self.status_code < 300
+    }
+}
+
+impl Format for HttpResponse {
+    fn format(&self, fmt: Formatter) {
+        write!(
+            fmt,
+            "HttpResponse {{ status: {}, data_status: {:?}, headers_len: {}, body_len: {} }}",
+            self.status_code,
+            self.data_status,
+            self.headers.len(),
+            self.body.len()
+        );
     }
 }
 

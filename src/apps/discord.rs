@@ -1,10 +1,10 @@
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
+use alloc::string::String;
 use defmt::{info, warn};
 use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
-use heapless::String as HString;
 use rust_gfx::color::Rgba8888;
 use rust_gfx::primitives::triangle::{draw_triangle, TriangleDsc};
 use rust_gfx::primitives::{
@@ -71,7 +71,7 @@ pub async fn discord_app(ctx: AppContext) {
     }
 }
 
-fn update_messages_from_posts(messages: &mut [HString<MESSAGE_CAPACITY>; 3], body: &[u8]) -> bool {
+fn update_messages_from_posts(messages: &mut [String; 3], body: &[u8]) -> bool {
     let text = core::str::from_utf8(body).unwrap_or("");
     info!("Discord: Parsing {} bytes of JSON text", text.len());
     let mut changed = false;
@@ -94,7 +94,7 @@ fn update_messages_from_posts(messages: &mut [HString<MESSAGE_CAPACITY>; 3], bod
 
                     if messages[post_count].as_str() != sanitized.as_str() {
                         messages[post_count].clear();
-                        messages[post_count].push_str(sanitized.as_str()).ok();
+                        messages[post_count].push_str(sanitized.as_str());
                         changed = true;
                     }
 
@@ -108,7 +108,7 @@ fn update_messages_from_posts(messages: &mut [HString<MESSAGE_CAPACITY>; 3], bod
     while post_count < 3 {
         if !messages[post_count].is_empty() && messages[post_count].as_str() != "..." {
             messages[post_count].clear();
-            messages[post_count].push_str("...").ok();
+            messages[post_count].push_str("...");
             changed = true;
         }
         post_count += 1;
@@ -117,8 +117,8 @@ fn update_messages_from_posts(messages: &mut [HString<MESSAGE_CAPACITY>; 3], bod
     changed
 }
 
-fn sanitize_line(line: &str) -> HString<MESSAGE_CAPACITY> {
-    let mut sanitized = HString::<MESSAGE_CAPACITY>::new();
+fn sanitize_line(line: &str) -> String {
+    let mut sanitized = String::with_capacity(MESSAGE_CAPACITY);
     for ch in line.chars() {
         if !ch.is_ascii() {
             continue;
@@ -126,25 +126,23 @@ fn sanitize_line(line: &str) -> HString<MESSAGE_CAPACITY> {
         if sanitized.len() >= MAX_DISPLAY_CHARS {
             break;
         }
-        if sanitized.push(ch).is_err() {
-            break;
-        }
+        sanitized.push(ch);
     }
     if sanitized.is_empty() {
-        sanitized.push_str("...").ok();
+        sanitized.push_str("...");
     }
     sanitized
 }
 
-fn placeholder_message() -> HString<MESSAGE_CAPACITY> {
-    let mut s = HString::<MESSAGE_CAPACITY>::new();
-    let _ = s.push_str("...");
+fn placeholder_message() -> String {
+    let mut s = String::with_capacity(MESSAGE_CAPACITY);
+    s.push_str("...");
     s
 }
 
 fn draw_interface(
     surface: &mut DrawingSurface,
-    messages: &[HString<MESSAGE_CAPACITY>; 3],
+    messages: &[String; 3],
     connected: bool,
 ) {
     let width = surface.width() as i32;

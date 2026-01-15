@@ -9,6 +9,28 @@ use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{with_timeout, Duration, Instant, Timer};
 use trouble_host::prelude::*;
+use trouble_host::types::gatt_traits::{AsGatt, FromGatt, FromGattError};
+#[derive(Clone, Copy, Debug, Default)]
+struct GattBuffer<const N: usize>;
+
+impl<const N: usize> AsGatt for GattBuffer<N> {
+    const MIN_SIZE: usize = 0;
+    const MAX_SIZE: usize = N;
+
+    fn as_gatt(&self) -> &[u8] {
+        &[]
+    }
+}
+
+impl<const N: usize> FromGatt for GattBuffer<N> {
+    fn from_gatt(data: &[u8]) -> Result<Self, FromGattError> {
+        if data.len() <= N {
+            Ok(Self)
+        } else {
+            Err(FromGattError::InvalidLength)
+        }
+    }
+}
 
 use crate::libs::hps::error::HpsError;
 use crate::libs::hps::types::{
@@ -443,7 +465,7 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
     let uri_handle = chars.uri.ok_or(HpsError::NotFound)?;
     info!("HPS: Writing URI ({} bytes)", request.uri.len());
 
-    // Convert heapless::String to &[u8]
+    // Convert String to &[u8]
     let uri_bytes = request.uri.as_bytes();
     gatt_write_raw(gatt, uri_handle, uri_bytes).await?;
 
@@ -507,8 +529,8 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
             Ok(HttpResponse {
                 status_code: status_code.status_code,
                 data_status: status_code.data_status,
-                headers: heapless::String::try_from(headers_str).unwrap_or_default(),
-                body: heapless::Vec::from_slice(&body_buf[..body_len]).unwrap_or_default(),
+                headers: String::from(headers_str),
+                body: body_buf[..body_len].to_vec(),
             })
         }
         Err(_) => {
@@ -524,8 +546,8 @@ async fn process_hps_request_with_gatt<T: Controller, P: PacketPool>(
             Ok(HttpResponse {
                 status_code: status_code.status_code,
                 data_status: status_code.data_status,
-                headers: heapless::String::new(),
-                body: heapless::Vec::from_slice(&body_buf[..body_len]).unwrap_or_default(),
+                headers: String::new(),
+                body: body_buf[..body_len].to_vec(),
             })
         }
     }
@@ -551,7 +573,7 @@ async fn gatt_write_raw<T: Controller, P: PacketPool>(
     struct CharWrapper {
         cccd_handle: Option<u16>,
         handle: u16,
-        _phantom: PhantomData<heapless::Vec<u8, 512>>,
+        _phantom: PhantomData<GattBuffer<512>>,
     }
 
     let wrapper = CharWrapper {
@@ -561,7 +583,7 @@ async fn gatt_write_raw<T: Controller, P: PacketPool>(
     };
 
     // Transmute to Characteristic - safe because layout is identical
-    let char_handle: &Characteristic<heapless::Vec<u8, 512>> = unsafe { mem::transmute(&wrapper) };
+    let char_handle: &Characteristic<GattBuffer<512>> = unsafe { mem::transmute(&wrapper) };
 
     gatt.write_characteristic(char_handle, data)
         .await
@@ -587,7 +609,7 @@ async fn gatt_read_raw<T: Controller, P: PacketPool>(
     struct CharWrapper {
         cccd_handle: Option<u16>,
         handle: u16,
-        _phantom: PhantomData<heapless::Vec<u8, 1024>>,
+        _phantom: PhantomData<GattBuffer<1024>>,
     }
 
     let wrapper = CharWrapper {
@@ -596,7 +618,7 @@ async fn gatt_read_raw<T: Controller, P: PacketPool>(
         _phantom: PhantomData,
     };
 
-    let char_handle: &Characteristic<heapless::Vec<u8, 1024>> = unsafe { mem::transmute(&wrapper) };
+    let char_handle: &Characteristic<GattBuffer<1024>> = unsafe { mem::transmute(&wrapper) };
 
     let len = gatt
         .read_characteristic(char_handle, buf)
@@ -642,7 +664,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     // 1. URI Characteristic (0x2AB6)
     let uri_uuid = Uuid::Uuid16(HpsUuids::URI.to_le_bytes());
     match gatt
-        .characteristic_by_uuid::<heapless::Vec<u8, 512>>(&service, &uri_uuid)
+        .characteristic_by_uuid::<GattBuffer<512>>(&service, &uri_uuid)
         .await
     {
         Ok(char) => {
@@ -658,7 +680,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     // 2. HTTP Headers Characteristic (0x2AB7)
     let headers_uuid = Uuid::Uuid16(HpsUuids::HTTP_HEADERS.to_le_bytes());
     match gatt
-        .characteristic_by_uuid::<heapless::Vec<u8, 512>>(&service, &headers_uuid)
+        .characteristic_by_uuid::<GattBuffer<512>>(&service, &headers_uuid)
         .await
     {
         Ok(char) => {
@@ -698,7 +720,7 @@ async fn discover_hps_service<T: Controller, P: PacketPool, const MAX_SERVICES: 
     // 4. HTTP Entity Body Characteristic (0x2AB9)
     let body_uuid = Uuid::Uuid16(HpsUuids::HTTP_ENTITY_BODY.to_le_bytes());
     match gatt
-        .characteristic_by_uuid::<heapless::Vec<u8, 512>>(&service, &body_uuid)
+        .characteristic_by_uuid::<GattBuffer<512>>(&service, &body_uuid)
         .await
     {
         Ok(char) => {
@@ -1075,7 +1097,7 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
         data_status.to_byte()
     );
 
-    let mut headers = heapless::String::new();
+    let mut headers = String::new();
     if data_status.headers_received {
         let stage_start = Instant::now();
         let mut headers_buf = alloc::vec![0u8; MAX_HEADERS_SIZE];
@@ -1096,7 +1118,7 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
                     }
                 );
                 if let Ok(headers_str) = core::str::from_utf8(&headers_buf[..len]) {
-                    let _ = headers.push_str(headers_str);
+                    headers.push_str(headers_str);
                 }
             }
             Err(e) => {
@@ -1105,7 +1127,7 @@ async fn execute_hps_request<C: Controller, P: PacketPool>(
         }
     }
 
-    let mut body = heapless::Vec::new();
+    let mut body = Vec::new();
     if data_status.body_received {
         let stage_start = Instant::now();
         let mut body_buf = alloc::vec![0u8; MAX_BODY_SIZE];

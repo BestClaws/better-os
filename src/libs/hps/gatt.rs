@@ -2,6 +2,8 @@
 // Bridges HpsClient to trouble-host BLE stack
 // NOTE: This will be moved into hps_service.rs task where generics can be properly handled
 
+use alloc::vec::Vec;
+
 use crate::libs::hps::error::HpsError;
 use crate::libs::hps::types::{HpsCharacteristics, HpsUuids};
 use defmt::{debug, info, warn};
@@ -59,20 +61,20 @@ impl HpsGattConnector {
     pub async fn read_characteristic(
         &mut self,
         handle: u16,
-    ) -> Result<heapless::Vec<u8, 512>, HpsError> {
+    ) -> Result<Vec<u8>, HpsError> {
         debug!("HPS GATT: Reading from handle {}", handle);
         warn!("HPS GATT: read_characteristic() - stub, moving to service task");
-        Ok(heapless::Vec::new())
+        Ok(Vec::new())
     }
 
     /// Read from a characteristic using Read Long procedure
     pub async fn read_long_characteristic(
         &mut self,
         handle: u16,
-    ) -> Result<heapless::Vec<u8, 512>, HpsError> {
+    ) -> Result<Vec<u8>, HpsError> {
         debug!("HPS GATT: Reading (long) from handle {}", handle);
         warn!("HPS GATT: read_long_characteristic() - stub, moving to service task");
-        Ok(heapless::Vec::new())
+        Ok(Vec::new())
     }
 
     /// Write to CCCD to enable notifications
@@ -93,7 +95,7 @@ impl HpsGattConnector {
     pub async fn wait_for_notification(
         &mut self,
         handle: u16,
-    ) -> Result<heapless::Vec<u8, 3>, HpsError> {
+    ) -> Result<Vec<u8>, HpsError> {
         debug!("HPS GATT: Waiting for notification on handle {}", handle);
         warn!("HPS GATT: wait_for_notification() - stub, moving to service task");
         Err(HpsError::Timeout)

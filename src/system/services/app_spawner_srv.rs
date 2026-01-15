@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
@@ -266,10 +268,10 @@ fn spawn_bluetooth_scanner_app(
 /// Utility functions for application management
 impl AppDescriptor {
     /// Get application info as formatted string
-    pub fn info(&self) -> heapless::String<64> {
-        let mut info = heapless::String::new();
+    pub fn info(&self) -> String {
         use core::fmt::Write;
-        use heapless::String;
+
+        let mut info = String::with_capacity(64);
 
         write!(&mut info, "{} (id={})", self.name, self.id).ok();
         info
@@ -332,7 +334,7 @@ impl DynamicAppSpawner {
 mod health_monitor {
     use super::*;
     use embassy_time::{Duration, Timer};
-    use heapless::FnvIndexMap;
+    use alloc::collections::BTreeMap;
 
     /// Application health status
     #[derive(Debug, Clone, Copy)]
@@ -344,15 +346,15 @@ mod health_monitor {
 
     /// Monitor application health and restart if needed
     pub struct AppHealthMonitor {
-        app_status: FnvIndexMap<usize, AppHealth, 16>,
-        restart_count: FnvIndexMap<usize, u32, 16>,
+        app_status: BTreeMap<usize, AppHealth>,
+        restart_count: BTreeMap<usize, u32>,
     }
 
     impl AppHealthMonitor {
         pub fn new() -> Self {
             Self {
-                app_status: FnvIndexMap::new(),
-                restart_count: FnvIndexMap::new(),
+                app_status: BTreeMap::new(),
+                restart_count: BTreeMap::new(),
             }
         }
 
@@ -368,7 +370,7 @@ mod health_monitor {
             let restart_count = self.restart_count.get(&app_id).copied().unwrap_or(0);
 
             if restart_count < max_restarts {
-                self.restart_count.insert(app_id, restart_count + 1).ok();
+                self.restart_count.insert(app_id, restart_count + 1);
                 warn!("Restarting app {} (attempt {})", app_id, restart_count + 1);
                 // Implementation would restart the app
                 true
