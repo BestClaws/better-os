@@ -1,3 +1,7 @@
+use crate::apps::components::{
+    draw_background, draw_card, draw_list, draw_status_bar, AccentColor, BadgeConfig, BadgeTone,
+    CardConfig, CardFrame, StatusBarData, StyleFonts, StyleMetrics, StylePalette,
+};
 use crate::system::app::app_context::AppContext;
 use crate::system::services::gyro_accel_srv::{
     latest_imu_snapshot, wait_for_imu_snapshot, ImuSnapshot,
@@ -5,20 +9,14 @@ use crate::system::services::gyro_accel_srv::{
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::util::math::primitives::{Quaternion, Vec3};
 use alloc::{
-    borrow::Cow,
     format,
     string::{String, ToString},
+    vec,
+    vec::Vec,
 };
 use embassy_executor::task;
 use embassy_time::{with_timeout, Duration, Instant, Timer};
 use micromath::F32Ext;
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::{
-    draw_rect,
-    label::{draw_label, line_height_for_font, measure_text_with_font, FontId, LabelDsc},
-    RectDsc,
-};
-use rust_gfx::types::{Area, Gradient, OPA_COVER};
 
 #[task]
 pub async fn imu_demo_app(ctx: AppContext) {
@@ -53,240 +51,224 @@ pub async fn imu_demo_app(ctx: AppContext) {
 }
 
 fn draw_interface(surface: &mut DrawingSurface, snapshot: ImuSnapshot, age_ms: Option<u32>) {
-    let width = surface.width() as i32;
-    let height = surface.height() as i32;
-    if width <= 0 || height <= 0 {
-        return;
-    }
+    let metrics = StyleMetrics::from_surface(surface);
+    let palette = StylePalette::arknights();
+    let fonts = StyleFonts::for_surface(metrics.width, metrics.height);
 
-    let header_font = font_for_role(width, height, FontRole::Header);
-    let title_font = font_for_role(width, height, FontRole::Accent);
-    let body_font = font_for_role(width, height, FontRole::Body);
-    let header_height = font_height(header_font);
-    let title_height = font_height(title_font);
-    let body_height = font_height(body_font);
-    let small_screen = width <= 120 || height <= 140;
+    draw_background(surface, &metrics, palette);
 
-    let mut background = RectDsc::new();
-    background.bg_color = Rgba8888::rgba(248, 249, 252, 255);
-    background.bg_grad = Gradient::vertical(
-        Rgba8888::rgba(255, 255, 255, 255),
-        Rgba8888::rgba(232, 234, 240, 255),
-    );
-    background.bg_opa = OPA_COVER;
-    let full_area = Area::new(0, 0, width - 1, height - 1);
-    draw_rect(surface, &background, &full_area);
+    let delta_label = age_ms
+        .map(|ms| format!("Δt:{:>4}ms", ms.min(9_999)))
+        .unwrap_or_else(|| "Δt:----".to_string());
 
-    let header_text = "IMU Monitor";
-    let header_width = text_width(header_text, header_font);
-    let header_x = (width - header_width) / 2;
-    let header_y = if small_screen { 2 } else { 8 };
-    draw_text(
+    let status_area = draw_status_bar(
         surface,
-        header_text,
-        header_font,
-        header_x,
-        header_y,
-        Rgba8888::rgba(60, 64, 80, 255),
+        &metrics,
+        fonts,
+        palette,
+        StatusBarData {
+            left: "IMU Monitor",
+            battery_percent: 70,
+            right: Some(delta_label.as_str()),
+        },
     );
 
-    let status_text = match age_ms {
-        Some(ms) => format!("Δt:{}ms", ms.min(9_999)),
-        None => String::from("Δt:----"),
-    };
-    let status_width = text_width(status_text.as_str(), body_font);
-    let status_x = if small_screen {
-        6
-    } else {
-        (width - status_width - 8).max(8)
-    };
-    let status_y = if small_screen {
-        header_y + header_height + 2
-    } else {
-        header_y
-    };
-    draw_text(
-        surface,
-        status_text.as_str(),
-        body_font,
-        status_x,
-        status_y,
-        Rgba8888::rgba(86, 92, 110, 255),
-    );
-
-    let header_block_end = if small_screen {
-        status_y + body_height
-    } else {
-        header_y + header_height
-    };
+    let mut next_y = status_area.y2 + 1 + metrics.section_spacing;
 
     let (roll, pitch, yaw) = quaternion_to_euler_deg(snapshot.orientation);
-    let orientation_lines = [
-        format!("R:{:+05.1}°", roll),
-        format!("P:{:+05.1}°", pitch),
-        format!("Y:{:+05.1}°", yaw),
+    let orientation_lines = vec![
+        format!("Roll   {:+06.2}°", roll),
+        format!("Pitch  {:+06.2}°", pitch),
+        format!("Yaw    {:+06.2}°", yaw),
     ];
+    let orientation_refs = orientation_lines
+        .iter()
+        .map(|line| line.as_str())
+        .collect::<Vec<&str>>();
+    next_y = match draw_data_card(
+        surface,
+        &metrics,
+        fonts,
+        palette,
+        next_y,
+        CardConfig {
+            title: Some("Orientation"),
+            subtitle: Some("Euler (deg)"),
+            badge: Some(BadgeConfig {
+                text: "ATT",
+                tone: BadgeTone::Accent,
+            }),
+            accent: AccentColor::Yellow,
+            height: metrics.button_height * 2,
+        },
+        &orientation_refs,
+    ) {
+        Some(frame) => frame.next_y(&metrics),
+        None => return,
+    };
 
-    let accel_lines = [
-        format!("Ax:{:+.2}g", snapshot.accel.0),
-        format!("Ay:{:+.2}g", snapshot.accel.1),
-        format!("Az:{:+.2}g", snapshot.accel.2),
+    let accel_lines = vec![
+        format!("X  {:+06.3} g", snapshot.accel.0),
+        format!("Y  {:+06.3} g", snapshot.accel.1),
+        format!("Z  {:+06.3} g", snapshot.accel.2),
     ];
+    let accel_refs = accel_lines
+        .iter()
+        .map(|line| line.as_str())
+        .collect::<Vec<&str>>();
+    next_y = match draw_data_card(
+        surface,
+        &metrics,
+        fonts,
+        palette,
+        next_y,
+        CardConfig {
+            title: Some("Acceleration"),
+            subtitle: Some("Linear (g)"),
+            badge: Some(BadgeConfig {
+                text: "ACC",
+                tone: BadgeTone::Accent,
+            }),
+            accent: AccentColor::Gray,
+            height: metrics.button_height * 2,
+        },
+        &accel_refs,
+    ) {
+        Some(frame) => frame.next_y(&metrics),
+        None => return,
+    };
 
-    let gyro_lines = [
-        format!("Gx:{:+.1}dps", snapshot.gyro.0),
-        format!("Gy:{:+.1}dps", snapshot.gyro.1),
-        format!("Gz:{:+.1}dps", snapshot.gyro.2),
+    let gyro_lines = vec![
+        format!("X  {:+07.2} dps", snapshot.gyro.0),
+        format!("Y  {:+07.2} dps", snapshot.gyro.1),
+        format!("Z  {:+07.2} dps", snapshot.gyro.2),
     ];
+    let gyro_refs = gyro_lines
+        .iter()
+        .map(|line| line.as_str())
+        .collect::<Vec<&str>>();
+    next_y = match draw_data_card(
+        surface,
+        &metrics,
+        fonts,
+        palette,
+        next_y,
+        CardConfig {
+            title: Some("Gyroscope"),
+            subtitle: Some("Angular (dps)"),
+            badge: Some(BadgeConfig {
+                text: "GYR",
+                tone: BadgeTone::Gray,
+            }),
+            accent: AccentColor::Dark,
+            height: metrics.button_height * 2,
+        },
+        &gyro_refs,
+    ) {
+        Some(frame) => frame.next_y(&metrics),
+        None => return,
+    };
 
     let accel_mag = (snapshot.accel.0 * snapshot.accel.0
         + snapshot.accel.1 * snapshot.accel.1
         + snapshot.accel.2 * snapshot.accel.2)
         .sqrt();
-    let summary_lines = [
-        format!("|a|:{:.2}g", accel_mag),
-        format!("T:{:.1}°C", snapshot.temperature_c),
+    let summary_age_line = age_ms
+        .map(|ms| format!("Last update {:>4} ms", ms.min(9_999)))
+        .unwrap_or_else(|| "Last update ---- ms".to_string());
+    let summary_lines = vec![
+        format!("‖a‖   {:>5.2} g", accel_mag),
+        format!("Temp   {:>5.1} °C", snapshot.temperature_c),
+        summary_age_line,
     ];
+    let summary_refs = summary_lines
+        .iter()
+        .map(|line| line.as_str())
+        .collect::<Vec<&str>>();
+    let (badge_text, badge_tone) = freshness_badge(age_ms);
+    let summary_accent = if accel_mag > 1.5 {
+        AccentColor::Dark
+    } else {
+        AccentColor::Gray
+    };
 
-    let mut y = header_block_end + if small_screen { 6 } else { 10 };
-    y = draw_section(
+    let _ = draw_data_card(
         surface,
-        width,
-        height,
-        y,
-        "Orientation",
-        &orientation_lines,
-        title_font,
-        body_font,
-        small_screen,
-    );
-    y = draw_section(
-        surface,
-        width,
-        height,
-        y,
-        "Acceleration",
-        &accel_lines,
-        title_font,
-        body_font,
-        small_screen,
-    );
-    y = draw_section(
-        surface,
-        width,
-        height,
-        y,
-        "Gyroscope",
-        &gyro_lines,
-        title_font,
-        body_font,
-        small_screen,
-    );
-    let _ = draw_section(
-        surface,
-        width,
-        height,
-        y,
-        "Status",
-        &summary_lines,
-        title_font,
-        body_font,
-        small_screen,
+        &metrics,
+        fonts,
+        palette,
+        next_y,
+        CardConfig {
+            title: Some("Status"),
+            subtitle: Some("Summary"),
+            badge: Some(BadgeConfig {
+                text: badge_text,
+                tone: badge_tone,
+            }),
+            accent: summary_accent,
+            height: metrics.button_height * 2,
+        },
+        &summary_refs,
     );
 }
 
-fn draw_section(
+fn draw_data_card(
     surface: &mut DrawingSurface,
-    width: i32,
-    height: i32,
+    metrics: &StyleMetrics,
+    fonts: StyleFonts,
+    palette: StylePalette,
     top: i32,
-    title: &str,
-    lines: &[String],
-    title_font: FontId,
-    body_font: FontId,
-    small_screen: bool,
-) -> i32 {
-    if width <= 0 || height <= 0 || top >= height {
-        return height;
+    mut config: CardConfig,
+    lines: &[&str],
+) -> Option<CardFrame> {
+    let available = metrics.height.saturating_sub(top);
+    if available <= metrics.section_padding {
+        return None;
     }
 
-    let margin_x = if small_screen { 8 } else { 10 };
-    let card_width = width - margin_x * 2;
-    if card_width <= 0 {
-        return height;
+    let desired = card_height_for_lines(lines.len(), fonts, metrics);
+    let height = adjust_card_height(desired, metrics.button_height * 2, available);
+    if height <= 0 {
+        return None;
     }
 
-    let section_padding = if small_screen { 5 } else { 6 };
-    let accent_height = if small_screen { 2 } else { 3 };
-    let title_height = font_height(title_font);
-    let body_height = font_height(body_font);
-    let line_spacing = body_height + if small_screen { 1 } else { 2 };
-    let content_height = (lines.len() as i32).saturating_mul(line_spacing);
-    let card_height = section_padding * 2 + accent_height + title_height + 4 + content_height;
-    let bottom = (top + card_height - 1).min(height - 1);
-    if bottom < top {
-        return height;
+    config.height = height;
+    let frame = draw_card(surface, metrics, fonts, palette, top, config);
+    draw_list(surface, &frame, fonts, palette, lines);
+    Some(frame)
+}
+
+fn card_height_for_lines(line_count: usize, fonts: StyleFonts, metrics: &StyleMetrics) -> i32 {
+    if line_count == 0 {
+        return metrics.section_padding * 2 + fonts.line_height_title();
     }
 
-    let mut card = RectDsc::new();
-    card.bg_color = Rgba8888::rgba(255, 255, 255, 235);
-    card.bg_grad = Gradient::vertical(
-        Rgba8888::rgba(250, 252, 255, 255),
-        Rgba8888::rgba(230, 234, 242, 255),
-    );
-    card.bg_opa = OPA_COVER;
-    card.radius = 7;
-    card.border_width = 1;
-    card.border_color = Rgba8888::rgba(200, 204, 216, 160);
-    card.border_opa = OPA_COVER;
-    let card_area = Area::new(margin_x, top, margin_x + card_width - 1, bottom);
-    draw_rect(surface, &card, &card_area);
+    let body = line_count as i32 * fonts.line_height_body();
+    let dividers = line_count.saturating_sub(1) as i32 * (metrics.section_padding / 2);
+    metrics.section_padding * 2
+        + fonts.line_height_title()
+        + metrics.section_padding / 2
+        + body
+        + dividers
+}
 
-    let mut accent = RectDsc::new();
-    accent.bg_color = Rgba8888::rgba(70, 190, 235, 180);
-    accent.bg_opa = OPA_COVER;
-    accent.radius = 1;
-    let accent_area = Area::new(
-        margin_x + 4,
-        top + 4,
-        margin_x + card_width - 5,
-        (top + 4 + accent_height).min(bottom),
-    );
-    draw_rect(surface, &accent, &accent_area);
-
-    let title_width = text_width(title, title_font);
-    let title_x = margin_x + (card_width - title_width) / 2;
-    let title_y = top + section_padding + accent_height + 2;
-    draw_text(
-        surface,
-        title,
-        title_font,
-        title_x.max(margin_x + 4),
-        title_y,
-        Rgba8888::rgba(60, 64, 80, 255),
-    );
-
-    let mut line_y = title_y + title_height + 3;
-    let text_color = Rgba8888::rgba(86, 92, 110, 255);
-    let content_x = margin_x + if small_screen { 8 } else { 10 };
-    let max_text_width = card_width - (content_x - margin_x) * 2;
-    for line in lines {
-        if line_y > bottom {
-            break;
-        }
-        let (clamped, _) = clamp_text_to_width(line.as_str(), max_text_width, body_font);
-        draw_text(
-            surface,
-            clamped.as_ref(),
-            body_font,
-            content_x,
-            line_y,
-            text_color,
-        );
-        line_y += line_spacing;
+fn adjust_card_height(desired: i32, min: i32, max: i32) -> i32 {
+    if max <= 0 {
+        return 0;
     }
+    if max < min {
+        max
+    } else {
+        desired.clamp(min, max)
+    }
+}
 
-    (bottom + if small_screen { 6 } else { 8 }).min(height)
+fn freshness_badge(age_ms: Option<u32>) -> (&'static str, BadgeTone) {
+    match age_ms {
+        Some(ms) if ms <= 500 => ("LIVE", BadgeTone::Accent),
+        Some(ms) if ms <= 2_000 => ("LAG", BadgeTone::Gray),
+        _ => ("STALE", BadgeTone::Danger),
+    }
 }
 
 fn quaternion_to_euler_deg(q: Quaternion) -> (f32, f32, f32) {
@@ -315,83 +297,5 @@ fn empty_snapshot() -> ImuSnapshot {
         gyro: Vec3(0.0, 0.0, 0.0),
         temperature_c: 0.0,
         orientation: Quaternion::identity(),
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum FontRole {
-    Header,
-    Body,
-    Accent,
-}
-
-fn font_for_role(_width: i32, _height: i32, role: FontRole) -> FontId {
-    match role {
-        FontRole::Header => FontId::Montserrat12,
-        FontRole::Body => FontId::Montserrat8,
-        FontRole::Accent => FontId::Montserrat10,
-    }
-}
-
-fn text_width(text: &str, font: FontId) -> i32 {
-    if text.is_empty() {
-        0
-    } else {
-        measure_text_with_font(text, 0, font)
-    }
-}
-
-fn font_height(font: FontId) -> i32 {
-    line_height_for_font(font)
-}
-
-fn draw_text(
-    surface: &mut DrawingSurface,
-    text: &str,
-    font: FontId,
-    x: i32,
-    y: i32,
-    color: Rgba8888,
-) {
-    let width = text_width(text, font);
-    if width <= 0 {
-        return;
-    }
-    let height = font_height(font);
-    if height <= 0 {
-        return;
-    }
-    let mut label = LabelDsc::new(String::from(text));
-    label.font = font;
-    label.color = color;
-    let area = Area::new(x, y, x + width - 1, y + height - 1);
-    draw_label(surface, &label, &area);
-}
-
-fn clamp_text_to_width<'a>(text: &'a str, max_width: i32, font: FontId) -> (Cow<'a, str>, i32) {
-    if max_width <= 0 || text.is_empty() {
-        return (Cow::Borrowed(""), 0);
-    }
-
-    let mut last_good_idx = 0;
-    let mut last_width = 0;
-
-    for (idx, ch) in text.char_indices() {
-        let end = idx + ch.len_utf8();
-        let candidate = &text[..end];
-        let width = measure_text_with_font(candidate, 0, font);
-        if width > max_width {
-            break;
-        }
-        last_good_idx = end;
-        last_width = width;
-    }
-
-    if last_good_idx == 0 {
-        (Cow::Borrowed(""), 0)
-    } else if last_good_idx == text.len() {
-        (Cow::Borrowed(text), last_width)
-    } else {
-        (Cow::Owned(text[..last_good_idx].to_string()), last_width)
     }
 }
