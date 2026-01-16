@@ -56,8 +56,9 @@ pub(crate) static ENCODER: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn Asy
     StaticCell::new();
 pub(crate) static VIBRATOR: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncVibrator>>> =
     StaticCell::new();
-pub(crate) static BUTTON: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>> =
-    StaticCell::new();
+pub(crate) static APP_SWITCH_BUTTON: StaticCell<
+    Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>,
+> = StaticCell::new();
 pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
     StaticCell::new();
 pub(crate) static TOUCH: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncTouch>>> =
@@ -137,9 +138,12 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // Initialize Co5300 driver
     let mut display = Co5300::new(lcd_spi, reset_pin);
 
-    let button_pin = Input::new(peripherals.GPIO9, InputConfig::default());
+    let app_switch_pin = Input::new(
+        peripherals.GPIO9,
+        InputConfig::default().with_pull(Pull::Up),
+    );
 
-    let button = ButtonDriver::new(button_pin);
+    let app_switch = ButtonDriver::new(app_switch_pin);
 
     let radio_driver = RadioDriver::new(peripherals.BT);
 
@@ -148,7 +152,8 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
         radio: Some(RADIO.init(Mutex::new(Box::new(radio_driver)))),
         gyro_accelerometer: Some(GYRO_ACCELEROMETER.init(Mutex::new(Box::new(accel)))),
-        button: Some(BUTTON.init(Mutex::new(Box::new(button)))),
+        button: None,
+        app_switch_button: Some(APP_SWITCH_BUTTON.init(Mutex::new(Box::new(app_switch)))),
         rtc: Some(RTC.init(Mutex::new(Box::new(rtc)))),
     }
 }

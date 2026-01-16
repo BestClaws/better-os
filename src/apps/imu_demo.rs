@@ -169,10 +169,11 @@ fn draw_interface(
         + snapshot.accel.1 * snapshot.accel.1
         + snapshot.accel.2 * snapshot.accel.2)
         .sqrt();
-    let summary_lines = vec![
-        format!("|a|:{}g", compact_g(accel_mag)),
-        format!("Tmp:{}°C", compact_temp(snapshot.temperature_c)),
-    ];
+    let summary_lines = vec![format!(
+        "|a|:{}g  Tmp:{}°C",
+        compact_g(accel_mag),
+        compact_temp(snapshot.temperature_c)
+    )];
     let summary_refs = summary_lines
         .iter()
         .map(|line| line.as_str())

@@ -5,6 +5,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::Instant;
 
 use crate::system::hal::display::PixelFormat;
+use crate::system::input::types::KeyCode;
 use crate::system::kernel::platforms;
 use crate::system::services::ambient_srv::ambient_sensor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
@@ -48,8 +49,16 @@ pub(crate) fn start(spawner: Spawner) {
     );
     // Note: current PlatformDevice has no encoder field
     if let Some(button) = device.button.take() {
-        if let Err(err) = spawner.spawn(input::button_reader_task(button)) {
+        if let Err(err) = spawner.spawn(input::button_reader_task(button, KeyCode::Ok)) {
             warn!("Failed to spawn button reader: {:?}", Debug2Format(&err));
+        }
+    }
+    if let Some(app_switch) = device.app_switch_button.take() {
+        if let Err(err) = spawner.spawn(input::button_reader_task(app_switch, KeyCode::NextApp)) {
+            warn!(
+                "Failed to spawn app-switch reader: {:?}",
+                Debug2Format(&err)
+            );
         }
     }
     if let Some(touch) = device.touch.take() {

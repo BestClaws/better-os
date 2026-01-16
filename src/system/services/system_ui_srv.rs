@@ -1,8 +1,8 @@
-use defmt::info;
+use defmt::{debug, info};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Instant, Timer};
 
-use crate::system::input::types::{HighLevelEvent, MotionEvent};
+use crate::system::input::types::{HighLevelEvent, KeyAction, KeyCode, KeyEvent, MotionEvent};
 use crate::system::ui::compositor::{animation::TransitionDirection, UICompositor};
 use crate::system::ui::display_metrics;
 use crate::system::ui::input::bus::SystemUiInputBus;
@@ -48,14 +48,18 @@ pub async fn system_ui_gesture_task(
         let mut consumed = false;
         let mut swipe_update = None;
 
-        if let HighLevelEvent::Motion(MotionEvent {
-            action, pointers, ..
-        }) = event
-        {
-            if let Some(pointer) = pointers[0] {
-                let result = recognizer.observe(PointerEvent::new(pointer, action));
-                consumed = result.consumed;
-                swipe_update = result.update;
+        match event {
+            HighLevelEvent::Motion(MotionEvent {
+                action, pointers, ..
+            }) => {
+                if let Some(pointer) = pointers[0] {
+                    let result = recognizer.observe(PointerEvent::new(pointer, action));
+                    consumed = result.consumed;
+                    swipe_update = result.update;
+                }
+            }
+            HighLevelEvent::Key(key) => {
+                consumed = handle_key_event(key, compositor, window_manager).await;
             }
         }
 
@@ -116,5 +120,22 @@ async fn handle_swipe_update(
 async fn request_redraw_focused_window(compositor: &mut UICompositor) {
     if let Some(focused_handle) = compositor.focused_window_handle() {
         compositor.request_redraw(focused_handle);
+    }
+}
+
+async fn handle_key_event(
+    key: KeyEvent,
+    compositor: &'static Mutex<CriticalSectionRawMutex, UICompositor>,
+    window_manager: &'static Mutex<CriticalSectionRawMutex, WindowManager>,
+) -> bool {
+    match (key.code, key.action) {
+        (KeyCode::NextApp, KeyAction::Down | KeyAction::Repeat) => {
+            debug!("Next-app key: action={:?}", key.action);
+            let mut comp = compositor.lock().await;
+            let mut wm = window_manager.lock().await;
+            comp.animate_to_next_window(&mut wm).await;
+            true
+        }
+        _ => false,
     }
 }

@@ -14,6 +14,7 @@ pub enum KeyAction {
 #[derive(Clone, Copy, Debug, Format)]
 pub enum KeyCode {
     Ok,
+    NextApp,
 }
 
 /// Discrete key event.

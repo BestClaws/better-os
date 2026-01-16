@@ -68,7 +68,10 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         .collect::<Vec<&str>>();
 
     let base_height = list_card_height(info_refs.len(), fonts, &metrics);
-    let card_height = base_height + fonts.line_height_body();
+    let bar_height = metrics.section_padding + 2;
+    let label_height = fonts.line_height_small();
+    let gauge_reserve = bar_height + label_height + 2;
+    let card_height = base_height + gauge_reserve;
     let heap_card = draw_card(
         surface,
         &metrics,
@@ -95,7 +98,20 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         },
     );
 
-    draw_list(surface, &heap_card, fonts, palette, &info_refs);
+    let mut list_frame = heap_card;
+    let content_height = list_frame
+        .content_area
+        .y2
+        .saturating_sub(list_frame.content_area.y1);
+    let reserve = gauge_reserve.min(content_height).max(0);
+    let new_bottom = list_frame.content_area.y2.saturating_sub(reserve);
+    list_frame.content_area.y2 = if new_bottom < list_frame.content_area.y1 {
+        list_frame.content_area.y1
+    } else {
+        new_bottom
+    };
+
+    draw_list(surface, &list_frame, fonts, palette, &info_refs);
 
     draw_progress_bar(
         surface,

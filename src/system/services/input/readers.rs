@@ -12,6 +12,7 @@ use crate::system::input::devices::{
     encoder::map_state as map_encoder_state,
     touch::{TouchProcessor, TouchSample},
 };
+use crate::system::input::types::KeyCode;
 use crate::system::input::RawInputQueue;
 use crate::system::ui::display_metrics;
 
@@ -22,6 +23,7 @@ const TOUCH_COALESCE_THRESHOLD: i32 = 1;
 #[task]
 pub async fn button_reader_task(
     button: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncButton>>,
+    code: KeyCode,
 ) {
     loop {
         let state = {
@@ -29,7 +31,7 @@ pub async fn button_reader_task(
             button.next().await
         };
 
-        dispatch_raw_event(map_button_state(state)).await;
+        dispatch_raw_event(map_button_state(state, code)).await;
     }
 }
 
