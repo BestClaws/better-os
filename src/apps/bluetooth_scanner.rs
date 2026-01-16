@@ -1,7 +1,10 @@
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{format, string::String, vec, vec::Vec};
 use core::fmt::Write;
 
+use crate::apps::components::{
+    draw_background, draw_card, draw_list, draw_status_bar, AccentColor, BadgeConfig, BadgeTone,
+    CardConfig, StatusBarData, StyleFonts, StyleMetrics, StylePalette,
+};
 use crate::libs::bluetooth::{
     bluetooth, BlePacket, BluetoothEvent, DiscoveredDevice, GattServiceStatus, ScanStatus,
 };
@@ -12,13 +15,6 @@ use defmt::{warn, Debug2Format};
 use embassy_executor::task;
 use embassy_futures::select::{select3, Either3};
 use embassy_time::{Duration, Ticker};
-use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_6X9};
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::*;
-use embedded_graphics::text::Text as EgText;
-use rust_gfx::color::Rgba8888;
-use rust_gfx::rasterizer::Rasterizer;
 
 const MAX_LISTED_DEVICES: usize = 12;
 const HTTP_POLL_INTERVAL_MS: u64 = 30_000;
@@ -28,6 +24,7 @@ const REMOTE_NAME_CAPACITY: usize = 48;
 const REMOTE_EMAIL_CAPACITY: usize = 64;
 const REMOTE_LINE_CAPACITY: usize = 96;
 const HTTP_STATUS_CAPACITY: usize = 64;
+const MAX_DEVICE_DISPLAY: usize = 6;
 
 type RemoteUserList = Vec<RemoteUser>;
 
@@ -35,6 +32,110 @@ type RemoteUserList = Vec<RemoteUser>;
 struct RemoteUser {
     name: String,
     email: String,
+}
+
+fn status_badge_text(status: ScanStatus) -> &'static str {
+    match status {
+        ScanStatus::Starting => "STARTING",
+        ScanStatus::Running => "SCANNING",
+        ScanStatus::Stopping => "STOPPING",
+        ScanStatus::BlockedByPeripheral => "PAUSED",
+        ScanStatus::AlreadyRunning => "ACTIVE",
+        ScanStatus::Failed(_) => "FAILED",
+        ScanStatus::Idle => "IDLE",
+    }
+}
+
+fn status_badge_tone(status: ScanStatus) -> BadgeTone {
+    match status {
+        ScanStatus::Failed(_) => BadgeTone::Danger,
+        ScanStatus::Idle => BadgeTone::Gray,
+        _ => BadgeTone::Accent,
+    }
+}
+
+fn list_card_height(line_count: usize, fonts: StyleFonts, metrics: &StyleMetrics) -> i32 {
+    if line_count == 0 {
+        return metrics.section_padding * 2 + fonts.line_height_title();
+    }
+    let lines = line_count as i32 * fonts.line_height_body();
+    let dividers = line_count.saturating_sub(1) as i32 * (metrics.section_padding / 2);
+    metrics.section_padding * 2 + fonts.line_height_title() + metrics.section_padding / 2 + lines + dividers
+}
+
+fn adjust_card_height(desired: i32, min: i32, max: i32) -> i32 {
+    if max <= 0 {
+        return 0;
+    }
+    if max < min {
+        max
+    } else {
+        desired.clamp(min, max)
+    }
+}
+
+fn build_device_lines(status: ScanStatus, devices: &[DiscoveredDevice]) -> Vec<String> {
+    let mut lines = Vec::with_capacity(MAX_DEVICE_DISPLAY + 2);
+    lines.push(format_status(status));
+
+    for (idx, device) in devices.iter().enumerate().take(MAX_DEVICE_DISPLAY) {
+        lines.push(format_device_line(idx, device));
+    }
+
+    if devices.is_empty() {
+        lines.push("No devices discovered".to_string());
+    } else if devices.len() > MAX_DEVICE_DISPLAY {
+        let remaining = devices.len() - MAX_DEVICE_DISPLAY;
+        lines.push(format!("+{} more device(s)", remaining));
+    }
+
+    lines
+}
+
+fn build_gatt_lines(
+    status: GattServiceStatus,
+    last_sent: Option<&BlePacket>,
+    last_received: Option<&BlePacket>,
+) -> Vec<String> {
+    vec![
+        format_gatt_status(status),
+        format_packet("TX", last_sent),
+        format_packet("RX", last_received),
+    ]
+}
+
+fn build_remote_lines(http_status: &str, remote_users: &RemoteUserList) -> Vec<String> {
+    let mut lines = Vec::with_capacity(remote_users.len() + 2);
+    lines.push(clamp_ascii(http_status, REMOTE_LINE_CAPACITY));
+
+    if remote_users.is_empty() {
+        lines.push("No remote data available".to_string());
+        return lines;
+    }
+
+    for (idx, user) in remote_users.iter().enumerate() {
+        let line = format_remote_user_line(idx, user);
+        lines.push(clamp_ascii(line.as_str(), REMOTE_LINE_CAPACITY));
+    }
+
+    lines
+}
+
+fn clamp_ascii(input: &str, max_len: usize) -> String {
+    let mut out = String::with_capacity(max_len.min(input.len()));
+    for ch in input.chars() {
+        if !ch.is_ascii() {
+            continue;
+        }
+        if out.len() >= max_len {
+            break;
+        }
+        out.push(ch);
+    }
+    if out.is_empty() {
+        out.push('-');
+    }
+    out
 }
 
 impl RemoteUser {
@@ -201,127 +302,131 @@ fn draw_interface(
     remote_users: &RemoteUserList,
     http_status: &str,
 ) {
-    let width = surface.width() as i32;
-    let height = surface.height() as i32;
-    surface.fill_rect(0, 0, width, height, Rgba8888::rgba(20, 26, 34, 255));
+    let metrics = StyleMetrics::from_surface(surface);
+    let palette = StylePalette::arknights();
+    let fonts = StyleFonts::for_surface(metrics.width, metrics.height);
 
-    let title_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(220, 235, 255));
-    let status_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(150, 195, 255));
-    let entry_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(210, 220, 235));
-    let gatt_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(180, 210, 255));
-    let placeholder_style = MonoTextStyle::new(&FONT_6X9, Rgb888::new(120, 140, 160));
+    draw_background(surface, &metrics, palette);
 
-    let title_height = title_style.font.character_size.height as i32;
-    let status_height = status_style.font.character_size.height as i32;
-    let entry_height = entry_style.font.character_size.height as i32;
+    let status_badge = status_badge_text(status);
+    let status_area = draw_status_bar(
+        surface,
+        &metrics,
+        fonts,
+        palette,
+        StatusBarData {
+            left: "Bluetooth",
+            battery_percent: 66,
+            right: Some(status_badge),
+        },
+    );
 
-    let heading_x = 8;
-    let heading_y = 14;
-    let line_height = entry_height + 2;
+    let mut next_y = status_area.y2 + 1 + metrics.section_spacing;
+    let mut available = metrics.height.saturating_sub(next_y);
+    if available <= metrics.section_padding {
+        return;
+    }
 
-    let status_text = format_status(status);
+    let device_lines = build_device_lines(status, devices);
+    let device_refs: Vec<&str> = device_lines.iter().map(|line| line.as_str()).collect();
+    if !device_refs.is_empty() {
+        let desired = list_card_height(device_refs.len(), fonts, &metrics);
+        let height = adjust_card_height(desired, metrics.button_height * 2, available);
+        if height > 0 {
+            let device_card = draw_card(
+                surface,
+                &metrics,
+                fonts,
+                palette,
+                next_y,
+                CardConfig {
+                    title: Some("Nearby Devices"),
+                    subtitle: Some("Scan results"),
+                    badge: Some(BadgeConfig {
+                        text: status_badge,
+                        tone: status_badge_tone(status),
+                    }),
+                    accent: AccentColor::Yellow,
+                    height,
+                },
+            );
+            draw_list(surface, &device_card, fonts, palette, &device_refs);
 
-    // TODO: Text rendering disabled - requires embedded-graphics
-    // {
-    //     let mut target = SurfaceDrawTarget::new(surface);
-    //
-    //     let _ = EgText::new(
-    //         "Bluetooth Scanner",
-    //         Point::new(heading_x, heading_y),
-    //         title_style,
-    //     )
-    //     .draw(&mut target);
-
-        let status_y = heading_y + title_height + 2;
-        let _ = EgText::new(
-            status_text.as_str(),
-            Point::new(heading_x, status_y),
-            status_style,
-        )
-        .draw(&mut target);
-
-        let mut cursor_y = heading_y + title_height + status_height + 4;
-
-        for (idx, device) in devices.iter().enumerate().take(MAX_LISTED_DEVICES) {
-            if cursor_y + entry_height >= height - 8 {
-                break;
-            }
-            let line = format_device_line(idx, device);
-            let _ = EgText::new(line.as_str(), Point::new(heading_x, cursor_y), entry_style)
-                .draw(&mut target);
-            cursor_y += line_height;
-        }
-
-        if devices.is_empty() {
-            let _ = EgText::new(
-                "No devices discovered yet",
-                Point::new(heading_x, cursor_y),
-                placeholder_style,
-            )
-            .draw(&mut target);
-            cursor_y += line_height;
-        }
-
-        cursor_y += line_height;
-        let _ = EgText::new("GATT Service", Point::new(heading_x, cursor_y), title_style)
-            .draw(&mut target);
-        cursor_y += title_height;
-
-        let status_line = format_gatt_status(gatt_status);
-        let _ = EgText::new(
-            status_line.as_str(),
-            Point::new(heading_x, cursor_y),
-            gatt_style,
-        )
-        .draw(&mut target);
-        cursor_y += line_height;
-
-        let sent_line = format_packet("TX", last_sent);
-        let _ = EgText::new(
-            sent_line.as_str(),
-            Point::new(heading_x, cursor_y),
-            entry_style,
-        )
-        .draw(&mut target);
-        cursor_y += line_height;
-
-        let received_line = format_packet("RX", last_received);
-        let _ = EgText::new(
-            received_line.as_str(),
-            Point::new(heading_x, cursor_y),
-            entry_style,
-        )
-        .draw(&mut target);
-        cursor_y += line_height;
-
-        cursor_y += line_height;
-        let _ = EgText::new("Remote Users", Point::new(heading_x, cursor_y), title_style)
-            .draw(&mut target);
-        cursor_y += title_height;
-
-        let _ =
-            EgText::new(http_status, Point::new(heading_x, cursor_y), gatt_style).draw(&mut target);
-        cursor_y += line_height;
-
-        if remote_users.is_empty() {
-            let _ = EgText::new(
-                "No remote data available",
-                Point::new(heading_x, cursor_y),
-                placeholder_style,
-            )
-            .draw(&mut target);
-        } else {
-            for (idx, user) in remote_users.iter().enumerate() {
-                if cursor_y + entry_height >= height - 8 {
-                    break;
-                }
-                let line = format_remote_user_line(idx, user);
-                let _ = EgText::new(line.as_str(), Point::new(heading_x, cursor_y), entry_style)
-                    .draw(&mut target);
-                cursor_y += line_height;
-            }
+            next_y = device_card.next_y(&metrics);
+            available = metrics.height.saturating_sub(next_y);
         }
     }
+
+    if available <= metrics.section_padding {
+        return;
+    }
+
+    let gatt_lines = build_gatt_lines(gatt_status, last_sent, last_received);
+    let gatt_refs: Vec<&str> = gatt_lines.iter().map(|line| line.as_str()).collect();
+    if !gatt_refs.is_empty() {
+        let desired = list_card_height(gatt_refs.len(), fonts, &metrics);
+        let height = adjust_card_height(desired, metrics.button_height * 2, available);
+        if height > 0 {
+            let gatt_card = draw_card(
+                surface,
+                &metrics,
+                fonts,
+                palette,
+                next_y,
+                CardConfig {
+                    title: Some("GATT Bridge"),
+                    subtitle: Some("HTTP proxy status"),
+                    badge: None,
+                    accent: AccentColor::Gray,
+                    height,
+                },
+            );
+            draw_list(surface, &gatt_card, fonts, palette, &gatt_refs);
+
+            next_y = gatt_card.next_y(&metrics);
+            available = metrics.height.saturating_sub(next_y);
+        }
+    }
+
+    if available <= metrics.section_padding {
+        return;
+    }
+
+    let remote_lines = build_remote_lines(http_status, remote_users);
+    let remote_refs: Vec<&str> = remote_lines.iter().map(|line| line.as_str()).collect();
+    if remote_refs.is_empty() {
+        return;
+    }
+
+    let desired = list_card_height(remote_refs.len(), fonts, &metrics);
+    let height = adjust_card_height(desired, metrics.button_height * 2, available);
+    if height <= 0 {
+        return;
+    }
+
+    let remote_card = draw_card(
+        surface,
+        &metrics,
+        fonts,
+        palette,
+        next_y,
+        CardConfig {
+            title: Some("Remote Users"),
+            subtitle: Some("Last HTTP sync"),
+            badge: Some(BadgeConfig {
+                text: if remote_users.is_empty() { "EMPTY" } else { "SYNC" },
+                tone: if remote_users.is_empty() {
+                    BadgeTone::Gray
+                } else {
+                    BadgeTone::Accent
+                },
+            }),
+            accent: AccentColor::Gray,
+            height,
+        },
+    );
+
+    draw_list(surface, &remote_card, fonts, palette, &remote_refs);
 }
 
 fn format_status(status: ScanStatus) -> String {

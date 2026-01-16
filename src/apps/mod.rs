@@ -1,4 +1,5 @@
 pub(crate) mod arrow;
+pub mod components;
 // TODO: Re-enable after HPS integration complete
 // pub(crate) mod bluetooth_scanner;
 pub(crate) mod discord;

@@ -222,8 +222,7 @@ fn draw_section(
     let body_height = font_height(body_font);
     let line_spacing = body_height + if small_screen { 1 } else { 2 };
     let content_height = (lines.len() as i32).saturating_mul(line_spacing);
-    let card_height =
-        section_padding * 2 + accent_height + title_height + 4 + content_height;
+    let card_height = section_padding * 2 + accent_height + title_height + 4 + content_height;
     let bottom = (top + card_height - 1).min(height - 1);
     if bottom < top {
         return height;
@@ -276,7 +275,14 @@ fn draw_section(
             break;
         }
         let (clamped, _) = clamp_text_to_width(line.as_str(), max_text_width, body_font);
-        draw_text(surface, clamped.as_ref(), body_font, content_x, line_y, text_color);
+        draw_text(
+            surface,
+            clamped.as_ref(),
+            body_font,
+            content_x,
+            line_y,
+            text_color,
+        );
         line_y += line_spacing;
     }
 
@@ -339,7 +345,14 @@ fn font_height(font: FontId) -> i32 {
     line_height_for_font(font)
 }
 
-fn draw_text(surface: &mut DrawingSurface, text: &str, font: FontId, x: i32, y: i32, color: Rgba8888) {
+fn draw_text(
+    surface: &mut DrawingSurface,
+    text: &str,
+    font: FontId,
+    x: i32,
+    y: i32,
+    color: Rgba8888,
+) {
     let width = text_width(text, font);
     if width <= 0 {
         return;
