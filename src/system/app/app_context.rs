@@ -33,8 +33,12 @@ impl AppContext {
     }
 
     pub async fn is_focused(&self) -> bool {
-        let comp = self.compositor.lock().await;
-        comp.is_window_focused(self.handle)
+        let mut comp = self.compositor.lock().await;
+        if comp.is_window_focused(self.handle) {
+            true
+        } else {
+            comp.take_warmup_request(self.handle)
+        }
     }
 
     pub async fn poll_input(&self) -> Option<HighLevelEvent> {

@@ -76,6 +76,7 @@ impl UICompositor {
 
         self.current_index = dst_idx;
         self.apply_active_triplet(wm).await;
+        self.queue_neighbor_warmups();
         self.request_redraw(target);
         self.end_transition_session();
     }

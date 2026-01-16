@@ -44,6 +44,7 @@ pub struct UICompositor {
     pub(super) current_index: usize,
     pub(super) display_service: Option<Display>,
     pub(super) pending_redraws: Vec<WindowHandle>,
+    pub(super) neighbor_warmups: Vec<WindowHandle>,
     pub(super) animation_config: AnimationConfig,
     pub(super) active_transition: Option<TransitionSession>,
     pub(super) scratch: ScratchFrame,
@@ -56,6 +57,7 @@ impl UICompositor {
             current_index: 0,
             display_service: None,
             pending_redraws: Vec::with_capacity(MAX_REDRAW_REQUESTS),
+            neighbor_warmups: Vec::with_capacity(MAX_WINDOWS),
             animation_config: AnimationConfig::default(),
             active_transition: None,
             scratch: ScratchFrame::new(),
@@ -128,5 +130,38 @@ impl UICompositor {
 
     pub(super) fn transition_in_progress(&self) -> bool {
         self.active_transition.is_some()
+    }
+
+    pub(super) fn queue_neighbor_warmups(&mut self) {
+        if let Some((current, prev, next)) = self.current_prev_next() {
+            if prev != current {
+                self.enqueue_warmup(prev);
+            }
+            if next != current {
+                self.enqueue_warmup(next);
+            }
+        }
+    }
+
+    pub fn take_warmup_request(&mut self, handle: WindowHandle) -> bool {
+        if let Some(index) = self
+            .neighbor_warmups
+            .iter()
+            .position(|queued| queued == &handle)
+        {
+            self.neighbor_warmups.swap_remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn enqueue_warmup(&mut self, handle: WindowHandle) {
+        if self.neighbor_warmups.iter().any(|queued| queued == &handle) {
+            return;
+        }
+        if self.neighbor_warmups.len() < MAX_WINDOWS {
+            self.neighbor_warmups.push(handle);
+        }
     }
 }

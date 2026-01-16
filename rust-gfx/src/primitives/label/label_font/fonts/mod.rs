@@ -1,7 +1,6 @@
-pub(super) use super::{Font, FontKerning, Glyph, GlyphMap};
 pub(super) use super::FontId;
+pub(super) use super::{Font, FontKerning, Glyph, GlyphMap};
 
-pub mod montserrat_8;
 pub mod montserrat_10;
 pub mod montserrat_12;
 pub mod montserrat_14;
@@ -22,4 +21,4 @@ pub mod montserrat_42;
 pub mod montserrat_44;
 pub mod montserrat_46;
 pub mod montserrat_48;
-
+pub mod montserrat_8;
