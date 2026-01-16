@@ -312,6 +312,8 @@ impl TriangleMask {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_radius_mask() {
@@ -325,7 +327,6 @@ mod tests {
         let val = mask.get_mask_value(10, 10);
         assert!(val < OPA_COVER);
     }
-
     #[test]
     fn test_triangle_contains() {
         let mask = TriangleMask::new(0, 0, 10, 0, 5, 10);
