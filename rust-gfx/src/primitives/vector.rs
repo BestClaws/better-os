@@ -1,7 +1,9 @@
 use crate::color::Rgba8888;
-use crate::primitives::{draw_line, draw_triangle, LineDsc, TriangleDsc};
+use crate::primitives::line::{draw_line, LineDsc};
+use crate::primitives::triangle::{draw_triangle, TriangleDsc};
 use crate::types::{Gradient, Point, OPA_70, OPA_COVER};
 use crate::Rasterizer;
+use micromath::F32Ext;
 
 /// Placeholder vector rendering until full ThorVG integration lands
 #[derive(Copy, Clone, Debug, PartialEq)]

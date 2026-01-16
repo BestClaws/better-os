@@ -51,6 +51,15 @@ impl RadiusMask {
         let radius = self.radius;
         let outer = self.outer;
 
+        if !outer && (y < rect.y1 || y > rect.y2) {
+            mask_buf.fill(0);
+            return;
+        }
+
+        if outer && (y < rect.y1 || y > rect.y2) {
+            return;
+        }
+
         let in_straight_section = (x_start >= rect.x1 + radius
             && x_start + len <= rect.x2 - radius)
             || (y >= rect.y1 + radius && y <= rect.y2 - radius);
