@@ -18,10 +18,29 @@ use embassy_executor::task;
 use embassy_time::{with_timeout, Duration, Instant, Timer};
 use micromath::F32Ext;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImuView {
+    Orientation,
+    Acceleration,
+    Gyroscope,
+}
+
+impl ImuView {
+    fn next(self) -> Self {
+        match self {
+            ImuView::Orientation => ImuView::Acceleration,
+            ImuView::Acceleration => ImuView::Gyroscope,
+            ImuView::Gyroscope => ImuView::Orientation,
+        }
+    }
+}
+
 #[task]
 pub async fn imu_demo_app(ctx: AppContext) {
     let mut snapshot = latest_imu_snapshot().await;
     let mut last_update: Option<Instant> = snapshot.map(|_| Instant::now());
+    let mut view = ImuView::Orientation;
+    let mut view_started = Instant::now();
 
     loop {
         if !ctx.is_focused().await {
@@ -36,30 +55,37 @@ pub async fn imu_demo_app(ctx: AppContext) {
             last_update = Some(Instant::now());
         }
 
+        let now = Instant::now();
+        if now - view_started >= Duration::from_secs(2) {
+            view = view.next();
+            view_started = now;
+        }
+
         let snapshot_value = snapshot.unwrap_or_else(empty_snapshot);
         let age_ms = last_update.map(|stamp| {
-            let now = Instant::now();
             let elapsed = now - stamp;
             elapsed.as_millis() as u32
         });
 
-        ctx.draw(|surface| draw_interface(surface, snapshot_value, age_ms))
+        let current_view = view;
+        ctx.draw(|surface| draw_interface(surface, snapshot_value, age_ms, current_view))
             .await;
         ctx.request_redraw().await;
         Timer::after(Duration::from_millis(60)).await;
     }
 }
 
-fn draw_interface(surface: &mut DrawingSurface, snapshot: ImuSnapshot, age_ms: Option<u32>) {
+fn draw_interface(
+    surface: &mut DrawingSurface,
+    snapshot: ImuSnapshot,
+    age_ms: Option<u32>,
+    view: ImuView,
+) {
     let metrics = StyleMetrics::from_surface(surface);
     let palette = StylePalette::arknights();
     let fonts = StyleFonts::for_surface(metrics.width, metrics.height);
 
     draw_background(surface, &metrics, palette);
-
-    let delta_label = age_ms
-        .map(|ms| format!("Δt:{:>4}ms", ms.min(9_999)))
-        .unwrap_or_else(|| "Δt:----".to_string());
 
     let status_area = draw_status_bar(
         surface,
@@ -69,50 +95,51 @@ fn draw_interface(surface: &mut DrawingSurface, snapshot: ImuSnapshot, age_ms: O
         StatusBarData {
             left: "IMU Monitor",
             battery_percent: 70,
-            right: Some(delta_label.as_str()),
+            right: None,
         },
     );
 
     let mut next_y = status_area.y2 + 1 + metrics.section_spacing;
-
-    let (roll, pitch, yaw) = quaternion_to_euler_deg(snapshot.orientation);
-    let orientation_lines = vec![
-        format!("Roll   {:+06.2}°", roll),
-        format!("Pitch  {:+06.2}°", pitch),
-        format!("Yaw    {:+06.2}°", yaw),
-    ];
-    let orientation_refs = orientation_lines
-        .iter()
-        .map(|line| line.as_str())
-        .collect::<Vec<&str>>();
-    next_y = match draw_data_card(
-        surface,
-        &metrics,
-        fonts,
-        palette,
-        next_y,
-        CardConfig {
-            title: Some("Orientation"),
-            subtitle: Some("Euler (deg)"),
-            badge: Some(BadgeConfig {
-                text: "ATT",
-                tone: BadgeTone::Accent,
-            }),
-            accent: AccentColor::Yellow,
-            height: metrics.button_height * 2,
-        },
-        &orientation_refs,
-    ) {
-        Some(frame) => frame.next_y(&metrics),
-        None => return,
+    let (card_title, card_subtitle, card_badge, card_accent, lines) = match view {
+        ImuView::Orientation => {
+            let (roll, pitch, yaw) = quaternion_to_euler_deg(snapshot.orientation);
+            (
+                "Orientation",
+                "Euler",
+                ("ATT", BadgeTone::Accent),
+                AccentColor::Yellow,
+                vec![
+                    format!("R {:+05.1}°", roll),
+                    format!("P {:+05.1}°", pitch),
+                    format!("Y {:+05.1}°", yaw),
+                ],
+            )
+        }
+        ImuView::Acceleration => (
+            "Acceleration",
+            "Linear g",
+            ("ACC", BadgeTone::Accent),
+            AccentColor::Gray,
+            vec![
+                format!("X {:+04.2}g", snapshot.accel.0),
+                format!("Y {:+04.2}g", snapshot.accel.1),
+                format!("Z {:+04.2}g", snapshot.accel.2),
+            ],
+        ),
+        ImuView::Gyroscope => (
+            "Gyroscope",
+            "Angular",
+            ("GYR", BadgeTone::Gray),
+            AccentColor::Dark,
+            vec![
+                format!("X {:+05.1}°/s", snapshot.gyro.0),
+                format!("Y {:+05.1}°/s", snapshot.gyro.1),
+                format!("Z {:+05.1}°/s", snapshot.gyro.2),
+            ],
+        ),
     };
 
-    let accel_lines = vec![
-        format!("X  {:+06.3} g", snapshot.accel.0),
-        format!("Y  {:+06.3} g", snapshot.accel.1),
-        format!("Z  {:+06.3} g", snapshot.accel.2),
-    ];
-    let accel_refs = accel_lines
+    let refs = lines
         .iter()
         .map(|line| line.as_str())
         .collect::<Vec<&str>>();
@@ -123,47 +150,16 @@ fn draw_interface(surface: &mut DrawingSurface, snapshot: ImuSnapshot, age_ms: O
         palette,
         next_y,
         CardConfig {
-            title: Some("Acceleration"),
-            subtitle: Some("Linear (g)"),
+            title: Some(card_title),
+            subtitle: Some(card_subtitle),
             badge: Some(BadgeConfig {
-                text: "ACC",
-                tone: BadgeTone::Accent,
+                text: card_badge.0,
+                tone: card_badge.1,
             }),
-            accent: AccentColor::Gray,
+            accent: card_accent,
             height: metrics.button_height * 2,
         },
-        &accel_refs,
-    ) {
-        Some(frame) => frame.next_y(&metrics),
-        None => return,
-    };
-
-    let gyro_lines = vec![
-        format!("X  {:+07.2} dps", snapshot.gyro.0),
-        format!("Y  {:+07.2} dps", snapshot.gyro.1),
-        format!("Z  {:+07.2} dps", snapshot.gyro.2),
-    ];
-    let gyro_refs = gyro_lines
-        .iter()
-        .map(|line| line.as_str())
-        .collect::<Vec<&str>>();
-    next_y = match draw_data_card(
-        surface,
-        &metrics,
-        fonts,
-        palette,
-        next_y,
-        CardConfig {
-            title: Some("Gyroscope"),
-            subtitle: Some("Angular (dps)"),
-            badge: Some(BadgeConfig {
-                text: "GYR",
-                tone: BadgeTone::Gray,
-            }),
-            accent: AccentColor::Dark,
-            height: metrics.button_height * 2,
-        },
-        &gyro_refs,
+        &refs,
     ) {
         Some(frame) => frame.next_y(&metrics),
         None => return,
@@ -173,13 +169,9 @@ fn draw_interface(surface: &mut DrawingSurface, snapshot: ImuSnapshot, age_ms: O
         + snapshot.accel.1 * snapshot.accel.1
         + snapshot.accel.2 * snapshot.accel.2)
         .sqrt();
-    let summary_age_line = age_ms
-        .map(|ms| format!("Last update {:>4} ms", ms.min(9_999)))
-        .unwrap_or_else(|| "Last update ---- ms".to_string());
     let summary_lines = vec![
-        format!("‖a‖   {:>5.2} g", accel_mag),
-        format!("Temp   {:>5.1} °C", snapshot.temperature_c),
-        summary_age_line,
+        format!("|a| {:>4.2}g", accel_mag),
+        format!("Temp {:>4.1}°C", snapshot.temperature_c),
     ];
     let summary_refs = summary_lines
         .iter()

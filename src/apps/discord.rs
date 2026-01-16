@@ -1,19 +1,17 @@
 use crate::apps::components::{
-    draw_background, draw_card, draw_list, draw_status_bar, AccentColor, BadgeConfig, BadgeTone,
-    CardConfig, StatusBarData, StyleFonts, StyleMetrics, StylePalette,
+    draw_background, draw_badge, draw_status_bar, draw_text, BadgeConfig, BadgeTone, StatusBarData,
+    StyleFonts, StyleMetrics, StylePalette,
 };
 use crate::libs::http;
 use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::string::{String, ToString};
 use defmt::{info, warn};
 use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
+use rust_gfx::primitives::label::measure_text_with_font;
+use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
+use rust_gfx::types::{Area, OPA_COVER};
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds
@@ -148,7 +146,6 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
 
     draw_background(surface, &metrics, palette);
 
-    let status_label = if connected { "SYNCED" } else { "RETRYING" };
     let status_area = draw_status_bar(
         surface,
         &metrics,
@@ -157,95 +154,94 @@ fn draw_interface(surface: &mut DrawingSurface, messages: &[String; 3], connecte
         StatusBarData {
             left: "Discord",
             battery_percent: 68,
-            right: Some(status_label),
+            right: None,
         },
     );
 
     let mut next_y = status_area.y2 + 1 + metrics.section_spacing;
 
-    let message_lines: Vec<String> = messages
-        .iter()
-        .enumerate()
-        .map(|(idx, msg)| {
-            if msg.trim().is_empty() || msg.as_str() == "..." {
-                format!("{:02}. ...", idx + 1)
-            } else {
-                format!("{:02}. {}", idx + 1, msg)
-            }
-        })
-        .collect();
-    let message_refs = message_lines
-        .iter()
-        .map(|line| line.as_str())
-        .collect::<Vec<&str>>();
-
-    let list_height =
-        message_refs.len() as i32 * (fonts.line_height_body() + metrics.section_padding / 2);
-    let message_card_height =
-        metrics.section_padding * 2 + fonts.line_height_title() + 4 + list_height;
-
-    let message_card = draw_card(
+    let status_text = if connected { "ONLINE" } else { "OFFLINE" };
+    let chip_tone = if connected {
+        BadgeTone::Accent
+    } else {
+        BadgeTone::Gray
+    };
+    let chip_baseline = next_y + fonts.line_height_small() + metrics.section_padding;
+    draw_badge(
         surface,
-        &metrics,
         fonts,
         palette,
-        next_y,
-        CardConfig {
-            title: Some("Messages"),
-            subtitle: Some("Latest channel updates"),
-            badge: Some(BadgeConfig {
-                text: if connected { "LIVE" } else { "OFF" },
-                tone: if connected {
-                    BadgeTone::Accent
-                } else {
-                    BadgeTone::Gray
-                },
-            }),
-            accent: AccentColor::Yellow,
-            height: message_card_height.max(metrics.button_height * 2),
+        BadgeConfig {
+            text: status_text,
+            tone: chip_tone,
         },
+        metrics.content_x() + metrics.content_width(),
+        chip_baseline,
     );
+    next_y = chip_baseline + metrics.section_spacing;
 
-    draw_list(surface, &message_card, fonts, palette, &message_refs);
+    draw_message_bubbles(surface, messages, fonts, &metrics, palette, next_y);
+}
 
-    next_y = message_card.next_y(&metrics);
+fn draw_message_bubbles(
+    surface: &mut DrawingSurface,
+    messages: &[String; 3],
+    fonts: StyleFonts,
+    metrics: &StyleMetrics,
+    palette: StylePalette,
+    top: i32,
+) {
+    let padding_x = metrics.section_padding;
+    let padding_y = (metrics.section_padding / 2).max(3);
+    let gap = (metrics.section_spacing / 2).max(3);
+    let mut y = top;
+    let left = metrics.content_x();
+    let width = metrics.content_width();
+    let bottom_limit = metrics.height - metrics.outer_padding;
 
-    if next_y >= metrics.height {
-        return;
-    }
-
-    let delivered = messages.iter().filter(|m| m.as_str() != "...").count();
-    let status_lines: Vec<String> = vec![
-        if connected {
-            "Status: Online".to_string()
+    for msg in messages.iter() {
+        let text = if msg.trim().is_empty() || msg.as_str() == "..." {
+            "..."
         } else {
-            "Status: Offline".to_string()
-        },
-        format!("Messages: {}/{}", delivered, messages.len()),
-    ];
-    let status_refs = status_lines
-        .iter()
-        .map(|line| line.as_str())
-        .collect::<Vec<&str>>();
-    let status_height = metrics.section_padding * 2
-        + fonts.line_height_title()
-        + 4
-        + status_refs.len() as i32 * (fonts.line_height_body() + metrics.section_padding / 2);
+            msg.as_str()
+        };
 
-    let status_card = draw_card(
-        surface,
-        &metrics,
-        fonts,
-        palette,
-        next_y,
-        CardConfig {
-            title: Some("Summary"),
-            subtitle: Some("Channel overview"),
-            badge: None,
-            accent: AccentColor::Gray,
-            height: status_height.max(metrics.button_height * 2),
-        },
-    );
+        let text_width = measure_text_with_font(text, 0, fonts.body).min(width - padding_x * 2);
+        let bubble_width = (text_width + padding_x * 2).min(width);
+        let bubble_height = fonts.line_height_body() + padding_y * 2;
 
-    draw_list(surface, &status_card, fonts, palette, &status_refs);
+        if y + bubble_height > bottom_limit {
+            break;
+        }
+
+        let bubble_left = left + (width - bubble_width) / 2;
+        let bubble_area = Area::new(
+            bubble_left,
+            y,
+            bubble_left + bubble_width - 1,
+            y + bubble_height,
+        );
+
+        let mut bubble = RectDsc::new();
+        bubble.bg_color = palette.container;
+        bubble.bg_opa = OPA_COVER;
+        bubble.radius = metrics.section_radius.max(4);
+        bubble.border_width = 1;
+        bubble.border_color = palette.outline;
+        bubble.border_opa = 160;
+        draw_rect(surface, &bubble, &bubble_area);
+
+        let text_x = bubble_area.x1 + padding_x;
+        let text_y = bubble_area.y1 + padding_y;
+        draw_text(
+            surface,
+            text,
+            fonts.body,
+            text_x,
+            text_y,
+            palette.text_primary,
+        );
+
+        y = bubble_area.y2 + 1 + gap;
+    }
 }

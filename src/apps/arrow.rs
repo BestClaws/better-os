@@ -1,12 +1,13 @@
 use crate::apps::components::{
-    draw_background, draw_card, draw_list, draw_status_bar, AccentColor, BadgeConfig, BadgeTone,
-    CardConfig, StatusBarData, StyleFonts, StyleMetrics, StylePalette,
+    draw_background, draw_status_bar, draw_text, StatusBarData, StyleFonts, StyleMetrics,
+    StylePalette,
 };
 use crate::system::app::app_context::AppContext;
 use crate::system::services::gyro_accel_srv::{latest_orientation, wait_for_orientation_update};
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::util::math::primitives as util_math;
-use alloc::{format, string::String, vec, vec::Vec};
+use alloc::vec::Vec;
+use alloc::{format, string::String};
 use defmt::{error, info};
 use embassy_time::{with_timeout, Duration, Instant, Timer};
 use micromath::F32Ext;
@@ -162,60 +163,30 @@ pub async fn arrow_app(context: AppContext) {
                 draw_rect(surface, &accent, &accent_area);
                 draw_status_bar(surface, &metrics, fonts, palette, status_data);
 
-                next_y = viewport_area.y2 + 1 + metrics.section_spacing;
-
-                let available = metrics.height.saturating_sub(next_y);
-                if available > metrics.section_padding {
-                    let orientation_lines: Vec<String> = vec![
-                        format!("FPS  : {:4.1}", fps_snapshot),
-                        format!("Roll : {:+05.1}°", roll_deg),
-                        format!("Pitch: {:+05.1}°", pitch_deg),
-                        format!("Yaw  : {:+05.1}°", yaw_deg),
-                    ];
-                    let orientation_refs = orientation_lines
-                        .iter()
-                        .map(|line| line.as_str())
-                        .collect::<Vec<&str>>();
-
-                    let dividers = orientation_refs.len().saturating_sub(1) as i32;
-                    let content_height = orientation_refs.len() as i32 * fonts.line_height_body()
-                        + dividers * (metrics.section_padding / 2);
-
-                    let mut card_height = metrics.section_padding * 2
-                        + fonts.line_height_title()
-                        + metrics.section_padding / 2
-                        + content_height;
-                    let min_height = metrics.button_height * 2;
-                    let max_height = available;
-                    if max_height > 0 {
-                        let card_height = if max_height < min_height {
-                            max_height
-                        } else {
-                            card_height.clamp(min_height, max_height)
-                        };
-
-                        if card_height > 0 {
-                            let summary_card = draw_card(
-                                surface,
-                                &metrics,
-                                fonts,
-                                palette,
-                                next_y,
-                                CardConfig {
-                                    title: Some("Orientation"),
-                                    subtitle: Some("Euler (deg)"),
-                                    badge: Some(BadgeConfig {
-                                        text: "LIVE",
-                                        tone: BadgeTone::Accent,
-                                    }),
-                                    accent: AccentColor::Yellow,
-                                    height: card_height,
-                                },
-                            );
-
-                            draw_list(surface, &summary_card, fonts, palette, &orientation_refs);
-                        }
-                    }
+                let overlay_font = fonts.small;
+                let overlay_lines = [
+                    format!("FPS  {:4.1}", fps_snapshot),
+                    format!("R {:+05.1}°", roll_deg),
+                    format!("P {:+05.1}°", pitch_deg),
+                    format!("Y {:+05.1}°", yaw_deg),
+                ];
+                let line_height = fonts.line_height_small();
+                let total_overlay = line_height * overlay_lines.len() as i32;
+                let mut overlay_y = viewport_area.y2 - total_overlay - metrics.section_padding;
+                if overlay_y < viewport_area.y1 + metrics.section_padding {
+                    overlay_y = viewport_area.y1 + metrics.section_padding;
+                }
+                let overlay_x = viewport_area.x1 + metrics.section_padding;
+                for line in overlay_lines.iter() {
+                    draw_text(
+                        surface,
+                        line.as_str(),
+                        overlay_font,
+                        overlay_x,
+                        overlay_y,
+                        palette.text_primary,
+                    );
+                    overlay_y += line_height;
                 }
             })
             .await;

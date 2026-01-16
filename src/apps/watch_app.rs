@@ -1,10 +1,9 @@
 //! Arknights-inspired watch face with reusable UI components.
 
 use crate::apps::components::{
-    draw_background, draw_card, draw_progress_bar, draw_quick_actions, draw_status_bar, draw_text,
-    draw_time_display, draw_toggle, AccentColor, BadgeConfig, BadgeTone, CardConfig, CardFrame,
-    ProgressBarConfig, QuickAction, StatusBarData, StyleFonts, StyleMetrics, StylePalette,
-    TimeDisplayData, ToggleConfig,
+    draw_background, draw_card, draw_list, draw_status_bar, draw_text, draw_time_display,
+    AccentColor, BadgeConfig, BadgeTone, CardConfig, CardFrame, StatusBarData, StyleFonts,
+    StyleMetrics, StylePalette, TimeDisplayData,
 };
 use crate::system::app::app_context::AppContext;
 use crate::system::hal::rtc::RtcDateTime;
@@ -23,12 +22,14 @@ use rust_gfx::primitives::{
 use rust_gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
 
 extern crate alloc;
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec, vec::Vec};
 
 #[embassy_executor::task]
 pub async fn watch_app(ctx: AppContext) {
     info!("Starting watch app");
     let fallback_start = Instant::now();
+    let mut notification_index = 0;
+    let mut last_scroll = fallback_start;
     loop {
         if !ctx.is_focused().await {
             Timer::after(Duration::from_millis(100)).await;
@@ -36,13 +37,31 @@ pub async fn watch_app(ctx: AppContext) {
         }
 
         let rtc_snapshot = current_datetime().await;
-        let fallback_elapsed = Instant::now() - fallback_start;
+        let now = Instant::now();
+        let fallback_elapsed = now - fallback_start;
         let fallback_micros = fallback_elapsed.as_micros() as u128;
         let time_state = TimeState::from_snapshot(rtc_snapshot, fallback_micros);
 
+        if NOTIFICATIONS.len() > 1 {
+            let interval = Duration::from_millis(NOTIFICATION_SCROLL_MS);
+            if now - last_scroll >= interval {
+                notification_index = (notification_index + 1) % NOTIFICATIONS.len();
+                last_scroll = now;
+            }
+        }
+
+        let scroll_elapsed = now - last_scroll;
+        let active_index = notification_index;
+
         let draw_start = Instant::now();
         ctx.draw(|surface: &mut DrawingSurface| {
-            draw_watch_view(surface, &time_state);
+            draw_watch_view(
+                surface,
+                &time_state,
+                &NOTIFICATIONS,
+                active_index,
+                scroll_elapsed,
+            );
         })
         .await;
 
@@ -59,6 +78,18 @@ const MONTH_NAMES: [&str; 12] = [
 
 const FACE_INSET: i32 = 4;
 
+const NOTIFICATIONS: [&str; 6] = [
+    "Logistics squad restocked the depot.",
+    "Rhodes Island briefing starts in 10 min.",
+    "Amiya sent a new encrypted message.",
+    "Mission report: Salvaged drone recovered.",
+    "Penguin Logistics delivered a supply cache.",
+    "New recruit awaiting onboarding at HQ.",
+];
+
+const NOTIFICATION_DISPLAY_COUNT: usize = 3;
+const NOTIFICATION_SCROLL_MS: u64 = 3500;
+
 #[derive(Clone, Debug)]
 struct TimeState {
     hours: i32,
@@ -69,7 +100,6 @@ struct TimeState {
     status_text: String,
     time_text: String,
     date_text: String,
-    minute_percent: u8,
 }
 
 impl TimeState {
@@ -87,10 +117,6 @@ impl TimeState {
                 let month = MONTH_NAMES[month_idx as usize];
                 let date_text = format!("{}, {} {:02}", weekday, month, dt.day);
 
-                let minute_percent = ((minute_progress % 60.0) / 60.0 * 100.0)
-                    .round()
-                    .clamp(0.0, 100.0) as u8;
-
                 Self {
                     hours: dt.hour as i32,
                     minutes: dt.minute as i32,
@@ -100,7 +126,6 @@ impl TimeState {
                     status_text,
                     time_text,
                     date_text,
-                    minute_percent,
                 }
             }
             None => {
@@ -111,9 +136,6 @@ impl TimeState {
                 let minute_progress = minutes as f32 + seconds / 60.0;
                 let hour_progress = hours as f32 + minute_progress / 60.0;
                 let status_text = format!("{:02}:{:02}", hours, minutes);
-                let minute_percent = ((minute_progress % 60.0) / 60.0 * 100.0)
-                    .round()
-                    .clamp(0.0, 100.0) as u8;
 
                 Self {
                     hours,
@@ -124,14 +146,19 @@ impl TimeState {
                     status_text: status_text.clone(),
                     time_text: status_text,
                     date_text: String::from("Syncing..."),
-                    minute_percent,
                 }
             }
         }
     }
 }
 
-fn draw_watch_view(surface: &mut DrawingSurface, state: &TimeState) {
+fn draw_watch_view(
+    surface: &mut DrawingSurface,
+    state: &TimeState,
+    notifications: &[&str],
+    start_index: usize,
+    scroll_elapsed: Duration,
+) {
     let metrics = StyleMetrics::from_surface(surface);
     let palette = StylePalette::arknights();
     let fonts = StyleFonts::for_surface(metrics.width, metrics.height);
@@ -146,7 +173,7 @@ fn draw_watch_view(surface: &mut DrawingSurface, state: &TimeState) {
         StatusBarData {
             left: state.status_text.as_str(),
             battery_percent: 72,
-            right: Some("LIVE"),
+            right: None,
         },
     );
 
@@ -165,121 +192,12 @@ fn draw_watch_view(surface: &mut DrawingSurface, state: &TimeState) {
     );
 
     next_y = time_area.y2 + 1 + metrics.section_spacing;
-
-    let quick_actions = [
-        QuickAction {
-            icon: "▶",
-            label: "Play",
-        },
-        QuickAction {
-            icon: "■",
-            label: "Stats",
-        },
-        QuickAction {
-            icon: "●",
-            label: "Team",
-        },
-        QuickAction {
-            icon: "★",
-            label: "Gift",
-        },
-    ];
-
-    let toggles = [
-        ToggleConfig {
-            label: "Notify",
-            enabled: true,
-        },
-        ToggleConfig {
-            label: "Haptic",
-            enabled: true,
-        },
-        ToggleConfig {
-            label: "Sound",
-            enabled: state.hours >= 6 && state.hours <= 22,
-        },
-    ];
-
-    let action_rows = ((quick_actions.len() as i32 + 1) / 2).max(1);
-    let actions_height =
-        action_rows * metrics.button_height + (action_rows - 1).max(0) * metrics.quick_gap;
-    let toggles_height =
-        toggles.len() as i32 * (fonts.line_height_body() + metrics.section_padding / 2);
-    let progress_height = fonts.line_height_small() + metrics.section_padding * 3;
-    let base_quick_height =
-        (actions_height + toggles_height + progress_height + metrics.section_padding * 2)
-            .max(metrics.button_height * 2);
-
-    let available = metrics.height - next_y - metrics.section_spacing;
+    let available = metrics.height.saturating_sub(next_y);
     if available <= metrics.button_height {
-        let watch_card = draw_card(
-            surface,
-            &metrics,
-            fonts,
-            palette,
-            next_y,
-            CardConfig {
-                title: Some("Dial"),
-                subtitle: Some("Analog"),
-                badge: Some(BadgeConfig {
-                    text: "LIVE",
-                    tone: BadgeTone::Accent,
-                }),
-                accent: AccentColor::Yellow,
-                height: available.max(metrics.button_height),
-            },
-        );
-        draw_watch_dial(surface, &watch_card, &metrics, fonts, palette, state);
         return;
     }
 
-    if available <= metrics.button_height * 2 {
-        let watch_card = draw_card(
-            surface,
-            &metrics,
-            fonts,
-            palette,
-            next_y,
-            CardConfig {
-                title: Some("Dial"),
-                subtitle: Some("Analog"),
-                badge: Some(BadgeConfig {
-                    text: "LIVE",
-                    tone: BadgeTone::Accent,
-                }),
-                accent: AccentColor::Yellow,
-                height: available,
-            },
-        );
-        draw_watch_dial(surface, &watch_card, &metrics, fonts, palette, state);
-        return;
-    }
-
-    let mut watch_height = (available * 2) / 3;
-    if watch_height < metrics.button_height {
-        watch_height = metrics.button_height;
-    }
-    if available - watch_height < metrics.button_height {
-        watch_height = available - metrics.button_height;
-    }
-    if watch_height < metrics.button_height {
-        watch_height = metrics.button_height;
-    }
-
-    let mut quick_card_height = available - watch_height;
-    if quick_card_height < metrics.button_height {
-        quick_card_height = metrics.button_height;
-        watch_height = available - quick_card_height;
-    }
-    if quick_card_height > base_quick_height {
-        quick_card_height = base_quick_height.min(available);
-        watch_height = available - quick_card_height;
-    }
-    if watch_height <= 0 {
-        watch_height = available;
-        quick_card_height = 0;
-    }
-
+    let dial_height = (available * 3 / 5).max(metrics.button_height);
     let watch_card = draw_card(
         surface,
         &metrics,
@@ -294,7 +212,7 @@ fn draw_watch_view(surface: &mut DrawingSurface, state: &TimeState) {
                 tone: BadgeTone::Accent,
             }),
             accent: AccentColor::Yellow,
-            height: watch_height,
+            height: dial_height,
         },
     );
 
@@ -306,72 +224,165 @@ fn draw_watch_view(surface: &mut DrawingSurface, state: &TimeState) {
         return;
     }
 
-    if quick_card_height < metrics.button_height {
-        return;
-    }
+    let scroll_progress = if notifications.len() <= 1 {
+        0.0
+    } else {
+        let interval = Duration::from_millis(NOTIFICATION_SCROLL_MS);
+        let interval_us = interval.as_micros() as f32;
+        if interval_us <= 0.0 {
+            0.0
+        } else {
+            let elapsed_us = scroll_elapsed.as_micros().min(interval.as_micros()) as f32;
+            (elapsed_us / interval_us).clamp(0.0, 1.0)
+        }
+    };
 
-    let quick_card = draw_card(
+    draw_notification_stack(
         surface,
         &metrics,
         fonts,
         palette,
         next_y,
-        CardConfig {
-            title: Some("Control"),
-            subtitle: Some("Quick access"),
-            badge: None,
-            accent: AccentColor::Gray,
-            height: quick_card_height,
-        },
+        notifications,
+        start_index,
+        scroll_progress,
     );
+}
 
-    let mut actions_area = quick_card.content_area;
-    let available_height = actions_area.y2 - actions_area.y1;
-    let adjusted_actions_height = actions_height.min(available_height.max(0));
-    actions_area.y2 = actions_area.y1 + adjusted_actions_height;
-    let actions_frame = CardFrame {
-        card_area: quick_card.card_area,
-        content_area: actions_area,
-    };
-    draw_quick_actions(
-        surface,
-        &actions_frame,
-        &metrics,
-        fonts,
-        palette,
-        &quick_actions,
-    );
+fn draw_notification_stack(
+    surface: &mut DrawingSurface,
+    metrics: &StyleMetrics,
+    fonts: StyleFonts,
+    palette: StylePalette,
+    mut top: i32,
+    notifications: &[&str],
+    start_index: usize,
+    progress: f32,
+) {
+    if notifications.is_empty() {
+        return;
+    }
 
-    let mut progress_area = quick_card.content_area;
-    progress_area.y1 = actions_area.y2 + metrics.section_padding;
-    progress_area.y2 = (progress_area.y1 + progress_height).min(quick_card.content_area.y2);
-    if progress_area.y1 < progress_area.y2 {
-        let progress_frame = CardFrame {
-            card_area: quick_card.card_area,
-            content_area: progress_area,
+    let display_count = notifications.len().min(NOTIFICATION_DISPLAY_COUNT);
+    for i in 0..display_count {
+        let remaining_height = metrics.height.saturating_sub(top);
+        let base_height = fonts.line_height_body() + metrics.section_padding * 2;
+        let card_height = base_height.max(metrics.button_height);
+        if remaining_height < card_height {
+            break;
+        }
+
+        let idx = (start_index + i) % notifications.len();
+        let message = clamp_notification_text(notifications[idx], 36);
+        let lines = vec![message];
+        let refs = lines
+            .iter()
+            .map(|line| line.as_str())
+            .collect::<Vec<&str>>();
+
+        let badge = if i == 0 && notifications.len() > 1 {
+            Some(BadgeConfig {
+                text: "DISMISS",
+                tone: BadgeTone::Accent,
+            })
+        } else if notifications.len() > 1 {
+            Some(BadgeConfig {
+                text: "QUEUE",
+                tone: BadgeTone::Gray,
+            })
+        } else {
+            None
         };
-        draw_progress_bar(
+
+        let card = draw_card(
             surface,
-            &progress_frame,
-            &metrics,
+            metrics,
             fonts,
             palette,
-            ProgressBarConfig {
-                percent: state.minute_percent,
-                label: "Hour",
+            top,
+            CardConfig {
+                title: Some("Notification"),
+                subtitle: None,
+                badge,
+                accent: if i == 0 {
+                    AccentColor::Yellow
+                } else {
+                    AccentColor::Gray
+                },
+                height: card_height,
             },
         );
+
+        draw_list(surface, &card, fonts, palette, &refs);
+
+        if i == 0 && notifications.len() > 1 {
+            draw_scroll_progress(surface, &card, palette, progress);
+        }
+
+        top = card.next_y(metrics);
+        if top >= metrics.height {
+            break;
+        }
+    }
+}
+
+fn draw_scroll_progress(
+    surface: &mut DrawingSurface,
+    card: &CardFrame,
+    palette: StylePalette,
+    progress: f32,
+) {
+    let clamped = progress.clamp(0.0, 1.0);
+    let bar_height = 3;
+    let y1 = (card.content_area.y2 - bar_height).max(card.content_area.y1);
+    let y2 = card.content_area.y2;
+    if y2 - y1 < 1 {
+        return;
     }
 
-    let mut toggle_area = quick_card.content_area;
-    toggle_area.y1 = progress_area.y2 + metrics.section_padding;
-    if toggle_area.y1 < toggle_area.y2 {
-        let toggles_frame = CardFrame {
-            card_area: quick_card.card_area,
-            content_area: toggle_area,
-        };
-        draw_toggle(surface, &toggles_frame, &metrics, fonts, palette, &toggles);
+    let track_area = Area::new(card.content_area.x1, y1, card.content_area.x2, y2);
+    let mut track = RectDsc::new();
+    track.bg_color = palette.accent_light;
+    track.bg_opa = 120;
+    track.radius = 1;
+    draw_rect(surface, &track, &track_area);
+
+    let width = card.content_width().saturating_sub(2);
+    if width <= 0 {
+        return;
     }
+    let fill_width = ((width as f32) * clamped).round() as i32;
+    if fill_width <= 0 {
+        return;
+    }
+    let fill_area = Area::new(
+        card.content_area.x1 + 1,
+        y1 + 1,
+        card.content_area.x1 + 1 + fill_width,
+        y2 - 1,
+    );
+    let mut fill = RectDsc::new();
+    fill.bg_color = palette.accent_yellow;
+    fill.bg_opa = OPA_COVER;
+    fill.radius = 1;
+    draw_rect(surface, &fill, &fill_area);
+}
+
+fn clamp_notification_text(message: &str, max_len: usize) -> String {
+    let mut trimmed = String::with_capacity(max_len.min(message.len()));
+    for ch in message.chars() {
+        if !ch.is_ascii() {
+            continue;
+        }
+        if trimmed.len() >= max_len {
+            break;
+        }
+        trimmed.push(ch);
+    }
+    if trimmed.is_empty() {
+        trimmed.push_str("...");
+    }
+    trimmed
 }
 
 fn draw_watch_dial(
