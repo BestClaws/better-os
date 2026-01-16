@@ -109,9 +109,9 @@ fn draw_interface(
                 ("ATT", BadgeTone::Accent),
                 AccentColor::Yellow,
                 vec![
-                    format!("R {:+05.1}°", roll),
-                    format!("P {:+05.1}°", pitch),
-                    format!("Y {:+05.1}°", yaw),
+                    format!("R:{}°", compact_angle_deg(roll)),
+                    format!("P:{}°", compact_angle_deg(pitch)),
+                    format!("Y:{}°", compact_angle_deg(yaw)),
                 ],
             )
         }
@@ -121,9 +121,9 @@ fn draw_interface(
             ("ACC", BadgeTone::Accent),
             AccentColor::Gray,
             vec![
-                format!("X {:+04.2}g", snapshot.accel.0),
-                format!("Y {:+04.2}g", snapshot.accel.1),
-                format!("Z {:+04.2}g", snapshot.accel.2),
+                format!("X:{}g", compact_g(snapshot.accel.0)),
+                format!("Y:{}g", compact_g(snapshot.accel.1)),
+                format!("Z:{}g", compact_g(snapshot.accel.2)),
             ],
         ),
         ImuView::Gyroscope => (
@@ -132,9 +132,9 @@ fn draw_interface(
             ("GYR", BadgeTone::Gray),
             AccentColor::Dark,
             vec![
-                format!("X {:+05.1}°/s", snapshot.gyro.0),
-                format!("Y {:+05.1}°/s", snapshot.gyro.1),
-                format!("Z {:+05.1}°/s", snapshot.gyro.2),
+                format!("X:{}°/s", compact_rate(snapshot.gyro.0)),
+                format!("Y:{}°/s", compact_rate(snapshot.gyro.1)),
+                format!("Z:{}°/s", compact_rate(snapshot.gyro.2)),
             ],
         ),
     };
@@ -170,8 +170,8 @@ fn draw_interface(
         + snapshot.accel.2 * snapshot.accel.2)
         .sqrt();
     let summary_lines = vec![
-        format!("|a| {:>4.2}g", accel_mag),
-        format!("Temp {:>4.1}°C", snapshot.temperature_c),
+        format!("|a|:{}g", compact_g(accel_mag)),
+        format!("Tmp:{}°C", compact_temp(snapshot.temperature_c)),
     ];
     let summary_refs = summary_lines
         .iter()
@@ -218,30 +218,48 @@ fn draw_data_card(
         return None;
     }
 
-    let desired = card_height_for_lines(lines.len(), fonts, metrics);
+    let has_subtitle = config.subtitle.is_some();
+    let desired = card_height_for_lines(lines.len(), fonts, metrics, has_subtitle);
     let height = adjust_card_height(desired, metrics.button_height * 2, available);
     if height <= 0 {
         return None;
     }
 
+    let header = card_header_offset(has_subtitle, fonts, metrics);
+    let content_height = height - header - metrics.section_padding;
+    if content_height <= 0 {
+        return None;
+    }
+
+    let mut line_count = lines.len();
+    while line_count > 0 && list_content_height(line_count, fonts) > content_height {
+        line_count -= 1;
+    }
+
+    if line_count == 0 {
+        return None;
+    }
+
     config.height = height;
     let frame = draw_card(surface, metrics, fonts, palette, top, config);
-    draw_list(surface, &frame, fonts, palette, lines);
+    let display_lines = &lines[..line_count];
+    draw_list(surface, &frame, fonts, palette, display_lines);
     Some(frame)
 }
 
-fn card_height_for_lines(line_count: usize, fonts: StyleFonts, metrics: &StyleMetrics) -> i32 {
-    if line_count == 0 {
-        return metrics.section_padding * 2 + fonts.line_height_title();
-    }
-
-    let body = line_count as i32 * fonts.line_height_body();
-    let dividers = line_count.saturating_sub(1) as i32 * (metrics.section_padding / 2);
-    metrics.section_padding * 2
-        + fonts.line_height_title()
-        + metrics.section_padding / 2
-        + body
-        + dividers
+fn card_height_for_lines(
+    line_count: usize,
+    fonts: StyleFonts,
+    metrics: &StyleMetrics,
+    has_subtitle: bool,
+) -> i32 {
+    let header = card_header_offset(has_subtitle, fonts, metrics);
+    let content = if line_count == 0 {
+        fonts.line_height_body()
+    } else {
+        list_content_height(line_count, fonts)
+    };
+    header + content + metrics.section_padding
 }
 
 fn adjust_card_height(desired: i32, min: i32, max: i32) -> i32 {
@@ -253,6 +271,86 @@ fn adjust_card_height(desired: i32, min: i32, max: i32) -> i32 {
     } else {
         desired.clamp(min, max)
     }
+}
+
+fn compact_angle_deg(value: f32) -> String {
+    let rounded = value.round() as i16;
+    if rounded >= 0 {
+        format!("+{}", rounded)
+    } else {
+        rounded.to_string()
+    }
+}
+
+fn compact_rate(value: f32) -> String {
+    compact_angle_deg(value)
+}
+
+fn compact_temp(value: f32) -> String {
+    compact_signed_float(value, 1, 1)
+}
+
+fn compact_g(value: f32) -> String {
+    let magnitude = value.abs();
+    let decimals = if magnitude < 0.95 {
+        2
+    } else if magnitude < 9.5 {
+        1
+    } else {
+        0
+    };
+    compact_signed_float(value, decimals, 1)
+}
+
+fn compact_signed_float(value: f32, decimals: usize, fallback_decimals: usize) -> String {
+    let mut s = if decimals == 0 {
+        format!("{:+.0}", value)
+    } else {
+        format!("{:+.*}", decimals, value)
+    };
+
+    if decimals > 0 {
+        trim_trailing_zeroes(&mut s);
+    }
+
+    if s == "+0" || s == "-0" {
+        if fallback_decimals > 0 {
+            let mut fallback = format!("{:+.*}", fallback_decimals, value);
+            trim_trailing_zeroes(&mut fallback);
+            fallback
+        } else {
+            "+0".to_string()
+        }
+    } else {
+        s
+    }
+}
+
+fn trim_trailing_zeroes(text: &mut String) {
+    if let Some(dot) = text.find('.') {
+        while text.len() > dot + 1 && text.ends_with('0') {
+            text.pop();
+        }
+        if text.ends_with('.') {
+            text.pop();
+        }
+    }
+}
+
+fn card_header_offset(has_subtitle: bool, fonts: StyleFonts, metrics: &StyleMetrics) -> i32 {
+    if has_subtitle {
+        metrics.section_padding + fonts.line_height_title() + fonts.line_height_body() + 6
+    } else {
+        metrics.section_padding + fonts.line_height_title() + 4
+    }
+}
+
+fn list_content_height(line_count: usize, fonts: StyleFonts) -> i32 {
+    if line_count == 0 {
+        return 0;
+    }
+    let count = line_count as i32;
+    count * fonts.line_height_body() + (4 * count - 2)
 }
 
 fn freshness_badge(age_ms: Option<u32>) -> (&'static str, BadgeTone) {

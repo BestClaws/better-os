@@ -57,10 +57,10 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
     let mut next_y = status_area.y2 + 1 + metrics.section_spacing;
 
     let info_lines: Vec<String> = vec![
-        format!("Total   {}", format_size(total)),
-        format!("Used    {}", format_size(used)),
-        format!("Free    {}", format_size(free)),
-        format!("Usage   {:>3}%", percent),
+        format!("Tot {}", format_size(total)),
+        format!("Use {}", format_size(used)),
+        format!("Fre {}", format_size(free)),
+        format!("Load {:>3}%", percent.min(999)),
     ];
     let info_refs = info_lines
         .iter()
@@ -68,7 +68,7 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         .collect::<Vec<&str>>();
 
     let base_height = list_card_height(info_refs.len(), fonts, &metrics);
-    let card_height = base_height + metrics.button_height;
+    let card_height = base_height + fonts.line_height_body();
     let heap_card = draw_card(
         surface,
         &metrics,
@@ -105,7 +105,7 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         palette,
         ProgressBarConfig {
             percent: percent.min(100) as u8,
-            label: "Allocated",
+            label: "",
         },
     );
 }
@@ -131,17 +131,17 @@ fn format_size(bytes: usize) -> String {
         let whole = bytes / MB;
         let tenths = ((bytes % MB) * 10) / MB;
         if tenths > 0 {
-            format!("{}.{} MB", whole, tenths)
+            format!("{whole}.{tenths}MB")
         } else {
-            format!("{} MB", whole)
+            format!("{whole}MB")
         }
     } else {
         let kilobytes = bytes / KB;
         let tenths = ((bytes % KB) * 10) / KB;
         if kilobytes >= 100 || tenths == 0 {
-            format!("{} KB", kilobytes)
+            format!("{kilobytes}KB")
         } else {
-            format!("{}.{} KB", kilobytes, tenths)
+            format!("{kilobytes}.{tenths}KB")
         }
     }
 }

@@ -47,7 +47,7 @@ pub async fn arrow_app(context: AppContext) {
     let mut reference_orientation: Option<util_math::Quaternion> = None;
 
     let render_options = RenderOptions {
-        mode: ShadingMode::Lit,
+        mode: ShadingMode::Wireframe,
         overlay_wireframe: false,
         wireframe_color: Rgba8888::rgb(90, 200, 255),
         light_direction: Vec3::new(0.4, -0.6, -1.0),
