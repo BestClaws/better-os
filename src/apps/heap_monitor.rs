@@ -39,8 +39,10 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
     let percent = if total == 0 {
         0
     } else {
-        ((used as u128 * 100) / total as u128) as u32
+        let adjusted = (used as u128 * 100) + (total as u128 / 2);
+        (adjusted / total as u128) as u32
     };
+    let gauge_percent = percent.min(100);
 
     let status_area = draw_status_bar(
         surface,
@@ -70,7 +72,7 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
     let base_height = list_card_height(info_refs.len(), fonts, &metrics);
     let bar_height = metrics.section_padding + 2;
     let label_height = fonts.line_height_small();
-    let gauge_reserve = bar_height + label_height + 2;
+    let gauge_reserve = bar_height + label_height + metrics.section_padding;
     let card_height = base_height + gauge_reserve;
     let heap_card = draw_card(
         surface,
@@ -105,11 +107,7 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         .saturating_sub(list_frame.content_area.y1);
     let reserve = gauge_reserve.min(content_height).max(0);
     let new_bottom = list_frame.content_area.y2.saturating_sub(reserve);
-    list_frame.content_area.y2 = if new_bottom < list_frame.content_area.y1 {
-        list_frame.content_area.y1
-    } else {
-        new_bottom
-    };
+    list_frame.content_area.y2 = new_bottom.max(list_frame.content_area.y1);
 
     draw_list(surface, &list_frame, fonts, palette, &info_refs);
 
@@ -120,7 +118,7 @@ fn draw_interface(surface: &mut DrawingSurface, stats: &HeapStats) {
         fonts,
         palette,
         ProgressBarConfig {
-            percent: percent.min(100) as u8,
+            percent: gauge_percent as u8,
             label: "",
         },
     );

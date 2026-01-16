@@ -517,7 +517,7 @@ pub fn draw_progress_bar(
     );
 
     let mut track = RectDsc::new();
-    track.bg_color = palette.accent_light;
+    track.bg_color = palette.text_secondary;
     track.bg_opa = OPA_COVER;
     track.radius = bar_height / 2;
     draw_rect(surface, &track, &bar_area);
