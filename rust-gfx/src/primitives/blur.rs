@@ -50,8 +50,8 @@ pub fn draw_blur<R: Rasterizer>(rast: &mut R, dsc: &BlurDsc, area: &Area) {
 
     clipped.x1 = align_up(clipped.x1, skip_cnt);
     clipped.y1 = align_up(clipped.y1, skip_cnt);
-    clipped.x2 = align_down(clipped.x2, skip_cnt);
-    clipped.y2 = align_down(clipped.y2, skip_cnt);
+    clipped.x2 = align_down_with_margin(clipped.x2, skip_cnt);
+    clipped.y2 = align_down_with_margin(clipped.y2, skip_cnt);
 
     if clipped.x1 > clipped.x2 || clipped.y1 > clipped.y2 {
         return;
@@ -256,7 +256,9 @@ fn blur_channel(sum: &mut u32, value: u8, intensity: u32) -> u8 {
 fn copy_pixel(buffer: &mut [Rgba8888], width: usize, src_x: i32, dst_x: i32, y: i32) {
     let src_idx = pixel_index(width, src_x, y);
     let dst_idx = pixel_index(width, dst_x, y);
-    buffer[dst_idx] = buffer[src_idx];
+    let src = buffer[src_idx];
+    let dst_alpha = buffer[dst_idx].a();
+    buffer[dst_idx] = Rgba8888::rgba(src.r(), src.g(), src.b(), dst_alpha);
 }
 
 fn copy_row(
@@ -295,6 +297,13 @@ fn align_down(value: i32, align: i32) -> i32 {
         return value;
     }
     value - (value % align)
+}
+
+fn align_down_with_margin(value: i32, align: i32) -> i32 {
+    if align <= 1 {
+        return value;
+    }
+    ((value - (align - 1)) / align) * align
 }
 
 fn get_rounded_edge_point(p_start: i32, p_end: i32, p: i32, r: i32) -> i32 {
