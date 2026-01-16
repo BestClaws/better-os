@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #define SDL_MAIN_HANDLED
 #include "SDL2/SDL.h"
@@ -93,7 +94,7 @@ static void generate_rectangles(void) {
             lv_draw_rect_dsc_init(&rect_dsc);
             area.x1 = 20; area.y1 = 30;
             area.x2 = 82; area.y2 = 95;
-            
+
             rect_dsc.radius = radii[r];
             rect_dsc.bg_opa = LV_OPA_COVER;
             rect_dsc.bg_color = lv_color_make(255, 0, 0);
@@ -105,11 +106,52 @@ static void generate_rectangles(void) {
             rect_dsc.bg_grad.stops[1].opa = LV_OPA_COVER;
             rect_dsc.bg_grad.stops[1].frac = 255;
             rect_dsc.bg_grad.stops_count = 2;
-            
+
             char name[128];
             snprintf(name, sizeof(name), "rect_grad_%s_%s", grad_names[g], radius_names[r]);
             lv_draw_rect(&layer, &rect_dsc, &area);
             capture_sprite(name);
+        }
+    }
+
+    int32_t grad_border_widths[] = {3, 6};
+    const char *grad_border_width_names[] = {"w3", "w6"};
+    lv_color_t grad_border_colors[] = {
+        lv_color_make(255, 255, 255),
+        lv_color_make(40, 40, 40)
+    };
+    const char *grad_border_color_names[] = {"white", "charcoal"};
+
+    for (int g = 0; g < 4; g++) {
+        for (int r = 0; r < 3; r++) {
+            for (int b = 0; b < 2; b++) {
+                lv_draw_rect_dsc_init(&rect_dsc);
+                area.x1 = 20; area.y1 = 30;
+                area.x2 = 82; area.y2 = 95;
+
+                rect_dsc.radius = radii[r];
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                rect_dsc.bg_color = lv_color_make(255, 0, 0);
+                rect_dsc.bg_grad.dir = grad_dirs[g];
+                rect_dsc.bg_grad.stops[0].color = lv_color_make(255, 0, 0);
+                rect_dsc.bg_grad.stops[0].opa = LV_OPA_COVER;
+                rect_dsc.bg_grad.stops[0].frac = 0;
+                rect_dsc.bg_grad.stops[1].color = lv_color_make(0, 0, 255);
+                rect_dsc.bg_grad.stops[1].opa = LV_OPA_COVER;
+                rect_dsc.bg_grad.stops[1].frac = 255;
+                rect_dsc.bg_grad.stops_count = 2;
+                rect_dsc.border_opa = LV_OPA_COVER;
+                rect_dsc.border_width = grad_border_widths[b];
+                rect_dsc.border_color = grad_border_colors[b];
+                rect_dsc.border_side = LV_BORDER_SIDE_FULL;
+
+                char name[160];
+                snprintf(name, sizeof(name), "rect_gradborder_%s_%s_%s_%s",
+                         grad_names[g], radius_names[r],
+                         grad_border_width_names[b], grad_border_color_names[b]);
+                lv_draw_rect(&layer, &rect_dsc, &area);
+                capture_sprite(name);
+            }
         }
     }
     
@@ -229,11 +271,129 @@ static void generate_rectangles(void) {
 }
 
 // ============================================================================
+// CIRCLE PRIMITIVES
+// ============================================================================
+
+static void generate_circles(void) {
+    lv_draw_rect_dsc_t circle_dsc;
+    lv_area_t area;
+
+    lv_color_t fill_colors[] = {
+        lv_color_make(255, 120, 120),
+        lv_color_make(120, 255, 180),
+        lv_color_make(120, 180, 255),
+        lv_color_make(255, 220, 120)
+    };
+    const char *fill_names[] = {"coral", "mint", "sky", "sun"};
+
+    for (int i = 0; i < 4; i++) {
+        lv_draw_rect_dsc_init(&circle_dsc);
+        area.x1 = 20; area.y1 = 25;
+        area.x2 = 82; area.y2 = 87;
+
+        circle_dsc.radius = LV_RADIUS_CIRCLE;
+        circle_dsc.bg_opa = LV_OPA_COVER;
+        circle_dsc.bg_color = fill_colors[i];
+
+        char name[128];
+        snprintf(name, sizeof(name), "circle_solid_%s", fill_names[i]);
+        lv_draw_rect(&layer, &circle_dsc, &area);
+        capture_sprite(name);
+    }
+
+    lv_grad_dir_t grad_dirs[] = {LV_GRAD_DIR_HOR, LV_GRAD_DIR_VER, LV_GRAD_DIR_RADIAL, LV_GRAD_DIR_CONICAL};
+    const char *grad_names[] = {"hor", "ver", "radial", "conical"};
+
+    for (int g = 0; g < 4; g++) {
+        lv_draw_rect_dsc_init(&circle_dsc);
+        area.x1 = 20; area.y1 = 25;
+        area.x2 = 82; area.y2 = 87;
+
+        circle_dsc.radius = LV_RADIUS_CIRCLE;
+        circle_dsc.bg_opa = LV_OPA_COVER;
+        circle_dsc.bg_color = lv_color_make(255, 0, 0);
+        circle_dsc.bg_grad.dir = grad_dirs[g];
+        circle_dsc.bg_grad.stops[0].color = lv_color_make(255, 0, 0);
+        circle_dsc.bg_grad.stops[0].opa = LV_OPA_COVER;
+        circle_dsc.bg_grad.stops[0].frac = 0;
+        circle_dsc.bg_grad.stops[1].color = lv_color_make(0, 0, 255);
+        circle_dsc.bg_grad.stops[1].opa = LV_OPA_COVER;
+        circle_dsc.bg_grad.stops[1].frac = 255;
+        circle_dsc.bg_grad.stops_count = 2;
+
+        char name[128];
+        snprintf(name, sizeof(name), "circle_grad_%s", grad_names[g]);
+        lv_draw_rect(&layer, &circle_dsc, &area);
+        capture_sprite(name);
+    }
+
+    int32_t border_widths[] = {2, 4, 8};
+    const char *border_width_names[] = {"w2", "w4", "w8"};
+    lv_color_t border_colors[] = {
+        lv_color_make(255, 255, 255),
+        lv_color_make(255, 200, 0),
+        lv_color_make(80, 255, 255)
+    };
+    const char *border_color_names[] = {"white", "gold", "aqua"};
+
+    for (int w = 0; w < 3; w++) {
+        for (int c = 0; c < 3; c++) {
+            lv_draw_rect_dsc_init(&circle_dsc);
+            area.x1 = 20; area.y1 = 25;
+            area.x2 = 82; area.y2 = 87;
+
+            circle_dsc.radius = LV_RADIUS_CIRCLE;
+            circle_dsc.bg_opa = LV_OPA_COVER;
+            circle_dsc.bg_color = lv_color_make(45, 45, 45);
+            circle_dsc.border_opa = LV_OPA_COVER;
+            circle_dsc.border_width = border_widths[w];
+            circle_dsc.border_color = border_colors[c];
+            circle_dsc.border_side = LV_BORDER_SIDE_FULL;
+
+            char name[160];
+            snprintf(name, sizeof(name), "circle_border_%s_%s", border_width_names[w], border_color_names[c]);
+            lv_draw_rect(&layer, &circle_dsc, &area);
+            capture_sprite(name);
+        }
+    }
+
+    for (int g = 0; g < 2; g++) {
+        for (int w = 0; w < 2; w++) {
+            lv_draw_rect_dsc_init(&circle_dsc);
+            area.x1 = 20; area.y1 = 25;
+            area.x2 = 82; area.y2 = 87;
+
+            circle_dsc.radius = LV_RADIUS_CIRCLE;
+            circle_dsc.bg_opa = LV_OPA_COVER;
+            circle_dsc.bg_color = lv_color_make(255, 80, 0);
+            circle_dsc.bg_grad.dir = grad_dirs[g];
+            circle_dsc.bg_grad.stops[0].color = lv_color_make(255, 80, 0);
+            circle_dsc.bg_grad.stops[0].opa = LV_OPA_COVER;
+            circle_dsc.bg_grad.stops[0].frac = 0;
+            circle_dsc.bg_grad.stops[1].color = lv_color_make(80, 0, 255);
+            circle_dsc.bg_grad.stops[1].opa = LV_OPA_COVER;
+            circle_dsc.bg_grad.stops[1].frac = 255;
+            circle_dsc.bg_grad.stops_count = 2;
+            circle_dsc.border_opa = LV_OPA_COVER;
+            circle_dsc.border_width = border_widths[w + 1];
+            circle_dsc.border_color = lv_color_make(255, 255, 255);
+            circle_dsc.border_side = LV_BORDER_SIDE_FULL;
+
+            char name[160];
+            snprintf(name, sizeof(name), "circle_gradborder_%s_%s", grad_names[g], border_width_names[w + 1]);
+            lv_draw_rect(&layer, &circle_dsc, &area);
+            capture_sprite(name);
+        }
+    }
+}
+
+// ============================================================================
 // TRIANGLE PRIMITIVES
 // ============================================================================
 
 static void generate_triangles(void) {
     lv_draw_triangle_dsc_t tri_dsc;
+    lv_draw_line_dsc_t line_dsc;
     
     // Different orientations
     lv_point_precise_t triangles[][3] = {
@@ -319,6 +479,50 @@ static void generate_triangles(void) {
         snprintf(name, sizeof(name), "tri_opa%s", opa_names[o]);
         lv_draw_triangle(&layer, &tri_dsc);
         capture_sprite(name);
+    }
+
+    int tri_border_indices[] = {0, 1, 4};
+    int32_t border_widths[] = {2, 5};
+    const char *border_width_names[] = {"w2", "w5"};
+    lv_color_t border_colors[] = {
+        lv_color_make(255, 255, 255),
+        lv_color_make(255, 220, 0),
+        lv_color_make(255, 105, 180)
+    };
+    const char *border_color_names[] = {"white", "gold", "pink"};
+
+    for (int ti = 0; ti < 3; ti++) {
+        int tri_idx = tri_border_indices[ti];
+        for (int w = 0; w < 2; w++) {
+            for (int c = 0; c < 3; c++) {
+                lv_draw_triangle_dsc_init(&tri_dsc);
+                tri_dsc.p[0] = triangles[tri_idx][0];
+                tri_dsc.p[1] = triangles[tri_idx][1];
+                tri_dsc.p[2] = triangles[tri_idx][2];
+                tri_dsc.color = tri_colors[(ti + c) % 4];
+                tri_dsc.opa = LV_OPA_COVER;
+
+                lv_draw_triangle(&layer, &tri_dsc);
+
+                lv_draw_line_dsc_init(&line_dsc);
+                line_dsc.width = border_widths[w];
+                line_dsc.color = border_colors[c];
+                line_dsc.opa = LV_OPA_COVER;
+                line_dsc.round_start = 1;
+                line_dsc.round_end = 1;
+
+                for (int edge = 0; edge < 3; edge++) {
+                    line_dsc.p1 = triangles[tri_idx][edge];
+                    line_dsc.p2 = triangles[tri_idx][(edge + 1) % 3];
+                    lv_draw_line(&layer, &line_dsc);
+                }
+
+                char name[160];
+                snprintf(name, sizeof(name), "tri_border_%s_%s_%s",
+                         tri_orient_names[tri_idx], border_width_names[w], border_color_names[c]);
+                capture_sprite(name);
+            }
+        }
     }
 }
 
@@ -660,6 +864,259 @@ static void generate_labels(void) {
 }
 
 // ============================================================================
+// VECTOR GRAPHICS PRIMITIVES
+// ============================================================================
+
+#if LV_USE_VECTOR_GRAPHIC
+static void generate_vector_graphics(void) {
+    lv_draw_vector_dsc_t *vector_dsc = lv_draw_vector_dsc_create(&layer);
+    if (!vector_dsc) {
+        return;
+    }
+
+    lv_vector_path_t *star_path = lv_vector_path_create(LV_VECTOR_PATH_QUALITY_HIGH);
+    if (!star_path) {
+        lv_draw_vector_dsc_delete(vector_dsc);
+        return;
+    }
+
+    // Build a star with a visible gradient fill
+    lv_fpoint_t star_pts[] = {
+        {51.0f, 25.0f}, {62.0f, 45.0f}, {85.0f, 48.0f}, {66.0f, 62.0f},
+        {74.0f, 86.0f}, {51.0f, 72.0f}, {28.0f, 86.0f}, {36.0f, 62.0f},
+        {17.0f, 48.0f}, {40.0f, 45.0f}
+    };
+
+    lv_vector_path_move_to(star_path, &star_pts[0]);
+    for (uint32_t i = 1; i < sizeof(star_pts) / sizeof(star_pts[0]); i++) {
+        lv_vector_path_line_to(star_path, &star_pts[i]);
+    }
+    lv_vector_path_close(star_path);
+
+    lv_grad_stop_t star_stops[3];
+    star_stops[0].color = lv_color_make(255, 90, 0);
+    star_stops[0].opa = LV_OPA_COVER;
+    star_stops[0].frac = 0;
+    star_stops[1].color = lv_color_make(255, 0, 200);
+    star_stops[1].opa = LV_OPA_COVER;
+    star_stops[1].frac = 130;
+    star_stops[2].color = lv_color_make(80, 200, 255);
+    star_stops[2].opa = LV_OPA_COVER;
+    star_stops[2].frac = 255;
+
+    lv_draw_vector_dsc_set_fill_color(vector_dsc, lv_color_black());
+    lv_draw_vector_dsc_set_fill_opa(vector_dsc, LV_OPA_COVER);
+    lv_draw_vector_dsc_set_fill_linear_gradient(vector_dsc, 25.0f, 30.0f, 80.0f, 95.0f);
+    lv_draw_vector_dsc_set_fill_gradient_color_stops(vector_dsc, star_stops, 3);
+    lv_draw_vector_dsc_set_fill_rule(vector_dsc, LV_VECTOR_FILL_NONZERO);
+
+    lv_draw_vector_dsc_set_stroke_color(vector_dsc, lv_color_make(255, 255, 255));
+    lv_draw_vector_dsc_set_stroke_opa(vector_dsc, LV_OPA_70);
+    lv_draw_vector_dsc_set_stroke_width(vector_dsc, 3.0f);
+
+    lv_draw_vector_dsc_add_path(vector_dsc, star_path);
+    lv_draw_vector(vector_dsc);
+
+    lv_vector_path_delete(star_path);
+    lv_draw_vector_dsc_delete(vector_dsc);
+    capture_sprite("vector_star_gradient");
+
+    vector_dsc = lv_draw_vector_dsc_create(&layer);
+    if (!vector_dsc) {
+        return;
+    }
+
+    lv_vector_path_t *wave_path = lv_vector_path_create(LV_VECTOR_PATH_QUALITY_HIGH);
+    if (!wave_path) {
+        lv_draw_vector_dsc_delete(vector_dsc);
+        return;
+    }
+
+    // Use cubic curves to produce a dashed ribbon stroke
+    lv_fpoint_t p0 = {22.0f, 82.0f};
+    lv_fpoint_t c1 = {35.0f, 35.0f};
+    lv_fpoint_t c2 = {65.0f, 95.0f};
+    lv_fpoint_t p1 = {84.0f, 44.0f};
+    lv_vector_path_move_to(wave_path, &p0);
+    lv_vector_path_cubic_to(wave_path, &c1, &c2, &p1);
+
+    lv_fpoint_t c3 = {70.0f, 24.0f};
+    lv_fpoint_t c4 = {40.0f, 24.0f};
+    lv_fpoint_t p2 = {26.0f, 46.0f};
+    lv_vector_path_cubic_to(wave_path, &c3, &c4, &p2);
+
+    lv_draw_vector_dsc_set_fill_opa(vector_dsc, LV_OPA_TRANSP);
+    lv_draw_vector_dsc_set_stroke_color(vector_dsc, lv_color_make(120, 255, 120));
+    lv_draw_vector_dsc_set_stroke_opa(vector_dsc, LV_OPA_COVER);
+    lv_draw_vector_dsc_set_stroke_width(vector_dsc, 6.0f);
+    lv_draw_vector_dsc_set_stroke_cap(vector_dsc, LV_VECTOR_STROKE_CAP_ROUND);
+    lv_draw_vector_dsc_set_stroke_join(vector_dsc, LV_VECTOR_STROKE_JOIN_ROUND);
+
+    float dash_pattern[] = {14.0f, 6.0f};
+    lv_draw_vector_dsc_set_stroke_dash(vector_dsc, dash_pattern, 2);
+
+    lv_grad_stop_t stroke_stops[2];
+    stroke_stops[0].color = lv_color_make(120, 255, 120);
+    stroke_stops[0].opa = LV_OPA_COVER;
+    stroke_stops[0].frac = 0;
+    stroke_stops[1].color = lv_color_make(0, 150, 255);
+    stroke_stops[1].opa = LV_OPA_COVER;
+    stroke_stops[1].frac = 255;
+    lv_draw_vector_dsc_set_stroke_linear_gradient(vector_dsc, 22.0f, 82.0f, 84.0f, 44.0f);
+    lv_draw_vector_dsc_set_stroke_gradient_color_stops(vector_dsc, stroke_stops, 2);
+
+    lv_draw_vector_dsc_add_path(vector_dsc, wave_path);
+    lv_draw_vector(vector_dsc);
+
+    lv_vector_path_delete(wave_path);
+    lv_draw_vector_dsc_delete(vector_dsc);
+    capture_sprite("vector_wave_stroke");
+}
+#else
+static lv_color_t fallback_star_color(float x, float y) {
+    const float x0 = 25.0f;
+    const float y0 = 30.0f;
+    const float x1 = 80.0f;
+    const float y1 = 95.0f;
+    const float dx = x1 - x0;
+    const float dy = y1 - y0;
+    const float len_sq = dx * dx + dy * dy;
+    float t = 0.0f;
+    if(len_sq > 0.0f) {
+        t = ((x - x0) * dx + (y - y0) * dy) / len_sq;
+    }
+    if(t < 0.0f) t = 0.0f;
+    if(t > 1.0f) t = 1.0f;
+
+    const float mid_frac = 130.0f / 255.0f;
+    uint8_t r0 = 255, g0 = 90,  b0 = 0;
+    uint8_t r1 = 255, g1 = 0,   b1 = 200;
+    uint8_t r2 = 80,  g2 = 200, b2 = 255;
+
+    float r, g, b;
+    if(t <= mid_frac) {
+        float lt = t / mid_frac;
+        r = r0 + (r1 - r0) * lt;
+        g = g0 + (g1 - g0) * lt;
+        b = b0 + (b1 - b0) * lt;
+    } else {
+        float lt = (t - mid_frac) / (1.0f - mid_frac);
+        r = r1 + (r2 - r1) * lt;
+        g = g1 + (g2 - g1) * lt;
+        b = b1 + (b2 - b1) * lt;
+    }
+    return lv_color_make((uint8_t)r, (uint8_t)g, (uint8_t)b);
+}
+
+static float fallback_wave_component(float p0, float c1, float c2, float p1, float t) {
+    float it = 1.0f - t;
+    return it * it * it * p0 + 3.0f * it * it * t * c1 + 3.0f * it * t * t * c2 + t * t * t * p1;
+}
+
+static void fallback_wave_point(float t, float *x, float *y) {
+    if(t < 0.5f) {
+        float lt = t * 2.0f;
+        float p0x = 22.0f, p0y = 82.0f;
+        float c1x = 35.0f, c1y = 35.0f;
+        float c2x = 65.0f, c2y = 95.0f;
+        float p1x = 84.0f, p1y = 44.0f;
+        *x = fallback_wave_component(p0x, c1x, c2x, p1x, lt);
+        *y = fallback_wave_component(p0y, c1y, c2y, p1y, lt);
+    } else {
+        float lt = (t - 0.5f) * 2.0f;
+        float p0x = 84.0f, p0y = 44.0f;
+        float c1x = 70.0f, c1y = 24.0f;
+        float c2x = 40.0f, c2y = 24.0f;
+        float p1x = 26.0f, p1y = 46.0f;
+        *x = fallback_wave_component(p0x, c1x, c2x, p1x, lt);
+        *y = fallback_wave_component(p0y, c1y, c2y, p1y, lt);
+    }
+}
+
+static lv_color_t fallback_wave_color(float t) {
+    if(t < 0.0f) t = 0.0f;
+    if(t > 1.0f) t = 1.0f;
+    uint8_t r0 = 120, g0 = 255, b0 = 120;
+    uint8_t r1 = 0,   g1 = 150, b1 = 255;
+    float r = r0 + (r1 - r0) * t;
+    float g = g0 + (g1 - g0) * t;
+    float b = b0 + (b1 - b0) * t;
+    return lv_color_make((uint8_t)r, (uint8_t)g, (uint8_t)b);
+}
+
+static void generate_vector_graphics(void) {
+    lv_draw_triangle_dsc_t tri_dsc;
+    lv_draw_triangle_dsc_init(&tri_dsc);
+    tri_dsc.opa = LV_OPA_COVER;
+
+    lv_point_precise_t star_pts[] = {
+        {51, 25}, {62, 45}, {85, 48}, {66, 62}, {74, 86},
+        {51, 72}, {28, 86}, {36, 62}, {17, 48}, {40, 45}
+    };
+    lv_point_precise_t center = {51, 55};
+
+    for(uint32_t i = 0; i < sizeof(star_pts) / sizeof(star_pts[0]); i++) {
+        uint32_t next = (i + 1) % (sizeof(star_pts) / sizeof(star_pts[0]));
+        tri_dsc.p[0] = center;
+        tri_dsc.p[1] = star_pts[i];
+        tri_dsc.p[2] = star_pts[next];
+        float cx = (tri_dsc.p[0].x + tri_dsc.p[1].x + tri_dsc.p[2].x) / 3.0f;
+        float cy = (tri_dsc.p[0].y + tri_dsc.p[1].y + tri_dsc.p[2].y) / 3.0f;
+        tri_dsc.color = fallback_star_color(cx, cy);
+        lv_draw_triangle(&layer, &tri_dsc);
+    }
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.width = 3;
+    line_dsc.opa = LV_OPA_70;
+    line_dsc.color = lv_color_make(255, 255, 255);
+    line_dsc.round_start = 1;
+    line_dsc.round_end = 1;
+
+    for(uint32_t i = 0; i < sizeof(star_pts) / sizeof(star_pts[0]); i++) {
+        uint32_t next = (i + 1) % (sizeof(star_pts) / sizeof(star_pts[0]));
+        line_dsc.p1.x = star_pts[i].x;
+        line_dsc.p1.y = star_pts[i].y;
+        line_dsc.p2.x = star_pts[next].x;
+        line_dsc.p2.y = star_pts[next].y;
+        lv_draw_line(&layer, &line_dsc);
+    }
+
+    capture_sprite("vector_star_gradient");
+
+    const uint32_t segments = 36;
+    lv_draw_line_dsc_t wave_dsc;
+    lv_draw_line_dsc_init(&wave_dsc);
+    wave_dsc.width = 6;
+    wave_dsc.opa = LV_OPA_COVER;
+    wave_dsc.dash_width = 14;
+    wave_dsc.dash_gap = 6;
+    wave_dsc.round_start = 1;
+    wave_dsc.round_end = 1;
+
+    float prev_x, prev_y;
+    fallback_wave_point(0.0f, &prev_x, &prev_y);
+
+    for(uint32_t i = 1; i <= segments; i++) {
+        float t = (float)i / (float)segments;
+        float curr_x, curr_y;
+        fallback_wave_point(t, &curr_x, &curr_y);
+        wave_dsc.p1.x = prev_x;
+        wave_dsc.p1.y = prev_y;
+        wave_dsc.p2.x = curr_x;
+        wave_dsc.p2.y = curr_y;
+        wave_dsc.color = fallback_wave_color(t);
+        lv_draw_line(&layer, &wave_dsc);
+        prev_x = curr_x;
+        prev_y = curr_y;
+    }
+
+    capture_sprite("vector_wave_stroke");
+}
+#endif
+
+// ============================================================================
 // BLUR PRIMITIVES
 // ============================================================================
 
@@ -746,7 +1203,7 @@ int main(int argc, char *argv[]) {
     lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
-    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     
     // Create canvas for drawing
     canvas = lv_canvas_create(screen);
@@ -766,6 +1223,9 @@ int main(int argc, char *argv[]) {
     printf("Generating rectangles...\n");
     generate_rectangles();
     
+    printf("Generating circles...\n");
+    generate_circles();
+
     printf("Generating triangles...\n");
     generate_triangles();
     
@@ -778,6 +1238,9 @@ int main(int argc, char *argv[]) {
     printf("Generating labels...\n");
     generate_labels();
     
+    printf("Generating vector graphics...\n");
+    generate_vector_graphics();
+
     printf("Generating blurs...\n");
     generate_blurs();
     
