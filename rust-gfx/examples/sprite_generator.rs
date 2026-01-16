@@ -22,6 +22,9 @@ fn main() {
     println!("Generating rectangles...");
     generate_rectangles(&mut sprite_index);
 
+    println!("Generating circles...");
+    generate_circles(&mut sprite_index);
+
     println!("Generating triangles...");
     generate_triangles(&mut sprite_index);
 
@@ -33,6 +36,9 @@ fn main() {
 
     println!("Generating labels...");
     generate_labels(&mut sprite_index);
+
+    println!("Generating vector graphics...");
+    generate_vector_graphics(&mut sprite_index);
 
     println!("Generating blurs...");
     generate_blurs(&mut sprite_index);
@@ -117,6 +123,57 @@ fn generate_rectangles(sprite_index: &mut usize) {
 
             let name = format!("rect_grad_{}_{}", grad_names[g], radius_names[r]);
             capture_sprite(&canvas, sprite_index, &name);
+        }
+    }
+
+    let grad_border_widths = [3, 6];
+    let grad_border_width_names = ["w3", "w6"];
+    let grad_border_colors = [Rgba8888::rgb(255, 255, 255), Rgba8888::rgb(40, 40, 40)];
+    let grad_border_color_names = ["white", "charcoal"];
+
+    for g in 0..4 {
+        for r in 0..3 {
+            for b in 0..2 {
+                let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+                canvas.clear(Rgba8888::TRANSPARENT);
+
+                let mut dsc = RectDsc::new();
+                dsc.radius = radii[r];
+                dsc.bg_opa = OPA_COVER;
+                dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                dsc.bg_grad = Gradient {
+                    dir: grad_dirs[g],
+                    stops: [
+                        GradStop {
+                            color: Rgba8888::rgb(255, 0, 0),
+                            opa: OPA_COVER,
+                            frac: 0,
+                        },
+                        GradStop {
+                            color: Rgba8888::rgb(0, 0, 255),
+                            opa: OPA_COVER,
+                            frac: 255,
+                        },
+                    ],
+                    stops_count: 2,
+                };
+                dsc.border_opa = OPA_COVER;
+                dsc.border_width = grad_border_widths[b];
+                dsc.border_color = grad_border_colors[b];
+                dsc.border_side = BorderSide::FULL;
+
+                let area = Area::new(20, 30, 82, 95);
+                draw_rect(&mut canvas, &dsc, &area);
+
+                let name = format!(
+                    "rect_gradborder_{}_{}_{}_{}",
+                    grad_names[g],
+                    radius_names[r],
+                    grad_border_width_names[b],
+                    grad_border_color_names[b]
+                );
+                capture_sprite(&canvas, sprite_index, &name);
+            }
         }
     }
 
@@ -232,6 +289,148 @@ fn generate_rectangles(sprite_index: &mut usize) {
     }
 }
 
+fn generate_circles(sprite_index: &mut usize) {
+    let fill_colors = [
+        Rgba8888::rgb(255, 120, 120),
+        Rgba8888::rgb(120, 255, 180),
+        Rgba8888::rgb(120, 180, 255),
+        Rgba8888::rgb(255, 220, 120),
+    ];
+    let fill_names = ["coral", "mint", "sky", "sun"];
+
+    for i in 0..4 {
+        let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+        canvas.clear(Rgba8888::TRANSPARENT);
+
+        let mut dsc = RectDsc::new();
+        dsc.radius = RADIUS_CIRCLE;
+        dsc.bg_opa = OPA_COVER;
+        dsc.bg_color = fill_colors[i];
+
+        let area = Area::new(20, 25, 82, 87);
+        draw_rect(&mut canvas, &dsc, &area);
+
+        let name = format!("circle_solid_{}", fill_names[i]);
+        capture_sprite(&canvas, sprite_index, &name);
+    }
+
+    let grad_dirs = [
+        GradDir::Hor,
+        GradDir::Ver,
+        GradDir::Radial,
+        GradDir::Conical,
+    ];
+    let grad_names = ["hor", "ver", "radial", "conical"];
+
+    for g in 0..4 {
+        let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+        canvas.clear(Rgba8888::TRANSPARENT);
+
+        let mut dsc = RectDsc::new();
+        dsc.radius = RADIUS_CIRCLE;
+        dsc.bg_opa = OPA_COVER;
+        dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+        dsc.bg_grad = Gradient {
+            dir: grad_dirs[g],
+            stops: [
+                GradStop {
+                    color: Rgba8888::rgb(255, 0, 0),
+                    opa: OPA_COVER,
+                    frac: 0,
+                },
+                GradStop {
+                    color: Rgba8888::rgb(0, 0, 255),
+                    opa: OPA_COVER,
+                    frac: 255,
+                },
+            ],
+            stops_count: 2,
+        };
+
+        let area = Area::new(20, 25, 82, 87);
+        draw_rect(&mut canvas, &dsc, &area);
+
+        let name = format!("circle_grad_{}", grad_names[g]);
+        capture_sprite(&canvas, sprite_index, &name);
+    }
+
+    let border_widths = [2, 4, 8];
+    let border_width_names = ["w2", "w4", "w8"];
+    let border_colors = [
+        Rgba8888::rgb(255, 255, 255),
+        Rgba8888::rgb(255, 200, 0),
+        Rgba8888::rgb(80, 255, 255),
+    ];
+    let border_color_names = ["white", "gold", "aqua"];
+
+    for w in 0..3 {
+        for c in 0..3 {
+            let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+            canvas.clear(Rgba8888::TRANSPARENT);
+
+            let mut dsc = RectDsc::new();
+            dsc.radius = RADIUS_CIRCLE;
+            dsc.bg_opa = OPA_COVER;
+            dsc.bg_color = Rgba8888::rgb(45, 45, 45);
+            dsc.border_opa = OPA_COVER;
+            dsc.border_width = border_widths[w];
+            dsc.border_color = border_colors[c];
+            dsc.border_side = BorderSide::FULL;
+
+            let area = Area::new(20, 25, 82, 87);
+            draw_rect(&mut canvas, &dsc, &area);
+
+            let name = format!(
+                "circle_border_{}_{}",
+                border_width_names[w], border_color_names[c]
+            );
+            capture_sprite(&canvas, sprite_index, &name);
+        }
+    }
+
+    for g in 0..2 {
+        for w in 0..2 {
+            let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+            canvas.clear(Rgba8888::TRANSPARENT);
+
+            let mut dsc = RectDsc::new();
+            dsc.radius = RADIUS_CIRCLE;
+            dsc.bg_opa = OPA_COVER;
+            dsc.bg_color = Rgba8888::rgb(255, 80, 0);
+            dsc.bg_grad = Gradient {
+                dir: grad_dirs[g],
+                stops: [
+                    GradStop {
+                        color: Rgba8888::rgb(255, 80, 0),
+                        opa: OPA_COVER,
+                        frac: 0,
+                    },
+                    GradStop {
+                        color: Rgba8888::rgb(80, 0, 255),
+                        opa: OPA_COVER,
+                        frac: 255,
+                    },
+                ],
+                stops_count: 2,
+            };
+            dsc.border_opa = OPA_COVER;
+            dsc.border_width = border_widths[w + 1];
+            dsc.border_color = Rgba8888::rgb(255, 255, 255);
+            dsc.border_side = BorderSide::FULL;
+
+            let area = Area::new(20, 25, 82, 87);
+            draw_rect(&mut canvas, &dsc, &area);
+
+            let name = format!(
+                "circle_gradborder_{}_{}",
+                grad_names[g],
+                border_width_names[w + 1]
+            );
+            capture_sprite(&canvas, sprite_index, &name);
+        }
+    }
+}
+
 fn generate_triangles(sprite_index: &mut usize) {
     // Different orientations
     let triangles = [
@@ -340,6 +539,59 @@ fn generate_triangles(sprite_index: &mut usize) {
 
         let name = format!("tri_opa{}", opa_names[o]);
         capture_sprite(&canvas, sprite_index, &name);
+    }
+
+    let tri_border_indices = [0, 1, 4];
+    let border_widths = [2, 5];
+    let border_width_names = ["w2", "w5"];
+    let border_colors = [
+        Rgba8888::rgb(255, 255, 255),
+        Rgba8888::rgb(255, 220, 0),
+        Rgba8888::rgb(255, 105, 180),
+    ];
+    let border_color_names = ["white", "gold", "pink"];
+
+    for (ti, &tri_idx) in tri_border_indices.iter().enumerate() {
+        for w in 0..border_widths.len() {
+            for c in 0..border_colors.len() {
+                let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+                canvas.clear(Rgba8888::TRANSPARENT);
+
+                let tri_fill = TriangleDsc {
+                    p1: triangles[tri_idx][0],
+                    p2: triangles[tri_idx][1],
+                    p3: triangles[tri_idx][2],
+                    color: tri_colors[(ti + c) % tri_colors.len()],
+                    opa: OPA_COVER,
+                    grad: Gradient::none(),
+                };
+                draw_triangle(&mut canvas, &tri_fill);
+
+                let mut line_dsc = LineDsc {
+                    p1: Point::new(0, 0),
+                    p2: Point::new(0, 0),
+                    width: border_widths[w],
+                    color: border_colors[c],
+                    opa: OPA_COVER,
+                    dash_width: 0,
+                    dash_gap: 0,
+                    round_start: true,
+                    round_end: true,
+                };
+
+                for edge in 0..3 {
+                    line_dsc.p1 = triangles[tri_idx][edge];
+                    line_dsc.p2 = triangles[tri_idx][(edge + 1) % 3];
+                    draw_line(&mut canvas, &line_dsc);
+                }
+
+                let name = format!(
+                    "tri_border_{}_{}_{}",
+                    tri_orient_names[tri_idx], border_width_names[w], border_color_names[c]
+                );
+                capture_sprite(&canvas, sprite_index, &name);
+            }
+        }
     }
 }
 
@@ -726,9 +978,23 @@ fn generate_labels(sprite_index: &mut usize) {
     }
 }
 
+fn generate_vector_graphics(sprite_index: &mut usize) {
+    let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+    canvas.clear(Rgba8888::TRANSPARENT);
+
+    let star_stub = VectorDsc::star_gradient();
+    draw_vector(&mut canvas, &star_stub);
+    capture_sprite(&canvas, sprite_index, "vector_star_gradient");
+
+    let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
+    canvas.clear(Rgba8888::TRANSPARENT);
+
+    let wave_stub = VectorDsc::wave_stroke();
+    draw_vector(&mut canvas, &wave_stub);
+    capture_sprite(&canvas, sprite_index, "vector_wave_stroke");
+}
+
 fn generate_blurs(sprite_index: &mut usize) {
-    // Blurs are stubs for now (need convolution)
-    // Generate placeholder sprites
     let blur_radii = [2, 5, 10, 15];
     let corner_radii = [0, 10, 20];
     let corner_names = ["square", "r10", "r20"];
@@ -748,7 +1014,11 @@ fn generate_blurs(sprite_index: &mut usize) {
             let area = Area::new(20, 30, 82, 95);
             draw_rect(&mut canvas, &dsc, &area);
 
-            // Blur would be applied here
+            let blur_dsc = BlurDsc {
+                blur_radius: blur_radii[b],
+                corner_radius: corner_radii[c],
+            };
+            draw_blur(&mut canvas, &blur_dsc, &area);
 
             let name = format!("blur_r{}_{}", blur_radii[b], corner_names[c]);
             capture_sprite(&canvas, sprite_index, &name);

@@ -9,6 +9,7 @@ pub mod mask;
 /// Each primitive is in its own file to keep code organized
 pub mod rectangle;
 pub mod triangle;
+pub mod vector;
 
 // Re-exports for convenience
 #[cfg(feature = "std")]
@@ -22,3 +23,5 @@ pub use mask::*;
 pub use rectangle::*;
 #[cfg(feature = "std")]
 pub use triangle::*;
+#[cfg(feature = "std")]
+pub use vector::*;
