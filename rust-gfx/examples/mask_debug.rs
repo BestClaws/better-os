@@ -1,9 +1,9 @@
+use rust_gfx::masks::{apply_masks, LineMask, LineSide, MaskRef};
 use rust_gfx::primitives::line::LineDsc;
 use rust_gfx::primitives::rectangle::RectDsc;
 use rust_gfx::primitives::triangle::TriangleDsc;
 use rust_gfx::primitives::*;
 use rust_gfx::{Area, Canvas, Point, Rgba8888, RADIUS_CIRCLE};
-use rust_gfx::masks::{apply_masks, LineMask, LineSide, MaskRef};
 
 fn main() {
     let mut canvas = Canvas::new(102, 125);
@@ -28,9 +28,7 @@ fn main() {
         draw_line(&mut canvas, &line_dsc);
         let p = canvas.get_pixel(24, 89).to_u32();
         let q = canvas.get_pixel(24, 90).to_u32();
-        println!(
-            "after edge {edge}: (24,89)=0x{p:08x} (24,90)=0x{q:08x}"
-        );
+        println!("after edge {edge}: (24,89)=0x{p:08x} (24,90)=0x{q:08x}");
     }
 
     let p1 = tri_points[0];
@@ -85,16 +83,8 @@ fn main() {
         )
     };
 
-    let mask_top = LineMask::from_points(
-        p1,
-        Point::new(p1.x - dy, p1.y + dx),
-        LineSide::Bottom,
-    );
-    let mask_bottom = LineMask::from_points(
-        p2,
-        Point::new(p2.x - dy, p2.y + dx),
-        LineSide::Top,
-    );
+    let mask_top = LineMask::from_points(p1, Point::new(p1.x - dy, p1.y + dx), LineSide::Bottom);
+    let mask_bottom = LineMask::from_points(p2, Point::new(p2.x - dy, p2.y + dx), LineSide::Top);
 
     let blend_area = Area::new(
         p1.x.min(p2.x) - w,
@@ -118,16 +108,12 @@ fn main() {
     let idx = (target_x - blend_area.x1) as usize;
     println!(
         "mask coverage at (24,89) from left edge = {} (blend_area.x1={}, w={})",
-        mask_buf[idx],
-        blend_area.x1,
-        w
+        mask_buf[idx], blend_area.x1, w
     );
 
     let pix_2489 = canvas.get_pixel(24, 89).to_u32();
     let pix_2490 = canvas.get_pixel(24, 90).to_u32();
-    println!(
-        "after full draw: (24,89)=0x{pix_2489:08x} (24,90)=0x{pix_2490:08x}"
-    );
+    println!("after full draw: (24,89)=0x{pix_2489:08x} (24,90)=0x{pix_2490:08x}");
 
     let mut canvas_cap = Canvas::new(4, 4);
     canvas_cap.clear(Rgba8888::TRANSPARENT);

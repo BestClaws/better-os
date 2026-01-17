@@ -8,6 +8,14 @@ use crate::primitives::rectangle::{draw_rect, RectDsc};
 use crate::types::*;
 use crate::Rasterizer;
 
+fn pos_mod(value: i32, modulo: i32) -> i32 {
+    let mut result = value % modulo;
+    if result < 0 {
+        result += modulo;
+    }
+    result
+}
+
 /// Line descriptor matching LVGL
 #[derive(Clone, Debug)]
 pub struct LineDsc {
@@ -46,6 +54,19 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     // LVGL optimization: horizontal and vertical lines use rectangle drawing
     let is_horizontal = dy == 0 && dx != 0;
     let is_vertical = dx == 0 && dy != 0;
+    let dashed = dsc.dash_width > 0 && dsc.dash_gap > 0;
+
+    if dashed {
+        if is_horizontal {
+            draw_horizontal_dashed(rast, dsc);
+            return;
+        }
+
+        if is_vertical {
+            draw_vertical_dashed(rast, dsc);
+            return;
+        }
+    }
 
     if (is_horizontal || is_vertical) && dsc.dash_width == 0 {
         // Draw as filled rectangle (matching LVGL's draw_line_hor/draw_line_ver)
@@ -260,4 +281,79 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             draw_rect(rast, &cap_dsc, &area);
         }
     }
+}
+
+fn draw_horizontal_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
+    let w = dsc.width - 1;
+    let w_half0 = w >> 1;
+    let w_half1 = w_half0 + (w & 1);
+
+    let x_start = dsc.p1.x.min(dsc.p2.x);
+    let x_end = dsc.p1.x.max(dsc.p2.x) - 1;
+    let y_start = dsc.p1.y - w_half1;
+    let y_end = dsc.p1.y + w_half0;
+
+    if x_end < x_start || y_end < y_start {
+        return;
+    }
+
+    let pattern = dsc.dash_width + dsc.dash_gap;
+    if pattern <= 0 {
+        return;
+    }
+
+    let dash_start = pos_mod(x_start, pattern);
+    let width = (x_end - x_start + 1) as usize;
+
+    for y in y_start..=y_end {
+        for offset in 0..width {
+            let dash_cnt = (dash_start + offset as i32) % pattern;
+
+            if dash_cnt < dsc.dash_width {
+                let x = x_start + offset as i32;
+                rast.blend_pixel(x, y, dsc.color, dsc.opa);
+            }
+        }
+    }
+
+    rast.mark_dirty(x_start, y_start, x_end + 1, y_end + 1);
+}
+
+fn draw_vertical_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
+    let w = dsc.width - 1;
+    let w_half0 = w >> 1;
+    let w_half1 = w_half0 + (w & 1);
+
+    let x_start = dsc.p1.x - w_half1;
+    let x_end = dsc.p1.x + w_half0;
+    let y_start = dsc.p1.y.min(dsc.p2.y);
+    let y_end = dsc.p1.y.max(dsc.p2.y) - 1;
+
+    if x_end < x_start || y_end < y_start {
+        return;
+    }
+
+    let pattern = dsc.dash_width + dsc.dash_gap;
+    if pattern <= 0 {
+        return;
+    }
+
+    let mut dash_cnt = pos_mod(y_start, pattern);
+
+    for y in y_start..=y_end {
+        if dash_cnt > dsc.dash_width {
+            // skip drawing this row
+        } else {
+            for x in x_start..=x_end {
+                rast.blend_pixel(x, y, dsc.color, dsc.opa);
+            }
+        }
+
+        if dash_cnt >= pattern {
+            dash_cnt = 0;
+        }
+        dash_cnt += 1;
+    }
+
+    rast.mark_dirty(x_start, y_start, x_end + 1, y_end + 1);
 }
