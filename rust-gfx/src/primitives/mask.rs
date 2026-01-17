@@ -333,4 +333,5 @@ mod tests {
         assert!(mask.contains_point(5, 5));
         assert!(!mask.contains_point(20, 20));
     }
+
 }

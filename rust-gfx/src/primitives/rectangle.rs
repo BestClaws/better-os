@@ -82,12 +82,6 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, coords: &Area) {
         render_shadow(rast, dsc, coords);
     }
 
-    if dsc.outline_opa > 0 && dsc.outline_width > 0 {
-        let outline_outer = outline_outer_area(coords, dsc);
-        dirty = merge_bounds(dirty, outline_outer);
-        render_outline(rast, dsc, coords);
-    }
-
     if dsc.bg_opa > 0 {
         let bg_area = background_area(coords, dsc);
         render_background(rast, dsc, &bg_area);
@@ -95,6 +89,12 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, coords: &Area) {
 
     if dsc.border_opa > 0 && dsc.border_width > 0 && dsc.border_side != BorderSide::NONE {
         render_border(rast, dsc, coords);
+    }
+
+    if dsc.outline_opa > 0 && dsc.outline_width > 0 {
+        let outline_outer = outline_outer_area(coords, dsc);
+        dirty = merge_bounds(dirty, outline_outer);
+        render_outline(rast, dsc, coords);
     }
 
     rast.mark_dirty(dirty.x1, dirty.y1, dirty.x2 + 1, dirty.y2 + 1);
