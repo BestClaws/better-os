@@ -575,8 +575,8 @@ fn generate_triangles(sprite_index: &mut usize) {
                     opa: OPA_COVER,
                     dash_width: 0,
                     dash_gap: 0,
-                    round_start: true,
-                    round_end: true,
+                    round_start: false,
+                    round_end: false,
                 };
 
                 for edge in 0..3 {
