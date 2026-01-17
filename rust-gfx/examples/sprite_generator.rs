@@ -1028,7 +1028,10 @@ fn generate_vector_graphics(sprite_index: &mut usize) {
 
     let mut star_dsc = VectorDsc::new();
     star_dsc.add_path(star_path);
-    star_dsc.fill = Some(VectorFill::linear_gradient(star_gradient, FillRule::NonZero));
+    star_dsc.fill = Some(VectorFill::linear_gradient(
+        star_gradient,
+        FillRule::NonZero,
+    ));
     let mut star_stroke = VectorStroke::new(3.0, Rgba8888::rgb(255, 255, 255), OPA_70);
     star_stroke.cap = StrokeCap::Round;
     star_stroke.join = StrokeJoin::Round;

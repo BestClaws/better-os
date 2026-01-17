@@ -20,7 +20,6 @@ impl BlurDsc {
             corner_radius: 0,
         }
     }
-
 }
 
 /// Apply blur effect following LVGL's software renderer.
@@ -77,10 +76,7 @@ pub fn draw_blur<R: Rasterizer>(rast: &mut R, dsc: &BlurDsc, area: &Area) {
     }
 
     let buffer = unsafe {
-        core::slice::from_raw_parts_mut(
-            buf_bytes.as_mut_ptr() as *mut Rgba8888,
-            total_pixels,
-        )
+        core::slice::from_raw_parts_mut(buf_bytes.as_mut_ptr() as *mut Rgba8888, total_pixels)
     };
 
     let max_x_full = area.x2.min(bounds.x2);

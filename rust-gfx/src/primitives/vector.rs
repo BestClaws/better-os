@@ -33,7 +33,10 @@ impl FPoint {
 
     #[inline]
     fn lerp(self, other: FPoint, t: f32) -> FPoint {
-        FPoint::new(self.x + (other.x - self.x) * t, self.y + (other.y - self.y) * t)
+        FPoint::new(
+            self.x + (other.x - self.x) * t,
+            self.y + (other.y - self.y) * t,
+        )
     }
 }
 
@@ -52,7 +55,9 @@ pub struct VectorPath {
 
 impl VectorPath {
     pub fn new() -> Self {
-        Self { commands: Vec::new() }
+        Self {
+            commands: Vec::new(),
+        }
     }
 
     pub fn move_to(&mut self, point: FPoint) {
@@ -145,7 +150,12 @@ impl LinearGradient {
                 let a = a0 + (a1 - a0) * rel;
                 let opa = prev.opa as f32 + (stop.opa as f32 - prev.opa as f32) * rel;
                 return (
-                    Rgba8888::rgba(r.round() as u8, g.round() as u8, b.round() as u8, a.round() as u8),
+                    Rgba8888::rgba(
+                        r.round() as u8,
+                        g.round() as u8,
+                        b.round() as u8,
+                        a.round() as u8,
+                    ),
                     opa.round() as Opa,
                 );
             }
@@ -371,7 +381,13 @@ fn flatten_paths(paths: &[VectorPath]) -> Flattened {
             match *cmd {
                 PathCmd::MoveTo(p) => {
                     if has_current && !stroke_points.is_empty() {
-                        build_stroke_segments(&stroke_points, false, &mut segments, &mut cumulative, &mut bounds);
+                        build_stroke_segments(
+                            &stroke_points,
+                            false,
+                            &mut segments,
+                            &mut cumulative,
+                            &mut bounds,
+                        );
                         if !segments.is_empty() {
                             let start_point = stroke_points.first().copied().unwrap_or(current);
                             let end_point = stroke_points.last().copied().unwrap_or(current);
@@ -439,7 +455,13 @@ fn flatten_paths(paths: &[VectorPath]) -> Flattened {
         }
 
         if has_current && stroke_points.len() >= 2 {
-            build_stroke_segments(&stroke_points, closed, &mut segments, &mut cumulative, &mut bounds);
+            build_stroke_segments(
+                &stroke_points,
+                closed,
+                &mut segments,
+                &mut cumulative,
+                &mut bounds,
+            );
             if !segments.is_empty() {
                 let start_point = stroke_points.first().copied().unwrap_or(start);
                 let end_point = stroke_points.last().copied().unwrap_or(current);
@@ -510,10 +532,20 @@ fn add_edge(edges: &mut Vec<Edge>, from: FPoint, to: FPoint) {
     if (from.x - to.x).abs() <= f32::EPSILON && (from.y - to.y).abs() <= f32::EPSILON {
         return;
     }
-    edges.push(Edge { start: from, end: to });
+    edges.push(Edge {
+        start: from,
+        end: to,
+    });
 }
 
-fn flatten_cubic(p0: FPoint, p1: FPoint, p2: FPoint, p3: FPoint, out: &mut Vec<FPoint>, depth: usize) {
+fn flatten_cubic(
+    p0: FPoint,
+    p1: FPoint,
+    p2: FPoint,
+    p3: FPoint,
+    out: &mut Vec<FPoint>,
+    depth: usize,
+) {
     if depth > 10 || cubic_is_flat(p0, p1, p2, p3) {
         out.push(p3);
         return;
@@ -542,10 +574,7 @@ fn cubic_split(p0: FPoint, p1: FPoint, p2: FPoint, p3: FPoint) -> ([FPoint; 4], 
     let p123 = p12.lerp(p23, 0.5);
     let mid = p012.lerp(p123, 0.5);
 
-    (
-        [p0, p01, p012, mid],
-        [mid, p123, p23, p3],
-    )
+    ([p0, p01, p012, mid], [mid, p123, p23, p3])
 }
 
 fn render_fill<R: Rasterizer>(rast: &mut R, fill: &VectorFill, flattened: &Flattened) {
@@ -645,7 +674,9 @@ fn render_stroke<R: Rasterizer>(rast: &mut R, stroke: &VectorStroke, flattened: 
             for oy in &SAMPLE_OFFSETS {
                 for ox in &SAMPLE_OFFSETS {
                     let sample_point = FPoint::new(x as f32 + ox, y as f32 + oy);
-                    if let Some(coverage) = stroke_sample_coverage(sample_point, stroke, &flattened.stroke_paths) {
+                    if let Some(coverage) =
+                        stroke_sample_coverage(sample_point, stroke, &flattened.stroke_paths)
+                    {
                         coverage_sum += coverage;
                         sample_hit = true;
                     }
@@ -697,95 +728,70 @@ fn render_stroke<R: Rasterizer>(rast: &mut R, stroke: &VectorStroke, flattened: 
     }
 }
 
-fn stroke_sample_coverage(sample: FPoint, stroke: &VectorStroke, paths: &[StrokePath]) -> Option<f32> {
-    let mut best_dist = f32::MAX;
-    let mut best_path: Option<&StrokePath> = None;
-    let mut best_along = 0.0;
+fn stroke_sample_coverage(
+    sample: FPoint,
+    stroke: &VectorStroke,
+    paths: &[StrokePath],
+) -> Option<f32> {
+    let radius = stroke.width * 0.5;
+    let aa_width = 1.0;
+
+    let mut best_coverage = 0.0f32;
 
     for path in paths {
         if path.segments.is_empty() {
             continue;
         }
-        let (dist_sq, along, before_start, after_end) = closest_distance_sq(sample, path);
-        if dist_sq < best_dist {
-            best_dist = dist_sq;
-            best_path = Some(path);
-            best_along = if before_start {
-                0.0
-            } else if after_end {
-                path.length
-            } else {
-                along
-            };
-        }
-    }
 
-    let path = best_path?;
-    let dist = best_dist.sqrt();
-    let radius = stroke.width * 0.5;
-    let aa_width = 1.0;
+        let mut path_coverage = 0.0f32;
+        for segment in &path.segments {
+            let (dist_sq, t, raw_t) = distance_sq_to_segment(sample, segment.start, segment.end);
+            let dist = dist_sq.sqrt();
+            if dist > radius + aa_width {
+                continue;
+            }
 
-    let mut inside = false;
-    if path.length <= f32::EPSILON {
-        inside = dist <= radius;
-    } else {
-        if stroke.dash_pattern.is_empty() {
-            inside = dist <= radius + aa_width;
-        } else if dist <= radius + aa_width {
-            if dash_contains(best_along + stroke.dash_phase, path.length, &stroke.dash_pattern) {
-                inside = true;
-            } else {
-                // Allow round caps to cover dash gaps near ends
-                if matches!(stroke.cap, StrokeCap::Round) {
-                    if best_along <= radius || (path.length - best_along) <= radius {
-                        inside = true;
-                    }
+            let within_segment = raw_t >= 0.0 && raw_t <= 1.0;
+            if !within_segment && !path.closed && !matches!(stroke.cap, StrokeCap::Round) {
+                continue;
+            }
+
+            if !stroke.dash_pattern.is_empty() && within_segment {
+                let local_pos = segment.length * t + stroke.dash_phase;
+                if !dash_contains(local_pos, segment.length, &stroke.dash_pattern) {
+                    continue;
                 }
+            }
+
+            let coverage = if dist <= radius - aa_width {
+                1.0
+            } else if dist <= radius + aa_width {
+                (radius + aa_width - dist) / (2.0 * aa_width)
+            } else {
+                0.0
+            };
+
+            if coverage > path_coverage {
+                path_coverage = coverage;
+                if path_coverage >= 1.0 {
+                    break;
+                }
+            }
+        }
+
+        if path_coverage > best_coverage {
+            best_coverage = path_coverage;
+            if best_coverage >= 1.0 {
+                break;
             }
         }
     }
 
-    if !inside {
-        return None;
-    }
-
-    let coverage = if dist <= radius - aa_width {
-        1.0
-    } else if dist <= radius + aa_width {
-        (radius + aa_width - dist) / (2.0 * aa_width)
+    if best_coverage > 0.0 {
+        Some(best_coverage.clamp(0.0, 1.0))
     } else {
-        0.0
-    };
-
-    if coverage <= 0.0 {
         None
-    } else {
-        Some(coverage.clamp(0.0, 1.0))
     }
-}
-
-fn closest_distance_sq(point: FPoint, path: &StrokePath) -> (f32, f32, bool, bool) {
-    let mut best_dist_sq = f32::MAX;
-    let mut best_along = 0.0;
-    let mut before_start = false;
-    let mut after_end = false;
-
-    for segment in &path.segments {
-        let (dist_sq, t, raw_t) = distance_sq_to_segment(point, segment.start, segment.end);
-        if dist_sq < best_dist_sq {
-            best_dist_sq = dist_sq;
-            best_along = segment.cumulative + (t * segment.length);
-            before_start = raw_t < 0.0;
-            after_end = raw_t > 1.0;
-        }
-    }
-
-    if path.closed {
-        before_start = false;
-        after_end = false;
-    }
-
-    (best_dist_sq, best_along, before_start, after_end)
 }
 
 fn distance_sq_to_segment(point: FPoint, a: FPoint, b: FPoint) -> (f32, f32, f32) {
@@ -851,7 +857,8 @@ fn point_even_odd(point: FPoint, edges: &[Edge]) -> bool {
         let y2 = edge.end.y;
         let intersects = (y1 > point.y) != (y2 > point.y)
             && point.x
-                < (edge.end.x - edge.start.x) * (point.y - y1) / (y2 - y1 + f32::EPSILON) + edge.start.x;
+                < (edge.end.x - edge.start.x) * (point.y - y1) / (y2 - y1 + f32::EPSILON)
+                    + edge.start.x;
         if intersects {
             inside = !inside;
         }

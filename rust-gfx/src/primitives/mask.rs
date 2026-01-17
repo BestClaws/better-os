@@ -145,8 +145,7 @@ impl RadiusMask {
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] =
-                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                    mask_buf[left_idx as usize] = Self::mask_mix(opa, mask_buf[left_idx as usize]);
                 }
             }
 
@@ -171,8 +170,7 @@ impl RadiusMask {
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] =
-                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
+                    mask_buf[left_idx as usize] = Self::mask_mix(opa, mask_buf[left_idx as usize]);
                 }
             }
 

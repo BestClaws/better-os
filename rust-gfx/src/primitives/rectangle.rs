@@ -178,12 +178,7 @@ fn render_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         return;
     }
     let ext = dsc.outline_pad + dsc.outline_width;
-    let outer = Area::new(
-        area.x1 - ext,
-        area.y1 - ext,
-        area.x2 + ext,
-        area.y2 + ext,
-    );
+    let outer = Area::new(area.x1 - ext, area.y1 - ext, area.x2 + ext, area.y2 + ext);
     let raw_radius = if dsc.radius == RADIUS_CIRCLE {
         RADIUS_CIRCLE
     } else {
@@ -594,7 +589,13 @@ fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Rgba8888, 
     }
 
     if opa == OPA_COVER {
-        rast.fill_rect(clamped.x1, clamped.y1, clamped.width(), clamped.height(), color);
+        rast.fill_rect(
+            clamped.x1,
+            clamped.y1,
+            clamped.width(),
+            clamped.height(),
+            color,
+        );
         return;
     }
 
@@ -775,7 +776,12 @@ fn shadow_bounds(area: &Area, dsc: &RectDsc) -> Area {
 }
 
 fn merge_bounds(a: Area, b: Area) -> Area {
-    Area::new(a.x1.min(b.x1), a.y1.min(b.y1), a.x2.max(b.x2), a.y2.max(b.y2))
+    Area::new(
+        a.x1.min(b.x1),
+        a.y1.min(b.y1),
+        a.x2.max(b.x2),
+        a.y2.max(b.y2),
+    )
 }
 
 fn effective_radius(area: &Area, requested: i32) -> i32 {
