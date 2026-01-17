@@ -308,10 +308,12 @@ fn draw_horizontal_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     for y in y_start..=y_end {
         for offset in 0..width {
             let dash_cnt = (dash_start + offset as i32) % pattern;
+            let x = x_start + offset as i32;
 
             if dash_cnt < dsc.dash_width {
-                let x = x_start + offset as i32;
                 rast.blend_pixel(x, y, dsc.color, dsc.opa);
+            } else {
+                rast.stamp_rgb_zero_alpha(x, y, dsc.color);
             }
         }
     }
@@ -342,7 +344,9 @@ fn draw_vertical_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
 
     for y in y_start..=y_end {
         if dash_cnt > dsc.dash_width {
-            // skip drawing this row
+            for x in x_start..=x_end {
+                rast.stamp_rgb_zero_alpha(x, y, dsc.color);
+            }
         } else {
             for x in x_start..=x_end {
                 rast.blend_pixel(x, y, dsc.color, dsc.opa);
