@@ -47,7 +47,7 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     let is_horizontal = dy == 0 && dx != 0;
     let is_vertical = dx == 0 && dy != 0;
 
-    if (is_horizontal || is_vertical) && !dsc.round_start && !dsc.round_end && dsc.dash_width == 0 {
+    if (is_horizontal || is_vertical) && dsc.dash_width == 0 {
         // Draw as filled rectangle (matching LVGL's draw_line_hor/draw_line_ver)
         let w = dsc.width - 1;
         let w_half0 = w / 2;

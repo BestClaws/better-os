@@ -101,17 +101,37 @@ pub fn blend_colors(bg: Rgba8888, fg: Rgba8888, opa: u8) -> Rgba8888 {
     }
 
     // If background is fully transparent, just use fg color with opa (no blending)
-    if bg.a() == 0 {
+    let bg_alpha = bg.a();
+    if bg_alpha == 0 {
         return Rgba8888::rgba(fg.r(), fg.g(), fg.b(), opa);
     }
 
-    // Compute resulting alpha using LVGL's LV_OPA_MIX2 helper (>> 8, not udiv255!)
+    // LVGL Porter-Duff OVER compositing when both colors have alpha
+    // https://en.wikipedia.org/wiki/Alpha_compositing#Analytical_derivation_of_the_over_operator
+
+    // First calculate composited alpha using LVGL's LV_OPA_MIX2 (>> 8, not udiv255!)
     let inv_fg_a = 255 - opa;
-    let inv_bg_a = 255 - bg.a();
+    let inv_bg_a = 255 - bg_alpha;
     let result_alpha = 255 - ((inv_fg_a as u32 * inv_bg_a as u32) >> 8) as u8;
 
-    // Match LVGL reference sprites: keep foreground RGB while mixing alpha only
-    Rgba8888::rgba(fg.r(), fg.g(), fg.b(), result_alpha)
+    // Calculate ratio for RGB blending using LVGL's exact formula
+    // ratio_saved = (fg.alpha * 255) / res_alpha_saved (simple integer division!)
+    let mut ratio = if result_alpha > 0 {
+        ((opa as u32 * 255) / result_alpha as u32).min(255) as u8
+    } else {
+        0
+    };
+
+    if bg_alpha <= 32 && ratio >= 253 {
+        ratio = 255;
+    }
+
+    let inv_ratio = 255 - ratio;
+    let r = udiv255(fg.r() as u32 * ratio as u32 + bg.r() as u32 * inv_ratio as u32);
+    let g = udiv255(fg.g() as u32 * ratio as u32 + bg.g() as u32 * inv_ratio as u32);
+    let b = udiv255(fg.b() as u32 * ratio as u32 + bg.b() as u32 * inv_ratio as u32);
+
+    Rgba8888::rgba(r, g, b, result_alpha)
 }
 
 /// Fast divide by 255 using LVGL's method
