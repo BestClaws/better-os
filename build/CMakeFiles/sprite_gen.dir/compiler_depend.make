@@ -6958,14 +6958,24 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_border.c.o: /home/boby/pro
   /usr/include/limits.h \
   /usr/include/stdc-predef.h \
   /usr/include/stdint.h \
+  /usr/include/stdio.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn-common.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn.h \
   /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
   /usr/include/x86_64-linux-gnu/bits/long-double.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
   /usr/include/x86_64-linux-gnu/bits/time64.h \
   /usr/include/x86_64-linux-gnu/bits/timesize.h \
   /usr/include/x86_64-linux-gnu/bits/types.h \
+  /usr/include/x86_64-linux-gnu/bits/types/FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h \
   /usr/include/x86_64-linux-gnu/bits/typesizes.h \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/wordsize.h \
@@ -8149,14 +8159,24 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_mask.c.o: /home/boby/proje
   /usr/include/limits.h \
   /usr/include/stdc-predef.h \
   /usr/include/stdint.h \
+  /usr/include/stdio.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn-common.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn.h \
   /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
   /usr/include/x86_64-linux-gnu/bits/long-double.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
   /usr/include/x86_64-linux-gnu/bits/time64.h \
   /usr/include/x86_64-linux-gnu/bits/timesize.h \
   /usr/include/x86_64-linux-gnu/bits/types.h \
+  /usr/include/x86_64-linux-gnu/bits/types/FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h \
   /usr/include/x86_64-linux-gnu/bits/typesizes.h \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/wordsize.h \
@@ -24749,14 +24769,6 @@ CMakeFiles/sprite_gen.dir/lvgl/src/font/lv_font_unscii_8.c.o:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/prfchwintrin.h:
 
-/home/boby/projects/better-os/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_rgb565_swapped.c:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/include/avx512bf16intrin.h:
-
-/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_10.c:
-
-/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_22.c:
-
 /home/boby/projects/better-os/lvgl/src/font/lv_font.c:
 
 /home/boby/projects/better-os/lvgl/src/misc/cache/lv_cache.h:
@@ -24792,6 +24804,14 @@ CMakeFiles/sprite_gen.dir/lvgl/src/font/lv_font_montserrat_42.c.o:
 /home/boby/projects/better-os/lvgl/src/font/binfont_loader/lv_binfont_loader.h:
 
 /usr/include/SDL2/SDL_loadso.h:
+
+/lib/x86_64-linux-gnu/libmvec.so.1:
+
+/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
 
 /home/boby/projects/better-os/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_rgb888.c:
 
@@ -24945,6 +24965,10 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/lv_draw_line.c.o:
 
 /usr/include/stdlib.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/time_t.h:
+
 /home/boby/projects/better-os/lvgl/src/core/lv_obj_class.c:
 
 /home/boby/projects/better-os/lv_conf.h:
@@ -24975,12 +24999,6 @@ CMakeFiles/sprite_gen.dir/lvgl/src/libs/fsdrv/lv_fs_fatfs.c.o:
 
 /usr/include/SDL2/SDL_mutex.h:
 
-/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_14.c:
-
-/home/boby/projects/better-os/lvgl/src/draw/lv_draw_triangle_private.h:
-
-/usr/include/x86_64-linux-gnu/bits/flt-eval-method.h:
-
 /home/boby/projects/better-os/lvgl/src/draw/lv_draw_triangle.c:
 
 /home/boby/projects/better-os/lvgl/src/stdlib/lv_mem.h:
@@ -25008,12 +25026,6 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_argb8888.c.
 CMakeFiles/sprite_gen.dir/lvgl/src/draw/convert/lv_draw_buf_convert.c.o:
 
 /home/boby/projects/better-os/lvgl/src/draw/lv_draw_line.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/include/raointintrin.h:
-
-/home/boby/projects/better-os/lvgl/src/draw/lv_draw_mask_private.h:
-
-/home/boby/projects/better-os/lvgl/src/stdlib/micropython/lv_mem_core_micropython.c:
 
 /lib/x86_64-linux-gnu/libdrm.so.2:
 
@@ -25071,6 +25083,14 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_arc.c.o:
 
 /home/boby/projects/better-os/lvgl/src/osal/lv_os_private.h:
 
+/usr/lib/gcc/x86_64-linux-gnu/15/include/raointintrin.h:
+
+/home/boby/projects/better-os/lvgl/src/stdlib/micropython/lv_mem_core_micropython.c:
+
+/home/boby/projects/better-os/lvgl/src/draw/lv_draw_mask_private.h:
+
+/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_22.c:
+
 /home/boby/projects/better-os/lvgl/src/draw/sw/blend/neon/lv_draw_sw_blend_neon_to_rgb888.h:
 
 /home/boby/projects/better-os/lvgl/src/draw/convert/lv_draw_buf_convert.h:
@@ -25092,6 +25112,8 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_arc.c.o:
 /home/boby/projects/better-os/lvgl/src/misc/lv_color.h:
 
 /home/boby/projects/better-os/lvgl/src/osal/lv_os_none.h:
+
+/usr/include/x86_64-linux-gnu/bits/floatn-common.h:
 
 /home/boby/projects/better-os/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_i1.h:
 
@@ -25117,11 +25139,9 @@ CMakeFiles/sprite_gen.dir/lvgl/src/stdlib/uefi/lv_mem_core_uefi.c.o:
 
 /home/boby/projects/better-os/lvgl/src/osal/lv_os.c:
 
-/home/boby/projects/better-os/lvgl/src/draw/lv_draw_buf.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/include/stddef.h:
-
 /home/boby/projects/better-os/lvgl/src/misc/cache/class/lv_cache_class.h:
+
+/home/boby/projects/better-os/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_rgb565_swapped.c:
 
 /home/boby/projects/better-os/lvgl/src/draw/lv_draw_private.h:
 
@@ -25155,11 +25175,19 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_utils.c.o:
 
 /home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_24.c:
 
+/usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h:
+
 /lib/x86_64-linux-gnu/libFLAC.so.14:
 
 /home/boby/projects/better-os/lvgl/src/core/lv_obj_style.h:
 
 /usr/include/SDL2/SDL_platform.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/15/include/stddef.h:
+
+/home/boby/projects/better-os/lvgl/src/draw/lv_draw_buf.h:
+
+/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_10.c:
 
 /home/boby/projects/better-os/lvgl/src/draw/lv_draw.h:
 
@@ -25194,8 +25222,6 @@ CMakeFiles/sprite_gen.dir/lvgl/src/font/imgfont/lv_imgfont.c.o:
 /usr/include/x86_64-linux-gnu/gnu/stubs.h:
 
 /home/boby/projects/better-os/lvgl/src/misc/lv_area.h:
-
-/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_12.c:
 
 /home/boby/projects/better-os/lvgl/src/misc/lv_utils.c:
 
@@ -25240,6 +25266,10 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_rgb888.c.o:
 /usr/lib/gcc/x86_64-linux-gnu/15/include/avx512vnnivlintrin.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/pkuintrin.h:
+
+/home/boby/projects/better-os/lvgl/src/indev/lv_indev_scroll.c:
+
+/home/boby/projects/better-os/lvgl/src/osal/lv_os.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/waitpkgintrin.h:
 
@@ -25357,6 +25387,12 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/lv_draw_rect.c.o:
 
 /home/boby/projects/better-os/lvgl/src/misc/cache/class/lv_cache_lru_ll.c:
 
+/usr/include/math.h:
+
+/home/boby/projects/better-os/lvgl/src/misc/cache/class/lv_cache_lru_rb.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
+
 /home/boby/projects/better-os/lvgl/src/core/lv_obj_event.h:
 
 /home/boby/projects/better-os/lvgl/src/misc/cache/instance/lv_cache_instance.h:
@@ -25457,6 +25493,16 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_blur.c.o:
 
 /home/boby/projects/better-os/lvgl/src/core/lv_obj_class_private.h:
 
+/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_12.c:
+
+/home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_14.c:
+
+/home/boby/projects/better-os/lvgl/src/draw/lv_draw_triangle_private.h:
+
+/usr/include/x86_64-linux-gnu/bits/flt-eval-method.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/15/include/avx512bf16intrin.h:
+
 /home/boby/projects/better-os/lvgl/src/font/lv_font_montserrat_28.c:
 
 CMakeFiles/sprite_gen.dir/lvgl/src/indev/lv_indev_gesture.c.o:
@@ -25494,12 +25540,6 @@ CMakeFiles/sprite_gen.dir/lvgl/src/indev/lv_indev_gesture.c.o:
 /home/boby/projects/better-os/lvgl/src/indev/lv_gridnav.c:
 
 /home/boby/projects/better-os/lvgl/src/indev/lv_indev_gesture.c:
-
-/home/boby/projects/better-os/lvgl/src/osal/lv_os.h:
-
-/home/boby/projects/better-os/lvgl/src/indev/lv_indev_scroll.c:
-
-/usr/include/x86_64-linux-gnu/bits/floatn-common.h:
 
 /home/boby/projects/better-os/lvgl/src/font/font_manager/lv_font_manager_recycle.h:
 
@@ -25548,6 +25588,10 @@ CMakeFiles/sprite_gen.dir/lvgl/src/font/lv_font_montserrat_16.c.o:
 /home/boby/projects/better-os/lvgl/src/libs/rle/lv_rle.c:
 
 /usr/include/SDL2/SDL_keycode.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
+
+/home/boby/projects/better-os/lvgl/src/lv_init.c:
 
 /home/boby/projects/better-os/lvgl/src/misc/lv_profiler_builtin_private.h:
 
@@ -25779,6 +25823,10 @@ CMakeFiles/sprite_gen.dir/lvgl/src/misc/lv_fs.c.o:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/avxintrin.h:
 
+/usr/include/x86_64-linux-gnu/bits/floatn.h:
+
+/usr/include/SDL2/SDL_guid.h:
+
 /usr/include/SDL2/SDL_haptic.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/amxfp8intrin.h:
@@ -25841,8 +25889,6 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c.o:
 
 /usr/include/alloca.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
-
 CMakeFiles/sprite_gen.dir/lvgl/src/misc/lv_circle_buf.c.o:
 
 /usr/include/strings.h:
@@ -25851,41 +25897,15 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_transform.c.o:
 
 /usr/include/x86_64-linux-gnu/bits/endianness.h:
 
-/usr/include/SDL2/SDL_guid.h:
-
-/usr/include/x86_64-linux-gnu/bits/floatn.h:
-
 /usr/include/x86_64-linux-gnu/bits/fp-fast.h:
 
 /usr/include/x86_64-linux-gnu/bits/fp-logb.h:
-
-/usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h:
-
-/home/boby/projects/better-os/lvgl/src/lv_init.c:
-
-/usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
 
 /usr/include/x86_64-linux-gnu/bits/mathcalls-macros.h:
 
 /usr/include/x86_64-linux-gnu/bits/endian.h:
 
 /usr/include/x86_64-linux-gnu/bits/mathcalls.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/time_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
-
-/lib/x86_64-linux-gnu/libmvec.so.1:
-
-/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
-
-/home/boby/projects/better-os/lvgl/src/misc/cache/class/lv_cache_lru_rb.h:
-
-/usr/include/math.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/clockid_t.h:
 

@@ -45,6 +45,15 @@ CMakeFiles/sprite_gen.dir/lvgl/src/draw/sw/lv_draw_sw_border.c.o: \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../../misc/lv_color_op.h \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../../misc/lv_math.h \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../../misc/lv_types.h \
+ /usr/include/stdio.h /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h \
+ /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
+ /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h \
+ /usr/include/x86_64-linux-gnu/bits/types/__FILE.h \
+ /usr/include/x86_64-linux-gnu/bits/types/FILE.h \
+ /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h \
+ /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+ /usr/include/x86_64-linux-gnu/bits/floatn.h \
+ /usr/include/x86_64-linux-gnu/bits/floatn-common.h \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../lv_draw_private.h \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../lv_draw.h \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../../lv_conf_internal.h \

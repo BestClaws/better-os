@@ -140,12 +140,13 @@ impl RadiusMask {
                 let right_idx = cir_x_right + i;
                 if right_idx >= 0 && right_idx < len {
                     mask_buf[right_idx as usize] =
-                        Self::mask_mix(mask_buf[right_idx as usize], opa);
+                        Self::mask_mix(opa, mask_buf[right_idx as usize]);
                 }
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] = Self::mask_mix(mask_buf[left_idx as usize], opa);
+                    mask_buf[left_idx as usize] =
+                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
                 }
             }
 
@@ -165,12 +166,13 @@ impl RadiusMask {
                 let right_idx = cir_x_right + i;
                 if right_idx >= 0 && right_idx < len {
                     mask_buf[right_idx as usize] =
-                        Self::mask_mix(mask_buf[right_idx as usize], opa);
+                        Self::mask_mix(opa, mask_buf[right_idx as usize]);
                 }
 
                 let left_idx = cir_x_left - i;
                 if left_idx >= 0 && left_idx < len {
-                    mask_buf[left_idx as usize] = Self::mask_mix(mask_buf[left_idx as usize], opa);
+                    mask_buf[left_idx as usize] =
+                        Self::mask_mix(opa, mask_buf[left_idx as usize]);
                 }
             }
 
@@ -183,14 +185,14 @@ impl RadiusMask {
     }
 
     #[inline]
-    fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
-        if mask_new >= 255 {
-            return mask_act;
+    fn mask_mix(mask_new: Opa, mask_existing: Opa) -> Opa {
+        if mask_existing >= 255 {
+            return mask_new;
         }
-        if mask_new <= 0 {
+        if mask_existing <= 0 {
             return 0;
         }
-        let product = mask_act as u32 * mask_new as u32;
+        let product = mask_new as u32 * mask_existing as u32;
         ((product * 0x8081) >> 23) as Opa
     }
 

@@ -353,6 +353,7 @@ fn render_border_complex<R: Rasterizer>(
 
     let mut mask_line = alloc::vec![255u8; draw_width];
     let mut inner_line = alloc::vec![255u8; draw_width];
+    let mut outer_line = alloc::vec![255u8; draw_width];
     let mask_origin_x = draw_area.x1;
 
     let mut split_hor = true;
@@ -365,6 +366,12 @@ fn render_border_complex<R: Rasterizer>(
         for h in 0..=max_h {
             let top_y = outer.y1 + h;
             if top_y >= draw_area.y1 && top_y <= draw_area.y2 {
+                if let Some(ref outer_m) = outer_mask {
+                    outer_line.fill(255);
+                    outer_m.apply_to_line(top_y, mask_origin_x, &mut outer_line);
+                } else {
+                    outer_line.fill(255);
+                }
                 prepare_mask_line(
                     &mut mask_line,
                     &inner_mask,
@@ -382,11 +389,18 @@ fn render_border_complex<R: Rasterizer>(
                     top_y,
                     inner,
                     Some(&inner_line),
+                    Some(&outer_line),
                 );
             }
 
             let bottom_y = outer.y2 - h;
             if bottom_y >= draw_area.y1 && bottom_y <= draw_area.y2 && bottom_y != top_y {
+                if let Some(ref outer_m) = outer_mask {
+                    outer_line.fill(255);
+                    outer_m.apply_to_line(bottom_y, mask_origin_x, &mut outer_line);
+                } else {
+                    outer_line.fill(255);
+                }
                 prepare_mask_line(
                     &mut mask_line,
                     &inner_mask,
@@ -404,6 +418,7 @@ fn render_border_complex<R: Rasterizer>(
                     bottom_y,
                     inner,
                     Some(&inner_line),
+                    Some(&outer_line),
                 );
             }
         }
@@ -418,6 +433,12 @@ fn render_border_complex<R: Rasterizer>(
             let span_x1 = draw_area.x1;
             let span_len = (left_span_end - span_x1 + 1) as usize;
             for y in start_y..end_y {
+                if let Some(ref outer_m) = outer_mask {
+                    outer_line.fill(255);
+                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                } else {
+                    outer_line.fill(255);
+                }
                 prepare_mask_line(
                     &mut mask_line,
                     &inner_mask,
@@ -436,6 +457,7 @@ fn render_border_complex<R: Rasterizer>(
                     y,
                     inner,
                     Some(&inner_line[offset..offset + span_len]),
+                    Some(&outer_line[offset..offset + span_len]),
                 );
             }
         }
@@ -448,6 +470,12 @@ fn render_border_complex<R: Rasterizer>(
             let span_x1 = draw_area.x1;
             let span_len = (left_span_end - span_x1 + 1) as usize;
             for y in start_y..=end_y {
+                if let Some(ref outer_m) = outer_mask {
+                    outer_line.fill(255);
+                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                } else {
+                    outer_line.fill(255);
+                }
                 prepare_mask_line(
                     &mut mask_line,
                     &inner_mask,
@@ -466,6 +494,7 @@ fn render_border_complex<R: Rasterizer>(
                     y,
                     inner,
                     Some(&inner_line[offset..offset + span_len]),
+                    Some(&outer_line[offset..offset + span_len]),
                 );
             }
         }
@@ -479,6 +508,12 @@ fn render_border_complex<R: Rasterizer>(
             let span_x1 = right_span_start;
             let span_len = (draw_area.x2 - span_x1 + 1) as usize;
             for y in start_y..end_y {
+                if let Some(ref outer_m) = outer_mask {
+                    outer_line.fill(255);
+                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                } else {
+                    outer_line.fill(255);
+                }
                 prepare_mask_line(
                     &mut mask_line,
                     &inner_mask,
@@ -497,6 +532,7 @@ fn render_border_complex<R: Rasterizer>(
                     y,
                     inner,
                     Some(&inner_line[offset..offset + span_len]),
+                    Some(&outer_line[offset..offset + span_len]),
                 );
             }
         }
@@ -509,6 +545,12 @@ fn render_border_complex<R: Rasterizer>(
             let span_x1 = right_span_start;
             let span_len = (draw_area.x2 - span_x1 + 1) as usize;
             for y in start_y..=end_y {
+                if let Some(ref outer_m) = outer_mask {
+                    outer_line.fill(255);
+                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                } else {
+                    outer_line.fill(255);
+                }
                 prepare_mask_line(
                     &mut mask_line,
                     &inner_mask,
@@ -527,6 +569,7 @@ fn render_border_complex<R: Rasterizer>(
                     y,
                     inner,
                     Some(&inner_line[offset..offset + span_len]),
+                    Some(&outer_line[offset..offset + span_len]),
                 );
             }
         }
@@ -589,19 +632,23 @@ fn paint_masked_span<R: Rasterizer>(
     y: i32,
     inner: &Area,
     inner_snapshot: Option<&[Opa]>,
+    outer_snapshot: Option<&[Opa]>,
 ) {
     if mask.is_empty() || base_opa == 0 {
         return;
     }
 
+    let _ = inner;
+    let _ = inner_snapshot;
+
     for (idx, &mask_val) in mask.iter().enumerate() {
         let x = span_x1 + idx as i32;
         if mask_val == 0 {
-            let inner_zero = inner_snapshot
+            let outer_zero = outer_snapshot
                 .and_then(|snap| snap.get(idx))
                 .map(|&v| v == 0)
                 .unwrap_or(false);
-            if !inner_zero {
+            if outer_zero {
                 rast.stamp_rgb_zero_alpha(x, y, color);
             }
             continue;

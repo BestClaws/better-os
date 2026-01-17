@@ -7,6 +7,7 @@
  *      INCLUDES
  *********************/
 #include "lv_draw_sw_mask_private.h"
+#include <stdio.h>
 #include "../lv_draw_mask_private.h"
 #include "../lv_draw.h"
 
@@ -845,6 +846,10 @@ static lv_draw_sw_mask_res_t LV_ATTRIBUTE_FAST_MEM lv_draw_mask_radius(lv_opa_t 
     int32_t radius = p->cfg.radius;
     lv_area_t rect;
     lv_area_copy(&rect, &p->cfg.rect);
+
+    if(p->cfg.radius == 9 && rect.x1 == 9 && rect.y1 == 31 && abs_y >= 31 && abs_y <= 34) {
+        printf("mask_radius debug: outer=%d abs_x=%d len=%d abs_y=%d\n", outer, abs_x, len, abs_y);
+    }
 
     if(outer == false) {
         if((abs_y < rect.y1 || abs_y > rect.y2)) {

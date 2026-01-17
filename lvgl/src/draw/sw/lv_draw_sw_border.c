@@ -8,6 +8,7 @@
  *********************/
 #include "../../misc/lv_area_private.h"
 #include "lv_draw_sw_mask_private.h"
+#include <stdio.h>
 #include "../lv_draw_private.h"
 #include "../lv_draw_private.h"
 #include "lv_draw_sw.h"
@@ -231,6 +232,13 @@ void draw_border_complex(lv_draw_task_t * t, const lv_area_t * outer_area, const
 
                     lv_memset(mask_buf, 0xff, blend_w);
                     blend_dsc.mask_res = lv_draw_sw_mask_apply(mask_list, mask_buf, blend_area.x1, h, blend_w);
+                        if(rout == 10 && rin == 9 && outer_area->x1 == 20 && outer_area->y1 == 30 && h >= 30 && h <= 34) {
+                            printf("border mask debug y=%d span=[%d,%d] res=%d: ", h, blend_area.x1, blend_area.x2, blend_dsc.mask_res);
+                        for(int dbg = 0; dbg < blend_w; dbg++) {
+                            printf("%d ", mask_buf[dbg]);
+                        }
+                        printf("\n");
+                    }
                     lv_draw_sw_blend(t, &blend_dsc);
                 }
             }
