@@ -982,15 +982,103 @@ fn generate_vector_graphics(sprite_index: &mut usize) {
     let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
     canvas.clear(Rgba8888::TRANSPARENT);
 
-    let star_stub = VectorDsc::star_gradient();
-    draw_vector(&mut canvas, &star_stub);
+    let star_points = [
+        FPoint::new(51.0, 25.0),
+        FPoint::new(62.0, 45.0),
+        FPoint::new(85.0, 48.0),
+        FPoint::new(66.0, 62.0),
+        FPoint::new(74.0, 86.0),
+        FPoint::new(51.0, 72.0),
+        FPoint::new(28.0, 86.0),
+        FPoint::new(36.0, 62.0),
+        FPoint::new(17.0, 48.0),
+        FPoint::new(40.0, 45.0),
+    ];
+
+    let mut star_path = VectorPath::new();
+    if let Some(first) = star_points.first() {
+        star_path.move_to(*first);
+        for point in &star_points[1..] {
+            star_path.line_to(*point);
+        }
+        star_path.close();
+    }
+
+    let star_gradient = LinearGradient {
+        start: FPoint::new(25.0, 30.0),
+        end: FPoint::new(80.0, 95.0),
+        stops: vec![
+            ColorStop {
+                color: Rgba8888::rgb(255, 90, 0),
+                opa: OPA_COVER,
+                frac: 0,
+            },
+            ColorStop {
+                color: Rgba8888::rgb(255, 0, 200),
+                opa: OPA_COVER,
+                frac: 130,
+            },
+            ColorStop {
+                color: Rgba8888::rgb(80, 200, 255),
+                opa: OPA_COVER,
+                frac: 255,
+            },
+        ],
+    };
+
+    let mut star_dsc = VectorDsc::new();
+    star_dsc.add_path(star_path);
+    star_dsc.fill = Some(VectorFill::linear_gradient(star_gradient, FillRule::NonZero));
+    let mut star_stroke = VectorStroke::new(3.0, Rgba8888::rgb(255, 255, 255), OPA_70);
+    star_stroke.cap = StrokeCap::Round;
+    star_stroke.join = StrokeJoin::Round;
+    star_dsc.stroke = Some(star_stroke);
+
+    draw_vector(&mut canvas, &star_dsc);
     capture_sprite(&canvas, sprite_index, "vector_star_gradient");
 
     let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
     canvas.clear(Rgba8888::TRANSPARENT);
 
-    let wave_stub = VectorDsc::wave_stroke();
-    draw_vector(&mut canvas, &wave_stub);
+    let mut wave_path = VectorPath::new();
+    wave_path.move_to(FPoint::new(22.0, 82.0));
+    wave_path.cubic_to(
+        FPoint::new(35.0, 35.0),
+        FPoint::new(65.0, 95.0),
+        FPoint::new(84.0, 44.0),
+    );
+    wave_path.cubic_to(
+        FPoint::new(70.0, 24.0),
+        FPoint::new(40.0, 24.0),
+        FPoint::new(26.0, 46.0),
+    );
+
+    let wave_gradient = LinearGradient {
+        start: FPoint::new(22.0, 82.0),
+        end: FPoint::new(84.0, 44.0),
+        stops: vec![
+            ColorStop {
+                color: Rgba8888::rgb(120, 255, 120),
+                opa: OPA_COVER,
+                frac: 0,
+            },
+            ColorStop {
+                color: Rgba8888::rgb(0, 150, 255),
+                opa: OPA_COVER,
+                frac: 255,
+            },
+        ],
+    };
+
+    let mut wave_dsc = VectorDsc::new();
+    wave_dsc.add_path(wave_path);
+    let mut wave_stroke = VectorStroke::with_gradient(6.0, wave_gradient, OPA_COVER);
+    wave_stroke.cap = StrokeCap::Round;
+    wave_stroke.join = StrokeJoin::Round;
+    wave_stroke.dash_pattern = vec![14.0, 6.0];
+    wave_dsc.stroke = Some(wave_stroke);
+
+    draw_vector(&mut canvas, &wave_dsc);
     capture_sprite(&canvas, sprite_index, "vector_wave_stroke");
 }
 

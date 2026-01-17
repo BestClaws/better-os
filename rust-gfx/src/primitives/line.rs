@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::color::Rgba8888;
 use crate::masks::{apply_masks, LineMask, LineSide, MaskRef, MaskResult};
-use crate::math::dist_sq;
+use crate::primitives::rectangle::{draw_rect, RectDsc};
 use crate::types::*;
 use crate::Rasterizer;
 
@@ -171,25 +171,19 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         )
     };
 
-    // End cap masks (unless raw_end is set)
-    let (mask_top, mask_bottom) = if !dsc.round_start && !dsc.round_end {
-        let ydiff_ordered = p2.y - p1.y;
-        let xdiff_ordered = p2.x - p1.x;
-        (
-            Some(LineMask::from_points(
-                p1,
-                Point::new(p1.x - ydiff_ordered, p1.y + xdiff_ordered),
-                LineSide::Bottom,
-            )),
-            Some(LineMask::from_points(
-                p2,
-                Point::new(p2.x - ydiff_ordered, p2.y + xdiff_ordered),
-                LineSide::Top,
-            )),
-        )
-    } else {
-        (None, None)
-    };
+    // End cap masks (LVGL always clips line length unless raw_end is requested)
+    let ydiff_ordered = p2.y - p1.y;
+    let xdiff_ordered = p2.x - p1.x;
+    let mask_top = LineMask::from_points(
+        p1,
+        Point::new(p1.x - ydiff_ordered, p1.y + xdiff_ordered),
+        LineSide::Bottom,
+    );
+    let mask_bottom = LineMask::from_points(
+        p2,
+        Point::new(p2.x - ydiff_ordered, p2.y + xdiff_ordered),
+        LineSide::Top,
+    );
 
     // Calculate blend area
     let blend_area = Area::new(
@@ -211,12 +205,8 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         let mut masks = Vec::with_capacity(4);
         masks.push(MaskRef::Line(&mask_left));
         masks.push(MaskRef::Line(&mask_right));
-        if let Some(ref m) = mask_top {
-            masks.push(MaskRef::Line(m));
-        }
-        if let Some(ref m) = mask_bottom {
-            masks.push(MaskRef::Line(m));
-        }
+        masks.push(MaskRef::Line(&mask_top));
+        masks.push(MaskRef::Line(&mask_bottom));
 
         // Apply masks
         let res = apply_masks(&masks, &mut mask_buf, blend_area.x1, y);
@@ -240,4 +230,34 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         blend_area.x2 + 1,
         blend_area.y2 + 1,
     );
+
+    if dsc.round_start || dsc.round_end {
+        let mut cap_dsc = RectDsc::new();
+        cap_dsc.bg_color = dsc.color;
+        cap_dsc.bg_opa = dsc.opa;
+        cap_dsc.radius = RADIUS_CIRCLE;
+
+        let radius = dsc.width >> 1;
+        let r_corr = if dsc.width & 1 == 0 { 1 } else { 0 };
+
+        if dsc.round_start && dsc.width > 0 {
+            let area = Area::new(
+                dsc.p1.x - radius,
+                dsc.p1.y - radius,
+                dsc.p1.x + radius - r_corr,
+                dsc.p1.y + radius - r_corr,
+            );
+            draw_rect(rast, &cap_dsc, &area);
+        }
+
+        if dsc.round_end && dsc.width > 0 {
+            let area = Area::new(
+                dsc.p2.x - radius,
+                dsc.p2.y - radius,
+                dsc.p2.x + radius - r_corr,
+                dsc.p2.y + radius - r_corr,
+            );
+            draw_rect(rast, &cap_dsc, &area);
+        }
+    }
 }
