@@ -1,4 +1,5 @@
 #include "lvgl/lvgl.h"
+#include "lvgl/src/draw/sw/lv_draw_sw_mask_private.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -515,6 +516,83 @@ static void generate_triangles(void) {
                     line_dsc.p1 = triangles[tri_idx][edge];
                     line_dsc.p2 = triangles[tri_idx][(edge + 1) % 3];
                     lv_draw_line(&layer, &line_dsc);
+
+                    if (tri_idx == 0 && border_widths[w] == 2 && c == 0) {
+                        lv_color32_t col_a = lv_canvas_get_px(canvas, 24, 89);
+                        lv_color32_t col_b = lv_canvas_get_px(canvas, 24, 90);
+                        uint32_t pix_2489 = (col_a.alpha << 24) | (col_a.red << 16) | (col_a.green << 8) | col_a.blue;
+                        uint32_t pix_2490 = (col_b.alpha << 24) | (col_b.red << 16) | (col_b.green << 8) | col_b.blue;
+                        printf("LVGL edge %d pixel (24,89)=0x%08x (24,90)=0x%08x\n",
+                               edge,
+                               pix_2489,
+                               pix_2490);
+                    }
+                }
+
+                if (tri_idx == 0 && border_widths[w] == 2 && c == 0) {
+                    lv_point_t p1 = lv_point_from_precise(&triangles[tri_idx][0]);
+                    lv_point_t p2 = lv_point_from_precise(&triangles[tri_idx][1]);
+                    int32_t dx = p2.x - p1.x;
+                    int32_t dy = p2.y - p1.y;
+                    int flat = LV_ABS(dx) > LV_ABS(dy);
+
+                    static const uint8_t wcorr[] = {
+                        128, 128, 128, 129, 129, 130, 130, 131,
+                        132, 133, 134, 135, 137, 138, 140, 141,
+                        143, 145, 147, 149, 151, 153, 155, 158,
+                        160, 162, 165, 167, 170, 173, 175, 178,
+                        181,
+                    };
+
+                    int32_t w_corr = border_widths[w];
+                    uint32_t idx;
+                    if (flat) idx = (LV_ABS(dy) << 5) / LV_ABS(dx);
+                    else idx = (LV_ABS(dx) << 5) / LV_ABS(dy);
+                    if (idx > 32) idx = 32;
+                    w_corr = (w_corr * wcorr[idx] + 63) >> 7;
+
+                    int32_t w_half0 = w_corr >> 1;
+                    int32_t w_half1 = w_half0 + (w_corr & 0x1);
+
+                    lv_draw_sw_mask_line_param_t mask_left;
+                    lv_draw_sw_mask_line_param_t mask_right;
+                    lv_draw_sw_mask_line_param_t mask_top;
+                    lv_draw_sw_mask_line_param_t mask_bottom;
+
+                    if (flat) {
+                        if (dx > 0) {
+                            lv_draw_sw_mask_line_points_init(&mask_left, p1.x, p1.y - w_half0, p2.x, p2.y - w_half0, LV_DRAW_SW_MASK_LINE_SIDE_LEFT);
+                            lv_draw_sw_mask_line_points_init(&mask_right, p1.x, p1.y + w_half1, p2.x, p2.y + w_half1, LV_DRAW_SW_MASK_LINE_SIDE_RIGHT);
+                        } else {
+                            lv_draw_sw_mask_line_points_init(&mask_left, p1.x, p1.y + w_half1, p2.x, p2.y + w_half1, LV_DRAW_SW_MASK_LINE_SIDE_LEFT);
+                            lv_draw_sw_mask_line_points_init(&mask_right, p1.x, p1.y - w_half0, p2.x, p2.y - w_half0, LV_DRAW_SW_MASK_LINE_SIDE_RIGHT);
+                        }
+                    } else {
+                        lv_draw_sw_mask_line_points_init(&mask_left, p1.x + w_half1, p1.y, p2.x + w_half1, p2.y, LV_DRAW_SW_MASK_LINE_SIDE_LEFT);
+                        lv_draw_sw_mask_line_points_init(&mask_right, p1.x - w_half0, p1.y, p2.x - w_half0, p2.y, LV_DRAW_SW_MASK_LINE_SIDE_RIGHT);
+                    }
+
+                    lv_draw_sw_mask_line_points_init(&mask_top, p1.x, p1.y, p1.x - dy, p1.y + dx, LV_DRAW_SW_MASK_LINE_SIDE_BOTTOM);
+                    lv_draw_sw_mask_line_points_init(&mask_bottom, p2.x, p2.y, p2.x - dy, p2.y + dx, LV_DRAW_SW_MASK_LINE_SIDE_TOP);
+
+                    void *masks[5] = {&mask_left, &mask_right, &mask_top, &mask_bottom, NULL};
+
+                    lv_area_t blend_area;
+                    blend_area.x1 = LV_MIN(p1.x, p2.x) - w_corr;
+                    blend_area.x2 = LV_MAX(p1.x, p2.x) + w_corr;
+                    blend_area.y1 = LV_MIN(p1.y, p2.y) - w_corr;
+                    blend_area.y2 = LV_MAX(p1.y, p2.y) + w_corr;
+
+                    int32_t draw_w = lv_area_get_width(&blend_area);
+                    lv_opa_t *mask_buf = lv_malloc(draw_w);
+                    lv_memset(mask_buf, 0xFF, draw_w);
+                    lv_draw_sw_mask_apply(masks, mask_buf, blend_area.x1, 89, draw_w);
+                    lv_opa_t coverage = mask_buf[24 - blend_area.x1];
+                    printf("LVGL mask coverage diag (24,89)=%d blend_x1=%d w_corr=%d\n", coverage, blend_area.x1, w_corr);
+                    lv_draw_sw_mask_apply(masks, mask_buf, blend_area.x1, 90, draw_w);
+                    lv_opa_t coverage2 = mask_buf[24 - blend_area.x1];
+                    printf("LVGL mask coverage diag (24,90)=%d\n", coverage2);
+                    lv_free(mask_buf);
                 }
 
                 char name[160];

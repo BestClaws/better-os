@@ -222,6 +222,10 @@ CMakeFiles/sprite_gen.dir/main.c.o: /home/boby/projects/better-os/main.c \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../../misc/lv_color.h \
  /home/boby/projects/better-os/lvgl/src/draw/sw/../../display/lv_display.h \
  /home/boby/projects/better-os/lvgl/src/drivers/lv_drivers.h \
+ /home/boby/projects/better-os/lvgl/src/draw/sw/lv_draw_sw_mask_private.h \
+ /home/boby/projects/better-os/lvgl/src/draw/sw/lv_draw_sw_mask.h \
+ /home/boby/projects/better-os/lvgl/src/draw/sw/../../misc/lv_math.h \
+ /home/boby/projects/better-os/lvgl/src/draw/sw/../../misc/lv_types.h \
  /usr/include/unistd.h /usr/include/x86_64-linux-gnu/bits/posix_opt.h \
  /usr/include/x86_64-linux-gnu/bits/confname.h \
  /usr/include/x86_64-linux-gnu/bits/unistd_ext.h /usr/include/stdlib.h \

@@ -1100,10 +1100,10 @@ pub fn apply_masks(
 
 #[inline]
 fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
-    if mask_new >= 255 {
-        return mask_act;
+    if mask_act >= 255 {
+        return mask_new;
     }
-    if mask_new == 0 {
+    if mask_act == 0 {
         return 0;
     }
     let prod = (mask_act as u32) * (mask_new as u32);
