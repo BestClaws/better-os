@@ -1,4 +1,5 @@
 use crate::system::hal::ambience::AsyncAmbientSensor;
+use crate::system::hal::audio::AsyncAudioSink;
 use crate::system::hal::battery::AsyncBattery;
 use crate::system::hal::button::AsyncButton;
 use crate::system::hal::display::AsyncDisplay;
@@ -26,4 +27,5 @@ pub(crate) struct PlatformDevice<'s> {
         Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncGyroAccelerometer>>>,
     pub(crate) radio: Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncRadio>>>,
     pub(crate) rtc: Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncRtc>>>,
+    pub(crate) audio: Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncAudioSink>>>,
 }

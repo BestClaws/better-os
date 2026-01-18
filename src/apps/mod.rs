@@ -1,4 +1,5 @@
 pub(crate) mod arrow;
+pub(crate) mod audio_app;
 pub mod components;
 // TODO: Re-enable after HPS integration complete
 // pub(crate) mod bluetooth_scanner;

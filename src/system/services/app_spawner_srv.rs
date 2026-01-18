@@ -5,6 +5,7 @@ use crate::system::ui::compositor::UICompositor;
 use crate::system::ui::windowing::WindowManager;
 
 use crate::apps::arrow::arrow_app;
+use crate::apps::audio_app::audio_app;
 use crate::apps::discord::discord_app;
 use crate::apps::heap_monitor::heap_monitor_app;
 use crate::apps::imu_demo::imu_demo_app;
@@ -69,6 +70,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         name: "3D Arrow",
         id: 5,
         spawn_fn: spawn_arrow_app,
+    },
+    AppDescriptor {
+        name: "Audio",
+        id: 8,
+        spawn_fn: spawn_audio_app,
     },
 ];
 
@@ -251,6 +257,13 @@ fn spawn_arrow_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(arrow_app(context))
+}
+
+fn spawn_audio_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(audio_app(context))
 }
 
 fn spawn_gray_test_app(

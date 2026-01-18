@@ -1,4 +1,5 @@
 pub(crate) mod ambience;
+pub(crate) mod audio;
 pub(crate) mod battery;
 pub(crate) mod button;
 pub(crate) mod display;

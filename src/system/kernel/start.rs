@@ -8,6 +8,7 @@ use crate::system::hal::display::PixelFormat;
 use crate::system::input::types::KeyCode;
 use crate::system::kernel::platforms;
 use crate::system::services::ambient_srv::ambient_sensor_service;
+use crate::system::services::audio_srv::register_audio_driver;
 use crate::system::services::app_spawner_srv::app_spawner_service;
 use crate::system::services::battery_srv::battery_service;
 use crate::system::services::compositor_srv::ui_compositor_service;
@@ -119,6 +120,17 @@ pub(crate) fn start(spawner: Spawner) {
             }
         }
         None => warn!("Gyro/accelerometer not present; orientation features disabled"),
+    }
+
+    if let Some(audio) = device.audio.take() {
+        let timestamp = Instant::now().as_millis() as f32 / 1000f32;
+        if register_audio_driver(audio) {
+            info!("[{}s] audio driver registered", timestamp);
+        } else {
+            warn!("Audio driver already registered; ignoring duplicate");
+        }
+    } else {
+        warn!("Audio sink not present; audio app disabled");
     }
 
     if let Some(radio) = device.radio.take() {
