@@ -92,6 +92,10 @@ impl Rasterizer for Canvas {
         self.height
     }
 
+    fn clear(&mut self, color: Rgba8888) {
+        self.buffer.fill(color);
+    }
+
     fn buffer_mut(&mut self) -> &mut [u8] {
         unsafe {
             std::slice::from_raw_parts_mut(
