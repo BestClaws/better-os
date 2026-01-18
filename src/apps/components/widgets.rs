@@ -3,7 +3,7 @@ use alloc::string::String;
 use rust_gfx::color::Rgba8888;
 use rust_gfx::primitives::label::{draw_label, measure_text_with_font, FontId, LabelDsc};
 use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, Gradient, OPA_COVER, RADIUS_CIRCLE};
+use rust_gfx::types::{Area, BorderSide, Gradient, OPA_COVER, RADIUS_CIRCLE};
 
 use crate::system::ui::drawing_surface::DrawingSurface;
 
@@ -307,17 +307,14 @@ pub fn draw_card(
     draw_rect(surface, &card, &card_area);
 
     let accent_width = 4;
-    let accent_area = Area::new(
-        card_area.x1,
-        card_area.y1,
-        card_area.x1 + accent_width - 1,
-        card_area.y2,
-    );
     let mut accent = RectDsc::new();
-    accent.bg_color = accent_color;
-    accent.bg_opa = OPA_COVER;
+    accent.bg_opa = 0;
+    accent.border_width = accent_width;
+    accent.border_color = accent_color;
+    accent.border_opa = OPA_COVER;
+    accent.border_side = BorderSide::LEFT;
     accent.radius = metrics.section_radius.max(3);
-    draw_rect(surface, &accent, &accent_area);
+    draw_rect(surface, &accent, &card_area);
 
     let mut content_x = card_area.x1 + metrics.section_padding + accent_width;
     let content_right = card_area.x2 - metrics.section_padding;

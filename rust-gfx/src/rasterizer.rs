@@ -10,8 +10,7 @@ pub trait Rasterizer {
     fn clear(&mut self, color: Rgba8888);
 
 
-    // New high-level, pixel-format-agnostic APIs
-    // Default implementations provided for basic functionality
+
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
         // Default: bounds check only
         if x < 0 || y < 0 || x >= self.width() as i32 || y >= self.height() as i32 {
