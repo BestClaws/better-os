@@ -89,16 +89,22 @@ impl SurfaceBlitter {
             }
 
             if is_gray4 {
-                // Gray4: 2 pixels per byte, need pixel-by-pixel copy for unaligned cases
-                // For now, use pixel-by-pixel copy (can be optimized later for aligned cases)
-                for i in 0..(sx1 - sx0) {
-                    let src_x = sx0 + i;
-                    let dst_x = clip_x0 as u32 + i;
-                    let src_pixel_idx = (src_x + sy * src_w) as usize;
-                    let dst_pixel_idx = (dst_x + dy as u32 * dest_w) as usize;
-                    let pixel = source.get_pixel_at_index(src_pixel_idx);
-                    dest.set_pixel_at_index(dst_pixel_idx, pixel);
+                let pixel_count = (sx1 - sx0) as usize;
+                if pixel_count == 0 {
+                    continue;
                 }
+
+                let src_pixel_start = (sx0 + sy * src_w) as usize;
+                let dst_pixel_start = (clip_x0 as u32 + dy as u32 * dest_w) as usize;
+                let src_buf = source.buffer();
+                let dst_buf = dest.buffer_mut();
+                Self::copy_gray4_span(
+                    dst_buf,
+                    src_buf,
+                    dst_pixel_start,
+                    src_pixel_start,
+                    pixel_count,
+                );
             } else {
                 // Other formats: byte-aligned copy
                 let bytes_per_pixel = dest.bytes_per_pixel();
@@ -111,6 +117,77 @@ impl SurfaceBlitter {
                 let src_slice = &source.buffer()[src_byte..src_byte + bytes];
                 let dst_slice = &mut dest.buffer_mut()[dst_byte..dst_byte + bytes];
                 dst_slice.copy_from_slice(src_slice);
+            }
+        }
+    }
+}
+
+impl SurfaceBlitter {
+    fn copy_gray4_span(
+        dest_buf: &mut [u8],
+        src_buf: &[u8],
+        mut dst_pixel: usize,
+        mut src_pixel: usize,
+        mut count: usize,
+    ) {
+        if count == 0 {
+            return;
+        }
+
+        if ((src_pixel ^ dst_pixel) & 1) != 0 {
+            Self::copy_gray4_pixels(dest_buf, src_buf, dst_pixel, src_pixel, count);
+            return;
+        }
+
+        if (src_pixel & 1) != 0 {
+            Self::copy_gray4_pixels(dest_buf, src_buf, dst_pixel, src_pixel, 1);
+            src_pixel += 1;
+            dst_pixel += 1;
+            count -= 1;
+        }
+
+        let byte_count = count / 2;
+        if byte_count > 0 {
+            let src_byte = src_pixel / 2;
+            let dst_byte = dst_pixel / 2;
+            let src_slice = &src_buf[src_byte..src_byte + byte_count];
+            let dst_slice = &mut dest_buf[dst_byte..dst_byte + byte_count];
+            dst_slice.copy_from_slice(src_slice);
+            let advance = byte_count * 2;
+            src_pixel += advance;
+            dst_pixel += advance;
+            count -= advance;
+        }
+
+        if count > 0 {
+            Self::copy_gray4_pixels(dest_buf, src_buf, dst_pixel, src_pixel, count);
+        }
+    }
+
+    fn copy_gray4_pixels(
+        dest_buf: &mut [u8],
+        src_buf: &[u8],
+        dst_pixel: usize,
+        src_pixel: usize,
+        count: usize,
+    ) {
+        for i in 0..count {
+            let src_idx = src_pixel + i;
+            let dst_idx = dst_pixel + i;
+
+            let src_byte = src_idx / 2;
+            let src_nibble = if src_idx & 1 == 0 {
+                (src_buf[src_byte] >> 4) & 0x0F
+            } else {
+                src_buf[src_byte] & 0x0F
+            };
+
+            let dst_byte = dst_idx / 2;
+            let slot = &mut dest_buf[dst_byte];
+            if dst_idx & 1 == 0 {
+                *slot = (*slot & 0x0F) | (src_nibble << 4);
+            } else {
+                *slot = (*slot & 0xF0) | src_nibble;
             }
         }
     }

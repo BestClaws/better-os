@@ -143,16 +143,16 @@ pub fn draw_background(
         return;
     }
 
-    let container_area = Area::new(inset, inset, width - inset - 1, height - inset - 1);
-    let mut container = RectDsc::new();
-    container.bg_color = palette.container;
-    container.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    container.bg_opa = OPA_COVER;
-    container.radius = metrics.section_radius + 2;
-    container.border_width = 1;
-    container.border_color = palette.outline;
-    container.border_opa = OPA_COVER;
-    draw_rect(surface, &container, &container_area);
+    // let container_area = Area::new(inset, inset, width - inset - 1, height - inset - 1);
+    // let mut container = RectDsc::new();
+    // container.bg_color = palette.container;
+    // container.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
+    // container.bg_opa = OPA_COVER;
+    // container.radius = metrics.section_radius + 2;
+    // container.border_width = 1;
+    // container.border_color = palette.outline;
+    // container.border_opa = OPA_COVER;
+    // draw_rect(surface, &container, &container_area);
 }
 
 pub fn draw_status_bar(
