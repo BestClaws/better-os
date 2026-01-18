@@ -59,7 +59,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
                         return;
                     }
                     let current = u16::from_be_bytes([buf[byte_index], buf[byte_index + 1]]);
-                    let encoded = if coverage >= 255 {
+                    let encoded = if coverage == 255 {
                         rgba8888_to_rgb565(color)
                     } else {
                         let dst = rgb565_to_rgba8888(current);
@@ -85,7 +85,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
                         current_byte & 0x0F
                     };
 
-                    let encoded = if coverage >= 255 {
+                    let encoded = if coverage == 255 {
                         rgba8888_to_gray4(color)
                     } else {
                         let dst = gray4_to_rgba8888(current_gray);
@@ -144,7 +144,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
                         continue;
                     }
                     let current = u16::from_be_bytes([buf[byte_index], buf[byte_index + 1]]);
-                    let encoded = if coverage >= 255 {
+                    let encoded = if coverage == 255 {
                         rgba8888_to_rgb565(color)
                     } else {
                         let dst = rgb565_to_rgba8888(current);
@@ -172,7 +172,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
                         current_byte & 0x0F
                     };
 
-                    let encoded = if coverage >= 255 {
+                    let encoded = if coverage == 255 {
                         rgba8888_to_gray4(color)
                     } else if coverage == 0 {
                         current_gray
