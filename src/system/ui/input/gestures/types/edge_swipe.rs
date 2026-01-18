@@ -2,6 +2,7 @@ use crate::system::input::types::TouchAction;
 use crate::system::ui::compositor::animation::TransitionDirection;
 use crate::system::ui::input::gestures::core::{FrameSpace, ScreenEdge};
 use crate::system::ui::input::gestures::{GestureResult, PointerEvent, PointerGesture};
+use libm::roundf;
 
 /// Tunable parameters controlling how aggressively edge swipes are detected.
 #[derive(Clone, Copy, Debug)]
@@ -23,13 +24,29 @@ pub struct SwipeConfig {
 
 impl Default for SwipeConfig {
     fn default() -> Self {
+        Self::tuned_for(205, 251)
+    }
+}
+
+impl SwipeConfig {
+    /// Generates a configuration scaled to the provided logical frame size.
+    pub fn tuned_for(frame_width: i32, frame_height: i32) -> Self {
+        let width = frame_width.max(1) as f32;
+        let height = frame_height.max(1) as f32;
+
+        let edge_band = (roundf(width * 0.06) as i32).clamp(8, 28);
+        let reentry_slop = (roundf(width * 0.05) as i32).clamp(8, 24);
+        let completion_pixels = (width * 0.8).max(60.0);
+        let vertical_tolerance = (roundf(height * 0.16) as i32).clamp(24, 96);
+        let commit_fraction = 0.55f32.max((width / 240.0).min(0.8));
+
         Self {
-            edge_band: 12,           // Reduced from 20 for narrower display (410px physical)
-            reentry_slop: 10,        // Reduced from 18 proportionally
-            completion_pixels: 60.0, // Reduced from 80.0 for narrower display
-            vertical_tolerance: 40,  // Increased from 32 for taller display (502px physical)
+            edge_band,
+            reentry_slop,
+            completion_pixels,
+            vertical_tolerance,
             progress_epsilon: 0.01,
-            commit_fraction: 0.35,
+            commit_fraction,
         }
     }
 }
@@ -59,28 +76,48 @@ pub struct EdgeSwipeRecognizer {
     config: SwipeConfig,
     frame: FrameSpace,
     state: RecognizerState,
+    auto_config: bool,
 }
 
 impl EdgeSwipeRecognizer {
     pub fn new(frame_width: i32, frame_height: i32) -> Self {
-        Self::with_config(frame_width, frame_height, SwipeConfig::default())
+        Self::with_internal_config(
+            frame_width,
+            frame_height,
+            SwipeConfig::tuned_for(frame_width, frame_height),
+            true,
+        )
     }
 
     pub fn with_config(frame_width: i32, frame_height: i32, config: SwipeConfig) -> Self {
+        Self::with_internal_config(frame_width, frame_height, config, false)
+    }
+
+    fn with_internal_config(
+        frame_width: i32,
+        frame_height: i32,
+        config: SwipeConfig,
+        auto_config: bool,
+    ) -> Self {
         Self {
             config,
             frame: FrameSpace::new(frame_width, frame_height),
             state: RecognizerState::Idle,
+            auto_config,
         }
     }
 
     pub fn set_config(&mut self, config: SwipeConfig) {
         self.config = config;
+        self.auto_config = false;
         self.state = RecognizerState::Idle;
     }
 
     pub fn calibrate_frame_size(&mut self, width: i32, height: i32) {
         self.frame.update(width, height);
+        if self.auto_config {
+            self.config = SwipeConfig::tuned_for(width, height);
+        }
     }
 
     fn handle_down(&mut self, event: PointerEvent) -> GestureResult<SwipeGestureUpdate> {
