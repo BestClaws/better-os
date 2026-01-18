@@ -107,6 +107,48 @@ impl Rasterizer for Canvas {
         self.blend_pixel_internal(x, y, color, coverage);
     }
 
+    fn blend_hspan_with(
+        &mut self,
+        x: i32,
+        y: i32,
+        len: i32,
+        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+    ) {
+        if len <= 0 {
+            return;
+        }
+
+        let width = self.width as i32;
+        let height = self.height as i32;
+        if y < 0 || y >= height {
+            return;
+        }
+
+        let x_start = x.max(0);
+        let x_end = (x + len - 1).min(width - 1);
+        if x_start > x_end {
+            return;
+        }
+
+        let skip = (x_start - x) as usize;
+        let run_len = (x_end - x_start + 1) as usize;
+
+        let row_offset = y as usize * self.width;
+        let mut dst_index = row_offset + x_start as usize;
+
+        for i in 0..run_len {
+            let (color, coverage) = f(i + skip);
+            if coverage == 0 {
+                dst_index += 1;
+                continue;
+            }
+
+            let dst = &mut self.buffer[dst_index];
+            *dst = blend_colors(*dst, color, coverage);
+            dst_index += 1;
+        }
+    }
+
     fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgba8888) {
         let area = Area {
             x1: x,
@@ -123,5 +165,12 @@ impl Rasterizer for Canvas {
         }
         let idx = y as usize * self.width + x as usize;
         self.buffer[idx] = color.with_alpha(0);
+    }
+
+    fn blend_solid_hspan(&mut self, x: i32, y: i32, color: Rgba8888, coverages: &[u8]) {
+        if coverages.is_empty() {
+            return;
+        }
+        self.blend_hspan_with(x, y, coverages.len() as i32, |i| (color, coverages[i]));
     }
 }
