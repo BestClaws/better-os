@@ -63,6 +63,20 @@ const CLOCK_48K_EXTERNAL_MCLK: ClockConfig = ClockConfig {
     dac_osr: 0x10,
 };
 
+// Derives dig_mclk from the host's BCLK when no dedicated MCLK pin is wired.
+const CLOCK_48K_FROM_BCLK: ClockConfig = ClockConfig {
+    pre_div: 1,
+    pre_multi: 8,
+    adc_div: 1,
+    dac_div: 1,
+    fs_mode: 0,
+    lrck_h: 0x00,
+    lrck_l: 0xFF,
+    bclk_div: 0x04,
+    adc_osr: 0x10,
+    dac_osr: 0x10,
+};
+
 #[derive(Debug)]
 pub enum Error<I2cError, PinError> {
     I2c(I2cError),
@@ -129,7 +143,13 @@ where
     write_reg(i2c, ES8311_CLK_MANAGER_REG01, reg1)?;
 
     let clock = match sample_rate_hz {
-        48_000 => CLOCK_48K_EXTERNAL_MCLK,
+        48_000 => {
+            if use_external_mclk {
+                CLOCK_48K_EXTERNAL_MCLK
+            } else {
+                CLOCK_48K_FROM_BCLK
+            }
+        }
         _ => return Err(Error::UnsupportedSampleRate),
     };
 
