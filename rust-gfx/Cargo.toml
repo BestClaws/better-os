@@ -7,10 +7,6 @@ edition = "2021"
 default = ["std"]
 std = []
 
-[[bin]]
-name = "sprite_generator"
-path = "examples/sprite_generator.rs"
-
 [dependencies]
 libm = "0.2.15"
 micromath = "2.1.0"

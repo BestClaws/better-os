@@ -2,18 +2,28 @@
 
 # Script to verify if all sprite files match their references
 
-SPRITES_DIR="rust-gfx/sprites"
+SPRITES_DIR="sprite-generator/sprites"
 REFERENCE_DIR="reference_sprites"
 
-# Check if sprites/ exists in the wrong place (adjacent to this script)
+# Check for stale sprite directories in legacy locations
 if [ -d "sprites" ]; then
     echo "FAILED:"
     echo "Error: sprites/ directory found in project root!" >&2
-    echo "This is WRONG! Sprites should be in rust-gfx/sprites/, not in the project root." >&2
+    echo "This is WRONG! Sprites should now be generated under sprite-generator/sprites/." >&2
     echo "Please delete the incorrect sprites/ directory:" >&2
     echo "  rm -rf sprites" >&2
     echo "Then regenerate sprites from the correct location:" >&2
-    echo "  cd rust-gfx && cargo run --release --bin sprite_generator" >&2
+    echo "  cd sprite-generator && cargo run --release --target x86_64-unknown-linux-gnu --bin sprite-generator" >&2
+    exit 1
+fi
+
+if [ -d "rust-gfx/sprites" ]; then
+    echo "FAILED:"
+    echo "Error: legacy rust-gfx/sprites directory detected." >&2
+    echo "Please delete it to avoid confusing the verification script:" >&2
+    echo "  rm -rf rust-gfx/sprites" >&2
+    echo "Then regenerate sprites from the new crate:" >&2
+    echo "  cd sprite-generator && cargo run --release --target x86_64-unknown-linux-gnu --bin sprite-generator" >&2
     exit 1
 fi
 
@@ -35,7 +45,9 @@ sprite_count=$(find "$SPRITES_DIR" -maxdepth 1 -name "*.bmp" 2>/dev/null | wc -l
 if [ "$sprite_count" -eq 0 ]; then
     echo "FAILED:"
     echo "Error: No sprite files found in $SPRITES_DIR" >&2
-    echo "Please run sprite generator first: cd rust-gfx && cargo run --example sprite_generator --release" >&2
+    echo "Please run sprite generator first:" >&2
+    echo "  cd sprite-generator" >&2
+    echo "  cargo run --release --target x86_64-unknown-linux-gnu --bin sprite-generator" >&2
     exit 1
 fi
 
