@@ -1,10 +1,12 @@
+mod bmp;
+mod canvas;
+
+use crate::canvas::Canvas;
 use rust_gfx::primitives::TextDecor as LabelDecor;
 use rust_gfx::primitives::*;
 /// Sprite Generator - matches main.c output exactly
 /// Generates all sprite variations for testing
 use rust_gfx::*;
-use sprite_generator::bmp;
-use sprite_generator::canvas::Canvas;
 use std::fs;
 
 const SPRITE_WIDTH: usize = 102;
