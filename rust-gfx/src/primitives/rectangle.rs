@@ -2,9 +2,9 @@
 extern crate alloc;
 
 use crate::color::Rgba8888;
+use crate::masks::RadiusMask;
 use crate::math::{dist_sq, isqrt};
 use crate::primitives::gradient::gradient_get_color;
-use crate::primitives::mask::RadiusMask;
 use crate::types::*;
 use crate::Rasterizer;
 
@@ -126,7 +126,7 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     for y in clipped.y1..=clipped.y2 {
         if let (Some(ref mask_obj), Some(ref mut buf)) = (&mask, &mut mask_buf) {
             buf.fill(255);
-            mask_obj.apply_to_line(y, clipped.x1, buf);
+            let _ = mask_obj.apply(buf, clipped.x1, y);
         }
 
         for (idx, x) in (clipped.x1..=clipped.x2).enumerate() {
@@ -363,7 +363,7 @@ fn render_border_complex<R: Rasterizer>(
             if top_y >= draw_area.y1 && top_y <= draw_area.y2 {
                 if let Some(ref outer_m) = outer_mask {
                     outer_line.fill(255);
-                    outer_m.apply_to_line(top_y, mask_origin_x, &mut outer_line);
+                    let _ = outer_m.apply(&mut outer_line, mask_origin_x, top_y);
                 } else {
                     outer_line.fill(255);
                 }
@@ -392,7 +392,7 @@ fn render_border_complex<R: Rasterizer>(
             if bottom_y >= draw_area.y1 && bottom_y <= draw_area.y2 && bottom_y != top_y {
                 if let Some(ref outer_m) = outer_mask {
                     outer_line.fill(255);
-                    outer_m.apply_to_line(bottom_y, mask_origin_x, &mut outer_line);
+                    let _ = outer_m.apply(&mut outer_line, mask_origin_x, bottom_y);
                 } else {
                     outer_line.fill(255);
                 }
@@ -430,7 +430,7 @@ fn render_border_complex<R: Rasterizer>(
             for y in start_y..end_y {
                 if let Some(ref outer_m) = outer_mask {
                     outer_line.fill(255);
-                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                    let _ = outer_m.apply(&mut outer_line, mask_origin_x, y);
                 } else {
                     outer_line.fill(255);
                 }
@@ -467,7 +467,7 @@ fn render_border_complex<R: Rasterizer>(
             for y in start_y..=end_y {
                 if let Some(ref outer_m) = outer_mask {
                     outer_line.fill(255);
-                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                    let _ = outer_m.apply(&mut outer_line, mask_origin_x, y);
                 } else {
                     outer_line.fill(255);
                 }
@@ -505,7 +505,7 @@ fn render_border_complex<R: Rasterizer>(
             for y in start_y..end_y {
                 if let Some(ref outer_m) = outer_mask {
                     outer_line.fill(255);
-                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                    let _ = outer_m.apply(&mut outer_line, mask_origin_x, y);
                 } else {
                     outer_line.fill(255);
                 }
@@ -542,7 +542,7 @@ fn render_border_complex<R: Rasterizer>(
             for y in start_y..=end_y {
                 if let Some(ref outer_m) = outer_mask {
                     outer_line.fill(255);
-                    outer_m.apply_to_line(y, mask_origin_x, &mut outer_line);
+                    let _ = outer_m.apply(&mut outer_line, mask_origin_x, y);
                 } else {
                     outer_line.fill(255);
                 }
@@ -615,12 +615,12 @@ fn prepare_mask_line(
     inner_snapshot: Option<&mut [Opa]>,
 ) {
     buf.fill(255);
-    inner.apply_to_line(y, x_start, buf);
+    let _ = inner.apply(buf, x_start, y);
     if let Some(snapshot) = inner_snapshot {
         snapshot.copy_from_slice(buf);
     }
     if let Some(mask) = outer {
-        mask.apply_to_line(y, x_start, buf);
+        let _ = mask.apply(buf, x_start, y);
     }
 }
 

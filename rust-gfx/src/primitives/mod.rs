@@ -4,7 +4,6 @@ pub mod circle_cache;
 pub mod gradient;
 pub mod label;
 pub mod line;
-pub mod mask;
 /// Primitive drawing routines matching LVGL exactly
 /// Each primitive is in its own file to keep code organized
 pub mod rectangle;
@@ -19,7 +18,6 @@ pub use blur::*;
 pub use gradient::*;
 pub use label::*;
 pub use line::*;
-pub use mask::*;
 pub use rectangle::*;
 #[cfg(feature = "std")]
 pub use triangle::*;
