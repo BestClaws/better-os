@@ -287,10 +287,11 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
     }
 
     fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Rgba8888) {
-        if let Some(index) = self.pixel_index(x, y) {
-            self.set_pixel_at_index(index, color.with_alpha(0));
-            let rect = Rect::from_coords(x, y, 1, 1);
-            self.mark_dirty_clipped(rect);
+        match self.pixel_format() {
+            PixelFormat::Rgb565 | PixelFormat::Gray4 => {
+                let _ = (x, y, color);
+                // Formats without alpha storage should leave the existing pixel untouched.
+            }
         }
     }
 }
