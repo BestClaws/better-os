@@ -120,20 +120,39 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let has_radius = radius > 0;
     let has_grad = dsc.bg_grad.dir != GradDir::None;
 
+    if !has_radius && !has_grad && dsc.bg_opa == OPA_COVER {
+        rast.fill_rect(
+            clipped.x1,
+            clipped.y1,
+            clipped.width(),
+            clipped.height(),
+            dsc.bg_color,
+        );
+        return;
+    }
+
     let mut mask = has_radius.then(|| RadiusMask::new(*area, radius, false));
     let mut mask_buf = has_radius.then(|| alloc::vec![255u8; clipped.width() as usize]);
 
+    let span_width = clipped.width() as usize;
+    let mut coverage_row = alloc::vec![0u8; span_width];
+    let mut color_row = has_grad.then(|| alloc::vec![Rgba8888::TRANSPARENT; span_width]);
+
     for y in clipped.y1..=clipped.y2 {
+        coverage_row.fill(0);
         if let (Some(ref mask_obj), Some(ref mut buf)) = (&mask, &mut mask_buf) {
             buf.fill(255);
             let _ = mask_obj.apply(buf, clipped.x1, y);
         }
 
+        let mut any_coverage = false;
+        let mut all_full = true;
+
         for (idx, x) in (clipped.x1..=clipped.x2).enumerate() {
             let rel_x = x - area.x1;
             let rel_y = y - area.y1;
-            let (color, grad_opa) = if has_grad {
-                gradient_get_color(
+            let (color, grad_opa) = if let Some(ref mut colors) = color_row {
+                let (col, opa) = gradient_get_color(
                     &dsc.bg_grad,
                     rel_x,
                     rel_y,
@@ -141,7 +160,9 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
                     area.height(),
                     area.width() / 2,
                     area.height() / 2,
-                )
+                );
+                colors[idx] = col;
+                (col, opa)
             } else {
                 (dsc.bg_color, OPA_COVER)
             };
@@ -154,8 +175,33 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
 
             if cover == 0 {
                 rast.stamp_rgb_zero_alpha(x, y, color);
+                all_full = false;
+                coverage_row[idx] = 0;
+                continue;
+            }
+
+            any_coverage = true;
+            if cover != OPA_COVER {
+                all_full = false;
+            }
+            coverage_row[idx] = cover;
+        }
+
+        if !any_coverage {
+            continue;
+        }
+
+        if let Some(ref colors) = color_row {
+            if all_full {
+                rast.blend_hspan(clipped.x1, y, colors, None);
             } else {
-                rast.blend_pixel(x, y, color, cover);
+                rast.blend_hspan(clipped.x1, y, colors, Some(&coverage_row));
+            }
+        } else {
+            if all_full {
+                rast.fill_rect(clipped.x1, y, clipped.width(), 1, dsc.bg_color);
+            } else {
+                rast.blend_solid_hspan(clipped.x1, y, dsc.bg_color, &coverage_row);
             }
         }
     }
@@ -600,9 +646,7 @@ fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Rgba8888, 
     }
 
     for y in clamped.y1..=clamped.y2 {
-        for x in clamped.x1..=clamped.x2 {
-            rast.blend_pixel(x, y, color, opa);
-        }
+        rast.blend_hspan_with(clamped.x1, y, clamped.width(), |_| (color, opa));
     }
 }
 
@@ -642,6 +686,9 @@ fn paint_masked_span<R: Rasterizer>(
     let _ = inner;
     let _ = inner_snapshot;
 
+    let mut coverages = alloc::vec![0u8; mask.len()];
+    let mut any = false;
+
     for (idx, &mask_val) in mask.iter().enumerate() {
         let x = span_x1 + idx as i32;
         if mask_val == 0 {
@@ -659,7 +706,12 @@ fn paint_masked_span<R: Rasterizer>(
         if coverage == 0 {
             continue;
         }
-        rast.blend_pixel(x, y, color, coverage);
+        coverages[idx] = coverage;
+        any = true;
+    }
+
+    if any {
+        rast.blend_solid_hspan(span_x1, y, color, &coverages);
     }
 }
 
@@ -699,8 +751,18 @@ fn render_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         area.y2 + dsc.shadow_offset_y + dsc.shadow_spread,
     );
 
+    let span_width = (clipped.x2 - clipped.x1 + 1) as usize;
+    if span_width == 0 {
+        return;
+    }
+
+    let mut coverage_row = alloc::vec![0u8; span_width];
+
     for y in clipped.y1..=clipped.y2 {
-        for x in clipped.x1..=clipped.x2 {
+        coverage_row.fill(0);
+        let mut any = false;
+
+        for (idx, x) in (clipped.x1..=clipped.x2).enumerate() {
             let shadow_cov = calculate_shadow_opa(x, y, &core, shadow_radius, dsc.shadow_width);
             if shadow_cov == 0 {
                 continue;
@@ -709,7 +771,12 @@ fn render_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             if final_opa == 0 {
                 continue;
             }
-            rast.blend_pixel(x, y, dsc.shadow_color, final_opa);
+            coverage_row[idx] = final_opa;
+            any = true;
+        }
+
+        if any {
+            rast.blend_solid_hspan(clipped.x1, y, dsc.shadow_color, &coverage_row);
         }
     }
 }

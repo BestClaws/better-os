@@ -109,6 +109,8 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
 
     // Mask buffer for scanline
     let mut mask_buf = vec![255u8; area_w];
+    let mut coverage_row = vec![0u8; area_w];
+    let mut color_row = has_grad.then(|| vec![Rgba8888::TRANSPARENT; area_w]);
 
     // Draw triangle scanline by scanline (LVGL approach)
     for y in min_y..=max_y {
@@ -129,7 +131,10 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
 
         let mask_full_cover = mask_res == MaskResult::FullCover;
 
-        // Blend pixels with mask applied
+        coverage_row.fill(0);
+        let mut any = false;
+        let mut all_full = mask_full_cover && !has_grad && dsc.opa == OPA_COVER;
+
         for i in 0..area_w {
             let x = min_x + i as i32;
             let mut mask_opa = if mask_full_cover {
@@ -142,6 +147,7 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             } else if mask_opa >= 253 {
                 mask_opa = OPA_COVER;
             }
+
             let mut base_opa = dsc.opa;
             let mut final_color = dsc.color;
             let mut use_mask = !mask_full_cover || dsc.opa < OPA_COVER;
@@ -204,8 +210,30 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
                 base_opa
             };
 
-            // Write all pixels for non-premultiplied alpha (even if final_opa=0)
-            rast.blend_pixel(x, y, final_color, final_opa);
+            if let Some(ref mut colors) = color_row {
+                colors[i] = final_color;
+            }
+
+            if final_opa != 0 {
+                coverage_row[i] = final_opa;
+                any = true;
+                all_full = all_full && final_opa == OPA_COVER;
+            } else {
+                coverage_row[i] = 0;
+                all_full = false;
+            }
+        }
+
+        if !any {
+            continue;
+        }
+
+        if all_full {
+            rast.fill_rect(min_x, y, width, 1, dsc.color);
+        } else if let Some(ref colors) = color_row {
+            rast.blend_hspan(min_x, y, colors, Some(&coverage_row));
+        } else {
+            rast.blend_solid_hspan(min_x, y, dsc.color, &coverage_row);
         }
     }
 

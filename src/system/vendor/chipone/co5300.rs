@@ -6,7 +6,7 @@
 //! # Display Specifications
 //! - Physical Resolution: 410×502 pixels
 //! - Interface: QSPI (Quad-SPI)
-//! - Pixel Format: RGB565 (primary), RGB888, RGB666, Gray8
+//! - Pixel Format: RGB565 (primary) with optional Gray4 framebuffer upload
 //! - Hardware Offset: 22 pixels X-axis (built into controller)
 //!
 //! # Scaling Modes
@@ -219,15 +219,12 @@ const SUPPORTED_FORMATS: [PixelFormat; 2] = [PixelFormat::Rgb565, PixelFormat::G
 
 /// Convert PixelFormat enum to SH8601 COLMOD register value
 ///
-/// Note: For Gray4 framebuffers, we use RGB565 display mode and convert during transfer to keep Quad-SPI
+/// Gray4 is transmitted as RGB565 data with per-pixel conversion during transfer.
 #[inline]
 fn pixel_format_to_colmod(fmt: PixelFormat) -> u8 {
     match fmt {
         PixelFormat::Rgb565 => 0x55, // 16-bit/pixel RGB565
-        PixelFormat::Rgb888 => 0x77, // 24-bit/pixel RGB888
-        PixelFormat::Rgb666 => 0x66, // 18-bit/pixel RGB666
-        PixelFormat::Gray8 => 0x11,  // 8-bit/pixel grayscale
-        PixelFormat::Gray4 => 0x55, // Gray4 framebuffer -> RGB565 display (convert during transfer, use Quad-SPI)
+        PixelFormat::Gray4 => 0x55, // Gray4 framebuffer -> RGB565 display (convert during transfer)
     }
 }
 

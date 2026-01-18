@@ -5,10 +5,9 @@ use defmt::Format;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 pub enum PixelFormat {
+    /// 16-bit RGB (5/6/5). Primary pipeline format.
     Rgb565,
-    Rgb888,
-    Rgb666,
-    Gray8,
+    /// Packed 4-bit grayscale (2 pixels per byte) for low-power UIs.
     Gray4,
 }
 
@@ -16,9 +15,6 @@ impl PixelFormat {
     pub const fn bytes_per_pixel(&self) -> usize {
         match self {
             PixelFormat::Rgb565 => 2,
-            PixelFormat::Rgb888 => 3,
-            PixelFormat::Rgb666 => 3,
-            PixelFormat::Gray8 => 1,
             PixelFormat::Gray4 => 1, // Note: actual usage needs (width*height+1)/2
         }
     }
@@ -28,7 +24,7 @@ impl PixelFormat {
         let pixels = (width as usize) * (height as usize);
         match self {
             PixelFormat::Gray4 => (pixels + 1) / 2, // 2 pixels per byte, round up
-            _ => pixels * self.bytes_per_pixel(),
+            PixelFormat::Rgb565 => pixels * self.bytes_per_pixel(),
         }
     }
 }

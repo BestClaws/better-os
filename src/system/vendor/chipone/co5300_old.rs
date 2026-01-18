@@ -134,9 +134,7 @@ const SUPPORTED_FORMATS: [PixelFormat; 1] = [PixelFormat::Rgb565];
 fn pixel_format_to_colmod(fmt: PixelFormat) -> u8 {
     match fmt {
         PixelFormat::Rgb565 => 0x55,
-        PixelFormat::Rgb888 => 0x77,
-        PixelFormat::Rgb666 => 0x66,
-        PixelFormat::Gray8 => 0x11,
+        PixelFormat::Gray4 => 0x55,
     }
 }
 

@@ -2,6 +2,7 @@ mod label_font;
 
 use crate::color::Rgba8888;
 extern crate alloc;
+use alloc::vec;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -96,9 +97,19 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
             continue;
         }
 
+        if bitmap_width == 0 || bitmap_height == 0 {
+            prev_glyph_id = Some(glyph_info.glyph_id);
+            continue;
+        }
+
+        let mut coverage_row = vec![0u8; bitmap_width];
+
         for row in 0..bitmap_height {
-            for col in 0..bitmap_width {
-                let coverage = bitmap[row * bitmap_width + col];
+            coverage_row.fill(0);
+            let mut any = false;
+            let row_slice = &bitmap[row * bitmap_width..(row + 1) * bitmap_width];
+
+            for (col, &coverage) in row_slice.iter().enumerate() {
                 if coverage == 0 {
                     continue;
                 }
@@ -106,9 +117,13 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
                 if blended == 0 {
                     continue;
                 }
-                let px = glyph_x + col as i32;
+                coverage_row[col] = blended;
+                any = true;
+            }
+
+            if any {
                 let py = glyph_y + row as i32;
-                rast.blend_pixel(px, py, dsc.color, blended);
+                rast.blend_solid_hspan(glyph_x, py, dsc.color, &coverage_row);
             }
         }
 
@@ -151,10 +166,13 @@ fn draw_decoration_line<R: Rasterizer>(
     if dsc.opa == 0 || x2 < x1 {
         return;
     }
+    let span_len = x2 - x1 + 1;
     for dy in 0..thickness {
         let py = y + dy;
-        for px in x1..=x2 {
-            rast.blend_pixel(px, py, dsc.color, dsc.opa);
+        if dsc.opa == OPA_COVER {
+            rast.fill_rect(x1, py, span_len, 1, dsc.color);
+        } else {
+            rast.blend_hspan_with(x1, py, span_len, |_| (dsc.color, dsc.opa));
         }
     }
 }

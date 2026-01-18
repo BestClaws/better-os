@@ -91,9 +91,15 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         };
 
         // Draw filled rectangle
-        for y in y1..=y2 {
-            for x in x1..=x2 {
-                rast.blend_pixel(x, y, dsc.color, dsc.opa);
+        if x1 <= x2 && y1 <= y2 {
+            let width = x2 - x1 + 1;
+            let height = y2 - y1 + 1;
+            if dsc.opa == OPA_COVER {
+                rast.fill_rect(x1, y1, width, height, dsc.color);
+            } else {
+                for y in y1..=y2 {
+                    rast.blend_hspan_with(x1, y, width, |_| (dsc.color, dsc.opa));
+                }
             }
         }
         rast.mark_dirty(x1, y1, x2 + 1, y2 + 1);
@@ -216,18 +222,20 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
 
     // Draw line using masks
     let draw_width = blend_area.x2 - blend_area.x1 + 1;
-    let mut mask_buf = vec![255u8; draw_width as usize];
+    let draw_width_usize = draw_width as usize;
+    let mut mask_buf = vec![255u8; draw_width_usize];
+    let mut coverage_row = vec![0u8; draw_width_usize];
+    let masks = [
+        MaskRef::Line(&mask_left),
+        MaskRef::Line(&mask_right),
+        MaskRef::Line(&mask_top),
+        MaskRef::Line(&mask_bottom),
+    ];
 
     for y in blend_area.y1..=blend_area.y2 {
         // Reset mask buffer
         mask_buf.fill(255);
-
-        // Build mask list
-        let mut masks = Vec::with_capacity(4);
-        masks.push(MaskRef::Line(&mask_left));
-        masks.push(MaskRef::Line(&mask_right));
-        masks.push(MaskRef::Line(&mask_top));
-        masks.push(MaskRef::Line(&mask_bottom));
+        coverage_row.fill(0);
 
         // Apply masks
         let res = apply_masks(&masks, &mut mask_buf, blend_area.x1, y);
@@ -236,11 +244,22 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             continue;
         }
 
-        // Blend pixels (including opa=0 to preserve color for non-premultiplied alpha)
+        if res == MaskResult::FullCover && dsc.opa == OPA_COVER {
+            rast.fill_rect(blend_area.x1, y, draw_width, 1, dsc.color);
+            continue;
+        }
+
+        let mut any = false;
         for (i, &opa) in mask_buf.iter().enumerate() {
-            let x = blend_area.x1 + i as i32;
             let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
-            rast.blend_pixel(x, y, dsc.color, final_opa);
+            coverage_row[i] = final_opa;
+            if final_opa != 0 {
+                any = true;
+            }
+        }
+
+        if any {
+            rast.blend_solid_hspan(blend_area.x1, y, dsc.color, &coverage_row);
         }
     }
 
@@ -304,17 +323,25 @@ fn draw_horizontal_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
 
     let dash_start = pos_mod(x_start, pattern);
     let width = (x_end - x_start + 1) as usize;
+    let mut coverage_row = vec![0u8; width];
 
     for y in y_start..=y_end {
+        coverage_row.fill(0);
+        let mut any = false;
         for offset in 0..width {
             let dash_cnt = (dash_start + offset as i32) % pattern;
             let x = x_start + offset as i32;
 
             if dash_cnt < dsc.dash_width {
-                rast.blend_pixel(x, y, dsc.color, dsc.opa);
+                coverage_row[offset] = dsc.opa;
+                any = any || dsc.opa != 0;
             } else {
                 rast.stamp_rgb_zero_alpha(x, y, dsc.color);
             }
+        }
+
+        if any {
+            rast.blend_solid_hspan(x_start, y, dsc.color, &coverage_row);
         }
     }
 
@@ -341,22 +368,23 @@ fn draw_vertical_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     }
 
     let mut dash_cnt = pos_mod(y_start, pattern);
+    let span_len = x_end - x_start + 1;
 
     for y in y_start..=y_end {
         if dash_cnt > dsc.dash_width {
             for x in x_start..=x_end {
                 rast.stamp_rgb_zero_alpha(x, y, dsc.color);
             }
+        } else if dsc.opa == OPA_COVER {
+            rast.fill_rect(x_start, y, span_len, 1, dsc.color);
         } else {
-            for x in x_start..=x_end {
-                rast.blend_pixel(x, y, dsc.color, dsc.opa);
-            }
+            rast.blend_hspan_with(x_start, y, span_len, |_| (dsc.color, dsc.opa));
         }
 
+        dash_cnt += 1;
         if dash_cnt >= pattern {
             dash_cnt = 0;
         }
-        dash_cnt += 1;
     }
 
     rast.mark_dirty(x_start, y_start, x_end + 1, y_end + 1);

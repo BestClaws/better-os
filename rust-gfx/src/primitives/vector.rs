@@ -595,7 +595,23 @@ fn render_fill<R: Rasterizer>(rast: &mut R, fill: &VectorFill, flattened: &Flatt
     let mut dirty_max_x = i32::MIN;
     let mut dirty_max_y = i32::MIN;
 
+    let span_width = (max_x - min_x + 1).max(0) as usize;
+    if span_width == 0 {
+        return;
+    }
+
+    let mut coverage_row = vec![0u8; span_width];
+    let mut color_row = matches!(fill.kind, FillKind::LinearGradient(_))
+        .then(|| vec![Rgba8888::TRANSPARENT; span_width]);
+
     for y in min_y..=max_y {
+        coverage_row.fill(0);
+        if let Some(ref mut colors) = color_row {
+            colors.fill(Rgba8888::TRANSPARENT);
+        }
+
+        let mut any = false;
+
         for x in min_x..=max_x {
             let mut coverage_sum = 0;
             let mut sample_inside = false;
@@ -626,7 +642,13 @@ fn render_fill<R: Rasterizer>(rast: &mut R, fill: &VectorFill, flattened: &Flatt
                 continue;
             }
 
-            rast.blend_pixel(x, y, color, final_opa);
+            let idx = (x - min_x) as usize;
+            coverage_row[idx] = final_opa;
+            if let Some(ref mut colors) = color_row {
+                colors[idx] = color;
+            }
+            any = true;
+
             if x < dirty_min_x {
                 dirty_min_x = x;
             }
@@ -639,6 +661,16 @@ fn render_fill<R: Rasterizer>(rast: &mut R, fill: &VectorFill, flattened: &Flatt
             if y > dirty_max_y {
                 dirty_max_y = y;
             }
+        }
+
+        if !any {
+            continue;
+        }
+
+        if let Some(colors) = color_row.as_ref() {
+            rast.blend_hspan(min_x, y, colors, Some(&coverage_row));
+        } else if let FillKind::Solid { color, .. } = &fill.kind {
+            rast.blend_solid_hspan(min_x, y, *color, &coverage_row);
         }
     }
 
@@ -666,7 +698,25 @@ fn render_stroke<R: Rasterizer>(rast: &mut R, stroke: &VectorStroke, flattened: 
     let mut dirty_max_x = i32::MIN;
     let mut dirty_max_y = i32::MIN;
 
+    let span_width = (max_x - min_x + 1).max(0) as usize;
+    if span_width == 0 {
+        return;
+    }
+
+    let mut coverage_row = vec![0u8; span_width];
+    let mut color_row = stroke
+        .gradient
+        .as_ref()
+        .map(|_| vec![Rgba8888::TRANSPARENT; span_width]);
+
     for y in min_y..=max_y {
+        coverage_row.fill(0);
+        if let Some(ref mut colors) = color_row {
+            colors.fill(Rgba8888::TRANSPARENT);
+        }
+
+        let mut any = false;
+
         for x in min_x..=max_x {
             let mut coverage_sum = 0.0f32;
             let mut sample_hit = false;
@@ -707,7 +757,13 @@ fn render_stroke<R: Rasterizer>(rast: &mut R, stroke: &VectorStroke, flattened: 
                 continue;
             }
 
-            rast.blend_pixel(x, y, base_color, final_opa);
+            let idx = (x - min_x) as usize;
+            coverage_row[idx] = final_opa;
+            if let Some(ref mut colors) = color_row {
+                colors[idx] = base_color;
+            }
+            any = true;
+
             if x < dirty_min_x {
                 dirty_min_x = x;
             }
@@ -720,6 +776,17 @@ fn render_stroke<R: Rasterizer>(rast: &mut R, stroke: &VectorStroke, flattened: 
             if y > dirty_max_y {
                 dirty_max_y = y;
             }
+        }
+
+        if !any {
+            continue;
+        }
+
+        if let Some(colors) = color_row.as_ref() {
+            rast.blend_hspan(min_x, y, colors, Some(&coverage_row));
+        } else {
+            let solid_color = stroke.color.unwrap_or(Rgba8888::WHITE);
+            rast.blend_solid_hspan(min_x, y, solid_color, &coverage_row);
         }
     }
 

@@ -13,5 +13,5 @@ pub mod types;
 
 // Public API exports
 pub use color::{blend_colors, lerp_color, Rgba8888};
-pub use rasterizer::{Rasterizer, Rgb565Rasterizer};
+pub use rasterizer::{Rasterizer};
 pub use types::*;

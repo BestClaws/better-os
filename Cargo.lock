@@ -584,6 +584,7 @@ source = "git+https://github.com/esp-rs/esp-hal.git?rev=6b735e1510d75b8620503ae6
 dependencies = [
  "allocator-api2",
  "cfg-if",
+ "defmt 1.0.1",
  "document-features",
  "enumset",
  "esp-config",
