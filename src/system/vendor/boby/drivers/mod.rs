@@ -1,8 +1,8 @@
 pub(crate) mod ambient_sensor;
 pub(crate) mod audio;
-pub(crate) mod es8311;
 pub(crate) mod battery;
 pub(crate) mod encoder;
+pub(crate) mod es8311;
 pub(crate) mod ft5336;
 pub(crate) mod ili9341;
 pub(crate) mod pcf85063;

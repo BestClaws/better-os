@@ -14,9 +14,9 @@ use crate::system::kernel::platform::PlatformDevice;
 use crate::system::ui::windowing::WindowHandle;
 use crate::system::vendor::boby::drivers::ambient_sensor::AmbientSensorDriver;
 use crate::system::vendor::boby::drivers::audio::I2sAudioDriver;
-use crate::system::vendor::boby::drivers::es8311;
 use crate::system::vendor::boby::drivers::battery::BatteryDriver;
 use crate::system::vendor::boby::drivers::encoder::EncoderDriver;
+use crate::system::vendor::boby::drivers::es8311;
 use crate::system::vendor::boby::drivers::ft5336::FT5336;
 use crate::system::vendor::boby::drivers::pcf85063::Pcf85063;
 use crate::system::vendor::boby::drivers::qmi8658c::Qmi8658C;
@@ -38,8 +38,8 @@ use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::dma_circular_descriptors;
-use esp_hal::i2s::master::{Channels, Config as I2sConfig, DataFormat as I2sDataFormat, I2s};
 use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::i2s::master::{Channels, Config as I2sConfig, DataFormat as I2sDataFormat, I2s};
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::peripherals::ADC1;
 use esp_hal::spi::master::{Config, Spi};
@@ -162,7 +162,7 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
 
     let radio_driver = RadioDriver::new(peripherals.BT);
 
-    const AUDIO_BUFFER_BYTES: usize = 2048;
+    const AUDIO_BUFFER_BYTES: usize = 10_000; // capped at 10 KB per request
     let (_, audio_tx_descriptors) = dma_circular_descriptors!(AUDIO_BUFFER_BYTES);
     let I2s { i2s_rx, i2s_tx, .. } = I2s::new(
         peripherals.I2S0,

@@ -7,9 +7,10 @@ use crate::apps::components::{
 };
 use crate::system::app::app_context::AppContext;
 use crate::system::hal::rtc::RtcDateTime;
+use crate::system::services::audio_srv::AudioService;
 use crate::system::services::rtc_srv::current_datetime;
 use crate::system::ui::drawing_surface::DrawingSurface;
-use defmt::info;
+use defmt::{info, warn};
 use embassy_time::{Duration, Instant, Timer};
 use micromath::F32Ext;
 use rust_gfx::color::Rgba8888;
@@ -30,10 +31,22 @@ pub async fn watch_app(ctx: AppContext) {
     let fallback_start = Instant::now();
     let mut notification_index = 0;
     let mut last_scroll = fallback_start;
+    let mut last_beep_minute: Option<i32> = None;
+    let mut had_focus = false;
     loop {
-        if !ctx.is_focused().await {
+        let is_focused = ctx.is_focused().await;
+        if !is_focused {
+            had_focus = false;
             Timer::after(Duration::from_millis(100)).await;
             continue;
+        }
+
+        if !had_focus {
+            info!("watch focus gained: playing entry beep");
+            if let Err(err) = AudioService::play_minute_beep().await {
+                warn!("Entry beep failed: {:?}", err);
+            }
+            had_focus = true;
         }
 
         let rtc_snapshot = current_datetime().await;
@@ -41,6 +54,19 @@ pub async fn watch_app(ctx: AppContext) {
         let fallback_elapsed = now - fallback_start;
         let fallback_micros = fallback_elapsed.as_micros() as u128;
         let time_state = TimeState::from_snapshot(rtc_snapshot, fallback_micros);
+
+        if let Some(prev_minute) = last_beep_minute {
+            if prev_minute != time_state.minutes {
+                info!(
+                    "watch minute rollover: {} -> {} (playing beep)",
+                    prev_minute, time_state.minutes
+                );
+                if let Err(err) = AudioService::play_minute_beep().await {
+                    warn!("Minute beep failed: {:?}", err);
+                }
+            }
+        }
+        last_beep_minute = Some(time_state.minutes);
 
         if NOTIFICATIONS.len() > 1 {
             let interval = Duration::from_millis(NOTIFICATION_SCROLL_MS);

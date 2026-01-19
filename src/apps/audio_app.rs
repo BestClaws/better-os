@@ -8,7 +8,7 @@ use crate::apps::components::{
 };
 use crate::system::app::app_context::AppContext;
 use crate::system::hal::audio::AudioError;
-use crate::system::services::audio_srv::{audio_driver, audio_loop};
+use crate::system::services::audio_srv::AudioService;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_time::{Duration, Timer};
@@ -79,7 +79,7 @@ pub async fn audio_app(ctx: AppContext) {
         detail.clear();
         render_status(&ctx, stage, None).await;
 
-        let driver = match audio_driver() {
+        let driver = match AudioService::driver() {
             Some(driver) => driver,
             None => {
                 stage = AudioStage::Failed;
@@ -99,7 +99,7 @@ pub async fn audio_app(ctx: AppContext) {
         stage = AudioStage::StartingPlayback;
         render_status(&ctx, stage, None).await;
 
-        match guard.play_loop(audio_loop()) {
+        match guard.play_loop(AudioService::loop_clip()) {
             Ok(()) => {
                 stage = AudioStage::Playing;
                 detail = String::from("Square wave loop active");
@@ -159,7 +159,14 @@ fn draw_view(surface: &mut DrawingSurface, stage: AudioStage, detail: Option<&st
         },
     );
 
-    draw_stage_list(surface, &frame.content_area, &metrics, fonts, palette, stage);
+    draw_stage_list(
+        surface,
+        &frame.content_area,
+        &metrics,
+        fonts,
+        palette,
+        stage,
+    );
 
     if let Some(text) = detail {
         let detail_y = frame.content_area.y2 + metrics.section_padding;

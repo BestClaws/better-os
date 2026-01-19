@@ -207,8 +207,8 @@ where
     reg2 |= pre_multi_bits << 3;
     write_reg(i2c, ES8311_CLK_MANAGER_REG02, reg2)?;
 
-    let reg5 = ((clock.adc_div.saturating_sub(1) & 0x0F) << 4)
-        | (clock.dac_div.saturating_sub(1) & 0x0F);
+    let reg5 =
+        ((clock.adc_div.saturating_sub(1) & 0x0F) << 4) | (clock.dac_div.saturating_sub(1) & 0x0F);
     write_reg(i2c, ES8311_CLK_MANAGER_REG05, reg5)?;
 
     let mut reg3 = read_reg(i2c, ES8311_CLK_MANAGER_REG03)? & 0x80;
@@ -238,12 +238,15 @@ where
     Ok(())
 }
 
-fn write_reg<I2C, PinError>(i2c: &mut I2C, register: u8, value: u8) -> Result<(), Error<I2C::Error, PinError>>
+fn write_reg<I2C, PinError>(
+    i2c: &mut I2C,
+    register: u8,
+    value: u8,
+) -> Result<(), Error<I2C::Error, PinError>>
 where
     I2C: I2c<SevenBitAddress>,
 {
-    i2c
-        .write(ES8311_I2C_ADDR, &[register, value])
+    i2c.write(ES8311_I2C_ADDR, &[register, value])
         .map_err(Error::I2c)
 }
 
@@ -252,8 +255,7 @@ where
     I2C: I2c<SevenBitAddress>,
 {
     let mut buf = [0u8; 1];
-    i2c
-        .write_read(ES8311_I2C_ADDR, &[register], &mut buf)
+    i2c.write_read(ES8311_I2C_ADDR, &[register], &mut buf)
         .map_err(Error::I2c)?;
     Ok(buf[0])
 }

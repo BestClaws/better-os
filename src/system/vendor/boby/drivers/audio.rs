@@ -27,6 +27,13 @@ impl I2sAudioDriver {
         self.active = true;
         Ok(())
     }
+
+    fn play_once_internal(&mut self, data: &'static [i16]) -> Result<(), I2sError> {
+        let buffer = SliceReadBuffer::new(data);
+        let transfer = self.tx.write_dma(&buffer)?;
+        transfer.wait().map_err(I2sError::from)?;
+        Ok(())
+    }
 }
 
 impl AsyncAudioSink for I2sAudioDriver {
@@ -36,6 +43,13 @@ impl AsyncAudioSink for I2sAudioDriver {
         }
 
         self.start_loop_internal(data).map_err(AudioError::from)
+    }
+
+    fn play_once(&mut self, data: &'static [i16]) -> Result<(), AudioError> {
+        if self.active {
+            return Err(AudioError::AlreadyRunning);
+        }
+        self.play_once_internal(data).map_err(AudioError::from)
     }
 }
 

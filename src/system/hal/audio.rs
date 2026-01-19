@@ -4,6 +4,7 @@ use esp_hal::i2s::master::Error as I2sError;
 #[derive(Debug, Format)]
 pub enum AudioError {
     AlreadyRunning,
+    Unavailable,
     I2s(I2sError),
 }
 
@@ -15,4 +16,5 @@ impl From<I2sError> for AudioError {
 
 pub trait AsyncAudioSink {
     fn play_loop(&mut self, data: &'static [i16]) -> Result<(), AudioError>;
+    fn play_once(&mut self, data: &'static [i16]) -> Result<(), AudioError>;
 }
