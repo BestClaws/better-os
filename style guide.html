@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=102, initial-scale=1.0">
-    <title>Arknights UI</title>
+    <title>Better UI</title>
     <style>
         * {
             margin: 0;
@@ -13,8 +13,8 @@
 
         body {
             font-family: -apple-system, sans-serif;
-            background: #e8e8e8;
-            color: #2c2c2c;
+            background: #1a1714;
+            color: #e8dcc8;
             line-height: 1.2;
             font-size: 7px;
             width: 102px;
@@ -39,11 +39,11 @@
 
         .subtitle {
             font-size: 6px;
-            color: #666;
+            color: #a89878;
         }
 
         .section {
-            background: white;
+            background: #25211c;
             border-radius: 3px;
             padding: 4px;
             margin-bottom: 4px;
@@ -52,7 +52,7 @@
         h2 {
             font-size: 8px;
             margin-bottom: 4px;
-            color: #2c2c2c;
+            color: #e8dcc8;
             position: relative;
             padding-left: 5px;
             font-weight: 700;
@@ -66,7 +66,11 @@
             transform: translateY(-50%);
             width: 2px;
             height: 80%;
-            background: #f7ff00;
+            background: #8b7355;
+        }
+
+        h2.yellow::before {
+            background: #8b4a52;
         }
 
         h3 {
@@ -77,7 +81,7 @@
 
         p {
             font-size: 6px;
-            color: #666;
+            color: #a89878;
             margin-bottom: 2px;
         }
 
@@ -102,42 +106,45 @@
         }
 
         .color-hex {
-            color: #999;
+            color: #8b7355;
             font-size: 5px;
         }
 
         /* Buttons */
         .btn-primary {
-            background: #2c2c2c;
-            color: white;
-            padding: 4px 6px;
+            background: linear-gradient(135deg, #c8a760 0%, #d4b878 100%);
+            color: #1a1714;
+            padding: 5px 12px 5px 6px;
             border: none;
             border-radius: 8px;
             font-size: 6px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             position: relative;
             display: block;
             width: 100%;
             text-align: center;
             margin: 2px 0;
+            line-height: 1;
+            box-shadow: 0 2px 4px rgba(200, 167, 96, 0.3);
         }
 
         .btn-primary::after {
-            content: '›';
+            content: '>';
             position: absolute;
             right: 4px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #f7ff00;
-            font-size: 8px;
+            top: 2px;
+            color: #1a1714;
+            font-size: 10px;
+            line-height: 1;
+            font-weight: 700;
         }
 
         .btn-secondary {
             background: transparent;
-            color: #2c2c2c;
-            padding: 4px 6px;
-            border: 1px solid #2c2c2c;
+            color: #c8a760;
+            padding: 3px 6px;
+            border: 1px solid #c8a760;
             border-radius: 8px;
             font-size: 6px;
             font-weight: 600;
@@ -149,54 +156,65 @@
         }
 
         .btn-icon {
-            background: #2c2c2c;
-            color: white;
+            background: #c8a760;
+            color: #1a1714;
             width: 16px;
             height: 16px;
             border: none;
             border-radius: 50%;
             font-size: 8px;
+            font-weight: 700;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             margin: 1px;
+            line-height: 1;
+            padding: 0;
         }
 
         .btn-icon.secondary {
-            background: white;
-            color: #2c2c2c;
-            border: 1px solid #ddd;
+            background: #25211c;
+            color: #c8a760;
+            border: 1px solid #c8a760;
+            line-height: 1;
+            padding: 0;
         }
 
         /* Cards */
         .card {
-            background: #fafafa;
+            background: linear-gradient(135deg, #1f1c18 0%, #25211c 100%);
             border-radius: 3px;
             padding: 4px;
             margin: 2px 0;
-            border-left: 2px solid #f7ff00;
+            border-left: 2px solid #8b4a52;
         }
 
         .card.gray {
-            border-left-color: #666;
+            border-left-color: #8b7355;
         }
 
         .card h4 {
             font-size: 6px;
             margin-bottom: 2px;
             font-weight: 600;
+            color: #e8dcc8;
         }
 
         .card p {
             font-size: 5px;
             margin-bottom: 1px;
+            color: #8b4a52;
+        }
+
+        .card.gray p {
+            color: #8b7355;
         }
 
         .tag {
             display: inline-block;
-            background: #f7ff00;
-            color: #2c2c2c;
+            background: #b8495d;
+            color: #e8dcc8;
             padding: 1px 3px;
             border-radius: 4px;
             font-size: 5px;
@@ -205,8 +223,8 @@
         }
 
         .tag.gray {
-            background: #666;
-            color: white;
+            background: #c8a760;
+            color: #1a1714;
         }
 
         /* Navigation */
@@ -222,17 +240,21 @@
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background: white;
-            border: 1px solid #ddd;
+            background: linear-gradient(135deg, #25211c 0%, #1f1c18 100%);
+            border: 1px solid #8b7355;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-size: 7px;
+            font-size: 9px;
+            line-height: 1;
+            padding: 0;
+            font-weight: 700;
+            color: #a89878;
         }
 
         .page-indicator {
-            color: #666;
+            color: #a89878;
             font-weight: 600;
             font-size: 6px;
         }
@@ -243,8 +265,8 @@
             justify-content: space-between;
             align-items: center;
             padding: 2px 4px;
-            background: #2c2c2c;
-            color: white;
+            background: linear-gradient(135deg, #1a1714 0%, #25211c 100%);
+            color: #e8dcc8;
             border-radius: 2px;
             font-size: 6px;
             margin: 2px 0;
@@ -253,10 +275,9 @@
         .battery {
             width: 8px;
             height: 4px;
-            border: 1px solid white;
+            border: 1px solid #a89878;
             border-radius: 1px;
             position: relative;
-            padding: 0.5px;
         }
 
         .battery::after {
@@ -267,13 +288,14 @@
             transform: translateY(-50%);
             width: 1px;
             height: 2px;
-            background: white;
+            background: #a89878;
         }
 
         .battery-fill {
-            background: #f7ff00;
+            background: #c8a760;
             height: 100%;
             width: 80%;
+            border-radius: 0.5px;
         }
 
         /* Time */
@@ -286,7 +308,7 @@
 
         .date-display {
             text-align: center;
-            color: #666;
+            color: #a89878;
             font-size: 6px;
             margin-bottom: 3px;
         }
@@ -300,8 +322,8 @@
         }
 
         .quick-action {
-            background: white;
-            border: 1px solid #e0e0e0;
+            background: linear-gradient(135deg, #1f1c18 0%, #25211c 100%);
+            border: 1px solid #8b7355;
             border-radius: 3px;
             padding: 4px 2px;
             text-align: center;
@@ -317,8 +339,8 @@
 
         /* Stats */
         .stat-card {
-            background: linear-gradient(135deg, #2c2c2c 0%, #444 100%);
-            color: white;
+            background: linear-gradient(135deg, #1a1714 0%, #25211c 100%);
+            color: #e8dcc8;
             border-radius: 3px;
             padding: 4px;
             margin: 2px 0;
@@ -332,7 +354,7 @@
             left: 0;
             width: 2px;
             height: 100%;
-            background: #f7ff00;
+            background: #c8a760;
         }
 
         .stat-value {
@@ -347,7 +369,7 @@
 
         /* Progress */
         .progress-bar {
-            background: #e0e0e0;
+            background: #3a342b;
             height: 4px;
             border-radius: 2px;
             overflow: hidden;
@@ -355,7 +377,7 @@
         }
 
         .progress-fill {
-            background: #f7ff00;
+            background: linear-gradient(90deg, #b8495d 0%, #c8a760 100%);
             height: 100%;
             width: 75%;
         }
@@ -365,7 +387,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 2px 0;
+            padding: 2px 3px 2px 0;
             font-size: 6px;
         }
 
@@ -373,6 +395,7 @@
             position: relative;
             width: 16px;
             height: 9px;
+            flex-shrink: 0;
         }
 
         .toggle input {
@@ -388,8 +411,9 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #ccc;
+            background-color: #3a342b;
             border-radius: 9px;
+            transition: background-color 0.3s;
         }
 
         .toggle-slider:before {
@@ -399,15 +423,17 @@
             width: 6px;
             left: 1.5px;
             bottom: 1.5px;
-            background-color: white;
+            background-color: #8b7355;
             border-radius: 50%;
+            transition: transform 0.3s, background-color 0.3s;
         }
 
         input:checked + .toggle-slider {
-            background-color: #f7ff00;
+            background-color: #c8a760;
         }
 
         input:checked + .toggle-slider:before {
+            background-color: #1a1714;
             transform: translateX(7px);
         }
 
@@ -424,21 +450,21 @@
         }
 
         .menu-item.active {
-            background: #f5f5f5;
-            border-left: 2px solid #f7ff00;
-            padding-left: 1px;
+            background: linear-gradient(135deg, #1a1714 0%, #25211c 100%);
+            border-left: 2px solid #c8a760;
+            padding-left: 2px;
         }
 
         .menu-icon {
             width: 8px;
             height: 8px;
-            background: #ddd;
+            background: #3a342b;
             border-radius: 2px;
         }
 
         /* Complications */
         .complication {
-            background: white;
+            background: linear-gradient(135deg, #25211c 0%, #1f1c18 100%);
             border-radius: 50%;
             width: 20px;
             height: 20px;
@@ -446,23 +472,24 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            border: 1px solid #e0e0e0;
+            border: 1px solid #8b7355;
             margin: 1px;
         }
 
         .comp-value {
             font-weight: 700;
             font-size: 7px;
+            color: #e8dcc8;
         }
 
         .comp-label {
             font-size: 4px;
-            color: #999;
+            color: #8b7355;
         }
 
         /* Account */
         .account-box {
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #1f1c18 0%, #25211c 100%);
             padding: 3px;
             border-radius: 2px;
             margin: 2px 0;
@@ -470,7 +497,7 @@
 
         .account-label {
             font-size: 5px;
-            color: #999;
+            color: #8b7355;
             margin-bottom: 1px;
         }
 
@@ -478,12 +505,12 @@
             font-weight: 600;
             font-size: 6px;
             padding-left: 3px;
-            border-left: 2px solid #f7ff00;
+            border-left: 2px solid #c8a760;
         }
 
         code {
-            background: #2c2c2c;
-            color: #f7ff00;
+            background: #1a1714;
+            color: #c8a760;
             padding: 1px 2px;
             border-radius: 1px;
             font-family: monospace;
@@ -496,24 +523,30 @@
             text-align: center;
             margin-top: 5px;
             padding: 4px;
-            color: #999;
+            color: #8b7355;
             font-size: 5px;
         }
 
         .badge {
-            background: #ff3b30;
-            color: white;
+            background: #b8495d;
+            color: #e8dcc8;
             font-size: 5px;
             font-weight: 700;
-            padding: 1px 2px;
-            border-radius: 4px;
+            padding: 1px 3px;
+            border-radius: 8px;
             margin-left: auto;
+            min-width: 10px;
+            height: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
         }
 
         .list-item {
             font-size: 6px;
             padding: 2px 0;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #3a342b;
         }
 
         .list-item:last-child {
@@ -524,13 +557,13 @@
 <body>
     <div class="container">
         <header>
-            <h1>Arknights</h1>
-            <p class="subtitle">UI Guide</p>
+            <h1>Better UI</h1>
+            <p class="subtitle">Style Guide</p>
         </header>
 
         <!-- Status -->
         <div class="section">
-            <h2>Status</h2>
+            <h2 class="yellow">Status</h2>
             <div class="status-bar">
                 <span>12:45</span>
                 <div class="battery">
@@ -548,26 +581,82 @@
 
         <!-- Colors -->
         <div class="section">
-            <h2>Colors</h2>
+            <h2 class="yellow">Colors</h2>
             <div class="color-card">
-                <div class="color-swatch" style="background: #f7ff00;"></div>
+                <div class="color-swatch" style="background: #1a1714;"></div>
                 <div>
-                    <div class="color-name">Yellow</div>
-                    <div class="color-hex">#f7ff00</div>
+                    <div class="color-name">Base Dark</div>
+                    <div class="color-hex">#1a1714</div>
                 </div>
             </div>
             <div class="color-card">
-                <div class="color-swatch" style="background: #2c2c2c;"></div>
+                <div class="color-swatch" style="background: #1f1c18;"></div>
                 <div>
-                    <div class="color-name">Dark</div>
-                    <div class="color-hex">#2c2c2c</div>
+                    <div class="color-name">Card BG</div>
+                    <div class="color-hex">#1f1c18</div>
                 </div>
             </div>
             <div class="color-card">
-                <div class="color-swatch" style="background: #666;"></div>
+                <div class="color-swatch" style="background: #25211c;"></div>
                 <div>
-                    <div class="color-name">Gray</div>
-                    <div class="color-hex">#666666</div>
+                    <div class="color-name">Section BG</div>
+                    <div class="color-hex">#25211c</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #3a342b;"></div>
+                <div>
+                    <div class="color-name">Border</div>
+                    <div class="color-hex">#3a342b</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #8b7355;"></div>
+                <div>
+                    <div class="color-name">Brown</div>
+                    <div class="color-hex">#8b7355</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #8b4a52;"></div>
+                <div>
+                    <div class="color-name">Muted Red</div>
+                    <div class="color-hex">#8b4a52</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #a89878;"></div>
+                <div>
+                    <div class="color-name">Muted</div>
+                    <div class="color-hex">#a89878</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #b8495d;"></div>
+                <div>
+                    <div class="color-name">Red</div>
+                    <div class="color-hex">#b8495d</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #c8a760;"></div>
+                <div>
+                    <div class="color-name">Gold</div>
+                    <div class="color-hex">#c8a760</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #d4b878;"></div>
+                <div>
+                    <div class="color-name">Lt Gold</div>
+                    <div class="color-hex">#d4b878</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #e8dcc8;"></div>
+                <div>
+                    <div class="color-name">Cream</div>
+                    <div class="color-hex">#e8dcc8</div>
                 </div>
             </div>
         </div>
@@ -580,28 +669,28 @@
             <div style="text-align: center; margin-top: 2px;">
                 <button class="btn-icon">+</button>
                 <button class="btn-icon">-</button>
-                <button class="btn-icon secondary">×</button>
+                <button class="btn-icon secondary">x</button>
             </div>
         </div>
 
         <!-- Quick Actions -->
         <div class="section">
-            <h2>Quick</h2>
+            <h2 class="yellow">Quick</h2>
             <div class="quick-grid">
                 <div class="quick-action">
-                    <span class="qa-icon">▶</span>
+                    <span class="qa-icon">&#9654;</span>
                     Play
                 </div>
                 <div class="quick-action">
-                    <span class="qa-icon">■</span>
+                    <span class="qa-icon">&#9632;</span>
                     Stats
                 </div>
                 <div class="quick-action">
-                    <span class="qa-icon">●</span>
+                    <span class="qa-icon">&#9679;</span>
                     Team
                 </div>
                 <div class="quick-action">
-                    <span class="qa-icon">★</span>
+                    <span class="qa-icon">&#9733;</span>
                     Gift
                 </div>
             </div>
@@ -611,15 +700,15 @@
         <div class="section">
             <h2>Nav</h2>
             <div class="nav-arrows">
-                <button class="arrow-btn">‹</button>
+                <button class="arrow-btn"><span style="display: block; transform: translateY(-0.5px);">&lt;</span></button>
                 <span class="page-indicator">1/3</span>
-                <button class="arrow-btn">›</button>
+                <button class="arrow-btn"><span style="display: block; transform: translateY(-0.5px);">&gt;</span></button>
             </div>
         </div>
 
         <!-- Cards Yellow -->
         <div class="section">
-            <h2>Cards-Y</h2>
+            <h2 class="yellow">Cards-Y</h2>
             <div class="card">
                 <h4>Creator</h4>
                 <p>Discord access</p>
@@ -756,7 +845,7 @@
         </div>
 
         <footer>
-            <p>Arknights UI</p>
+            <p>Better UI</p>
             <p>102x125px</p>
         </footer>
     </div>
