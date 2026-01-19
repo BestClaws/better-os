@@ -97,33 +97,30 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
             continue;
         }
 
-        if bitmap_width == 0 || bitmap_height == 0 {
-            prev_glyph_id = Some(glyph_info.glyph_id);
-            continue;
-        }
+        if bitmap_width > 0 && bitmap_height > 0 {
+            let mut coverage_row = vec![0u8; bitmap_width];
 
-        let mut coverage_row = vec![0u8; bitmap_width];
+            for row in 0..bitmap_height {
+                coverage_row.fill(0);
+                let mut any = false;
+                let row_slice = &bitmap[row * bitmap_width..(row + 1) * bitmap_width];
 
-        for row in 0..bitmap_height {
-            coverage_row.fill(0);
-            let mut any = false;
-            let row_slice = &bitmap[row * bitmap_width..(row + 1) * bitmap_width];
-
-            for (col, &coverage) in row_slice.iter().enumerate() {
-                if coverage == 0 {
-                    continue;
+                for (col, &coverage) in row_slice.iter().enumerate() {
+                    if coverage == 0 {
+                        continue;
+                    }
+                    let blended = mul_opa(coverage, dsc.opa);
+                    if blended == 0 {
+                        continue;
+                    }
+                    coverage_row[col] = blended;
+                    any = true;
                 }
-                let blended = mul_opa(coverage, dsc.opa);
-                if blended == 0 {
-                    continue;
-                }
-                coverage_row[col] = blended;
-                any = true;
-            }
 
-            if any {
-                let py = glyph_y + row as i32;
-                rast.blend_solid_hspan(glyph_x, py, dsc.color, &coverage_row);
+                if any {
+                    let py = glyph_y + row as i32;
+                    rast.blend_solid_hspan(glyph_x, py, dsc.color, &coverage_row);
+                }
             }
         }
 
