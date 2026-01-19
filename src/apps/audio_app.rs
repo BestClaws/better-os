@@ -7,7 +7,6 @@ use crate::apps::components::{
     StylePalette,
 };
 use crate::system::app::app_context::AppContext;
-use crate::system::hal::audio::AudioError;
 use crate::system::services::audio_srv::AudioService;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
@@ -18,9 +17,8 @@ use rust_gfx::types::Area;
 enum AudioStage {
     Idle,
     WaitingForDriver,
-    AcquiringDriver,
-    StartingPlayback,
-    Playing,
+    TriggeringBeep,
+    BeepPlayed,
     Failed,
 }
 
@@ -29,9 +27,8 @@ impl AudioStage {
         match self {
             AudioStage::Idle => 0,
             AudioStage::WaitingForDriver => 1,
-            AudioStage::AcquiringDriver => 2,
-            AudioStage::StartingPlayback => 3,
-            AudioStage::Playing | AudioStage::Failed => 4,
+            AudioStage::TriggeringBeep => 2,
+            AudioStage::BeepPlayed | AudioStage::Failed => 3,
         }
     }
 
@@ -39,20 +36,18 @@ impl AudioStage {
         match self {
             AudioStage::Idle => "Idle",
             AudioStage::WaitingForDriver => "Waiting for driver",
-            AudioStage::AcquiringDriver => "Locking driver",
-            AudioStage::StartingPlayback => "Starting playback",
-            AudioStage::Playing => "Playing",
+            AudioStage::TriggeringBeep => "Triggering beep",
+            AudioStage::BeepPlayed => "Beep played",
             AudioStage::Failed => "Failed",
         }
     }
 }
 
-const PIPELINE_STAGES: [&str; 5] = [
+const PIPELINE_STAGES: [&str; 4] = [
     "Idle",
     "Driver registered",
-    "Driver lock acquired",
-    "Playback requested",
-    "Loop running",
+    "Trigger sent",
+    "Beep completed",
 ];
 
 #[embassy_executor::task]
@@ -60,7 +55,7 @@ pub async fn audio_app(ctx: AppContext) {
     info!("Audio app starting");
     let mut stage = AudioStage::Idle;
     let mut detail = String::new();
-    let mut playback_started = false;
+    let mut beep_played = false;
 
     loop {
         if !ctx.is_focused().await {
@@ -68,7 +63,7 @@ pub async fn audio_app(ctx: AppContext) {
             continue;
         }
 
-        if playback_started {
+        if beep_played {
             render_status(&ctx, stage, Some(detail.as_str())).await;
             Timer::after(Duration::from_secs(1)).await;
             continue;
@@ -79,47 +74,22 @@ pub async fn audio_app(ctx: AppContext) {
         detail.clear();
         render_status(&ctx, stage, None).await;
 
-        let driver = match AudioService::driver() {
-            Some(driver) => driver,
-            None => {
-                stage = AudioStage::Failed;
-                detail = String::from("Codec driver not registered yet");
-                warn!("Audio driver unavailable");
-                render_status(&ctx, stage, Some(detail.as_str())).await;
-                Timer::after(Duration::from_secs(1)).await;
-                continue;
-            }
-        };
-
-        // Stage: acquire mutex
-        stage = AudioStage::AcquiringDriver;
-        render_status(&ctx, stage, None).await;
-        let mut guard = driver.lock().await;
-
-        stage = AudioStage::StartingPlayback;
+        stage = AudioStage::TriggeringBeep;
         render_status(&ctx, stage, None).await;
 
-        match guard.play_loop(AudioService::loop_clip()) {
+        match AudioService::play_minute_beep().await {
             Ok(()) => {
-                stage = AudioStage::Playing;
-                detail = String::from("Square wave loop active");
-                playback_started = true;
-                info!("Audio loop started successfully");
-            }
-            Err(AudioError::AlreadyRunning) => {
-                stage = AudioStage::Playing;
-                detail = String::from("Already running");
-                playback_started = true;
-                info!("Audio loop already active");
+                stage = AudioStage::BeepPlayed;
+                detail = String::from("Minute chime triggered");
+                beep_played = true;
+                info!("Minute chime played successfully");
             }
             Err(err) => {
                 stage = AudioStage::Failed;
-                detail = format!("Start failed: {:?}", err);
-                warn!("Audio loop start failed: {:?}", err);
+                detail = format!("Beep failed: {:?}", err);
+                warn!("Minute chime failed: {:?}", err);
             }
         }
-        drop(guard);
-
         render_status(&ctx, stage, Some(detail.as_str())).await;
         Timer::after(Duration::from_millis(500)).await;
     }

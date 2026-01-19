@@ -9,7 +9,7 @@ use crate::system::input::types::KeyCode;
 use crate::system::kernel::platforms;
 use crate::system::services::ambient_srv::ambient_sensor_service;
 use crate::system::services::app_spawner_srv::app_spawner_service;
-use crate::system::services::audio_srv::AudioService;
+use crate::system::services::audio_srv::{audio_service, audio_service_unavailable};
 use crate::system::services::battery_srv::battery_service;
 use crate::system::services::compositor_srv::ui_compositor_service;
 use crate::system::services::input;
@@ -123,14 +123,14 @@ pub(crate) fn start(spawner: Spawner) {
     }
 
     if let Some(audio) = device.audio.take() {
-        let timestamp = Instant::now().as_millis() as f32 / 1000f32;
-        if AudioService::register_driver(audio) {
-            info!("[{}s] audio driver registered", timestamp);
-        } else {
-            warn!("Audio driver already registered; ignoring duplicate");
+        if let Err(err) = spawner.spawn(audio_service(audio)) {
+            warn!("Failed to spawn audio service: {:?}", Debug2Format(&err));
         }
     } else {
-        warn!("Audio sink not present; audio app disabled");
+        warn!("Audio sink not present; audio app disabled (stub active)");
+        if let Err(err) = spawner.spawn(audio_service_unavailable()) {
+            warn!("Failed to spawn audio stub: {:?}", Debug2Format(&err));
+        }
     }
 
     if let Some(radio) = device.radio.take() {
