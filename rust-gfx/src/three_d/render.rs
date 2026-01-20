@@ -1,7 +1,7 @@
 use super::math::{Mat4, Vec2, Vec3, Vec4};
 use super::model::{Material, Mesh, Scene, Texture};
 use crate::color::Rgba8888;
-use crate::rasterizer::Rasterizer;
+use crate::Rasterizer;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use micromath::F32Ext;
@@ -66,12 +66,10 @@ impl Camera {
     }
 }
 
-pub fn render_scene<R: Rasterizer>(
-    rasterizer: &mut R,
-    scene: &Scene,
-    camera: &Camera,
-    options: &RenderOptions,
-) {
+pub fn render_scene<R>(rasterizer: &mut R, scene: &Scene, camera: &Camera, options: &RenderOptions)
+where
+    R: Rasterizer,
+{
     if scene.meshes.is_empty() || scene.nodes.is_empty() {
         return;
     }
@@ -119,7 +117,7 @@ struct PreparedVertex {
     inv_w: f32,
 }
 
-fn render_mesh<R: Rasterizer>(
+fn render_mesh<R>(
     rasterizer: &mut R,
     mesh: &Mesh,
     material: Option<&Material>,
@@ -133,7 +131,10 @@ fn render_mesh<R: Rasterizer>(
     ambient: f32,
     diffuse: f32,
     specular: f32,
-) {
+)
+where
+    R: Rasterizer,
+{
     if mesh.vertices.is_empty() || mesh.indices.len() < 3 {
         return;
     }
@@ -227,7 +228,7 @@ fn render_mesh<R: Rasterizer>(
     }
 }
 
-fn rasterize_triangle<R: Rasterizer>(
+fn rasterize_triangle<R>(
     rasterizer: &mut R,
     v0: &PreparedVertex,
     v1: &PreparedVertex,
@@ -240,7 +241,10 @@ fn rasterize_triangle<R: Rasterizer>(
     ambient: f32,
     diffuse: f32,
     specular: f32,
-) {
+)
+where
+    R: Rasterizer,
+{
     let width = rasterizer.width() as i32;
     let height = rasterizer.height() as i32;
 
@@ -273,11 +277,6 @@ fn rasterize_triangle<R: Rasterizer>(
     let x1 = max_x.min(width - 1);
     let y0 = min_y.max(0);
     let y1 = max_y.min(height - 1);
-
-    let mut dirty_min_x = width;
-    let mut dirty_min_y = height;
-    let mut dirty_max_x = 0;
-    let mut dirty_max_y = 0;
 
     for y in y0..=y1 {
         let py = y as f32 + 0.5;
@@ -326,10 +325,6 @@ fn rasterize_triangle<R: Rasterizer>(
                     color = lit_color;
                     coverage = 255;
 
-                    dirty_min_x = dirty_min_x.min(x0 + i as i32);
-                    dirty_min_y = dirty_min_y.min(y);
-                    dirty_max_x = dirty_max_x.max(x0 + i as i32);
-                    dirty_max_y = dirty_max_y.max(y);
                 }
             }
 
@@ -338,10 +333,6 @@ fn rasterize_triangle<R: Rasterizer>(
             w2 += step_x2;
             (color, coverage)
         });
-    }
-
-    if dirty_min_x <= dirty_max_x && dirty_min_y <= dirty_max_y {
-        rasterizer.mark_dirty(dirty_min_x, dirty_min_y, dirty_max_x + 1, dirty_max_y + 1);
     }
 }
 
@@ -405,19 +396,25 @@ fn apply_lighting(
     Rgba8888::rgba(r, g, b, base.a())
 }
 
-fn draw_wireframe_triangle<R: Rasterizer>(
+fn draw_wireframe_triangle<R>(
     rasterizer: &mut R,
     v0: &PreparedVertex,
     v1: &PreparedVertex,
     v2: &PreparedVertex,
     color: Rgba8888,
-) {
+)
+where
+    R: Rasterizer,
+{
     draw_line(rasterizer, &v0.screen, &v1.screen, color);
     draw_line(rasterizer, &v1.screen, &v2.screen, color);
     draw_line(rasterizer, &v2.screen, &v0.screen, color);
 }
 
-fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Rgba8888) {
+fn draw_line<R>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Rgba8888)
+where
+    R: Rasterizer,
+{
     let width = rasterizer.width() as i32;
     let height = rasterizer.height() as i32;
 
@@ -425,10 +422,6 @@ fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Rgba8
     let mut y0 = a.y.round() as i32;
     let x1 = b.x.round() as i32;
     let y1 = b.y.round() as i32;
-    let min_x = x0.min(x1).max(0);
-    let max_x = x0.max(x1).min(width - 1);
-    let min_y = y0.min(y1).max(0);
-    let max_y = y0.max(y1).min(height - 1);
 
     let dx = (x1 - x0).abs();
     let sx = if x0 < x1 { 1 } else { -1 };
@@ -452,10 +445,6 @@ fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Rgba8
             err += dx;
             y0 += sy;
         }
-    }
-
-    if min_x <= max_x && min_y <= max_y {
-        rasterizer.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
     }
 }
 

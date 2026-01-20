@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 
 use crate::color::Rgba8888;
 use crate::masks::{apply_masks, AngleMask, MaskRef, MaskResult, RadiusMask};
+use crate::primitives::common::{MaskBuffer, PrimitivePipeline};
 use crate::math::{trigo_cos, trigo_sin};
 use crate::types::*;
 use crate::Rasterizer;
@@ -39,7 +40,10 @@ impl ArcDsc {
 }
 
 /// Draw an arc using mask-based rendering (matching LVGL)
-pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
+pub fn draw_arc<R>(rast: &mut R, dsc: &ArcDsc)
+where
+    R: Rasterizer,
+{
     if dsc.opa == OPA_TRANSP {
         return;
     }
@@ -120,82 +124,68 @@ pub fn draw_arc<R: Rasterizer>(rast: &mut R, dsc: &ArcDsc) {
     if row_width == 0 {
         return;
     }
-    let mut mask_buf = vec![255u8; row_width];
-    let mut coverage_row = vec![0u8; row_width];
 
-    for y in area_out.y1..=area_out.y2 {
-        row_area.y1 = y;
-        row_area.y2 = y;
+    let mut pipeline = PrimitivePipeline::new(rast);
+    pipeline.include(&area_out);
 
-        mask_buf.fill(255);
-        coverage_row.fill(0);
-        let mut mask_res = apply_masks(&masks, &mut mask_buf, row_area.x1, y);
+    let mut mask_buffer = MaskBuffer::default();
 
-        if let Some(circle) = circle_mask.as_ref() {
-            if let Some(area_start) = round_area_start.as_ref() {
-                if y >= area_start.y1 && y <= area_start.y2 {
-                    if mask_res == MaskResult::Transparent {
-                        mask_buf.fill(OPA_TRANSP);
-                        mask_res = MaskResult::Changed;
+    {
+        let rast = pipeline.raster_mut();
+        for y in area_out.y1..=area_out.y2 {
+            row_area.y1 = y;
+            row_area.y2 = y;
+
+            let mask_slice = mask_buffer.prepare(row_width);
+            let mut mask_res = apply_masks(&masks, mask_slice, row_area.x1, y);
+
+            if let Some(circle) = circle_mask.as_ref() {
+                if let Some(area_start) = round_area_start.as_ref() {
+                    if y >= area_start.y1 && y <= area_start.y2 {
+                        if mask_res == MaskResult::Transparent {
+                            mask_slice.fill(OPA_TRANSP);
+                            mask_res = MaskResult::Changed;
+                        }
+                        add_circle(circle, width, &row_area, area_start, mask_slice);
                     }
-                    add_circle(circle, width, &row_area, area_start, &mut mask_buf);
                 }
-            }
-            if let Some(area_end) = round_area_end.as_ref() {
-                if y >= area_end.y1 && y <= area_end.y2 {
-                    if mask_res == MaskResult::Transparent {
-                        mask_buf.fill(OPA_TRANSP);
-                        mask_res = MaskResult::Changed;
+                if let Some(area_end) = round_area_end.as_ref() {
+                    if y >= area_end.y1 && y <= area_end.y2 {
+                        if mask_res == MaskResult::Transparent {
+                            mask_slice.fill(OPA_TRANSP);
+                            mask_res = MaskResult::Changed;
+                        }
+                        add_circle(circle, width, &row_area, area_end, mask_slice);
                     }
-                    add_circle(circle, width, &row_area, area_end, &mut mask_buf);
                 }
             }
-        }
 
-        if mask_res == MaskResult::Transparent {
-            continue;
-        }
+            if mask_res == MaskResult::Transparent {
+                continue;
+            }
 
-        let mut full_cover_row = mask_res == MaskResult::FullCover;
-        if full_cover_row {
-            for &mask_val in &mask_buf {
-                if mask_val < OPA_COVER {
-                    full_cover_row = false;
-                    break;
+            let full_cover_row = mask_res == MaskResult::FullCover
+                && mask_slice.iter().all(|&mask| mask == OPA_COVER);
+
+            if full_cover_row {
+                for x in 0..row_width {
+                    rast.blend_pixel(row_area.x1 + x as i32, y, dsc.color, dsc.opa);
                 }
+                continue;
             }
-        }
 
-        if full_cover_row {
-            if dsc.opa == OPA_COVER {
-                rast.fill_rect(row_area.x1, y, row_width as i32, 1, dsc.color);
-            } else {
-                rast.blend_hspan_with(row_area.x1, y, row_width as i32, |_| (dsc.color, dsc.opa));
+            for (i, &mask_val) in mask_slice.iter().enumerate() {
+                let final_opa = if dsc.opa == OPA_COVER {
+                    mask_val
+                } else {
+                    opa_mix(dsc.opa, mask_val)
+                };
+                rast.blend_pixel(row_area.x1 + i as i32, y, dsc.color, final_opa);
             }
-            continue;
-        }
-
-        let mut any = false;
-        for (i, &mask_val) in mask_buf.iter().enumerate() {
-            let final_opa = if dsc.opa == OPA_COVER {
-                mask_val
-            } else {
-                opa_mix(dsc.opa, mask_val)
-            };
-            if final_opa != 0 {
-                coverage_row[i] = final_opa;
-                any = true;
-            } else {
-                coverage_row[i] = 0;
-            }
-        }
-
-        if any {
-            rast.blend_solid_hspan(row_area.x1, y, dsc.color, &coverage_row);
         }
     }
 
-    rast.mark_dirty(area_out.x1, area_out.y1, area_out.x2 + 1, area_out.y2 + 1);
+    pipeline.finish();
 }
 
 fn build_circle_mask(width: i32) -> Vec<Opa> {

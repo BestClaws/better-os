@@ -1,9 +1,9 @@
 pub mod arc;
 pub mod blur;
-pub mod circle_cache;
 pub mod gradient;
 pub mod label;
 pub mod line;
+pub mod common;
 /// Primitive drawing routines matching LVGL exactly
 /// Each primitive is in its own file to keep code organized
 pub mod rectangle;

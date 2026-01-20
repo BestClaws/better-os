@@ -23,7 +23,10 @@ impl BlurDsc {
 }
 
 /// Apply blur effect following LVGL's software renderer.
-pub fn draw_blur<R: Rasterizer>(rast: &mut R, dsc: &BlurDsc, area: &Area) {
+pub fn draw_blur<R>(rast: &mut R, dsc: &BlurDsc, area: &Area)
+where
+    R: Rasterizer,
+{
     if dsc.blur_radius <= 0 {
         return;
     }
@@ -193,13 +196,6 @@ pub fn draw_blur<R: Rasterizer>(rast: &mut R, dsc: &BlurDsc, area: &Area) {
         }
     }
 
-    let dirty = Area::new(
-        area.x1.max(0).min(bounds.x2),
-        area.y1.max(0).min(bounds.y2),
-        max_x_full,
-        max_y_full,
-    );
-    rast.mark_dirty(dirty.x1, dirty.y1, dirty.x2 + 1, dirty.y2 + 1);
 }
 
 fn init_sum(

@@ -25,15 +25,6 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         self.buffer_mut()
     }
 
-    fn mark_dirty(&mut self, min_x: i32, min_y: i32, max_x: i32, max_y: i32) {
-        if max_x <= min_x || max_y <= min_y {
-            return;
-        }
-        let width = (max_x - min_x) as u32;
-        let height = (max_y - min_y) as u32;
-        let rect = Rect::from_coords(min_x, min_y, width, height);
-        self.mark_dirty_clipped(rect);
-    }
 
     fn clear(&mut self, color: Rgba8888) {
         self.clear(color);

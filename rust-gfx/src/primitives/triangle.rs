@@ -1,11 +1,10 @@
 use crate::color::Rgba8888;
-use crate::masks::{apply_masks, LineMask, LineSide, MaskRef, MaskResult};
+use crate::masks::{LineMask, LineSide, MaskRef, MaskResult};
+use crate::primitives::common::{apply_scanline_masks, MaskBuffer, PrimitivePipeline};
 use crate::primitives::gradient::*;
 use crate::types::*;
 use crate::Rasterizer;
 /// Triangle drawing matching LVGL's lv_draw_triangle
-use alloc::vec;
-use alloc::vec::Vec;
 
 /// Triangle descriptor matching LVGL
 #[derive(Clone, Debug)]
@@ -38,7 +37,10 @@ fn triangle_opa_mix(a: Opa, b: Opa) -> Opa {
 }
 
 /// Draw a filled triangle with anti-aliased edges using LVGL's 3-line-mask approach
-pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
+pub fn draw_triangle<R>(rast: &mut R, dsc: &TriangleDsc)
+where
+    R: Rasterizer,
+{
     // Sort points: p[0] has smallest y, p[1] has largest y, p[2] is middle
     // LVGL does: sort so p[0].y <= p[2].y <= p[1].y
     let mut p = [dsc.p1, dsc.p2, dsc.p3];
@@ -105,137 +107,113 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
     let height = max_y - min_y + 1;
     let area_w = (max_x - min_x + 1) as usize;
 
+    let mut pipeline = PrimitivePipeline::new(rast);
+    let bounds = Area::new(min_x, min_y, max_x, max_y);
+    pipeline.include(&bounds);
+
     let has_grad = dsc.grad.dir != GradDir::None;
 
-    // Mask buffer for scanline
-    let mut mask_buf = vec![255u8; area_w];
-    let mut coverage_row = vec![0u8; area_w];
-    let mut color_row = has_grad.then(|| vec![Rgba8888::TRANSPARENT; area_w]);
+    let mut mask_buffer = MaskBuffer::default();
+    let mask_stack = [
+        MaskRef::Line(&mask_left),
+        MaskRef::Line(&mask_right),
+        MaskRef::Line(&mask_bottom),
+    ];
 
     // Draw triangle scanline by scanline (LVGL approach)
-    for y in min_y..=max_y {
-        // Reset mask buffer to full opacity
-        mask_buf.fill(255);
+    {
+        let rast = pipeline.raster_mut();
+        for y in min_y..=max_y {
+            let (mask_res, mask_slice) =
+                apply_scanline_masks(&mut mask_buffer, area_w, min_x, y, &mask_stack);
 
-        // Apply all three masks to the scanline
-        let masks = vec![
-            MaskRef::Line(&mask_left),
-            MaskRef::Line(&mask_right),
-            MaskRef::Line(&mask_bottom),
-        ];
-        let mask_res = apply_masks(&masks, &mut mask_buf, min_x, y);
-
-        if mask_res == MaskResult::Transparent {
-            continue;
-        }
-
-        let mask_full_cover = mask_res == MaskResult::FullCover;
-
-        coverage_row.fill(0);
-        let mut any = false;
-        let mut all_full = mask_full_cover && !has_grad && dsc.opa == OPA_COVER;
-
-        for i in 0..area_w {
-            let x = min_x + i as i32;
-            let mut mask_opa = if mask_full_cover {
-                OPA_COVER
-            } else {
-                mask_buf[i]
-            };
-            if mask_opa <= 2 {
-                mask_opa = OPA_TRANSP;
-            } else if mask_opa >= 253 {
-                mask_opa = OPA_COVER;
+            if mask_res == MaskResult::Transparent {
+                continue;
             }
 
-            let mut base_opa = dsc.opa;
-            let mut final_color = dsc.color;
-            let mut use_mask = !mask_full_cover || dsc.opa < OPA_COVER;
+            let mask_full_cover = mask_res == MaskResult::FullCover
+                && mask_slice.iter().all(|&mask| mask == OPA_COVER);
 
-            if has_grad {
-                let rel_x = x - min_x;
-                let rel_y = y - min_y;
-                let (grad_color, grad_opa) = gradient_get_color(
-                    &dsc.grad,
-                    rel_x,
-                    rel_y,
-                    width,
-                    height,
-                    width / 2,
-                    height / 2,
-                );
-
-                final_color = grad_color;
-                match dsc.grad.dir {
-                    GradDir::Ver => {
-                        base_opa = if dsc.opa < OPA_COVER {
-                            opa_mix(grad_opa, dsc.opa)
-                        } else {
-                            grad_opa
-                        };
-                        use_mask = !mask_full_cover;
-                    }
-                    GradDir::Hor => {
-                        if mask_full_cover {
-                            mask_opa = grad_opa;
-                            use_mask = true;
-                        } else if grad_opa < OPA_COVER {
-                            mask_opa = opa_mix(mask_opa, grad_opa);
-                        }
-                        base_opa = dsc.opa;
-                    }
-                    _ => {
-                        base_opa = if dsc.opa < OPA_COVER {
-                            opa_mix(grad_opa, dsc.opa)
-                        } else {
-                            grad_opa
-                        };
-                        if mask_full_cover {
-                            mask_opa = grad_opa;
-                            use_mask = true;
-                        } else if grad_opa < OPA_COVER {
-                            mask_opa = opa_mix(mask_opa, grad_opa);
-                        }
-                    }
-                }
-            }
-
-            let final_opa = if use_mask {
-                if base_opa >= OPA_COVER {
-                    triangle_opa_mix(base_opa, mask_opa)
+            // Blend pixels with mask applied
+            for i in 0..area_w {
+                let x = min_x + i as i32;
+                let mut mask_opa = if mask_full_cover {
+                    OPA_COVER
                 } else {
-                    opa_mix(base_opa, mask_opa)
+                    mask_slice[i]
+                };
+                if mask_opa <= 2 {
+                    mask_opa = OPA_TRANSP;
+                } else if mask_opa >= 253 {
+                    mask_opa = OPA_COVER;
                 }
-            } else {
-                base_opa
-            };
+                let mut base_opa = dsc.opa;
+                let mut final_color = dsc.color;
+                let mut use_mask = !mask_full_cover || dsc.opa < OPA_COVER;
 
-            if let Some(ref mut colors) = color_row {
-                colors[i] = final_color;
+                if has_grad {
+                    let rel_x = x - min_x;
+                    let rel_y = y - min_y;
+                    let (grad_color, grad_opa) = gradient_get_color(
+                        &dsc.grad,
+                        rel_x,
+                        rel_y,
+                        width,
+                        height,
+                        width / 2,
+                        height / 2,
+                    );
+
+                    final_color = grad_color;
+                    match dsc.grad.dir {
+                        GradDir::Ver => {
+                            base_opa = if dsc.opa < OPA_COVER {
+                                opa_mix(grad_opa, dsc.opa)
+                            } else {
+                                grad_opa
+                            };
+                            use_mask = !mask_full_cover;
+                        }
+                        GradDir::Hor => {
+                            if mask_full_cover {
+                                mask_opa = grad_opa;
+                                use_mask = true;
+                            } else if grad_opa < OPA_COVER {
+                                mask_opa = opa_mix(mask_opa, grad_opa);
+                            }
+                            base_opa = dsc.opa;
+                        }
+                        _ => {
+                            base_opa = if dsc.opa < OPA_COVER {
+                                opa_mix(grad_opa, dsc.opa)
+                            } else {
+                                grad_opa
+                            };
+                            if mask_full_cover {
+                                mask_opa = grad_opa;
+                                use_mask = true;
+                            } else if grad_opa < OPA_COVER {
+                                mask_opa = opa_mix(mask_opa, grad_opa);
+                            }
+                        }
+                    }
+                }
+
+                let final_opa = if use_mask {
+                    if base_opa >= OPA_COVER {
+                        triangle_opa_mix(base_opa, mask_opa)
+                    } else {
+                        opa_mix(base_opa, mask_opa)
+                    }
+                } else {
+                    base_opa
+                };
+
+                // Write all pixels for non-premultiplied alpha (even if final_opa=0)
+                rast.blend_pixel(x, y, final_color, final_opa);
             }
-
-            if final_opa != 0 {
-                coverage_row[i] = final_opa;
-                any = true;
-                all_full = all_full && final_opa == OPA_COVER;
-            } else {
-                coverage_row[i] = 0;
-                all_full = false;
-            }
-        }
-
-        if !any {
-            continue;
-        }
-
-        if all_full {
-            rast.fill_rect(min_x, y, width, 1, dsc.color);
-        } else if let Some(ref colors) = color_row {
-            rast.blend_hspan(min_x, y, colors, Some(&coverage_row));
-        } else {
-            rast.blend_solid_hspan(min_x, y, dsc.color, &coverage_row);
         }
     }
 
-    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
+    pipeline.finish();
 }
