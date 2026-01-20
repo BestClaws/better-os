@@ -25,7 +25,6 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         self.buffer_mut()
     }
 
-
     fn clear(&mut self, color: Rgba8888) {
         self.clear(color);
     }

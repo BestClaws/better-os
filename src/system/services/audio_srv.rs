@@ -97,14 +97,9 @@ fn generate_chime() -> [i16; BEEP_STEREO_SAMPLES] {
         let s4 = sinf(2.0 * core::f32::consts::PI * f4 * t);
 
         // Metallic blend (no strong fundamental)
-        let sample =
-            (0.25 * s1 +
-                0.30 * s2 +
-                0.25 * s3 +
-                0.20 * s4) * envelope;
+        let sample = (0.25 * s1 + 0.30 * s2 + 0.25 * s3 + 0.20 * s4) * envelope;
 
-        let scaled = (sample * 26000.0)
-            .clamp(-32767.0, 32767.0) as i16;
+        let scaled = (sample * 26000.0).clamp(-32767.0, 32767.0) as i16;
 
         let index = frame * 2;
         data[index] = scaled;
@@ -115,7 +110,6 @@ fn generate_chime() -> [i16; BEEP_STEREO_SAMPLES] {
 
     data
 }
-
 
 // Pre-generated clip and service channels.
 static MINUTE_CHIME: AudioClip<BEEP_STEREO_SAMPLES> = AudioClip::new(generate_chime);
