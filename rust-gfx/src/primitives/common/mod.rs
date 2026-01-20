@@ -11,11 +11,8 @@ use crate::types::{Area, Opa, OPA_COVER};
 
 pub mod circle_cache;
 pub mod geometry;
-pub mod pipeline;
-
 pub use circle_cache::CircleCache;
 pub use geometry::{clip_to_raster, effective_radius, fill_rect_with_clipping, merge_areas};
-pub use pipeline::PrimitivePipeline;
 
 /// Convenience wrapper around a reusable mask buffer for scanline
 /// rendering. Keeping the allocation outside tight loops avoids

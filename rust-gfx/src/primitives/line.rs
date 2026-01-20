@@ -2,7 +2,7 @@
 
 use crate::color::Rgba8888;
 use crate::masks::{LineMask, LineSide, MaskRef, MaskResult};
-use crate::primitives::common::{apply_scanline_masks, MaskBuffer, PrimitivePipeline};
+use crate::primitives::common::{apply_scanline_masks, MaskBuffer};
 use crate::primitives::rectangle::{draw_rect, RectDsc};
 use crate::types::*;
 use crate::Rasterizer;
@@ -58,31 +58,20 @@ where
     let is_vertical = dx == 0 && dy != 0;
     let dashed = dsc.dash_width > 0 && dsc.dash_gap > 0;
 
-    let mut pipeline = PrimitivePipeline::new(rast);
-
     if dashed {
         if is_horizontal {
-            if let Some(area) = draw_horizontal_dashed(pipeline.raster_mut(), dsc) {
-                pipeline.include(&area);
-            }
-            pipeline.finish();
+            draw_horizontal_dashed(rast, dsc);
             return;
         }
 
         if is_vertical {
-            if let Some(area) = draw_vertical_dashed(pipeline.raster_mut(), dsc) {
-                pipeline.include(&area);
-            }
-            pipeline.finish();
+            draw_vertical_dashed(rast, dsc);
             return;
         }
     }
 
     if (is_horizontal || is_vertical) && dsc.dash_width == 0 {
-        if let Some(area) = draw_axis_aligned_solid(pipeline.raster_mut(), dsc, is_horizontal) {
-            pipeline.include(&area);
-        }
-        pipeline.finish();
+        draw_axis_aligned_solid(rast, dsc, is_horizontal);
         return;
     }
 
@@ -91,18 +80,12 @@ where
 
     if len_sq == 0 {
         // Point
-        let area = Area::new(dsc.p1.x, dsc.p1.y, dsc.p1.x, dsc.p1.y);
-        pipeline.include(&area);
-        pipeline
-            .raster_mut()
-            .blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
-        pipeline.finish();
+        rast.blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
         return;
     }
 
     let geometry = LineGeometry::from_descriptor(dsc);
-    pipeline.include(&geometry.coverage_area);
-    render_line_with_masks(pipeline.raster_mut(), dsc, &geometry);
+    render_line_with_masks(rast, dsc, &geometry);
 
     if dsc.round_start || dsc.round_end {
         let mut cap_dsc = RectDsc::new();
@@ -120,8 +103,7 @@ where
                 dsc.p1.x + radius - r_corr,
                 dsc.p1.y + radius - r_corr,
             );
-            pipeline.include(&area);
-            draw_rect(pipeline.raster_mut(), &cap_dsc, &area);
+            draw_rect(rast, &cap_dsc, &area);
         }
 
         if dsc.round_end && dsc.width > 0 {
@@ -131,12 +113,9 @@ where
                 dsc.p2.x + radius - r_corr,
                 dsc.p2.y + radius - r_corr,
             );
-            pipeline.include(&area);
-            draw_rect(pipeline.raster_mut(), &cap_dsc, &area);
+            draw_rect(rast, &cap_dsc, &area);
         }
     }
-
-    pipeline.finish();
 }
 
 fn draw_horizontal_dashed<R>(rast: &mut R, dsc: &LineDsc) -> Option<Area>
