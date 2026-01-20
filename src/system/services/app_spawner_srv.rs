@@ -13,6 +13,7 @@ use crate::apps::imu_demo::imu_demo_app;
 // use crate::apps::bluetooth_scanner::bluetooth_scanner_app;
 use crate::apps::gfx_bench::gfx_bench_app; // Disabled - uses Text
 use crate::apps::gray_test::gray_test_app;
+use crate::apps::rect::rect_app;
 // use crate::apps::text_demo::text_demo_app; // Disabled - uses Text
 use crate::apps::watch_app::watch_app;
 use defmt::{debug, error, info, warn, Format};
@@ -61,11 +62,11 @@ const SYSTEM_APPS: &[AppDescriptor] = &[
         id: 1,
         spawn_fn: spawn_watch_app,
     },
-    // AppDescriptor {
-    //     name: "GFX Benchmark",
-    //     id: 3,
-    //     spawn_fn: spawn_gfx_bench_app,
-    // },
+    AppDescriptor {
+        name: "Rect App",
+        id: 3,
+        spawn_fn: spawn_rect_app,
+    },
     AppDescriptor {
         name: "3D Arrow",
         id: 5,
@@ -236,6 +237,13 @@ fn spawn_watch_app(
     context: AppContext,
 ) -> Result<(), embassy_executor::SpawnError> {
     spawner.spawn(watch_app(context))
+}
+
+fn spawn_rect_app(
+    spawner: Spawner,
+    context: AppContext,
+) -> Result<(), embassy_executor::SpawnError> {
+    spawner.spawn(rect_app(context))
 }
 
 fn spawn_gfx_bench_app(

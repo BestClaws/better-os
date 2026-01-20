@@ -131,25 +131,48 @@ pub fn kerning(font: &'static Font, left_id: u16, right_id: u16) -> i32 {
         return 0;
     };
 
-    let left = k
-        .left_class_mapping
-        .get(left_id as usize)
-        .copied()
-        .unwrap_or(0);
-    let right = k
-        .right_class_mapping
-        .get(right_id as usize)
-        .copied()
-        .unwrap_or(0);
+    let left_idx = left_id as usize;
+    let right_idx = right_id as usize;
 
-    if left == 0 || right == 0 {
+    if left_idx == 0
+        || right_idx == 0
+        || left_idx >= k.left_class_mapping.len()
+        || right_idx >= k.right_class_mapping.len()
+    {
         return 0;
     }
 
-    let idx = (left as usize - 1) * k.right_class_cnt as usize + (right as usize - 1);
-    let raw = k.class_pair_values.get(idx).copied().unwrap_or(0) as i16;
+    let left_class = k.left_class_mapping[left_idx];
+    let right_class = k.right_class_mapping[right_idx];
 
-    ((raw as i32 * k.scale as i32) >> 4)
+    if left_class == 0 || right_class == 0 {
+        return 0;
+    }
+
+    let pair_index = (left_class as usize - 1) * k.right_class_cnt as usize
+        + (right_class as usize - 1);
+    let raw = k.class_pair_values.get(pair_index).copied().unwrap_or(0) as i32;
+
+    if raw == 0 {
+        return 0;
+    }
+
+    // LVGL stores kerning in 12.4 fixed-point; convert to the Q4 delta.
+    let kv_q4 = (raw * k.scale as i32) >> 4;
+    if kv_q4 == 0 {
+        return 0;
+    }
+
+    let Some(left_glyph) = font.glyphs.get(left_idx) else {
+        return 0;
+    };
+
+    let adv_raw = left_glyph.adv_w_raw as i32;
+    // Mirror LVGL's rounding when folding kerning into the advance width.
+    let adv_px_with = (adv_raw + kv_q4 + 8) >> 4;
+    let adv_px_without = (adv_raw + 8) >> 4;
+
+    adv_px_with - adv_px_without
 }
 
 pub fn glyph_bitmap<'font>(font: &'font Font, glyph: &'font Glyph) -> &'font [u8] {
