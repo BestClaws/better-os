@@ -2,8 +2,7 @@ mod bmp;
 mod canvas;
 
 use crate::canvas::Canvas;
-use rust_gfx::primitives::TextDecor as LabelDecor;
-use rust_gfx::primitives::*;
+use rust_gfx::fluent::*;
 /// Sprite Generator - matches main.c output exactly
 /// Generates all sprite variations for testing
 use rust_gfx::*;
@@ -67,65 +66,76 @@ fn generate_rectangles(sprite_index: &mut usize) {
         Rgba8888::rgb(255, 255, 100),
     ];
     let color_names = ["red", "green", "blue", "yellow"];
+    let gradient_stops = [
+        GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+        GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+    ];
+    let gradient_variants = [
+        (
+            "hor",
+            GradientBuilder::linear()
+                .axis(Axis::Horizontal)
+                .stops(gradient_stops)
+                .finish(),
+        ),
+        (
+            "ver",
+            GradientBuilder::linear()
+                .axis(Axis::Vertical)
+                .stops(gradient_stops)
+                .finish(),
+        ),
+        (
+            "radial",
+            GradientBuilder::radial().stops(gradient_stops).finish(),
+        ),
+        (
+            "conical",
+            GradientBuilder::conic().stops(gradient_stops).finish(),
+        ),
+    ];
 
-    // Solid fills with various radius
-    for r in 0..5 {
-        for c in 0..4 {
+    for (radius, radius_name) in radii
+        .iter()
+        .copied()
+        .zip(radius_names.iter().copied())
+    {
+        for (color, color_name) in colors.iter().copied().zip(color_names.iter().copied()) {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let mut dsc = RectDsc::new();
-            dsc.radius = radii[r];
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = colors[c];
+            Rect::new()
+                .area(Area::new(20, 30, 82, 95))
+                .radius(Radius::uniform(radius))
+                .fill(FillPlan::solid(color))
+                .finish()
+                .draw(&mut canvas);
 
-            let area = Area::new(20, 30, 82, 95);
-            draw_rect(&mut canvas, &dsc, &area);
-
-            let name = format!("rect_solid_{}_{}", radius_names[r], color_names[c]);
+            let name = format!("rect_solid_{}_{}", radius_name, color_name);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
 
-    // Gradients (horizontal, vertical, radial, conical)
-    let grad_dirs = [
-        GradDir::Hor,
-        GradDir::Ver,
-        GradDir::Radial,
-        GradDir::Conical,
-    ];
-    let grad_names = ["hor", "ver", "radial", "conical"];
-
-    for g in 0..4 {
-        for r in 0..3 {
+    for (grad_name, gradient) in gradient_variants.iter() {
+        for (radius, radius_name) in radii
+            .iter()
+            .copied()
+            .take(3)
+            .zip(radius_names.iter().copied())
+        {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let mut dsc = RectDsc::new();
-            dsc.radius = radii[r];
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-            dsc.bg_grad = Gradient {
-                dir: grad_dirs[g],
-                stops: [
-                    GradStop {
-                        color: Rgba8888::rgb(255, 0, 0),
-                        opa: OPA_COVER,
-                        frac: 0,
-                    },
-                    GradStop {
-                        color: Rgba8888::rgb(0, 0, 255),
-                        opa: OPA_COVER,
-                        frac: 255,
-                    },
-                ],
-                stops_count: 2,
-            };
+            Rect::new()
+                .area(Area::new(20, 30, 82, 95))
+                .radius(Radius::uniform(radius))
+                .fill(FillPlan::Gradient {
+                    gradient: gradient.clone(),
+                })
+                .finish()
+                .draw(&mut canvas);
 
-            let area = Area::new(20, 30, 82, 95);
-            draw_rect(&mut canvas, &dsc, &area);
-
-            let name = format!("rect_grad_{}_{}", grad_names[g], radius_names[r]);
+            let name = format!("rect_grad_{}_{}", grad_name, radius_name);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
@@ -135,160 +145,152 @@ fn generate_rectangles(sprite_index: &mut usize) {
     let grad_border_colors = [Rgba8888::rgb(255, 255, 255), Rgba8888::rgb(40, 40, 40)];
     let grad_border_color_names = ["white", "charcoal"];
 
-    for g in 0..4 {
-        for r in 0..3 {
-            for b in 0..2 {
+    for (grad_name, gradient) in gradient_variants.iter() {
+        for (radius, radius_name) in radii
+            .iter()
+            .copied()
+            .take(3)
+            .zip(radius_names.iter().copied())
+        {
+            for ((border_width, border_width_name), (border_color, border_color_name)) in
+                grad_border_widths
+                    .iter()
+                    .copied()
+                    .zip(grad_border_width_names.iter().copied())
+                    .zip(grad_border_colors.iter().copied().zip(grad_border_color_names.iter().copied()))
+            {
                 let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
                 canvas.clear(Rgba8888::TRANSPARENT);
 
-                let mut dsc = RectDsc::new();
-                dsc.radius = radii[r];
-                dsc.bg_opa = OPA_COVER;
-                dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-                dsc.bg_grad = Gradient {
-                    dir: grad_dirs[g],
-                    stops: [
-                        GradStop {
-                            color: Rgba8888::rgb(255, 0, 0),
-                            opa: OPA_COVER,
-                            frac: 0,
-                        },
-                        GradStop {
-                            color: Rgba8888::rgb(0, 0, 255),
-                            opa: OPA_COVER,
-                            frac: 255,
-                        },
-                    ],
-                    stops_count: 2,
-                };
-                dsc.border_opa = OPA_COVER;
-                dsc.border_width = grad_border_widths[b];
-                dsc.border_color = grad_border_colors[b];
-                dsc.border_side = BorderSide::FULL;
-
-                let area = Area::new(20, 30, 82, 95);
-                draw_rect(&mut canvas, &dsc, &area);
+                Rect::new()
+                    .area(Area::new(20, 30, 82, 95))
+                    .radius(Radius::uniform(radius))
+                    .fill(FillPlan::Gradient {
+                        gradient: gradient.clone(),
+                    })
+                    .stroke(StrokePlan::solid(border_width, border_color))
+                    .finish()
+                    .draw(&mut canvas);
 
                 let name = format!(
                     "rect_gradborder_{}_{}_{}_{}",
-                    grad_names[g],
-                    radius_names[r],
-                    grad_border_width_names[b],
-                    grad_border_color_names[b]
+                    grad_name, radius_name, border_width_name, border_color_name
                 );
                 capture_sprite(&canvas, sprite_index, &name);
             }
         }
     }
 
-    // Borders with various widths and sides
     let border_widths = [1, 3, 6, 10];
-    let border_sides = [
-        BorderSide::FULL,
-        BorderSide::TOP | BorderSide::BOTTOM,
-        BorderSide::LEFT | BorderSide::RIGHT,
-        BorderSide::TOP,
+    let border_side_pairs = [
+        (BorderSide::FULL, "full"),
+        (BorderSide::TOP | BorderSide::BOTTOM, "topbottom"),
+        (BorderSide::LEFT | BorderSide::RIGHT, "leftright"),
+        (BorderSide::TOP, "top"),
     ];
-    let border_side_names = ["full", "topbottom", "leftright", "top"];
 
-    for w in 0..4 {
-        for s in 0..4 {
+    for border_width in border_widths.iter().copied() {
+        for (side, side_name) in border_side_pairs.iter().copied() {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let mut dsc = RectDsc::new();
-            dsc.radius = 10;
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Rgba8888::rgb(50, 50, 50);
-            dsc.border_opa = OPA_COVER;
-            dsc.border_width = border_widths[w];
-            dsc.border_color = Rgba8888::rgb(255, 255, 0);
-            dsc.border_side = border_sides[s];
+            let stroke = StrokeBuilder::new()
+                .width(border_width)
+                .color(Rgba8888::rgb(255, 255, 0))
+                .sides(side)
+                .finish();
 
-            let area = Area::new(20, 30, 82, 95);
-            draw_rect(&mut canvas, &dsc, &area);
+            Rect::new()
+                .area(Area::new(20, 30, 82, 95))
+                .radius(Radius::uniform(10))
+                .fill(FillPlan::solid(Rgba8888::rgb(50, 50, 50)))
+                .stroke(stroke)
+                .finish()
+                .draw(&mut canvas);
 
-            let name = format!("rect_border_w{}_{}", border_widths[w], border_side_names[s]);
+            let name = format!("rect_border_w{}_{}", border_width, side_name);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
 
-    // Shadows
     let shadow_configs = [[2, 2, 0], [5, 5, 0], [8, 0, 4], [3, 3, 6]];
 
-    for i in 0..4 {
-        for r in 0..2 {
+    for config in shadow_configs { // maintain original order
+        for radius in [0, 15] {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let mut dsc = RectDsc::new();
-            dsc.radius = if r == 0 { 0 } else { 15 };
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Rgba8888::rgb(200, 200, 200);
-            dsc.shadow_opa = OPA_50;
-            dsc.shadow_width = shadow_configs[i][0];
-            dsc.shadow_offset_x = shadow_configs[i][1];
-            dsc.shadow_offset_y = shadow_configs[i][1];
-            dsc.shadow_spread = shadow_configs[i][2];
-            dsc.shadow_color = Rgba8888::rgb(0, 0, 0);
+            let shadow = ShadowBuilder::new()
+                .blur(config[0])
+                .offset(Point::new(config[1], config[1]))
+                .spread(config[2])
+                .color(Rgba8888::rgb(0, 0, 0))
+                .opacity(OPA_50)
+                .finish();
 
-            let area = Area::new(25, 35, 77, 90);
-            draw_rect(&mut canvas, &dsc, &area);
+            Rect::new()
+                .area(Area::new(25, 35, 77, 90))
+                .radius(Radius::uniform(radius))
+                .fill(FillPlan::solid(Rgba8888::rgb(200, 200, 200)))
+                .shadow(shadow)
+                .finish()
+                .draw(&mut canvas);
 
             let name = format!(
                 "rect_shadow_w{}_off{}_spr{}_{}",
-                shadow_configs[i][0],
-                shadow_configs[i][1],
-                shadow_configs[i][2],
-                if r == 0 { "square" } else { "rounded" }
+                config[0],
+                config[1],
+                config[2],
+                if radius == 0 { "square" } else { "rounded" }
             );
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
 
-    // Outlines
     let outline_configs = [[2, 2], [4, 4], [6, 1], [3, 8]];
 
-    for i in 0..4 {
+    for config in outline_configs {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = RectDsc::new();
-        dsc.radius = 8;
-        dsc.bg_opa = OPA_COVER;
-        dsc.bg_color = Rgba8888::rgb(150, 150, 150);
-        dsc.outline_opa = OPA_COVER;
-        dsc.outline_width = outline_configs[i][0];
-        dsc.outline_pad = outline_configs[i][1];
-        dsc.outline_color = Rgba8888::rgb(0, 255, 255);
+        let outline = OutlineBuilder::with_stroke(StrokePlan::solid(
+            config[0],
+            Rgba8888::rgb(0, 255, 255),
+        ))
+        .pad(config[1])
+        .finish();
 
-        let area = Area::new(30, 40, 72, 85);
-        draw_rect(&mut canvas, &dsc, &area);
+        Rect::new()
+            .area(Area::new(30, 40, 72, 85))
+            .radius(Radius::uniform(8))
+            .fill(FillPlan::solid(Rgba8888::rgb(150, 150, 150)))
+            .outline(outline)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!(
-            "rect_outline_w{}_pad{}",
-            outline_configs[i][0], outline_configs[i][1]
-        );
+        let name = format!("rect_outline_w{}_pad{}", config[0], config[1]);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
-    // Opacity variations
     let opas = [OPA_COVER, OPA_70, OPA_50, OPA_30];
     let opa_names = ["100", "70", "50", "30"];
 
-    for o in 0..4 {
+    for (opa, opa_name) in opas.iter().copied().zip(opa_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = RectDsc::new();
-        dsc.radius = 12;
-        dsc.bg_opa = opas[o];
-        dsc.bg_color = Rgba8888::rgb(255, 150, 50);
+        let fill = FillBuilder::solid(Rgba8888::rgb(255, 150, 50))
+            .opacity(opa)
+            .finish();
 
-        let area = Area::new(20, 30, 82, 95);
-        draw_rect(&mut canvas, &dsc, &area);
+        Rect::new()
+            .area(Area::new(20, 30, 82, 95))
+            .radius(Radius::uniform(12))
+            .fill(fill)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!("rect_opa{}", opa_names[o]);
+        let name = format!("rect_opa{}", opa_name);
         capture_sprite(&canvas, sprite_index, &name);
     }
 }
@@ -301,61 +303,66 @@ fn generate_circles(sprite_index: &mut usize) {
         Rgba8888::rgb(255, 220, 120),
     ];
     let fill_names = ["coral", "mint", "sky", "sun"];
+    let gradient_stops = [
+        GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+        GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+    ];
+    let gradient_variants = [
+        (
+            "hor",
+            GradientBuilder::linear()
+                .axis(Axis::Horizontal)
+                .stops(gradient_stops)
+                .finish(),
+        ),
+        (
+            "ver",
+            GradientBuilder::linear()
+                .axis(Axis::Vertical)
+                .stops(gradient_stops)
+                .finish(),
+        ),
+        (
+            "radial",
+            GradientBuilder::radial().stops(gradient_stops).finish(),
+        ),
+        (
+            "conical",
+            GradientBuilder::conic().stops(gradient_stops).finish(),
+        ),
+    ];
+    let area = Area::new(20, 25, 82, 87);
 
-    for i in 0..4 {
+    for (color, name) in fill_colors.iter().copied().zip(fill_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = RectDsc::new();
-        dsc.radius = RADIUS_CIRCLE;
-        dsc.bg_opa = OPA_COVER;
-        dsc.bg_color = fill_colors[i];
+        Rect::new()
+            .area(area)
+            .radius(Radius::uniform(RADIUS_CIRCLE))
+            .fill(FillPlan::solid(color))
+            .finish()
+            .draw(&mut canvas);
 
-        let area = Area::new(20, 25, 82, 87);
-        draw_rect(&mut canvas, &dsc, &area);
-
-        let name = format!("circle_solid_{}", fill_names[i]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let sprite_name = format!("circle_solid_{}", name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
-    let grad_dirs = [
-        GradDir::Hor,
-        GradDir::Ver,
-        GradDir::Radial,
-        GradDir::Conical,
-    ];
-    let grad_names = ["hor", "ver", "radial", "conical"];
-
-    for g in 0..4 {
+    for (grad_name, gradient) in gradient_variants.iter() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = RectDsc::new();
-        dsc.radius = RADIUS_CIRCLE;
-        dsc.bg_opa = OPA_COVER;
-        dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-        dsc.bg_grad = Gradient {
-            dir: grad_dirs[g],
-            stops: [
-                GradStop {
-                    color: Rgba8888::rgb(255, 0, 0),
-                    opa: OPA_COVER,
-                    frac: 0,
-                },
-                GradStop {
-                    color: Rgba8888::rgb(0, 0, 255),
-                    opa: OPA_COVER,
-                    frac: 255,
-                },
-            ],
-            stops_count: 2,
-        };
+        Rect::new()
+            .area(area)
+            .radius(Radius::uniform(RADIUS_CIRCLE))
+            .fill(FillPlan::Gradient {
+                gradient: gradient.clone(),
+            })
+            .finish()
+            .draw(&mut canvas);
 
-        let area = Area::new(20, 25, 82, 87);
-        draw_rect(&mut canvas, &dsc, &area);
-
-        let name = format!("circle_grad_{}", grad_names[g]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let sprite_name = format!("circle_grad_{}", grad_name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 
     let border_widths = [2, 4, 8];
@@ -367,70 +374,82 @@ fn generate_circles(sprite_index: &mut usize) {
     ];
     let border_color_names = ["white", "gold", "aqua"];
 
-    for w in 0..3 {
-        for c in 0..3 {
+    for (border_width, border_width_name) in border_widths
+        .iter()
+        .copied()
+        .zip(border_width_names.iter().copied())
+    {
+        for (border_color, border_color_name) in border_colors
+            .iter()
+            .copied()
+            .zip(border_color_names.iter().copied())
+        {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let mut dsc = RectDsc::new();
-            dsc.radius = RADIUS_CIRCLE;
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Rgba8888::rgb(45, 45, 45);
-            dsc.border_opa = OPA_COVER;
-            dsc.border_width = border_widths[w];
-            dsc.border_color = border_colors[c];
-            dsc.border_side = BorderSide::FULL;
+            Rect::new()
+                .area(area)
+                .radius(Radius::uniform(RADIUS_CIRCLE))
+                .fill(FillPlan::solid(Rgba8888::rgb(45, 45, 45)))
+                .stroke(StrokePlan::solid(border_width, border_color))
+                .finish()
+                .draw(&mut canvas);
 
-            let area = Area::new(20, 25, 82, 87);
-            draw_rect(&mut canvas, &dsc, &area);
-
-            let name = format!(
+            let sprite_name = format!(
                 "circle_border_{}_{}",
-                border_width_names[w], border_color_names[c]
+                border_width_name, border_color_name
             );
-            capture_sprite(&canvas, sprite_index, &name);
+            capture_sprite(&canvas, sprite_index, &sprite_name);
         }
     }
 
-    for g in 0..2 {
-        for w in 0..2 {
+    let accent_gradient_stops = [
+        GradientStop::new(0.0, Rgba8888::rgb(255, 80, 0)),
+        GradientStop::new(1.0, Rgba8888::rgb(80, 0, 255)),
+    ];
+
+    let accent_gradients = [
+        (
+            "hor",
+            GradientBuilder::linear()
+                .axis(Axis::Horizontal)
+                .stops(accent_gradient_stops)
+                .finish(),
+        ),
+        (
+            "ver",
+            GradientBuilder::linear()
+                .axis(Axis::Vertical)
+                .stops(accent_gradient_stops)
+                .finish(),
+        ),
+    ];
+
+    for (grad_name, gradient) in accent_gradients.iter() {
+        for (border_width, border_width_name) in border_widths
+            .iter()
+            .copied()
+            .zip(border_width_names.iter().copied())
+            .skip(1)
+        {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let mut dsc = RectDsc::new();
-            dsc.radius = RADIUS_CIRCLE;
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Rgba8888::rgb(255, 80, 0);
-            dsc.bg_grad = Gradient {
-                dir: grad_dirs[g],
-                stops: [
-                    GradStop {
-                        color: Rgba8888::rgb(255, 80, 0),
-                        opa: OPA_COVER,
-                        frac: 0,
-                    },
-                    GradStop {
-                        color: Rgba8888::rgb(80, 0, 255),
-                        opa: OPA_COVER,
-                        frac: 255,
-                    },
-                ],
-                stops_count: 2,
-            };
-            dsc.border_opa = OPA_COVER;
-            dsc.border_width = border_widths[w + 1];
-            dsc.border_color = Rgba8888::rgb(255, 255, 255);
-            dsc.border_side = BorderSide::FULL;
+            Rect::new()
+                .area(area)
+                .radius(Radius::uniform(RADIUS_CIRCLE))
+                .fill(FillPlan::Gradient {
+                    gradient: gradient.clone(),
+                })
+                .stroke(StrokePlan::solid(border_width, Rgba8888::rgb(255, 255, 255)))
+                .finish()
+                .draw(&mut canvas);
 
-            let area = Area::new(20, 25, 82, 87);
-            draw_rect(&mut canvas, &dsc, &area);
-
-            let name = format!(
+            let sprite_name = format!(
                 "circle_gradborder_{}_{}",
-                grad_names[g],
-                border_width_names[w + 1]
+                grad_name, border_width_name
             );
-            capture_sprite(&canvas, sprite_index, &name);
+            capture_sprite(&canvas, sprite_index, &sprite_name);
         }
     }
 }
@@ -461,63 +480,58 @@ fn generate_triangles(sprite_index: &mut usize) {
     ];
     let tri_color_names = ["red", "green", "blue", "yellow"];
 
-    for t in 0..6 {
-        for c in 0..4 {
+    for (t, orient_name) in tri_orient_names.iter().enumerate() {
+        for (color, color_name) in tri_colors.iter().copied().zip(tri_color_names.iter().copied()) {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let dsc = TriangleDsc {
-                p1: triangles[t][0],
-                p2: triangles[t][1],
-                p3: triangles[t][2],
-                color: tri_colors[c],
-                opa: OPA_COVER,
-                grad: Gradient::none(),
-            };
+            Triangle::new()
+                .vertices(Vertices::new3(triangles[t][0], triangles[t][1], triangles[t][2]))
+                .fill(FillPlan::solid(color))
+                .finish()
+                .draw(&mut canvas);
 
-            draw_triangle(&mut canvas, &dsc);
-
-            let name = format!("tri_{}_{}", tri_orient_names[t], tri_color_names[c]);
+            let name = format!("tri_{}_{}", orient_name, color_name);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
 
     // Gradients
-    let grad_dirs = [GradDir::Hor, GradDir::Ver];
-    let grad_names = ["hor", "ver"];
+    let tri_gradient_stops = [
+        GradientStop::new(0.0, Rgba8888::rgb(255, 0, 255)),
+        GradientStop::new(1.0, Rgba8888::rgb(0, 255, 255)),
+    ];
+    let tri_gradients = [
+        (
+            "hor",
+            GradientBuilder::linear()
+                .axis(Axis::Horizontal)
+                .stops(tri_gradient_stops)
+                .finish(),
+        ),
+        (
+            "ver",
+            GradientBuilder::linear()
+                .axis(Axis::Vertical)
+                .stops(tri_gradient_stops)
+                .finish(),
+        ),
+    ];
 
-    for g in 0..2 {
-        for t in 0..3 {
+    for (grad_name, gradient) in tri_gradients.iter() {
+        for (t, orient_name) in tri_orient_names.iter().take(3).enumerate() {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let dsc = TriangleDsc {
-                p1: triangles[t][0],
-                p2: triangles[t][1],
-                p3: triangles[t][2],
-                color: Rgba8888::WHITE,
-                opa: OPA_COVER,
-                grad: Gradient {
-                    dir: grad_dirs[g],
-                    stops: [
-                        GradStop {
-                            color: Rgba8888::rgb(255, 0, 255),
-                            opa: OPA_COVER,
-                            frac: 0,
-                        },
-                        GradStop {
-                            color: Rgba8888::rgb(0, 255, 255),
-                            opa: OPA_COVER,
-                            frac: 255,
-                        },
-                    ],
-                    stops_count: 2,
-                },
-            };
+            Triangle::new()
+                .vertices(Vertices::new3(triangles[t][0], triangles[t][1], triangles[t][2]))
+                .fill(FillPlan::Gradient {
+                    gradient: gradient.clone(),
+                })
+                .finish()
+                .draw(&mut canvas);
 
-            draw_triangle(&mut canvas, &dsc);
-
-            let name = format!("tri_grad_{}_{}", grad_names[g], tri_orient_names[t]);
+            let name = format!("tri_grad_{}_{}", grad_name, orient_name);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
@@ -526,22 +540,21 @@ fn generate_triangles(sprite_index: &mut usize) {
     let opas = [OPA_COVER, OPA_70, OPA_40];
     let opa_names = ["100", "70", "40"];
 
-    for o in 0..3 {
+    for (opa, opa_name) in opas.iter().copied().zip(opa_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = TriangleDsc {
-            p1: triangles[0][0],
-            p2: triangles[0][1],
-            p3: triangles[0][2],
-            color: Rgba8888::rgb(255, 128, 0),
-            opa: opas[o],
-            grad: Gradient::none(),
-        };
+        let fill = FillBuilder::solid(Rgba8888::rgb(255, 128, 0))
+            .opacity(opa)
+            .finish();
 
-        draw_triangle(&mut canvas, &dsc);
+        Triangle::new()
+            .vertices(Vertices::new3(triangles[0][0], triangles[0][1], triangles[0][2]))
+            .fill(fill)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!("tri_opa{}", opa_names[o]);
+        let name = format!("tri_opa{}", opa_name);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
@@ -555,43 +568,34 @@ fn generate_triangles(sprite_index: &mut usize) {
     ];
     let border_color_names = ["white", "gold", "pink"];
 
-    for (ti, &tri_idx) in tri_border_indices.iter().enumerate() {
-        for w in 0..border_widths.len() {
-            for c in 0..border_colors.len() {
+    for (ti, tri_idx) in tri_border_indices.iter().copied().enumerate() {
+        for (border_width, border_width_name) in border_widths
+            .iter()
+            .copied()
+            .zip(border_width_names.iter().copied())
+        {
+            for (color_idx, (border_color, border_color_name)) in border_colors
+                .iter()
+                .copied()
+                .zip(border_color_names.iter().copied())
+                .enumerate()
+            {
                 let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
                 canvas.clear(Rgba8888::TRANSPARENT);
 
-                let tri_fill = TriangleDsc {
-                    p1: triangles[tri_idx][0],
-                    p2: triangles[tri_idx][1],
-                    p3: triangles[tri_idx][2],
-                    color: tri_colors[(ti + c) % tri_colors.len()],
-                    opa: OPA_COVER,
-                    grad: Gradient::none(),
-                };
-                draw_triangle(&mut canvas, &tri_fill);
+                let fill_color = tri_colors[(ti + color_idx) % tri_colors.len()];
+                let stroke = StrokePlan::solid(border_width, border_color);
 
-                let mut line_dsc = LineDsc {
-                    p1: Point::new(0, 0),
-                    p2: Point::new(0, 0),
-                    width: border_widths[w],
-                    color: border_colors[c],
-                    opa: OPA_COVER,
-                    dash_width: 0,
-                    dash_gap: 0,
-                    round_start: true,
-                    round_end: true,
-                };
-
-                for edge in 0..3 {
-                    line_dsc.p1 = triangles[tri_idx][edge];
-                    line_dsc.p2 = triangles[tri_idx][(edge + 1) % 3];
-                    draw_line(&mut canvas, &line_dsc);
-                }
+                Triangle::new()
+                    .vertices(Vertices::new3(triangles[tri_idx][0], triangles[tri_idx][1], triangles[tri_idx][2]))
+                    .fill(FillPlan::solid(fill_color))
+                    .stroke(stroke)
+                    .finish()
+                    .draw(&mut canvas);
 
                 let name = format!(
                     "tri_border_{}_{}_{}",
-                    tri_orient_names[tri_idx], border_width_names[w], border_color_names[c]
+                    tri_orient_names[tri_idx], border_width_name, border_color_name
                 );
                 capture_sprite(&canvas, sprite_index, &name);
             }
@@ -603,96 +607,71 @@ fn generate_lines(sprite_index: &mut usize) {
     let widths = [1, 3, 6, 10];
 
     // Horizontal
-    for w in 0..4 {
+    for width in widths.iter().copied() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = LineDsc {
-            p1: Point::new(15, 62),
-            p2: Point::new(87, 62),
-            width: widths[w],
-            color: Rgba8888::rgb(255, 255, 255),
-            opa: OPA_COVER,
-            dash_width: 0,
-            dash_gap: 0,
-            round_start: false,
-            round_end: false,
-        };
+        Line::new()
+            .vertices(Vertices::new(Point::new(15, 62), Point::new(87, 62)))
+            .stroke(StrokePlan::solid(width, Rgba8888::rgb(255, 255, 255)))
+            .finish()
+            .draw(&mut canvas);
 
-        draw_line(&mut canvas, &dsc);
-
-        let name = format!("line_hor_w{}", widths[w]);
+        let name = format!("line_hor_w{}", width);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
     // Vertical
-    for w in 0..4 {
+    for width in widths.iter().copied() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = LineDsc {
-            p1: Point::new(51, 25),
-            p2: Point::new(51, 100),
-            width: widths[w],
-            color: Rgba8888::rgb(255, 255, 0),
-            opa: OPA_COVER,
-            dash_width: 0,
-            dash_gap: 0,
-            round_start: false,
-            round_end: false,
-        };
+        Line::new()
+            .vertices(Vertices::new(Point::new(51, 25), Point::new(51, 100)))
+            .stroke(StrokePlan::solid(width, Rgba8888::rgb(255, 255, 0)))
+            .finish()
+            .draw(&mut canvas);
 
-        draw_line(&mut canvas, &dsc);
-
-        let name = format!("line_ver_w{}", widths[w]);
+        let name = format!("line_ver_w{}", width);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
     // Diagonal
-    for w in 0..4 {
+    for width in widths.iter().copied() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = LineDsc {
-            p1: Point::new(20, 30),
-            p2: Point::new(82, 95),
-            width: widths[w],
-            color: Rgba8888::rgb(0, 255, 255),
-            opa: OPA_COVER,
-            dash_width: 0,
-            dash_gap: 0,
-            round_start: false,
-            round_end: false,
-        };
+        Line::new()
+            .vertices(Vertices::new(Point::new(20, 30), Point::new(82, 95)))
+            .stroke(StrokePlan::solid(width, Rgba8888::rgb(0, 255, 255)))
+            .finish()
+            .draw(&mut canvas);
 
-        draw_line(&mut canvas, &dsc);
-
-        let name = format!("line_diag_w{}", widths[w]);
+        let name = format!("line_diag_w{}", width);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
     // Dashed patterns
     let dash_configs = [[5, 3], [10, 5], [2, 2], [8, 2]];
 
-    for d in 0..4 {
+    for config in dash_configs {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = LineDsc {
-            p1: Point::new(15, 62),
-            p2: Point::new(87, 62),
-            width: 3,
-            color: Rgba8888::rgb(255, 100, 255),
-            opa: OPA_COVER,
-            dash_width: dash_configs[d][0],
-            dash_gap: dash_configs[d][1],
-            round_start: false,
-            round_end: false,
-        };
+        let stroke = StrokePlan::solid(3, Rgba8888::rgb(255, 100, 255));
+        let dash = DashPattern::new(&[
+            DashUnit::pixels(config[0]),
+            DashUnit::pixels(config[1]),
+        ]);
 
-        draw_line(&mut canvas, &dsc);
+        Line::new()
+            .vertices(Vertices::new(Point::new(15, 62), Point::new(87, 62)))
+            .stroke(stroke)
+            .dash(dash)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!("line_dash_w{}_g{}", dash_configs[d][0], dash_configs[d][1]);
+        let name = format!("line_dash_w{}_g{}", config[0], config[1]);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
@@ -700,25 +679,23 @@ fn generate_lines(sprite_index: &mut usize) {
     let cap_configs = [[false, false], [true, false], [false, true], [true, true]];
     let cap_names = ["none", "start", "end", "both"];
 
-    for c in 0..4 {
+    for (idx, caps) in cap_configs.iter().enumerate() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = LineDsc {
-            p1: Point::new(20, 40),
-            p2: Point::new(82, 85),
-            width: 8,
-            color: Rgba8888::rgb(100, 255, 100),
-            opa: OPA_COVER,
-            dash_width: 0,
-            dash_gap: 0,
-            round_start: cap_configs[c][0],
-            round_end: cap_configs[c][1],
-        };
+        let caps = LineCaps::with(
+            if caps[0] { LineCap::Round } else { LineCap::Butt },
+            if caps[1] { LineCap::Round } else { LineCap::Butt },
+        );
 
-        draw_line(&mut canvas, &dsc);
+        Line::new()
+            .vertices(Vertices::new(Point::new(20, 40), Point::new(82, 85)))
+            .stroke(StrokePlan::solid(8, Rgba8888::rgb(100, 255, 100)))
+            .caps(caps)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!("line_cap_{}", cap_names[c]);
+        let name = format!("line_cap_{}", cap_names[idx]);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
@@ -726,25 +703,23 @@ fn generate_lines(sprite_index: &mut usize) {
     let opas = [OPA_COVER, OPA_70, OPA_40];
     let opa_names = ["100", "70", "40"];
 
-    for o in 0..3 {
+    for (opa, opa_name) in opas.iter().copied().zip(opa_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = LineDsc {
-            p1: Point::new(15, 62),
-            p2: Point::new(87, 62),
-            width: 5,
-            color: Rgba8888::rgb(255, 50, 50),
-            opa: opas[o],
-            dash_width: 0,
-            dash_gap: 0,
-            round_start: false,
-            round_end: false,
-        };
+        let stroke = StrokeBuilder::new()
+            .width(5)
+            .color(Rgba8888::rgb(255, 50, 50))
+            .opacity(opa)
+            .finish();
 
-        draw_line(&mut canvas, &dsc);
+        Line::new()
+            .vertices(Vertices::new(Point::new(15, 62), Point::new(87, 62)))
+            .stroke(stroke)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!("line_opa{}", opa_names[o]);
+        let name = format!("line_opa{}", opa_name);
         capture_sprite(&canvas, sprite_index, &name);
     }
 }
@@ -755,25 +730,23 @@ fn generate_arcs(sprite_index: &mut usize) {
     // Quarter arcs at different positions
     let start_angles = [0, 90, 180, 270];
 
-    for w in 0..3 {
-        for a in 0..4 {
+    for width in widths.iter().copied() {
+        for start in start_angles {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            let dsc = ArcDsc {
-                center: Point::new(51, 62),
-                radius: 35,
-                start_angle: start_angles[a],
-                end_angle: start_angles[a] + 90,
-                width: widths[w],
-                color: Rgba8888::rgb(255, 200, 0),
-                opa: OPA_COVER,
-                rounded: false,
-            };
+            Arc::new()
+                .center(Point::new(51, 62))
+                .radius(Radius::uniform(35))
+                .angles(Angles::new(
+                    Angle::from_degrees(start),
+                    Angle::from_degrees(start + 90),
+                ))
+                .stroke(StrokePlan::solid(width, Rgba8888::rgb(255, 200, 0)))
+                .finish()
+                .draw(&mut canvas);
 
-            draw_arc(&mut canvas, &dsc);
-
-            let name = format!("arc_quarter_w{}_a{}", widths[w], start_angles[a]);
+            let name = format!("arc_quarter_w{}_a{}", width, start);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
@@ -781,46 +754,37 @@ fn generate_arcs(sprite_index: &mut usize) {
     // Different arc spans
     let arc_spans = [45, 90, 180, 270];
 
-    for s in 0..4 {
+    for span in arc_spans {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = ArcDsc {
-            center: Point::new(51, 62),
-            radius: 35,
-            start_angle: 0,
-            end_angle: arc_spans[s],
-            width: 8,
-            color: Rgba8888::rgb(100, 255, 255),
-            opa: OPA_COVER,
-            rounded: false,
-        };
+        Arc::new()
+            .center(Point::new(51, 62))
+            .radius(Radius::uniform(35))
+            .angles(Angles::new(Angle::from_degrees(0), Angle::from_degrees(span)))
+            .stroke(StrokePlan::solid(8, Rgba8888::rgb(100, 255, 255)))
+            .finish()
+            .draw(&mut canvas);
 
-        draw_arc(&mut canvas, &dsc);
-
-        let name = format!("arc_span{}", arc_spans[s]);
+        let name = format!("arc_span{}", span);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
     // Rounded ends
-    for w in 0..3 {
+    for width in widths.iter().copied() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = ArcDsc {
-            center: Point::new(51, 62),
-            radius: 35,
-            start_angle: 45,
-            end_angle: 225,
-            width: widths[w],
-            color: Rgba8888::rgb(255, 100, 255),
-            opa: OPA_COVER,
-            rounded: true,
-        };
+        Arc::new()
+            .center(Point::new(51, 62))
+            .radius(Radius::uniform(35))
+            .angles(Angles::new(Angle::from_degrees(45), Angle::from_degrees(225)))
+            .stroke(StrokePlan::solid(width, Rgba8888::rgb(255, 100, 255)))
+            .rounded(true)
+            .finish()
+            .draw(&mut canvas);
 
-        draw_arc(&mut canvas, &dsc);
-
-        let name = format!("arc_rounded_w{}", widths[w]);
+        let name = format!("arc_rounded_w{}", width);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
@@ -828,24 +792,25 @@ fn generate_arcs(sprite_index: &mut usize) {
     let opas = [OPA_COVER, OPA_70, OPA_40];
     let opa_names = ["100", "70", "40"];
 
-    for o in 0..3 {
+    for (opa, opa_name) in opas.iter().copied().zip(opa_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = ArcDsc {
-            center: Point::new(51, 62),
-            radius: 35,
-            start_angle: 0,
-            end_angle: 270,
-            width: 10,
-            color: Rgba8888::rgb(255, 50, 50),
-            opa: opas[o],
-            rounded: false,
-        };
+        let stroke = StrokeBuilder::new()
+            .width(10)
+            .color(Rgba8888::rgb(255, 50, 50))
+            .opacity(opa)
+            .finish();
 
-        draw_arc(&mut canvas, &dsc);
+        Arc::new()
+            .center(Point::new(51, 62))
+            .radius(Radius::uniform(35))
+            .angles(Angles::new(Angle::from_degrees(0), Angle::from_degrees(270)))
+            .stroke(stroke)
+            .finish()
+            .draw(&mut canvas);
 
-        let name = format!("arc_opa{}", opa_names[o]);
+        let name = format!("arc_opa{}", opa_name);
         capture_sprite(&canvas, sprite_index, &name);
     }
 
@@ -858,42 +823,41 @@ fn generate_arcs(sprite_index: &mut usize) {
     ];
     let color_names = ["red", "green", "blue", "yellow"];
 
-    for c in 0..4 {
+    for (color, name) in colors.iter().copied().zip(color_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let dsc = ArcDsc {
-            center: Point::new(51, 62),
-            radius: 35,
-            start_angle: 0,
-            end_angle: 180,
-            width: 6,
-            color: colors[c],
-            opa: OPA_COVER,
-            rounded: false,
-        };
+        Arc::new()
+            .center(Point::new(51, 62))
+            .radius(Radius::uniform(35))
+            .angles(Angles::new(Angle::from_degrees(0), Angle::from_degrees(180)))
+            .stroke(StrokePlan::solid(6, color))
+            .finish()
+            .draw(&mut canvas);
 
-        draw_arc(&mut canvas, &dsc);
-
-        let name = format!("arc_color_{}", color_names[c]);
-        capture_sprite(&canvas, sprite_index, &name);
+        let sprite_name = format!("arc_color_{}", name);
+        capture_sprite(&canvas, sprite_index, &sprite_name);
     }
 }
 
 fn generate_labels(sprite_index: &mut usize) {
     let texts = ["A", "AB", "ABC", "Text", "123", "!@#"];
     let text_names = ["A", "AB", "ABC", "Text", "123", "sym"];
+    let origin = Point::new(30, 50);
 
     for (text, name) in texts.iter().zip(text_names.iter()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = LabelDsc::new((*text).to_string());
-        dsc.color = Rgba8888::rgb(255, 255, 255);
-        dsc.opa = OPA_COVER;
-
-        let area = Area::new(30, 50, 72, 75);
-        draw_label(&mut canvas, &dsc, &area);
+        Label::new()
+            .origin(origin)
+            .content(LabelContentPlan::text(
+                FontHandle::named("montserrat", 14),
+                *text,
+            ))
+            .color(Rgba8888::rgb(255, 255, 255))
+            .finish()
+            .draw(&mut canvas);
 
         let sprite_name = format!("label_text_{}", name);
         capture_sprite(&canvas, sprite_index, &sprite_name);
@@ -910,13 +874,16 @@ fn generate_labels(sprite_index: &mut usize) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = LabelDsc::new("Test".to_string());
-        dsc.color = Rgba8888::rgb(255, 255, 0);
-        dsc.opa = OPA_COVER;
-        dsc.decor = *decor;
-
-        let area = Area::new(25, 50, 77, 75);
-        draw_label(&mut canvas, &dsc, &area);
+        Label::new()
+            .origin(Point::new(25, 50))
+            .content(LabelContentPlan::text(
+                FontHandle::named("montserrat", 14),
+                "Test",
+            ))
+            .color(Rgba8888::rgb(255, 255, 0))
+            .decor(*decor)
+            .finish()
+            .draw(&mut canvas);
 
         let sprite_name = format!("label_decor_{}", name);
         capture_sprite(&canvas, sprite_index, &sprite_name);
@@ -924,17 +891,20 @@ fn generate_labels(sprite_index: &mut usize) {
 
     let spacings = [0, 5, 10];
 
-    for spacing in spacings.iter() {
+    for spacing in spacings.iter().copied() {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = LabelDsc::new("Abc".to_string());
-        dsc.color = Rgba8888::rgb(100, 255, 255);
-        dsc.opa = OPA_COVER;
-        dsc.letter_space = *spacing;
-
-        let area = Area::new(15, 50, 87, 75);
-        draw_label(&mut canvas, &dsc, &area);
+        Label::new()
+            .origin(Point::new(15, 50))
+            .content(LabelContentPlan::text(
+                FontHandle::named("montserrat", 14),
+                "Abc",
+            ))
+            .color(Rgba8888::rgb(100, 255, 255))
+            .spacing(LabelSpacing::new(spacing, 0))
+            .finish()
+            .draw(&mut canvas);
 
         let sprite_name = format!("label_spacing{}", spacing);
         capture_sprite(&canvas, sprite_index, &sprite_name);
@@ -943,16 +913,20 @@ fn generate_labels(sprite_index: &mut usize) {
     let opas = [OPA_COVER, OPA_70, OPA_40];
     let opa_names = ["100", "70", "40"];
 
-    for (opa, name) in opas.iter().zip(opa_names.iter()) {
+    for (opa, name) in opas.iter().copied().zip(opa_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = LabelDsc::new("Text".to_string());
-        dsc.color = Rgba8888::rgb(255, 100, 255);
-        dsc.opa = *opa;
-
-        let area = Area::new(25, 50, 77, 75);
-        draw_label(&mut canvas, &dsc, &area);
+        Label::new()
+            .origin(Point::new(25, 50))
+            .content(LabelContentPlan::text(
+                FontHandle::named("montserrat", 14),
+                "Text",
+            ))
+            .color(Rgba8888::rgb(255, 100, 255))
+            .opacity(LabelOpacity::new(opa))
+            .finish()
+            .draw(&mut canvas);
 
         let sprite_name = format!("label_opa{}", name);
         capture_sprite(&canvas, sprite_index, &sprite_name);
@@ -966,16 +940,19 @@ fn generate_labels(sprite_index: &mut usize) {
     ];
     let color_names = ["red", "green", "blue", "orange"];
 
-    for (color, name) in colors.iter().zip(color_names.iter()) {
+    for (color, name) in colors.iter().copied().zip(color_names.iter().copied()) {
         let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
         canvas.clear(Rgba8888::TRANSPARENT);
 
-        let mut dsc = LabelDsc::new("123".to_string());
-        dsc.color = *color;
-        dsc.opa = OPA_COVER;
-
-        let area = Area::new(30, 50, 72, 75);
-        draw_label(&mut canvas, &dsc, &area);
+        Label::new()
+            .origin(Point::new(30, 50))
+            .content(LabelContentPlan::text(
+                FontHandle::named("montserrat", 14),
+                "123",
+            ))
+            .color(color)
+            .finish()
+            .draw(&mut canvas);
 
         let sprite_name = format!("label_color_{}", name);
         capture_sprite(&canvas, sprite_index, &sprite_name);
@@ -986,106 +963,67 @@ fn generate_vector_graphics(sprite_index: &mut usize) {
     let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
     canvas.clear(Rgba8888::TRANSPARENT);
 
-    let star_points = [
-        FPoint::new(51.0, 25.0),
-        FPoint::new(62.0, 45.0),
-        FPoint::new(85.0, 48.0),
-        FPoint::new(66.0, 62.0),
-        FPoint::new(74.0, 86.0),
-        FPoint::new(51.0, 72.0),
-        FPoint::new(28.0, 86.0),
-        FPoint::new(36.0, 62.0),
-        FPoint::new(17.0, 48.0),
-        FPoint::new(40.0, 45.0),
-    ];
+    let star_path = PathPlan::from_svg(
+        "M 51 25 L 62 45 L 85 48 L 66 62 L 74 86 L 51 72 L 28 86 L 36 62 L 17 48 L 40 45 Z",
+    );
+    let star_gradient = GradientBuilder::linear()
+        .axis(Axis::Horizontal)
+        .start_point(Point::new(25, 30))
+        .end_point(Point::new(80, 95))
+        .stops([
+            GradientStop::new(0.0, Rgba8888::rgb(255, 90, 0)),
+            GradientStop::new(130.0 / 255.0, Rgba8888::rgb(255, 0, 200)),
+            GradientStop::new(1.0, Rgba8888::rgb(80, 200, 255)),
+        ])
+        .finish();
+    let star_stroke = StrokeBuilder::new()
+        .width(3)
+        .color(Rgba8888::rgb(255, 255, 255))
+        .opacity(OPA_70)
+        .caps(LineCaps::round())
+        .join(StrokeJoinStyle::Round)
+        .finish();
 
-    let mut star_path = VectorPath::new();
-    if let Some(first) = star_points.first() {
-        star_path.move_to(*first);
-        for point in &star_points[1..] {
-            star_path.line_to(*point);
-        }
-        star_path.close();
-    }
+    Vector::new()
+        .path(star_path)
+        .fill(FillPlan::Gradient {
+            gradient: star_gradient,
+        })
+        .stroke(star_stroke)
+        .finish()
+        .draw(&mut canvas);
 
-    let star_gradient = LinearGradient {
-        start: FPoint::new(25.0, 30.0),
-        end: FPoint::new(80.0, 95.0),
-        stops: vec![
-            ColorStop {
-                color: Rgba8888::rgb(255, 90, 0),
-                opa: OPA_COVER,
-                frac: 0,
-            },
-            ColorStop {
-                color: Rgba8888::rgb(255, 0, 200),
-                opa: OPA_COVER,
-                frac: 130,
-            },
-            ColorStop {
-                color: Rgba8888::rgb(80, 200, 255),
-                opa: OPA_COVER,
-                frac: 255,
-            },
-        ],
-    };
-
-    let mut star_dsc = VectorDsc::new();
-    star_dsc.add_path(star_path);
-    star_dsc.fill = Some(VectorFill::linear_gradient(
-        star_gradient,
-        FillRule::NonZero,
-    ));
-    let mut star_stroke = VectorStroke::new(3.0, Rgba8888::rgb(255, 255, 255), OPA_70);
-    star_stroke.cap = StrokeCap::Round;
-    star_stroke.join = StrokeJoin::Round;
-    star_dsc.stroke = Some(star_stroke);
-
-    draw_vector(&mut canvas, &star_dsc);
     capture_sprite(&canvas, sprite_index, "vector_star_gradient");
 
     let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
     canvas.clear(Rgba8888::TRANSPARENT);
 
-    let mut wave_path = VectorPath::new();
-    wave_path.move_to(FPoint::new(22.0, 82.0));
-    wave_path.cubic_to(
-        FPoint::new(35.0, 35.0),
-        FPoint::new(65.0, 95.0),
-        FPoint::new(84.0, 44.0),
+    let wave_path = PathPlan::from_svg(
+        "M 22 82 C 35 35 65 95 84 44 C 70 24 40 24 26 46",
     );
-    wave_path.cubic_to(
-        FPoint::new(70.0, 24.0),
-        FPoint::new(40.0, 24.0),
-        FPoint::new(26.0, 46.0),
-    );
+    let wave_gradient = GradientBuilder::linear()
+        .axis(Axis::Horizontal)
+        .start_point(Point::new(22, 82))
+        .end_point(Point::new(84, 44))
+        .stops([
+            GradientStop::new(0.0, Rgba8888::rgb(120, 255, 120)),
+            GradientStop::new(1.0, Rgba8888::rgb(0, 150, 255)),
+        ])
+        .finish();
+    let wave_stroke = StrokeBuilder::new()
+        .width(6)
+        .gradient(wave_gradient)
+        .caps(LineCaps::round())
+        .join(StrokeJoinStyle::Round)
+        .dash_pattern(&[14.0, 6.0])
+        .finish();
 
-    let wave_gradient = LinearGradient {
-        start: FPoint::new(22.0, 82.0),
-        end: FPoint::new(84.0, 44.0),
-        stops: vec![
-            ColorStop {
-                color: Rgba8888::rgb(120, 255, 120),
-                opa: OPA_COVER,
-                frac: 0,
-            },
-            ColorStop {
-                color: Rgba8888::rgb(0, 150, 255),
-                opa: OPA_COVER,
-                frac: 255,
-            },
-        ],
-    };
+    Vector::new()
+        .path(wave_path)
+        .stroke(wave_stroke)
+        .finish()
+        .draw(&mut canvas);
 
-    let mut wave_dsc = VectorDsc::new();
-    wave_dsc.add_path(wave_path);
-    let mut wave_stroke = VectorStroke::with_gradient(6.0, wave_gradient, OPA_COVER);
-    wave_stroke.cap = StrokeCap::Round;
-    wave_stroke.join = StrokeJoin::Round;
-    wave_stroke.dash_pattern = vec![14.0, 6.0];
-    wave_dsc.stroke = Some(wave_stroke);
-
-    draw_vector(&mut canvas, &wave_dsc);
     capture_sprite(&canvas, sprite_index, "vector_wave_stroke");
 }
 
@@ -1094,28 +1032,42 @@ fn generate_blurs(sprite_index: &mut usize) {
     let corner_radii = [0, 10, 20];
     let corner_names = ["square", "r10", "r20"];
 
-    for b in 0..4 {
-        for c in 0..3 {
+    let gradient = GradientBuilder::linear()
+        .axis(Axis::Horizontal)
+        .stops([
+            GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+            GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+        ])
+        .finish();
+
+    for blur_radius in blur_radii.iter().copied() {
+        for (corner_radius, corner_name) in corner_radii
+            .iter()
+            .copied()
+            .zip(corner_names.iter().copied())
+        {
             let mut canvas = Canvas::new(SPRITE_WIDTH, SPRITE_HEIGHT);
             canvas.clear(Rgba8888::TRANSPARENT);
 
-            // Draw a gradient rect (blur would be applied to this)
-            let mut dsc = RectDsc::new();
-            dsc.radius = corner_radii[c];
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-            dsc.bg_grad = Gradient::horizontal(Rgba8888::rgb(255, 0, 0), Rgba8888::rgb(0, 0, 255));
-
             let area = Area::new(20, 30, 82, 95);
-            draw_rect(&mut canvas, &dsc, &area);
 
-            let blur_dsc = BlurDsc {
-                blur_radius: blur_radii[b],
-                corner_radius: corner_radii[c],
-            };
-            draw_blur(&mut canvas, &blur_dsc, &area);
+            Rect::new()
+                .area(area)
+                .radius(Radius::uniform(corner_radius))
+                .fill(FillPlan::Gradient {
+                    gradient: gradient.clone(),
+                })
+                .finish()
+                .draw(&mut canvas);
 
-            let name = format!("blur_r{}_{}", blur_radii[b], corner_names[c]);
+            Blur::new()
+                .area(area)
+                .radius(blur_radius)
+                .corner_radius(corner_radius)
+                .finish()
+                .draw(&mut canvas);
+
+            let name = format!("blur_r{}_{}", blur_radius, corner_name);
             capture_sprite(&canvas, sprite_index, &name);
         }
     }
