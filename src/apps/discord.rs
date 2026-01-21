@@ -9,9 +9,9 @@ use alloc::string::{String, ToString};
 use defmt::{info, warn};
 use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
+use rust_gfx::fluent::{FillPlan, Radius, Rect, StrokeBuilder};
 use rust_gfx::primitives::label::measure_text_with_font;
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, OPA_COVER};
+use rust_gfx::types::Area;
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds
@@ -222,14 +222,19 @@ fn draw_message_bubbles(
             y + bubble_height,
         );
 
-        let mut bubble = RectDsc::new();
-        bubble.bg_color = palette.container;
-        bubble.bg_opa = OPA_COVER;
-        bubble.radius = metrics.section_radius.max(4);
-        bubble.border_width = 1;
-        bubble.border_color = palette.outline;
-        bubble.border_opa = 160;
-        draw_rect(surface, &bubble, &bubble_area);
+        let stroke = StrokeBuilder::new()
+            .width(1)
+            .color(palette.outline)
+            .opacity(160)
+            .finish();
+
+        Rect::new()
+            .area(bubble_area)
+            .radius(Radius::uniform(metrics.section_radius.max(4)))
+            .fill(FillPlan::solid(palette.container))
+            .stroke(stroke)
+            .finish()
+            .draw(surface);
 
         let text_x = bubble_area.x1 + padding_x;
         let text_y = bubble_area.y1 + padding_y;

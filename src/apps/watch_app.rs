@@ -14,13 +14,12 @@ use defmt::{info, warn};
 use embassy_time::{Duration, Instant, Timer};
 use micromath::F32Ext;
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::label::measure_text_with_font;
-use rust_gfx::primitives::{
-    arc::{draw_arc, ArcDsc},
-    line::{draw_line, LineDsc},
-    rectangle::{draw_rect, RectDsc},
+use rust_gfx::fluent::{
+    Angle, Angles, Arc, Axis, FillBuilder, FillPlan, GradientBuilder, GradientStop, Line, LineCap,
+    LineCaps, Radius, Rect, StrokePlan, Vertices,
 };
-use rust_gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
+use rust_gfx::primitives::label::measure_text_with_font;
+use rust_gfx::types::{Area, Point, RADIUS_CIRCLE};
 
 extern crate alloc;
 use alloc::{format, string::String, vec, vec::Vec};
@@ -367,11 +366,15 @@ fn draw_scroll_progress(
     }
 
     let track_area = Area::new(card.content_area.x1, y1, card.content_area.x2, y2);
-    let mut track = RectDsc::new();
-    track.bg_color = palette.accent_light;
-    track.bg_opa = 120;
-    track.radius = 1;
-    draw_rect(surface, &track, &track_area);
+    let track_fill = FillBuilder::solid(palette.accent_light)
+        .opacity(120)
+        .finish();
+    Rect::new()
+        .area(track_area)
+        .radius(Radius::uniform(1))
+        .fill(track_fill)
+        .finish()
+        .draw(surface);
 
     let width = card.content_width().saturating_sub(2);
     if width <= 0 {
@@ -387,11 +390,12 @@ fn draw_scroll_progress(
         card.content_area.x1 + 1 + fill_width,
         y2 - 1,
     );
-    let mut fill = RectDsc::new();
-    fill.bg_color = palette.accent_yellow;
-    fill.bg_opa = OPA_COVER;
-    fill.radius = 1;
-    draw_rect(surface, &fill, &fill_area);
+    Rect::new()
+        .area(fill_area)
+        .radius(Radius::uniform(1))
+        .fill(FillPlan::solid(palette.accent_yellow))
+        .finish()
+        .draw(surface);
 }
 
 fn clamp_notification_text(message: &str, max_len: usize) -> String {
@@ -443,12 +447,17 @@ fn draw_watch_dial(
 
     draw_face_plate(surface, palette, cx, cy, radius);
 
-    let mut ring = ArcDsc::new(Point::new(cx, cy), radius, 0, 360);
-    ring.width = 3;
-    ring.color = palette.accent_gray;
-    ring.opa = OPA_COVER;
-    ring.rounded = true;
-    draw_arc(surface, &ring);
+    Arc::new()
+        .center(Point::new(cx, cy))
+        .radius(Radius::uniform(radius))
+        .angles(Angles::new(
+            Angle::from_degrees(0),
+            Angle::from_degrees(360),
+        ))
+        .stroke(StrokePlan::solid(3, palette.accent_gray))
+        .rounded(true)
+        .finish()
+        .draw(surface);
 
     draw_accent_arcs(surface, palette, cx, cy, radius);
     draw_hands(
@@ -496,14 +505,13 @@ fn draw_time_pill(
     let y1 = area.y1 + (area.y2 - area.y1 - pill_height) / 2;
     let pill_area = Area::new(x1, y1, x1 + pill_width - 1, y1 + pill_height - 1);
 
-    let mut pill = RectDsc::new();
-    pill.bg_color = palette.container_alt;
-    pill.bg_opa = OPA_COVER;
-    pill.radius = pill_height / 2;
-    pill.border_width = 1;
-    pill.border_color = palette.outline;
-    pill.border_opa = OPA_COVER;
-    draw_rect(surface, &pill, &pill_area);
+    Rect::new()
+        .area(pill_area)
+        .radius(Radius::uniform(pill_height / 2))
+        .fill(FillPlan::solid(palette.container_alt))
+        .stroke(StrokePlan::solid(1, palette.outline))
+        .finish()
+        .draw(surface);
 
     let text_x = x1 + pill_padding_x;
     let text_y = y1 + pill_padding_y;
@@ -529,13 +537,21 @@ fn draw_face_plate(
         return;
     }
 
-    let mut plate = RectDsc::new();
-    plate.bg_color = palette.container;
-    plate.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    plate.bg_opa = OPA_COVER;
-    plate.radius = RADIUS_CIRCLE;
     let area = Area::new(cx - inset, cy - inset, cx + inset, cy + inset);
-    draw_rect(surface, &plate, &area);
+    Rect::new()
+        .area(area)
+        .radius(Radius::uniform(RADIUS_CIRCLE))
+        .fill(FillPlan::Gradient {
+            gradient: GradientBuilder::linear()
+                .axis(Axis::Vertical)
+                .stops([
+                    GradientStop::new(0.0, palette.container),
+                    GradientStop::new(1.0, palette.container_alt),
+                ])
+                .finish(),
+        })
+        .finish()
+        .draw(surface);
 }
 
 fn draw_accent_arcs(
@@ -557,31 +573,42 @@ fn draw_accent_arcs(
     ];
 
     for (start, sweep, color) in accents {
-        let mut accent = ArcDsc::new(Point::new(cx, cy), arc_radius, start, start + sweep);
-        accent.width = 4;
-        accent.color = color;
-        accent.opa = OPA_COVER;
-        accent.rounded = true;
-        draw_arc(surface, &accent);
+        Arc::new()
+            .center(Point::new(cx, cy))
+            .radius(Radius::uniform(arc_radius))
+            .angles(Angles::new(
+                Angle::from_degrees(start),
+                Angle::from_degrees(start + sweep),
+            ))
+            .stroke(StrokePlan::solid(4, color))
+            .rounded(true)
+            .finish()
+            .draw(surface);
     }
 
     if arc_radius > 6 {
-        let mut inner_ring = ArcDsc::new(Point::new(cx, cy), arc_radius - 6, 0, 360);
-        inner_ring.width = 1;
-        inner_ring.color = palette.accent_light;
-        inner_ring.opa = OPA_COVER;
-        inner_ring.rounded = true;
-        draw_arc(surface, &inner_ring);
+        Arc::new()
+            .center(Point::new(cx, cy))
+            .radius(Radius::uniform(arc_radius - 6))
+            .angles(Angles::new(
+                Angle::from_degrees(0),
+                Angle::from_degrees(360),
+            ))
+            .stroke(StrokePlan::solid(1, palette.accent_light))
+            .rounded(true)
+            .finish()
+            .draw(surface);
     }
 }
 
 fn draw_center_hub(surface: &mut DrawingSurface, palette: StylePalette, cx: i32, cy: i32) {
-    let mut hub = RectDsc::new();
-    hub.bg_color = palette.accent_dark;
-    hub.bg_opa = OPA_COVER;
-    hub.radius = RADIUS_CIRCLE;
     let hub_area = Area::new(cx - 2, cy - 2, cx + 2, cy + 2);
-    draw_rect(surface, &hub, &hub_area);
+    Rect::new()
+        .area(hub_area)
+        .radius(Radius::uniform(RADIUS_CIRCLE))
+        .fill(FillPlan::solid(palette.accent_dark))
+        .finish()
+        .draw(surface);
 }
 
 fn draw_hands(
@@ -614,25 +641,32 @@ fn draw_hands(
     let minute_end = angle_point(cx, cy, minute_length, minute_angle);
     let second_end = angle_point(cx, cy, second_length, second_angle);
 
-    let mut hour_hand = LineDsc::new(Point::new(cx, cy), hour_end);
-    hour_hand.width = (radius / 12).max(3);
-    hour_hand.round_start = true;
-    hour_hand.round_end = true;
-    hour_hand.color = palette.text_secondary;
-    draw_line(surface, &hour_hand);
+    Line::new()
+        .vertices(Vertices::new(Point::new(cx, cy), hour_end))
+        .stroke(StrokePlan::solid(
+            (radius / 12).max(3),
+            palette.text_secondary,
+        ))
+        .caps(LineCaps::round())
+        .finish()
+        .draw(surface);
 
-    let mut minute_hand = LineDsc::new(Point::new(cx, cy), minute_end);
-    minute_hand.width = (radius / 16).max(2);
-    minute_hand.round_start = true;
-    minute_hand.round_end = true;
-    minute_hand.color = palette.text_primary;
-    draw_line(surface, &minute_hand);
+    Line::new()
+        .vertices(Vertices::new(Point::new(cx, cy), minute_end))
+        .stroke(StrokePlan::solid(
+            (radius / 16).max(2),
+            palette.text_primary,
+        ))
+        .caps(LineCaps::round())
+        .finish()
+        .draw(surface);
 
-    let mut second_hand = LineDsc::new(Point::new(cx, cy), second_end);
-    second_hand.width = 2;
-    second_hand.round_end = true;
-    second_hand.color = palette.accent_yellow;
-    draw_line(surface, &second_hand);
+    Line::new()
+        .vertices(Vertices::new(Point::new(cx, cy), second_end))
+        .stroke(StrokePlan::solid(2, palette.accent_yellow))
+        .caps(LineCaps::with(LineCap::Butt, LineCap::Round))
+        .finish()
+        .draw(surface);
 }
 
 fn angle_point(cx: i32, cy: i32, radius: i32, angle_deg: f32) -> Point {

@@ -5,8 +5,8 @@ use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Timer};
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, BorderSide, GradDir, Gradient, OPA_COVER};
+use rust_gfx::fluent::{Axis, FillPlan, GradientBuilder, GradientStop, Radius, Rect, StrokePlan};
+use rust_gfx::types::Area;
 
 #[embassy_executor::task]
 pub async fn rect_app(ctx: AppContext) {
@@ -29,26 +29,27 @@ pub async fn rect_app(ctx: AppContext) {
 
         ctx.draw(move |surface: &mut DrawingSurface| {
             // Draw a fancy rectangle with gradient, border, and rounded corners
-            let mut dsc = RectDsc::new();
-            dsc.bg_color = Rgba8888::rgba(r, g, b, 255);
-            dsc.bg_opa = OPA_COVER;
-            dsc.bg_grad = Gradient::vertical(
-                Rgba8888::rgba(r2, g2, b2, 255),
-                Rgba8888::rgba(r, g, b, 255),
-            );
-            dsc.radius = 10;
-            dsc.border_color = Rgba8888::rgba(200, 200, 200, 255);
-            dsc.border_width = 2;
-            dsc.border_opa = OPA_COVER;
-            dsc.border_side = BorderSide::FULL;
-
             let area = Area {
                 x1: 20,
                 y1: 20,
                 x2: 80,
                 y2: 80,
             };
-            draw_rect(surface, &dsc, &area);
+            let gradient = GradientBuilder::linear()
+                .axis(Axis::Vertical)
+                .stops([
+                    GradientStop::new(0.0, Rgba8888::rgba(r2, g2, b2, 255)),
+                    GradientStop::new(1.0, Rgba8888::rgba(r, g, b, 255)),
+                ])
+                .finish();
+
+            Rect::new()
+                .area(area)
+                .radius(Radius::uniform(10))
+                .fill(FillPlan::Gradient { gradient })
+                .stroke(StrokePlan::solid(2, Rgba8888::rgba(200, 200, 200, 255)))
+                .finish()
+                .draw(surface);
         })
         .await;
 

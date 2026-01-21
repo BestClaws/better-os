@@ -12,11 +12,11 @@ use defmt::{error, info};
 use embassy_time::{with_timeout, Duration, Instant, Timer};
 use micromath::F32Ext;
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
+use rust_gfx::fluent::{Axis, FillPlan, GradientBuilder, GradientStop, Radius, Rect};
 use rust_gfx::three_d::{
     load_glb, render_scene, Camera, Mat4, Quaternion, RenderOptions, ShadingMode, Vec3,
 };
-use rust_gfx::types::{Area, Gradient, OPA_COVER};
+use rust_gfx::types::Area;
 
 const GLB_DATA: &[u8] = include_bytes!("../assets/arrow2.glb");
 
@@ -124,17 +124,21 @@ pub async fn arrow_app(context: AppContext) {
                     viewport_bottom,
                 );
 
-                let mut viewport_bg = RectDsc::new();
-                viewport_bg.bg_color = palette.container;
-                viewport_bg.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-                viewport_bg.bg_opa = OPA_COVER;
-                viewport_bg.radius = metrics.section_radius;
-                draw_rect(surface, &viewport_bg, &viewport_area, None);
+                Rect::new()
+                    .area(viewport_area)
+                    .radius(Radius::uniform(metrics.section_radius))
+                    .fill(FillPlan::Gradient {
+                        gradient: GradientBuilder::linear()
+                            .axis(Axis::Vertical)
+                            .stops([
+                                GradientStop::new(0.0, palette.container),
+                                GradientStop::new(1.0, palette.container_alt),
+                            ])
+                            .finish(),
+                    })
+                    .finish()
+                    .draw(surface);
 
-                let mut accent = RectDsc::new();
-                accent.bg_color = palette.accent_yellow;
-                accent.bg_opa = OPA_COVER;
-                accent.radius = metrics.section_radius.max(3);
                 let accent_width = 4;
                 let accent_area = Area::new(
                     viewport_area.x1,
@@ -142,7 +146,13 @@ pub async fn arrow_app(context: AppContext) {
                     (viewport_area.x1 + accent_width).min(viewport_area.x2),
                     viewport_area.y2,
                 );
-                draw_rect(surface, &accent, &accent_area, None);
+                let accent_radius = metrics.section_radius.max(3);
+                Rect::new()
+                    .area(accent_area)
+                    .radius(Radius::uniform(accent_radius))
+                    .fill(FillPlan::solid(palette.accent_yellow))
+                    .finish()
+                    .draw(surface);
 
                 let width = surface.width() as f32;
                 let height = surface.height() as f32;
@@ -160,7 +170,12 @@ pub async fn arrow_app(context: AppContext) {
 
                 render_scene(surface, &scene, &camera, &render_options);
 
-                draw_rect(surface, &accent, &accent_area, None);
+                Rect::new()
+                    .area(accent_area)
+                    .radius(Radius::uniform(accent_radius))
+                    .fill(FillPlan::solid(palette.accent_yellow))
+                    .finish()
+                    .draw(surface);
                 draw_status_bar(surface, &metrics, fonts, palette, status_data);
 
                 let overlay_font = fonts.small;

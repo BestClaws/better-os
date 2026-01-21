@@ -5,16 +5,55 @@ use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::line::{draw_line, LineDsc};
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::{
-    Area, BorderSide, GradDir, Point, OPA_30, OPA_50, OPA_70, OPA_COVER, RADIUS_CIRCLE,
+use rust_gfx::fluent::{
+    Axis, FillBuilder, FillPlan, GradientBuilder, GradientStop, Line, Radius, Rect, StrokeBuilder,
+    StrokePlan, Vertices,
 };
+use rust_gfx::types::{Area, Point, OPA_30, OPA_50, OPA_70, OPA_COVER, RADIUS_CIRCLE};
 
 const SPRITE_X: i32 = 20;
 const SPRITE_Y: i32 = 30;
 const SPRITE_W: i32 = 63;
 const SPRITE_H: i32 = 66;
+
+fn sprite_area() -> Area {
+    Area::new(
+        SPRITE_X,
+        SPRITE_Y,
+        SPRITE_X + SPRITE_W - 1,
+        SPRITE_Y + SPRITE_H - 1,
+    )
+}
+
+fn draw_rect_with_stroke(
+    surface: &mut DrawingSurface,
+    radius: i32,
+    fill: FillPlan,
+    stroke: Option<StrokePlan>,
+) {
+    let area = sprite_area();
+    let mut builder = Rect::new()
+        .area(area)
+        .radius(Radius::uniform(radius))
+        .fill(fill);
+    if let Some(stroke) = stroke {
+        builder = builder.stroke(stroke);
+    }
+    builder.finish().draw(surface);
+}
+
+fn draw_line_with_stroke(
+    surface: &mut DrawingSurface,
+    start: Point,
+    end: Point,
+    stroke: StrokePlan,
+) {
+    Line::new()
+        .vertices(Vertices::new(start, end))
+        .stroke(stroke)
+        .finish()
+        .draw(surface);
+}
 
 #[embassy_executor::task]
 pub async fn gfx_bench_app(context: AppContext) {
@@ -43,20 +82,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                 context
                     .draw(|surface| {
                         surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                        let mut dsc = RectDsc::new();
-                        dsc.radius = radii[r];
-                        dsc.bg_opa = OPA_COVER;
-                        dsc.bg_color = colors[c];
-                        draw_rect(
-                            surface,
-                            &dsc,
-                            &Area::new(
-                                SPRITE_X,
-                                SPRITE_Y,
-                                SPRITE_X + SPRITE_W - 1,
-                                SPRITE_Y + SPRITE_H - 1,
-                            ),
-                        );
+                        draw_rect_with_stroke(surface, radii[r], FillPlan::solid(colors[c]), None);
                     })
                     .await;
                 info!(
@@ -77,23 +103,14 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = RectDsc::new();
-                    dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-                    dsc.bg_opa = OPA_COVER;
-                    dsc.bg_grad.dir = GradDir::Hor;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
-                    draw_rect(
-                        surface,
-                        &dsc,
-                        &Area::new(
-                            SPRITE_X,
-                            SPRITE_Y,
-                            SPRITE_X + SPRITE_W - 1,
-                            SPRITE_Y + SPRITE_H - 1,
-                        ),
-                        None,
-                    );
+                    let gradient = GradientBuilder::linear()
+                        .axis(Axis::Horizontal)
+                        .stops([
+                            GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+                            GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+                        ])
+                        .finish();
+                    draw_rect_with_stroke(surface, radius, FillPlan::Gradient { gradient }, None);
                 })
                 .await;
             info!(
@@ -110,23 +127,14 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = RectDsc::new();
-                    dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-                    dsc.bg_opa = OPA_COVER;
-                    dsc.bg_grad.dir = GradDir::Ver;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
-                    draw_rect(
-                        surface,
-                        &dsc,
-                        &Area::new(
-                            SPRITE_X,
-                            SPRITE_Y,
-                            SPRITE_X + SPRITE_W - 1,
-                            SPRITE_Y + SPRITE_H - 1,
-                        ),
-                        None,
-                    );
+                    let gradient = GradientBuilder::linear()
+                        .axis(Axis::Vertical)
+                        .stops([
+                            GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+                            GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+                        ])
+                        .finish();
+                    draw_rect_with_stroke(surface, radius, FillPlan::Gradient { gradient }, None);
                 })
                 .await;
             info!(
@@ -143,23 +151,13 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = RectDsc::new();
-                    dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-                    dsc.bg_opa = OPA_COVER;
-                    dsc.bg_grad.dir = GradDir::Radial;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
-                    draw_rect(
-                        surface,
-                        &dsc,
-                        &Area::new(
-                            SPRITE_X,
-                            SPRITE_Y,
-                            SPRITE_X + SPRITE_W - 1,
-                            SPRITE_Y + SPRITE_H - 1,
-                        ),
-                        None,
-                    );
+                    let gradient = GradientBuilder::radial()
+                        .stops([
+                            GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+                            GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+                        ])
+                        .finish();
+                    draw_rect_with_stroke(surface, radius, FillPlan::Gradient { gradient }, None);
                 })
                 .await;
             info!(
@@ -176,23 +174,13 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = RectDsc::new();
-                    dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-                    dsc.bg_opa = OPA_COVER;
-                    dsc.bg_grad.dir = GradDir::Conical;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
-                    draw_rect(
-                        surface,
-                        &dsc,
-                        &Area::new(
-                            SPRITE_X,
-                            SPRITE_Y,
-                            SPRITE_X + SPRITE_W - 1,
-                            SPRITE_Y + SPRITE_H - 1,
-                        ),
-                        None,
-                    );
+                    let gradient = GradientBuilder::conic()
+                        .stops([
+                            GradientStop::new(0.0, Rgba8888::rgb(255, 0, 0)),
+                            GradientStop::new(1.0, Rgba8888::rgb(0, 0, 255)),
+                        ])
+                        .finish();
+                    draw_rect_with_stroke(surface, radius, FillPlan::Gradient { gradient }, None);
                 })
                 .await;
             info!(
@@ -208,24 +196,11 @@ pub async fn gfx_bench_app(context: AppContext) {
         context
             .draw(|surface| {
                 surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                let mut dsc = RectDsc::new();
-                dsc.radius = 10;
-                dsc.bg_color = Rgba8888::rgb(50, 50, 50);
-                dsc.bg_opa = OPA_COVER;
-                dsc.border_width = 10;
-                dsc.border_color = Rgba8888::rgb(255, 255, 0);
-                dsc.border_opa = OPA_COVER;
-                dsc.border_side = BorderSide::FULL;
-                draw_rect(
+                draw_rect_with_stroke(
                     surface,
-                    &dsc,
-                    &Area::new(
-                        SPRITE_X,
-                        SPRITE_Y,
-                        SPRITE_X + SPRITE_W - 1,
-                        SPRITE_Y + SPRITE_H - 1,
-                    ),
-                    None,
+                    10,
+                    FillPlan::solid(Rgba8888::rgb(50, 50, 50)),
+                    Some(StrokePlan::solid(10, Rgba8888::rgb(255, 255, 0))),
                 );
             })
             .await;
@@ -244,21 +219,10 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = RectDsc::new();
-                    dsc.radius = 10;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
-                    dsc.bg_opa = opa;
-                    draw_rect(
-                        surface,
-                        &dsc,
-                        &Area::new(
-                            SPRITE_X,
-                            SPRITE_Y,
-                            SPRITE_X + SPRITE_W - 1,
-                            SPRITE_Y + SPRITE_H - 1,
-                        ),
-                        None,
-                    );
+                    let fill = FillBuilder::solid(Rgba8888::rgb(255, 0, 0))
+                        .opacity(opa)
+                        .finish();
+                    draw_rect_with_stroke(surface, 10, fill, None);
                 })
                 .await;
             info!("rect_opa{}: {} us", name, start.elapsed().as_micros());
@@ -273,10 +237,8 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = LineDsc::new(Point::new(15, 62), Point::new(87, 62));
-                    dsc.width = width;
-                    dsc.color = Rgba8888::WHITE;
-                    draw_line(surface, &dsc);
+                    let stroke = StrokePlan::solid(width, Rgba8888::WHITE);
+                    draw_line_with_stroke(surface, Point::new(15, 62), Point::new(87, 62), stroke);
                 })
                 .await;
             info!("line_hor_w{}: {} us", width, start.elapsed().as_micros());
@@ -289,10 +251,8 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = LineDsc::new(Point::new(50, 30), Point::new(50, 95));
-                    dsc.width = width;
-                    dsc.color = Rgba8888::WHITE;
-                    draw_line(surface, &dsc);
+                    let stroke = StrokePlan::solid(width, Rgba8888::WHITE);
+                    draw_line_with_stroke(surface, Point::new(50, 30), Point::new(50, 95), stroke);
                 })
                 .await;
             info!("line_ver_w{}: {} us", width, start.elapsed().as_micros());
@@ -306,11 +266,12 @@ pub async fn gfx_bench_app(context: AppContext) {
             context
                 .draw(|surface| {
                     surface.clear(Rgba8888::rgba(0, 0, 0, 255));
-                    let mut dsc = LineDsc::new(Point::new(15, 62), Point::new(87, 62));
-                    dsc.width = 3;
-                    dsc.color = Rgba8888::WHITE;
-                    dsc.opa = opa;
-                    draw_line(surface, &dsc);
+                    let stroke = StrokeBuilder::new()
+                        .width(3)
+                        .color(Rgba8888::WHITE)
+                        .opacity(opa)
+                        .finish();
+                    draw_line_with_stroke(surface, Point::new(15, 62), Point::new(87, 62), stroke);
                 })
                 .await;
             info!("line_opa{}: {} us", name, start.elapsed().as_micros());

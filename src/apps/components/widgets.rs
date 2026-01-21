@@ -1,9 +1,10 @@
-use alloc::string::String;
-
 use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::label::{draw_label, measure_text_with_font, FontId, LabelDsc};
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, BorderSide, Gradient, OPA_COVER, RADIUS_CIRCLE};
+use rust_gfx::fluent::{
+    Axis, FillBuilder, FillPlan, FontHandle, GradientBuilder, GradientStop, Label,
+    LabelContentPlan, Radius, Rect, StrokeBuilder, StrokePlan,
+};
+use rust_gfx::primitives::label::{line_height_for_font, measure_text_with_font, FontId};
+use rust_gfx::types::{Area, BorderSide, Point, RADIUS_CIRCLE};
 
 use crate::system::ui::drawing_surface::DrawingSurface;
 
@@ -25,6 +26,41 @@ impl AccentColor {
             AccentColor::Dark => palette.accent_dark,
             AccentColor::Custom(color) => color,
         }
+    }
+}
+
+fn font_handle(font: FontId) -> FontHandle<'static> {
+    match font {
+        FontId::Montserrat8 => FontHandle::named("Montserrat", 8),
+        FontId::Montserrat10 => FontHandle::named("Montserrat", 10),
+        FontId::Montserrat12 => FontHandle::named("Montserrat", 12),
+        FontId::Montserrat14 => FontHandle::named("Montserrat", 14),
+        FontId::Montserrat16 => FontHandle::named("Montserrat", 16),
+        FontId::Montserrat18 => FontHandle::named("Montserrat", 18),
+        FontId::Montserrat20 => FontHandle::named("Montserrat", 20),
+        FontId::Montserrat22 => FontHandle::named("Montserrat", 22),
+        FontId::Montserrat24 => FontHandle::named("Montserrat", 24),
+        FontId::Montserrat26 => FontHandle::named("Montserrat", 26),
+        FontId::Montserrat28 => FontHandle::named("Montserrat", 28),
+        FontId::Montserrat30 => FontHandle::named("Montserrat", 30),
+        FontId::Montserrat32 => FontHandle::named("Montserrat", 32),
+        FontId::Montserrat34 => FontHandle::named("Montserrat", 34),
+        FontId::Montserrat36 => FontHandle::named("Montserrat", 36),
+        FontId::Montserrat38 => FontHandle::named("Montserrat", 38),
+        FontId::Montserrat40 => FontHandle::named("Montserrat", 40),
+        FontId::Montserrat42 => FontHandle::named("Montserrat", 42),
+        FontId::Montserrat44 => FontHandle::named("Montserrat", 44),
+        FontId::Montserrat46 => FontHandle::named("Montserrat", 46),
+        FontId::Montserrat48 => FontHandle::named("Montserrat", 48),
+    }
+}
+
+fn vertical_gradient_fill(top: Rgba8888, bottom: Rgba8888) -> FillPlan {
+    FillPlan::Gradient {
+        gradient: GradientBuilder::linear()
+            .axis(Axis::Vertical)
+            .stops([GradientStop::new(0.0, top), GradientStop::new(1.0, bottom)])
+            .finish(),
     }
 }
 
@@ -132,11 +168,12 @@ pub fn draw_background(
         return;
     }
 
-    let mut base = RectDsc::new();
-    base.bg_color = palette.background;
-    base.bg_opa = OPA_COVER;
     let base_area = Area::new(0, 0, width - 1, height - 1);
-    draw_rect(surface, &base, &base_area);
+    Rect::new()
+        .area(base_area)
+        .fill(FillPlan::solid(palette.background))
+        .finish()
+        .draw(surface);
 
     let inset = metrics.outer_padding / 2;
     if inset >= width / 2 || inset >= height / 2 {
@@ -144,15 +181,18 @@ pub fn draw_background(
     }
 
     // let container_area = Area::new(inset, inset, width - inset - 1, height - inset - 1);
-    // let mut container = RectDsc::new();
-    // container.bg_color = palette.container;
-    // container.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    // container.bg_opa = OPA_COVER;
-    // container.radius = metrics.section_radius + 2;
-    // container.border_width = 1;
-    // container.border_color = palette.outline;
-    // container.border_opa = OPA_COVER;
-    // draw_rect(surface, &container, &container_area);
+    // Rect::new()
+    //     .area(container_area)
+    //     .radius(Radius::uniform(metrics.section_radius + 2))
+    //     .fill(vertical_gradient_fill(palette.container, palette.container_alt))
+    //     .stroke(
+    //         StrokeBuilder::new()
+    //             .width(1)
+    //             .color(palette.outline)
+    //             .finish(),
+    //     )
+    //     .finish()
+    //     .draw(surface);
 }
 
 pub fn draw_status_bar(
@@ -169,12 +209,15 @@ pub fn draw_status_bar(
 
     let area = Area::new(left, top, left + width - 1, top + height - 1);
 
-    let mut bar = RectDsc::new();
-    bar.bg_color = palette.accent_dark;
-    bar.bg_grad = Gradient::vertical(palette.accent_dark, Rgba8888::rgba(34, 34, 34, 255));
-    bar.bg_opa = OPA_COVER;
-    bar.radius = metrics.section_radius.max(2);
-    draw_rect(surface, &bar, &area);
+    Rect::new()
+        .area(area)
+        .radius(Radius::uniform(metrics.section_radius.max(2)))
+        .fill(vertical_gradient_fill(
+            palette.accent_dark,
+            Rgba8888::rgba(34, 34, 34, 255),
+        ))
+        .finish()
+        .draw(surface);
 
     let text_y = top + metrics.section_padding;
     let mut cursor_x = left + metrics.section_padding;
@@ -229,12 +272,15 @@ pub fn draw_time_display(
 
     let area = Area::new(left, top, left + width - 1, top + total_height - 1);
 
-    let mut block = RectDsc::new();
-    block.bg_color = palette.container;
-    block.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    block.bg_opa = OPA_COVER;
-    block.radius = metrics.section_radius.max(3);
-    draw_rect(surface, &block, &area);
+    Rect::new()
+        .area(area)
+        .radius(Radius::uniform(metrics.section_radius.max(3)))
+        .fill(vertical_gradient_fill(
+            palette.container,
+            palette.container_alt,
+        ))
+        .finish()
+        .draw(surface);
 
     let time_width = measure_text_with_font(data.time_text, 0, fonts.display);
     let time_x = left + (width - time_width) / 2;
@@ -284,37 +330,42 @@ pub fn draw_card(
 
     let accent_color = config.accent.resolve(palette);
 
-    let mut shadow = RectDsc::new();
-    shadow.bg_color = palette.shadow;
-    shadow.bg_opa = OPA_COVER;
-    shadow.radius = metrics.section_radius;
     let shadow_area = Area::new(
         card_area.x1 + 2,
         card_area.y1 + 3,
         card_area.x2 + 2,
         card_area.y2 + 3,
     );
-    draw_rect(surface, &shadow, &shadow_area);
+    Rect::new()
+        .area(shadow_area)
+        .radius(Radius::uniform(metrics.section_radius))
+        .fill(FillPlan::solid(palette.shadow))
+        .finish()
+        .draw(surface);
 
-    let mut card = RectDsc::new();
-    card.bg_color = palette.container;
-    card.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    card.bg_opa = OPA_COVER;
-    card.radius = metrics.section_radius;
-    card.border_width = 1;
-    card.border_color = palette.outline;
-    card.border_opa = OPA_COVER;
-    draw_rect(surface, &card, &card_area);
+    Rect::new()
+        .area(card_area)
+        .radius(Radius::uniform(metrics.section_radius))
+        .fill(vertical_gradient_fill(
+            palette.container,
+            palette.container_alt,
+        ))
+        .stroke(StrokePlan::solid(1, palette.outline))
+        .finish()
+        .draw(surface);
 
     let accent_width = 4;
-    let mut accent = RectDsc::new();
-    accent.bg_opa = 0;
-    accent.border_width = accent_width;
-    accent.border_color = accent_color;
-    accent.border_opa = OPA_COVER;
-    accent.border_side = BorderSide::LEFT;
-    accent.radius = metrics.section_radius.max(3);
-    draw_rect(surface, &accent, &card_area);
+    let accent_stroke = StrokeBuilder::new()
+        .width(accent_width)
+        .color(accent_color)
+        .sides(BorderSide::LEFT)
+        .finish();
+    Rect::new()
+        .area(card_area)
+        .radius(Radius::uniform(metrics.section_radius.max(3)))
+        .stroke(accent_stroke)
+        .finish()
+        .draw(surface);
 
     let mut content_x = card_area.x1 + metrics.section_padding + accent_width;
     let content_right = card_area.x2 - metrics.section_padding;
@@ -391,14 +442,13 @@ pub fn draw_quick_actions(
         let y = frame.content_area.y1 + row * (cell_height + metrics.quick_gap);
 
         let tile_area = Area::new(x, y, x + cell_width - 1, y + cell_height - 1);
-        let mut tile = RectDsc::new();
-        tile.bg_color = palette.container_alt;
-        tile.bg_opa = OPA_COVER;
-        tile.border_width = 1;
-        tile.border_color = palette.outline;
-        tile.border_opa = OPA_COVER;
-        tile.radius = metrics.section_radius;
-        draw_rect(surface, &tile, &tile_area);
+        Rect::new()
+            .area(tile_area)
+            .radius(Radius::uniform(metrics.section_radius))
+            .fill(FillPlan::solid(palette.container_alt))
+            .stroke(StrokePlan::solid(1, palette.outline))
+            .finish()
+            .draw(surface);
 
         let icon_width = measure_text_with_font(action.icon, 0, fonts.display);
         let icon_x = x + (cell_width - icon_width) / 2;
@@ -449,12 +499,15 @@ pub fn draw_stat_card(
         let y = frame.content_area.y1 + row * (cell_height + metrics.quick_gap);
         let area = Area::new(x, y, x + cell_width - 1, y + cell_height - 1);
 
-        let mut card = RectDsc::new();
-        card.bg_color = palette.stat_gradient_start;
-        card.bg_grad = Gradient::vertical(palette.stat_gradient_start, palette.stat_gradient_end);
-        card.bg_opa = OPA_COVER;
-        card.radius = metrics.section_radius;
-        draw_rect(surface, &card, &area);
+        Rect::new()
+            .area(area)
+            .radius(Radius::uniform(metrics.section_radius))
+            .fill(vertical_gradient_fill(
+                palette.stat_gradient_start,
+                palette.stat_gradient_end,
+            ))
+            .finish()
+            .draw(surface);
 
         let value_width = measure_text_with_font(stat.value, 0, fonts.title);
         let value_x = x + 6;
@@ -513,11 +566,12 @@ pub fn draw_progress_bar(
         bar_y + bar_height - 1,
     );
 
-    let mut track = RectDsc::new();
-    track.bg_color = palette.text_secondary;
-    track.bg_opa = OPA_COVER;
-    track.radius = bar_height / 2;
-    draw_rect(surface, &track, &bar_area);
+    Rect::new()
+        .area(bar_area)
+        .radius(Radius::uniform(bar_height / 2))
+        .fill(FillPlan::solid(palette.text_secondary))
+        .finish()
+        .draw(surface);
 
     if config.percent > 0 {
         let fill_width =
@@ -529,11 +583,12 @@ pub fn draw_progress_bar(
                 bar_area.x1 + fill_width - 1,
                 bar_area.y2,
             );
-            let mut fill = RectDsc::new();
-            fill.bg_color = palette.accent_yellow;
-            fill.bg_opa = OPA_COVER;
-            fill.radius = bar_height / 2;
-            draw_rect(surface, &fill, &fill_area);
+            Rect::new()
+                .area(fill_area)
+                .radius(Radius::uniform(bar_height / 2))
+                .fill(FillPlan::solid(palette.accent_yellow))
+                .finish()
+                .draw(surface);
         }
     }
 }
@@ -566,21 +621,23 @@ pub fn draw_toggle(
         let switch_x = frame.content_area.x2 - switch_width;
         let switch_y = cursor_y + (fonts.line_height_body() - switch_height) / 2;
 
-        let mut track = RectDsc::new();
-        track.bg_color = if toggle.enabled {
-            palette.accent_yellow
-        } else {
-            palette.accent_light
-        };
-        track.bg_opa = OPA_COVER;
-        track.radius = switch_height / 2;
         let track_area = Area::new(
             switch_x,
             switch_y,
             switch_x + switch_width,
             switch_y + switch_height,
         );
-        draw_rect(surface, &track, &track_area);
+        let track_color = if toggle.enabled {
+            palette.accent_yellow
+        } else {
+            palette.accent_light
+        };
+        Rect::new()
+            .area(track_area)
+            .radius(Radius::uniform(switch_height / 2))
+            .fill(FillPlan::solid(track_color))
+            .finish()
+            .draw(surface);
 
         let knob_diameter = switch_height;
         let knob_x = if toggle.enabled {
@@ -594,11 +651,12 @@ pub fn draw_toggle(
             knob_x + knob_diameter,
             switch_y + knob_diameter,
         );
-        let mut knob = RectDsc::new();
-        knob.bg_color = palette.container;
-        knob.bg_opa = OPA_COVER;
-        knob.radius = RADIUS_CIRCLE;
-        draw_rect(surface, &knob, &knob_area);
+        Rect::new()
+            .area(knob_area)
+            .radius(Radius::uniform(RADIUS_CIRCLE))
+            .fill(FillPlan::solid(palette.container))
+            .finish()
+            .draw(surface);
 
         cursor_y += fonts.line_height_body() + metrics.section_padding / 2;
     }
@@ -617,15 +675,17 @@ pub fn draw_button(
     let height = metrics.button_height;
     let area = Area::new(left, top, left + width - 1, top + height - 1);
 
-    let mut button = RectDsc::new();
     match config.kind {
         ButtonKind::Primary => {
-            button.bg_color = palette.accent_dark;
-            button.bg_grad =
-                Gradient::vertical(palette.accent_dark, Rgba8888::rgba(20, 20, 20, 255));
-            button.bg_opa = OPA_COVER;
-            button.radius = metrics.section_radius;
-            draw_rect(surface, &button, &area);
+            Rect::new()
+                .area(area)
+                .radius(Radius::uniform(metrics.section_radius))
+                .fill(vertical_gradient_fill(
+                    palette.accent_dark,
+                    Rgba8888::rgba(20, 20, 20, 255),
+                ))
+                .finish()
+                .draw(surface);
             let text_y = area.y1 + (height - fonts.line_height_body()) / 2;
             let text_width = measure_text_with_font(config.text, 0, fonts.body);
             let text_x = area.x1 + (width - text_width) / 2;
@@ -639,13 +699,13 @@ pub fn draw_button(
             );
         }
         ButtonKind::Secondary => {
-            button.bg_color = palette.container;
-            button.bg_opa = OPA_COVER;
-            button.radius = metrics.section_radius;
-            button.border_width = 1;
-            button.border_color = palette.accent_dark;
-            button.border_opa = OPA_COVER;
-            draw_rect(surface, &button, &area);
+            Rect::new()
+                .area(area)
+                .radius(Radius::uniform(metrics.section_radius))
+                .fill(FillPlan::solid(palette.container))
+                .stroke(StrokePlan::solid(1, palette.accent_dark))
+                .finish()
+                .draw(surface);
             let text_y = area.y1 + (height - fonts.line_height_body()) / 2;
             let text_width = measure_text_with_font(config.text, 0, fonts.body);
             let text_x = area.x1 + (width - text_width) / 2;
@@ -666,25 +726,19 @@ pub fn draw_button(
                 area.x1 + (width + diameter) / 2,
                 area.y1 + diameter,
             );
-            button.bg_color = if matches!(config.kind, ButtonKind::Icon) {
+            let fill_color = if matches!(config.kind, ButtonKind::Icon) {
                 palette.accent_dark
             } else {
                 palette.container
             };
-            button.bg_opa = OPA_COVER;
-            button.radius = RADIUS_CIRCLE;
-            button.border_width = if matches!(config.kind, ButtonKind::IconSecondary) {
-                1
-            } else {
-                0
-            };
-            button.border_color = palette.outline;
-            button.border_opa = if button.border_width > 0 {
-                OPA_COVER
-            } else {
-                0
-            };
-            draw_rect(surface, &button, &size_area);
+            let mut rect = Rect::new()
+                .area(size_area)
+                .radius(Radius::uniform(RADIUS_CIRCLE))
+                .fill(FillPlan::solid(fill_color));
+            if matches!(config.kind, ButtonKind::IconSecondary) {
+                rect = rect.stroke(StrokePlan::solid(1, palette.outline));
+            }
+            rect.finish().draw(surface);
             let text_width = measure_text_with_font(config.text, 0, fonts.title);
             let text_x = size_area.x1 + (diameter - text_width) / 2;
             let text_y = size_area.y1 + (diameter - fonts.line_height_title()) / 2;
@@ -735,10 +789,11 @@ pub fn draw_list(
                 frame.content_area.x1 + width - 1,
                 y,
             );
-            let mut dsc = RectDsc::new();
-            dsc.bg_color = palette.outline;
-            dsc.bg_opa = 80;
-            draw_rect(surface, &dsc, &divider);
+            Rect::new()
+                .area(divider)
+                .fill(FillBuilder::solid(palette.outline).opacity(80).finish())
+                .finish()
+                .draw(surface);
             y += 2;
         }
     }
@@ -771,12 +826,13 @@ pub fn draw_badge(
         BadgeTone::Danger => (Rgba8888::rgba(255, 59, 48, 255), palette.container),
     };
 
-    let mut pill = RectDsc::new();
-    pill.bg_color = bg;
-    pill.bg_opa = OPA_COVER;
-    pill.radius = height / 2;
     let area = Area::new(x1, y1, x1 + width, y1 + height);
-    draw_rect(surface, &pill, &area);
+    Rect::new()
+        .area(area)
+        .radius(Radius::uniform(height / 2))
+        .fill(FillPlan::solid(bg))
+        .finish()
+        .draw(surface);
 
     let text_x = x1 + padding_x;
     let text_y = y1 + padding_y;
@@ -799,15 +855,13 @@ fn draw_battery(
     let y1 = bar_area.y1 + metrics.section_padding / 2;
     let y2 = y1 + height;
 
-    let mut outline = RectDsc::new();
-    outline.bg_color = palette.container;
-    outline.bg_opa = 0;
-    outline.border_width = 1;
-    outline.border_color = palette.container;
-    outline.border_opa = OPA_COVER;
-    outline.radius = 2;
     let area = Area::new(x1, y1, x2, y2);
-    draw_rect(surface, &outline, &area);
+    Rect::new()
+        .area(area)
+        .radius(Radius::uniform(2))
+        .stroke(StrokePlan::solid(1, palette.container))
+        .finish()
+        .draw(surface);
 
     let knob_width = width / 6;
     let knob_area = Area::new(
@@ -816,22 +870,24 @@ fn draw_battery(
         x2 + 1 + knob_width,
         y2 - height / 3,
     );
-    let mut knob = RectDsc::new();
-    knob.bg_color = palette.container;
-    knob.bg_opa = OPA_COVER;
-    knob.radius = 1;
-    draw_rect(surface, &knob, &knob_area);
+    Rect::new()
+        .area(knob_area)
+        .radius(Radius::uniform(1))
+        .fill(FillPlan::solid(palette.container))
+        .finish()
+        .draw(surface);
 
     let fill_percent = percent.min(100);
     if fill_percent > 0 {
         let inner_width = width - 3;
         let fill_width = (inner_width as u32 * fill_percent as u32 / 100) as i32;
         let fill_area = Area::new(x1 + 2, y1 + 2, x1 + 1 + fill_width, y2 - 2);
-        let mut fill = RectDsc::new();
-        fill.bg_color = palette.accent_yellow;
-        fill.bg_opa = OPA_COVER;
-        fill.radius = 1;
-        draw_rect(surface, &fill, &fill_area);
+        Rect::new()
+            .area(fill_area)
+            .radius(Radius::uniform(1))
+            .fill(FillPlan::solid(palette.accent_yellow))
+            .finish()
+            .draw(surface);
     }
 }
 
@@ -843,8 +899,6 @@ pub fn draw_text(
     y: i32,
     color: Rgba8888,
 ) -> i32 {
-    use rust_gfx::primitives::label::line_height_for_font;
-
     if text.is_empty() {
         return 0;
     }
@@ -855,10 +909,11 @@ pub fn draw_text(
     }
 
     let height = line_height_for_font(font);
-    let mut label = LabelDsc::new(String::from(text));
-    label.font = font;
-    label.color = color;
-    let area = Area::new(x, y, x + width - 1, y + height - 1);
-    draw_label(surface, &label, &area);
+    Label::new()
+        .origin(Point::new(x, y))
+        .content(LabelContentPlan::text(font_handle(font), text))
+        .color(color)
+        .finish()
+        .draw(surface);
     width
 }
