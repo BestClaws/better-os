@@ -19,8 +19,6 @@ target/
 
 /references/
 esp-hal/
-/embedded-graphics/
 /extras/tools/venv/
-/venv/
-
-/references/
+/.venv/
+/temp/

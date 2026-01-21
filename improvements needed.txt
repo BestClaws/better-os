@@ -1,2 +1,0 @@
-future scope:
-- Enable CCCD on the HTTP Status Code characteristic once trouble-host exposes notification support, so we can drop polling in the HPS service.
