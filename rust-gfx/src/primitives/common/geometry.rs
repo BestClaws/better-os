@@ -19,14 +19,23 @@ pub fn fill_rect_with_clipping<R: Rasterizer>(
     rect: &Area,
     color: Rgba8888,
     opa: Opa,
+    clip: Option<&Area>,
 ) {
     if opa == 0 || rect.width() <= 0 || rect.height() <= 0 {
         return;
     }
 
-    let Some(clamped) = clip_to_raster(rect, rast) else {
+    let Some(mut clamped) = clip_to_raster(rect, rast) else {
         return;
     };
+
+    if let Some(extra_clip) = clip {
+        if let Some(intersection) = clamped.intersect(extra_clip) {
+            clamped = intersection;
+        } else {
+            return;
+        }
+    }
 
     if clamped.width() <= 0 || clamped.height() <= 0 {
         return;

@@ -102,7 +102,11 @@ pub(crate) fn measure_text_for_font(font: &'static Font, text: &str, letter_spac
         prev_glyph_id = Some(info.glyph_id);
     }
 
-    if measured_any { width } else { 0 }
+    if measured_any {
+        width
+    } else {
+        0
+    }
 }
 
 #[inline]

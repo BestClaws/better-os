@@ -7,47 +7,168 @@ use alloc::{string::String, vec::Vec};
 use crate::color::Rgba8888;
 use crate::primitives::arc::{draw_arc, ArcDsc};
 use crate::primitives::blur::{draw_blur, BlurDsc};
-use crate::primitives::label::{draw_label, line_height_for_font, measure_text_with_font, FontId, LabelDsc, TextDecor};
+use crate::primitives::common::geometry::clip_to_raster;
+use crate::primitives::label::{
+    draw_label, line_height_for_font, measure_text_with_font, FontId, LabelDsc, TextDecor,
+};
 use crate::primitives::line::{draw_line, LineDsc};
 use crate::primitives::rectangle::{draw_rect, RectDsc};
 use crate::primitives::triangle::{draw_triangle, TriangleDsc};
 use crate::primitives::vector::{
-    draw_vector,
-    ColorStop as VectorColorStop,
-    LinearGradient as VectorLinearGradient,
-    VectorDsc,
-    VectorFill,
-    VectorPath,
-    VectorStroke,
-    FillRule as VectorFillRule,
-    StrokeCap as VectorStrokeCap,
-    StrokeJoin as VectorStrokeJoin,
-    FPoint,
+    draw_vector, ColorStop as VectorColorStop, FPoint, FillRule as VectorFillRule,
+    LinearGradient as VectorLinearGradient, StrokeCap as VectorStrokeCap,
+    StrokeJoin as VectorStrokeJoin, VectorDsc, VectorFill, VectorPath, VectorStroke,
 };
-use crate::types::{self, Area, Point, Opa, OPA_COVER, RADIUS_CIRCLE};
+use crate::types::{self, Area, Opa, Point, OPA_COVER, RADIUS_CIRCLE};
 use crate::Rasterizer;
 
 use micromath::F32Ext;
 
-use super::styles::{Axis, FillPlan, GradientKind, GradientPlan, OutlinePlan, ShadowPlan, StrokeJoinStyle, StrokePlan};
+use super::styles::{
+    Axis, FillPlan, GradientKind, GradientPlan, OutlinePlan, ShadowPlan, StrokeJoinStyle,
+    StrokePlan,
+};
 use super::types::{
-    Angle,
-    Angles,
-    DashPattern,
-    FontHandle,
-    LabelAlignment,
-    LabelContent,
-    LabelContentPlan,
-    LabelDecor,
-    LabelOpacity,
-    LabelSpacing,
-    LineCap,
-    LineCaps,
-    PathPlan,
-    Radius,
-    Vertices,
+    Angle, Angles, DashPattern, FontHandle, LabelAlignment, LabelContent, LabelContentPlan,
+    LabelDecor, LabelOpacity, LabelSpacing, LineCap, LineCaps, PathPlan, Radius, Vertices,
     WindingPlan,
 };
+
+struct FluentClipper<'a, R: Rasterizer> {
+    inner: &'a mut R,
+    clip: Area,
+}
+
+impl<'a, R: Rasterizer> FluentClipper<'a, R> {
+    fn new(inner: &'a mut R, clip: Area) -> Self {
+        Self { inner, clip }
+    }
+}
+
+impl<'a, R: Rasterizer> Rasterizer for FluentClipper<'a, R> {
+    fn width(&self) -> usize {
+        self.inner.width()
+    }
+
+    fn height(&self) -> usize {
+        self.inner.height()
+    }
+
+    fn buffer_mut(&mut self) -> &mut [u8] {
+        self.inner.buffer_mut()
+    }
+
+    fn clear(&mut self, color: Rgba8888) {
+        self.inner.clear(color);
+    }
+
+    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
+        if coverage == 0 {
+            return;
+        }
+        let clip = self.clip;
+        if x < clip.x1 || x > clip.x2 || y < clip.y1 || y > clip.y2 {
+            return;
+        }
+        self.inner.blend_pixel(x, y, color, coverage);
+    }
+
+    fn blend_hspan_with(
+        &mut self,
+        x: i32,
+        y: i32,
+        len: i32,
+        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+    ) {
+        if len <= 0 {
+            return;
+        }
+        let clip = self.clip;
+        if y < clip.y1 || y > clip.y2 {
+            return;
+        }
+        let count = len as usize;
+        let start = x;
+        let end = start + len - 1;
+        let clip_start = clip.x1.max(start);
+        let clip_end = clip.x2.min(end);
+        if clip_start > clip_end {
+            return;
+        }
+
+        for offset in 0..count {
+            let px = start + offset as i32;
+            if px < clip_start || px > clip_end {
+                continue;
+            }
+            let (color, coverage) = f(offset);
+            if coverage == 0 {
+                continue;
+            }
+            self.inner.blend_pixel(px, y, color, coverage);
+        }
+    }
+
+    fn blend_vspan_with(
+        &mut self,
+        x: i32,
+        y: i32,
+        len: i32,
+        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+    ) {
+        if len <= 0 {
+            return;
+        }
+        let clip = self.clip;
+        if x < clip.x1 || x > clip.x2 {
+            return;
+        }
+        let count = len as usize;
+        let start = y;
+        let end = start + len - 1;
+        let clip_start = clip.y1.max(start);
+        let clip_end = clip.y2.min(end);
+        if clip_start > clip_end {
+            return;
+        }
+
+        for offset in 0..count {
+            let py = start + offset as i32;
+            if py < clip_start || py > clip_end {
+                continue;
+            }
+            let (color, coverage) = f(offset);
+            if coverage == 0 {
+                continue;
+            }
+            self.inner.blend_pixel(x, py, color, coverage);
+        }
+    }
+
+    fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgba8888) {
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        let clip = self.clip;
+        let area = Area::new(x, y, x + w - 1, y + h - 1);
+        if let Some(int) = area.intersect(&clip) {
+            self.inner
+                .fill_rect(int.x1, int.y1, int.width(), int.height(), color);
+        }
+    }
+
+    fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Rgba8888) {
+        let clip = self.clip;
+        if x < clip.x1 || x > clip.x2 || y < clip.y1 || y > clip.y2 {
+            return;
+        }
+        self.inner.stamp_rgb_zero_alpha(x, y, color);
+    }
+
+    unsafe fn unsafe_buffer_mut(&mut self) -> &mut [u8] {
+        self.inner.unsafe_buffer_mut()
+    }
+}
 
 // -------------------------------------------------------------------------------------------------
 // Rectangle
@@ -145,10 +266,12 @@ impl RectPrimitive {
         apply_shadow(&mut dsc, self.shadow.as_ref());
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_rect(&mut clipped, &dsc, &self.area);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_rect(&mut clipped, &dsc, &self.area, Some(clamped));
+            }
         } else {
-            draw_rect(rast, &dsc, &self.area);
+            draw_rect(rast, &dsc, &self.area, None);
         }
     }
 }
@@ -254,10 +377,12 @@ impl CirclePrimitive {
         apply_shadow(&mut dsc, self.shadow.as_ref());
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_rect(&mut clipped, &dsc, &area);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_rect(&mut clipped, &dsc, &area, Some(clamped));
+            }
         } else {
-            draw_rect(rast, &dsc, &area);
+            draw_rect(rast, &dsc, &area, None);
         }
     }
 }
@@ -396,8 +521,10 @@ impl ArcPrimitive {
         }
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_arc(&mut clipped, &dsc);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_arc(&mut clipped, &dsc);
+            }
         } else {
             draw_arc(rast, &dsc);
         }
@@ -498,8 +625,10 @@ impl LinePrimitive {
 
         let stroke = match &self.stroke {
             Some(stroke)
-                if stroke.opacity > 0
-                    && (stroke.color.is_some() || stroke.gradient.is_some()) => stroke,
+                if stroke.opacity > 0 && (stroke.color.is_some() || stroke.gradient.is_some()) =>
+            {
+                stroke
+            }
             _ => return,
         };
 
@@ -524,8 +653,10 @@ impl LinePrimitive {
         }
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_line(&mut clipped, &dsc);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_line(&mut clipped, &dsc);
+            }
         } else {
             draw_line(rast, &dsc);
         }
@@ -623,9 +754,11 @@ impl TrianglePrimitive {
         }
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_triangle(&mut clipped, &dsc);
-            render_triangle_stroke(&mut clipped, points, self.stroke.as_ref());
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_triangle(&mut clipped, &dsc);
+                render_triangle_stroke(&mut clipped, points, self.stroke.as_ref());
+            }
         } else {
             draw_triangle(rast, &dsc);
             render_triangle_stroke(rast, points, self.stroke.as_ref());
@@ -633,8 +766,14 @@ impl TrianglePrimitive {
     }
 }
 
-fn render_triangle_stroke<R: Rasterizer>(rast: &mut R, points: &[Point], stroke: Option<&StrokePlan>) {
-    let Some(stroke) = stroke else { return; };
+fn render_triangle_stroke<R: Rasterizer>(
+    rast: &mut R,
+    points: &[Point],
+    stroke: Option<&StrokePlan>,
+) {
+    let Some(stroke) = stroke else {
+        return;
+    };
     if stroke.width <= 0 || stroke.opacity == 0 {
         return;
     }
@@ -799,8 +938,10 @@ impl LabelPrimitive {
         dsc.font = font_id;
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_label(&mut clipped, &dsc, &area);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_label(&mut clipped, &dsc, &area);
+            }
         } else {
             draw_label(rast, &dsc, &area);
         }
@@ -879,8 +1020,10 @@ impl BlurPrimitive {
         dsc.corner_radius = self.corner_radius;
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_blur(&mut clipped, &dsc, &self.area);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_blur(&mut clipped, &dsc, &self.area);
+            }
         } else {
             draw_blur(rast, &dsc, &self.area);
         }
@@ -985,8 +1128,10 @@ impl VectorPrimitive {
         dsc.stroke = convert_vector_stroke(self.stroke.as_ref());
 
         if let Some(clip) = self.clip {
-            let mut clipped = ClipRasterizer::new(rast, clip);
-            draw_vector(&mut clipped, &dsc);
+            if let Some(clamped) = clip_to_raster(&clip, &*rast) {
+                let mut clipped = FluentClipper::new(rast, clamped);
+                draw_vector(&mut clipped, &dsc);
+            }
         } else {
             draw_vector(rast, &dsc);
         }
@@ -1067,8 +1212,7 @@ fn apply_shadow(dsc: &mut RectDsc, shadow: Option<&ShadowPlan>) {
 }
 
 fn fallback_gradient_color(plan: Option<&GradientPlan>) -> Rgba8888 {
-    plan
-        .and_then(|grad| grad.stops().first().copied())
+    plan.and_then(|grad| grad.stops().first().copied())
         .map(|stop| stop.color)
         .unwrap_or(Rgba8888::WHITE)
 }
@@ -1087,7 +1231,9 @@ fn convert_gradient(plan: &GradientPlan) -> types::Gradient {
     gradient.dir = dir;
     let mut count = 0;
     for stop in plan.stops().iter().take(types::MAX_GRADIENT_STOPS) {
-        let frac = (stop.position.clamp(0.0, 1.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+        let frac = (stop.position.clamp(0.0, 1.0) * 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8;
         gradient.stops[count] = types::GradStop {
             color: stop.color,
             opa: stop.opacity,
@@ -1216,19 +1362,17 @@ fn build_vector_paths(tokens: &[SvgToken]) -> Result<Vec<VectorPath>, ()> {
 
     while idx < tokens.len() {
         match tokens[idx] {
-            SvgToken::Command(cmd) => {
-                match cmd {
-                    'Z' => {
-                        current.close();
-                        current_cmd = None;
-                        idx += 1;
-                    }
-                    _ => {
-                        current_cmd = Some(cmd);
-                        idx += 1;
-                    }
+            SvgToken::Command(cmd) => match cmd {
+                'Z' => {
+                    current.close();
+                    current_cmd = None;
+                    idx += 1;
                 }
-            }
+                _ => {
+                    current_cmd = Some(cmd);
+                    idx += 1;
+                }
+            },
             SvgToken::Number(_) => {
                 let cmd = current_cmd.ok_or(())?;
                 match cmd {
@@ -1250,7 +1394,8 @@ fn build_vector_paths(tokens: &[SvgToken]) -> Result<Vec<VectorPath>, ()> {
                     'C' => {
                         let (c1x, c1y, consumed1) = take_coord_pair(tokens, idx)?;
                         let (c2x, c2y, consumed2) = take_coord_pair(tokens, idx + consumed1)?;
-                        let (px, py, consumed3) = take_coord_pair(tokens, idx + consumed1 + consumed2)?;
+                        let (px, py, consumed3) =
+                            take_coord_pair(tokens, idx + consumed1 + consumed2)?;
                         current.cubic_to(
                             FPoint::new(c1x, c1y),
                             FPoint::new(c2x, c2y),
@@ -1306,7 +1451,9 @@ fn convert_vector_fill(fill: Option<&FillPlan>, winding: WindingPlan) -> Option<
                 })
                 .collect();
             if stops.len() < 2 {
-                return stops.first().map(|stop| VectorFill::solid(stop.color, stop.opa));
+                return stops
+                    .first()
+                    .map(|stop| VectorFill::solid(stop.color, stop.opa));
             }
             let start = gradient
                 .start_point
@@ -1322,11 +1469,7 @@ fn convert_vector_fill(fill: Option<&FillPlan>, winding: WindingPlan) -> Option<
                     Axis::Horizontal => FPoint::new(1.0, 0.0),
                     Axis::Vertical => FPoint::new(0.0, 1.0),
                 });
-            let gradient = VectorLinearGradient {
-                start,
-                end,
-                stops,
-            };
+            let gradient = VectorLinearGradient { start, end, stops };
             let rule = match winding {
                 WindingPlan::NonZero => VectorFillRule::NonZero,
                 WindingPlan::EvenOdd => VectorFillRule::EvenOdd,
@@ -1373,11 +1516,7 @@ fn convert_vector_stroke(stroke: Option<&StrokePlan>) -> Option<VectorStroke> {
                 Axis::Horizontal => FPoint::new(1.0, 0.0),
                 Axis::Vertical => FPoint::new(0.0, 1.0),
             });
-        let gradient = VectorLinearGradient {
-            start,
-            end,
-            stops,
-        };
+        let gradient = VectorLinearGradient { start, end, stops };
         VectorStroke::with_gradient(stroke.width as f32, gradient, stroke.opacity)
     } else {
         return None;
@@ -1413,140 +1552,3 @@ fn convert_vector_stroke(stroke: Option<&StrokePlan>) -> Option<VectorStroke> {
 }
 
 // -------------------------------------------------------------------------------------------------
-// Clip rasterizer wrapper
-
-struct ClipRasterizer<'a, R: Rasterizer> {
-    inner: &'a mut R,
-    clip: Option<Area>,
-}
-
-impl<'a, R: Rasterizer> ClipRasterizer<'a, R> {
-    fn new(inner: &'a mut R, clip: Area) -> Self {
-        let surface = Area::new(0, 0, inner.width_i32() - 1, inner.height_i32() - 1);
-        Self {
-            inner,
-            clip: clip.intersect(&surface),
-        }
-    }
-}
-
-impl<'a, R: Rasterizer> Rasterizer for ClipRasterizer<'a, R> {
-    fn width(&self) -> usize {
-        self.inner.width()
-    }
-
-    fn height(&self) -> usize {
-        self.inner.height()
-    }
-
-    fn buffer_mut(&mut self) -> &mut [u8] {
-        self.inner.buffer_mut()
-    }
-
-    fn clear(&mut self, color: Rgba8888) {
-        self.inner.clear(color);
-    }
-
-    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
-        if coverage == 0 {
-            return;
-        }
-        let Some(area) = self.clip else { return; };
-        if x < area.x1 || x > area.x2 || y < area.y1 || y > area.y2 {
-            return;
-        }
-        self.inner.blend_pixel(x, y, color, coverage);
-    }
-
-    fn blend_hspan_with(
-        &mut self,
-        x: i32,
-        y: i32,
-        len: i32,
-        mut f: impl FnMut(usize) -> (Rgba8888, u8),
-    ) {
-        if len <= 0 {
-            return;
-        }
-        let Some(area) = self.clip else { return; };
-        if y < area.y1 || y > area.y2 {
-            return;
-        }
-        for offset in 0..len {
-            let px = x + offset;
-            if px < area.x1 || px > area.x2 {
-                continue;
-            }
-            let (color, coverage) = f(offset as usize);
-            self.inner.blend_pixel(px, y, color, coverage);
-        }
-    }
-
-    fn blend_vspan_with(
-        &mut self,
-        x: i32,
-        y: i32,
-        len: i32,
-        mut f: impl FnMut(usize) -> (Rgba8888, u8),
-    ) {
-        if len <= 0 {
-            return;
-        }
-        let Some(area) = self.clip else { return; };
-        if x < area.x1 || x > area.x2 {
-            return;
-        }
-        for offset in 0..len {
-            let py = y + offset;
-            if py < area.y1 || py > area.y2 {
-                continue;
-            }
-            let (color, coverage) = f(offset as usize);
-            self.inner.blend_pixel(x, py, color, coverage);
-        }
-    }
-
-    fn blend_hspan(&mut self, x: i32, y: i32, colors: &[Rgba8888], coverages: Option<&[u8]>) {
-        let Some(area) = self.clip else { return; };
-        if y < area.y1 || y > area.y2 {
-            return;
-        }
-        for (index, &color) in colors.iter().enumerate() {
-            let px = x + index as i32;
-            if px < area.x1 || px > area.x2 {
-                continue;
-            }
-            let coverage = coverages
-                .and_then(|cov| cov.get(index))
-                .copied()
-                .unwrap_or(OPA_COVER);
-            self.inner.blend_pixel(px, y, color, coverage);
-        }
-    }
-
-    fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgba8888) {
-        let Some(area) = self.clip else { return; };
-        let x2 = x + w - 1;
-        let y2 = y + h - 1;
-        let min_x = x.max(area.x1);
-        let min_y = y.max(area.y1);
-        let max_x = x2.min(area.x2);
-        let max_y = y2.min(area.y2);
-        if min_x > max_x || min_y > max_y {
-            return;
-        }
-        for row in min_y..=max_y {
-            for col in min_x..=max_x {
-                self.inner.blend_pixel(col, row, color, OPA_COVER);
-            }
-        }
-    }
-
-    fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Rgba8888) {
-        let Some(area) = self.clip else { return; };
-        if x < area.x1 || x > area.x2 || y < area.y1 || y > area.y2 {
-            return;
-        }
-        self.inner.stamp_rgb_zero_alpha(x, y, color);
-    }
-}

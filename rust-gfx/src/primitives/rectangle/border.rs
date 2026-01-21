@@ -13,7 +13,12 @@ use crate::primitives::common::{clip_to_raster, effective_radius, fill_rect_with
 use super::descriptor::RectDsc;
 
 /// Draw the border portion of a rectangle using the supplied descriptor.
-pub fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+pub fn draw_border<R: Rasterizer>(
+    rast: &mut R,
+    dsc: &RectDsc,
+    area: &Area,
+    clip: Option<Area>,
+) {
     if dsc.border_opa == 0 || dsc.border_width <= 0 || dsc.border_side == BorderSide::NONE {
         return;
     }
@@ -26,6 +31,7 @@ pub fn draw_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         dsc.border_side,
         dsc.border_color,
         dsc.border_opa,
+        clip.as_ref(),
     );
 }
 
@@ -38,6 +44,7 @@ pub fn draw_stroke<R: Rasterizer>(
     sides: BorderSide,
     color: Rgba8888,
     opa: Opa,
+    clip: Option<&Area>,
 ) {
     if width <= 0 || opa == 0 || sides == BorderSide::NONE {
         return;
@@ -58,9 +65,9 @@ pub fn draw_stroke<R: Rasterizer>(
     let rin = (rout - bw).max(0);
 
     if rout == 0 && rin == 0 {
-        draw_simple_stroke(rast, &inner, outer, sides, color, opa);
+        draw_simple_stroke(rast, &inner, outer, sides, color, opa, clip);
     } else {
-        draw_rounded_stroke(rast, outer, &inner, rout, rin, sides, color, opa);
+        draw_rounded_stroke(rast, outer, &inner, rout, rin, sides, color, opa, clip);
     }
 }
 
@@ -71,6 +78,7 @@ fn draw_simple_stroke<R: Rasterizer>(
     sides: BorderSide,
     color: Rgba8888,
     opa: Opa,
+    clip: Option<&Area>,
 ) {
     let top_side = outer.y1 <= inner.y1;
     let bottom_side = outer.y2 >= inner.y2;
@@ -79,26 +87,26 @@ fn draw_simple_stroke<R: Rasterizer>(
 
     if top_side && sides.has_top() {
         let top = Area::new(outer.x1, outer.y1, outer.x2, inner.y1 - 1);
-        fill_rect_with_clipping(rast, &top, color, opa);
+        fill_rect_with_clipping(rast, &top, color, opa, clip);
     }
 
     if bottom_side && sides.has_bottom() {
         let bottom = Area::new(outer.x1, inner.y2 + 1, outer.x2, outer.y2);
-        fill_rect_with_clipping(rast, &bottom, color, opa);
+        fill_rect_with_clipping(rast, &bottom, color, opa, clip);
     }
 
     if left_side && sides.has_left() {
         let y_start = if top_side { inner.y1 } else { outer.y1 };
         let y_end = if bottom_side { inner.y2 } else { outer.y2 };
         let left = Area::new(outer.x1, y_start, inner.x1 - 1, y_end);
-        fill_rect_with_clipping(rast, &left, color, opa);
+        fill_rect_with_clipping(rast, &left, color, opa, clip);
     }
 
     if right_side && sides.has_right() {
         let y_start = if top_side { inner.y1 } else { outer.y1 };
         let y_end = if bottom_side { inner.y2 } else { outer.y2 };
         let right = Area::new(inner.x2 + 1, y_start, outer.x2, y_end);
-        fill_rect_with_clipping(rast, &right, color, opa);
+        fill_rect_with_clipping(rast, &right, color, opa, clip);
     }
 }
 
@@ -111,12 +119,22 @@ fn draw_rounded_stroke<R: Rasterizer>(
     sides: BorderSide,
     color: Rgba8888,
     opa: Opa,
+    clip: Option<&Area>,
 ) {
     const SPLIT_LIMIT: i32 = 50;
 
-    let Some(draw_area) = clip_to_raster(outer, rast) else {
+    let Some(mut draw_area) = clip_to_raster(outer, rast) else {
         return;
     };
+
+    if let Some(extra_clip) = clip {
+        if let Some(intersection) = draw_area.intersect(extra_clip) {
+            draw_area = intersection;
+        } else {
+            return;
+        }
+    }
+
     if draw_area.width() <= 0 || draw_area.height() <= 0 {
         return;
     }
@@ -138,25 +156,25 @@ fn draw_rounded_stroke<R: Rasterizer>(
 
     if top_side && core.x1 <= core.x2 {
         let top = Area::new(core.x1, outer.y1, core.x2, inner.y1 - 1);
-        fill_rect_with_clipping(rast, &top, color, opa);
+        fill_rect_with_clipping(rast, &top, color, opa, clip);
     }
 
     if bottom_side && core.x1 <= core.x2 {
         let bottom = Area::new(core.x1, inner.y2 + 1, core.x2, outer.y2);
-        fill_rect_with_clipping(rast, &bottom, color, opa);
+        fill_rect_with_clipping(rast, &bottom, color, opa, clip);
     }
 
     if inner.x1 >= inner.x2 && left_side && right_side {
         let middle = Area::new(outer.x1, core.y1, outer.x2, core.y2);
-        fill_rect_with_clipping(rast, &middle, color, opa);
+        fill_rect_with_clipping(rast, &middle, color, opa, clip);
     } else {
         if left_side {
             let left = Area::new(outer.x1, core.y1, inner.x1 - 1, core.y2);
-            fill_rect_with_clipping(rast, &left, color, opa);
+            fill_rect_with_clipping(rast, &left, color, opa, clip);
         }
         if right_side {
             let right = Area::new(inner.x2 + 1, core.y1, outer.x2, core.y2);
-            fill_rect_with_clipping(rast, &right, color, opa);
+            fill_rect_with_clipping(rast, &right, color, opa, clip);
         }
     }
 

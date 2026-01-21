@@ -1,5 +1,5 @@
-use crate::types::{Area, Opa};
 use super::{mask_mix, MaskResult};
+use crate::types::{Area, Opa};
 
 /// Opacity map mask descriptor (port of lv_draw_sw_mask_map_param_t).
 #[derive(Clone, Debug)]

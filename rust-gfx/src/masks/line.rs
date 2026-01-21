@@ -1,6 +1,6 @@
+use super::{mask_mix, MaskResult};
 use crate::math::{trigo_cos, trigo_sin};
 use crate::types::{Opa, Point};
-use super::{mask_mix, MaskResult};
 use core::mem;
 
 /// Which side of the line to keep when masking.

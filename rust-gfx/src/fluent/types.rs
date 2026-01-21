@@ -50,7 +50,12 @@ pub enum Radius {
     /// Uniform radius for all corners or circular primitives.
     Uniform(i32),
     /// Per-corner radius values (top-left, top-right, bottom-right, bottom-left).
-    Corners { top_left: i32, top_right: i32, bottom_right: i32, bottom_left: i32 },
+    Corners {
+        top_left: i32,
+        top_right: i32,
+        bottom_right: i32,
+        bottom_left: i32,
+    },
     /// Inner/outer radius pair for arc primitives.
     Ring { inner: i32, outer: i32 },
 }
@@ -329,7 +334,10 @@ impl<'a> FontHandle<'a> {
 /// Prepared label content selection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LabelContentPlan<'a> {
-    Text { font: FontHandle<'a>, text: Cow<'a, str> },
+    Text {
+        font: FontHandle<'a>,
+        text: Cow<'a, str>,
+    },
 }
 
 impl<'a> LabelContentPlan<'a> {
@@ -356,7 +364,10 @@ impl<'a> LabelContentPlan<'a> {
 /// Owned variant used internally after `finish()`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LabelContent {
-    Text { font: FontHandle<'static>, text: String },
+    Text {
+        font: FontHandle<'static>,
+        text: String,
+    },
 }
 
 impl<'a> FontHandle<'a> {

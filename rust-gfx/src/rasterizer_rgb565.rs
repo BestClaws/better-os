@@ -24,7 +24,10 @@ impl Rgb565Rasterizer {
 
     #[inline]
     fn pixel_index(&self, x: i32, y: i32) -> usize {
-        debug_assert!(x >= 0 && y >= 0, "pixel_index called with negative coordinate");
+        debug_assert!(
+            x >= 0 && y >= 0,
+            "pixel_index called with negative coordinate"
+        );
         ((y as usize) * self.width + x as usize) * 2
     }
 
@@ -37,7 +40,6 @@ impl Rgb565Rasterizer {
     pub fn buffer_mut(&mut self) -> &mut [u8] {
         &mut self.buffer
     }
-
 }
 
 impl Rasterizer for Rgb565Rasterizer {
@@ -83,7 +85,9 @@ impl Rasterizer for Rgb565Rasterizer {
         if colors.is_empty() {
             return;
         }
-        let len = colors.len().min(coverages.map(|c| c.len()).unwrap_or(colors.len())) as i32;
+        let len = colors
+            .len()
+            .min(coverages.map(|c| c.len()).unwrap_or(colors.len())) as i32;
         self.blend_hspan_with(x, y, len, |i| {
             let coverage = coverages.and_then(|cov| cov.get(i)).copied().unwrap_or(255);
             (colors[i], coverage)

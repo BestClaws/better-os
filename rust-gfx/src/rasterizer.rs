@@ -14,7 +14,6 @@ pub trait Rasterizer {
     /// Clear entire surface with a solid color.
     fn clear(&mut self, color: Rgba8888);
 
-
     /// Width of the rasterizer in signed coordinates.
     #[inline]
     fn width_i32(&self) -> i32 {
@@ -70,10 +69,7 @@ pub trait Rasterizer {
         }
         let len = colors.len() as i32;
         self.blend_hspan_with(x, y, len, |i| {
-            let coverage = coverages
-                .and_then(|c| c.get(i))
-                .copied()
-                .unwrap_or(255);
+            let coverage = coverages.and_then(|c| c.get(i)).copied().unwrap_or(255);
             (colors[i], coverage)
         });
     }
@@ -126,7 +122,10 @@ pub trait Rasterizer {
         }
         self.blend_hspan_with(x, y, coverages.len() as i32, |i| {
             let coverage = *coverages.get(i).unwrap_or(&0);
-            debug_assert!(i < coverages.len(), "blend_solid_hspan: out of bounds coverage index");
+            debug_assert!(
+                i < coverages.len(),
+                "blend_solid_hspan: out of bounds coverage index"
+            );
             (color, coverage)
         });
     }

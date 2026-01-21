@@ -15,8 +15,8 @@ pub mod font;
 mod layout;
 mod metrics;
 
-pub use font::FontId;
 pub use crate::types::TextDecor;
+pub use font::FontId;
 pub use metrics::{line_height, line_height_for_font, measure_text, measure_text_with_font};
 
 /// Descriptor for drawing a label.

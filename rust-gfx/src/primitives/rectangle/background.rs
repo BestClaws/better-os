@@ -27,14 +27,27 @@ pub fn background_fill_area(area: &Area, dsc: &RectDsc) -> Area {
 }
 
 /// Fill the background, honouring gradients and corner radii.
-pub fn draw_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+pub fn draw_background<R: Rasterizer>(
+    rast: &mut R,
+    dsc: &RectDsc,
+    area: &Area,
+    clip: Option<Area>,
+) {
     if area.width() <= 0 || area.height() <= 0 {
         return;
     }
 
-    let Some(clipped) = clip_to_raster(area, rast) else {
+    let Some(mut clipped) = clip_to_raster(area, rast) else {
         return;
     };
+
+    if let Some(clip_area) = clip {
+        if let Some(intersection) = clipped.intersect(&clip_area) {
+            clipped = intersection;
+        } else {
+            return;
+        }
+    }
 
     let mut radius = effective_radius(area, dsc.radius).max(0);
     let has_radius = radius > 0;

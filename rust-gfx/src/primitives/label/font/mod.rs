@@ -149,8 +149,8 @@ pub fn kerning(font: &'static Font, left_id: u16, right_id: u16) -> i32 {
         return 0;
     }
 
-    let pair_index = (left_class as usize - 1) * k.right_class_cnt as usize
-        + (right_class as usize - 1);
+    let pair_index =
+        (left_class as usize - 1) * k.right_class_cnt as usize + (right_class as usize - 1);
     let raw = k.class_pair_values.get(pair_index).copied().unwrap_or(0) as i32;
 
     if raw == 0 {

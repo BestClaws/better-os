@@ -1,5 +1,5 @@
-use crate::types::{Opa, Point};
 use super::{LineMask, LineSide, MaskResult};
+use crate::types::{Opa, Point};
 
 /// Angle mask descriptor (port of lv_draw_sw_mask_angle_param_t).
 #[derive(Clone, Debug)]
@@ -139,7 +139,10 @@ impl AngleMask {
             } else {
                 MaskResult::Changed
             }
-        } else if self.start_angle > 180 && self.end_angle > 180 && self.start_angle > self.end_angle {
+        } else if self.start_angle > 180
+            && self.end_angle > 180
+            && self.start_angle > self.end_angle
+        {
             if abs_y > self.vertex.y {
                 return MaskResult::FullCover;
             }
@@ -159,7 +162,8 @@ impl AngleMask {
 
             let mut res1 = MaskResult::FullCover;
             if tmp > 0 {
-                res1 = apply_line_segment(&self.end_line, &mut mask_buf[..tmp as usize], abs_x, abs_y);
+                res1 =
+                    apply_line_segment(&self.end_line, &mut mask_buf[..tmp as usize], abs_x, abs_y);
                 if res1 == MaskResult::Transparent {
                     mask_buf[..tmp as usize].fill(0);
                 }

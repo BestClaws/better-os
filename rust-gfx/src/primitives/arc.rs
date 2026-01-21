@@ -4,8 +4,8 @@ use alloc::vec::Vec;
 
 use crate::color::Rgba8888;
 use crate::masks::{apply_masks, AngleMask, MaskRef, MaskResult, RadiusMask};
-use crate::primitives::common::MaskBuffer;
 use crate::math::{trigo_cos, trigo_sin};
+use crate::primitives::common::MaskBuffer;
 use crate::types::*;
 use crate::Rasterizer;
 
@@ -158,8 +158,8 @@ where
             continue;
         }
 
-        let full_cover_row = mask_res == MaskResult::FullCover
-            && mask_slice.iter().all(|&mask| mask == OPA_COVER);
+        let full_cover_row =
+            mask_res == MaskResult::FullCover && mask_slice.iter().all(|&mask| mask == OPA_COVER);
 
         if full_cover_row {
             for x in 0..row_width {

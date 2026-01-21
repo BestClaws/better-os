@@ -22,14 +22,27 @@ pub fn shadow_bounds(area: &Area, dsc: &RectDsc) -> Area {
 }
 
 /// Paint the drop shadow around the rectangle.
-pub fn draw_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+pub fn draw_shadow<R: Rasterizer>(
+    rast: &mut R,
+    dsc: &RectDsc,
+    area: &Area,
+    clip: Option<Area>,
+) {
     if dsc.shadow_width <= 0 || dsc.shadow_opa == 0 {
         return;
     }
 
-    let Some(clipped) = clip_to_raster(&shadow_bounds(area, dsc), rast) else {
+    let Some(mut clipped) = clip_to_raster(&shadow_bounds(area, dsc), rast) else {
         return;
     };
+
+    if let Some(clip_area) = clip {
+        if let Some(intersection) = clipped.intersect(&clip_area) {
+            clipped = intersection;
+        } else {
+            return;
+        }
+    }
 
     if clipped.width() <= 0 || clipped.height() <= 0 {
         return;

@@ -11,7 +11,12 @@ pub fn outline_bounds(area: &Area, dsc: &RectDsc) -> Area {
 }
 
 /// Render the outline by reusing the border stroke machinery.
-pub fn draw_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+pub fn draw_outline<R: Rasterizer>(
+    rast: &mut R,
+    dsc: &RectDsc,
+    area: &Area,
+    clip: Option<Area>,
+) {
     if dsc.outline_opa == 0 || dsc.outline_width <= 0 {
         return;
     }
@@ -32,5 +37,6 @@ pub fn draw_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         BorderSide::FULL,
         dsc.outline_color,
         dsc.outline_opa,
+        clip.as_ref(),
     );
 }

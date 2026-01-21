@@ -195,7 +195,6 @@ where
             cur_x_index += skip;
         }
     }
-
 }
 
 fn init_sum(

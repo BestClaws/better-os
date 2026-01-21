@@ -1,5 +1,4 @@
 /// Line drawing matching LVGL's lv_draw_line
-
 use crate::color::Rgba8888;
 use crate::masks::{LineMask, LineSide, MaskRef, MaskResult};
 use crate::primitives::common::{apply_scanline_masks, MaskBuffer};
@@ -103,7 +102,7 @@ where
                 dsc.p1.x + radius - r_corr,
                 dsc.p1.y + radius - r_corr,
             );
-            draw_rect(rast, &cap_dsc, &area);
+            draw_rect(rast, &cap_dsc, &area, None);
         }
 
         if dsc.round_end && dsc.width > 0 {
@@ -113,7 +112,7 @@ where
                 dsc.p2.x + radius - r_corr,
                 dsc.p2.y + radius - r_corr,
             );
-            draw_rect(rast, &cap_dsc, &area);
+            draw_rect(rast, &cap_dsc, &area, None);
         }
     }
 }
@@ -359,8 +358,8 @@ where
             continue;
         }
 
-        let full_cover = result == MaskResult::FullCover
-            && mask_values.iter().all(|&mask| mask == OPA_COVER);
+        let full_cover =
+            result == MaskResult::FullCover && mask_values.iter().all(|&mask| mask == OPA_COVER);
 
         if full_cover {
             rast.blend_hspan_with(

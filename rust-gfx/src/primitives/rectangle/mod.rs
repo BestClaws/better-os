@@ -15,7 +15,7 @@ use outline::draw_outline;
 use shadow::draw_shadow;
 
 /// Render a rectangle following LVGL's draw order: shadow → outline → fill → border.
-pub fn draw_rect<R>(rast: &mut R, dsc: &RectDsc, coords: &Area)
+pub fn draw_rect<R>(rast: &mut R, dsc: &RectDsc, coords: &Area, clip: Option<Area>)
 where
     R: Rasterizer,
 {
@@ -24,19 +24,22 @@ where
     }
 
     if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
-        draw_shadow(rast, dsc, coords);
+        draw_shadow(rast, dsc, coords, clip);
     }
 
     if dsc.bg_opa > 0 {
         let bg_area = background_fill_area(coords, dsc);
-        draw_background(rast, dsc, &bg_area);
+        draw_background(rast, dsc, &bg_area, clip);
     }
 
-    if dsc.border_opa > 0 && dsc.border_width > 0 && dsc.border_side != crate::types::BorderSide::NONE {
-        draw_border(rast, dsc, coords);
+    if dsc.border_opa > 0
+        && dsc.border_width > 0
+        && dsc.border_side != crate::types::BorderSide::NONE
+    {
+        draw_border(rast, dsc, coords, clip);
     }
 
     if dsc.outline_opa > 0 && dsc.outline_width > 0 {
-        draw_outline(rast, dsc, coords);
+        draw_outline(rast, dsc, coords, clip);
     }
 }

@@ -131,8 +131,7 @@ fn render_mesh<R>(
     ambient: f32,
     diffuse: f32,
     specular: f32,
-)
-where
+) where
     R: Rasterizer,
 {
     if mesh.vertices.is_empty() || mesh.indices.len() < 3 {
@@ -241,8 +240,7 @@ fn rasterize_triangle<R>(
     ambient: f32,
     diffuse: f32,
     specular: f32,
-)
-where
+) where
     R: Rasterizer,
 {
     let width = rasterizer.width() as i32;
@@ -324,7 +322,6 @@ where
 
                     color = lit_color;
                     coverage = 255;
-
                 }
             }
 
@@ -402,8 +399,7 @@ fn draw_wireframe_triangle<R>(
     v1: &PreparedVertex,
     v2: &PreparedVertex,
     color: Rgba8888,
-)
-where
+) where
     R: Rasterizer,
 {
     draw_line(rasterizer, &v0.screen, &v1.screen, color);

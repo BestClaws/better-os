@@ -129,7 +129,7 @@ pub async fn arrow_app(context: AppContext) {
                 viewport_bg.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
                 viewport_bg.bg_opa = OPA_COVER;
                 viewport_bg.radius = metrics.section_radius;
-                draw_rect(surface, &viewport_bg, &viewport_area);
+                draw_rect(surface, &viewport_bg, &viewport_area, None);
 
                 let mut accent = RectDsc::new();
                 accent.bg_color = palette.accent_yellow;
@@ -142,7 +142,7 @@ pub async fn arrow_app(context: AppContext) {
                     (viewport_area.x1 + accent_width).min(viewport_area.x2),
                     viewport_area.y2,
                 );
-                draw_rect(surface, &accent, &accent_area);
+                draw_rect(surface, &accent, &accent_area, None);
 
                 let width = surface.width() as f32;
                 let height = surface.height() as f32;
@@ -160,7 +160,7 @@ pub async fn arrow_app(context: AppContext) {
 
                 render_scene(surface, &scene, &camera, &render_options);
 
-                draw_rect(surface, &accent, &accent_area);
+                draw_rect(surface, &accent, &accent_area, None);
                 draw_status_bar(surface, &metrics, fonts, palette, status_data);
 
                 let overlay_font = fonts.small;

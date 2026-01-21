@@ -1,5 +1,5 @@
-use crate::types::{Area, Opa};
 use super::{mask_mix, MaskResult};
+use crate::types::{Area, Opa};
 
 /// Vertical fade mask descriptor (port of lv_draw_sw_mask_fade_param_t).
 #[derive(Clone, Debug)]

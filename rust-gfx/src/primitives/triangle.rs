@@ -82,9 +82,8 @@ where
         return;
     };
 
-    let right_side = ((p[1].x - p[0].x) * (p[2].y - p[0].y)
-        - (p[1].y - p[0].y) * (p[2].x - p[0].x))
-        < 0;
+    let right_side =
+        ((p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x)) < 0;
 
     let mask_left = LineMask::from_points(
         p[0],
@@ -148,8 +147,8 @@ where
             continue;
         }
 
-        let mask_full_cover = mask_res == MaskResult::FullCover
-            && mask_values.iter().all(|&mask| mask == OPA_COVER);
+        let mask_full_cover =
+            mask_res == MaskResult::FullCover && mask_values.iter().all(|&mask| mask == OPA_COVER);
 
         if !has_grad && mask_full_cover && dsc.opa == OPA_COVER {
             rast.blend_hspan_with(draw_area.x1, y, span_width, |_| (dsc.color, OPA_COVER));
@@ -158,11 +157,7 @@ where
 
         for (index, &raw_mask) in mask_values.iter().enumerate() {
             let x = draw_area.x1 + index as i32;
-            let mut mask_opa = if mask_full_cover {
-                OPA_COVER
-            } else {
-                raw_mask
-            };
+            let mut mask_opa = if mask_full_cover { OPA_COVER } else { raw_mask };
 
             if mask_opa <= 2 {
                 mask_opa = OPA_TRANSP;

@@ -92,6 +92,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                             SPRITE_X + SPRITE_W - 1,
                             SPRITE_Y + SPRITE_H - 1,
                         ),
+                        None,
                     );
                 })
                 .await;
@@ -124,6 +125,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                             SPRITE_X + SPRITE_W - 1,
                             SPRITE_Y + SPRITE_H - 1,
                         ),
+                        None,
                     );
                 })
                 .await;
@@ -156,6 +158,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                             SPRITE_X + SPRITE_W - 1,
                             SPRITE_Y + SPRITE_H - 1,
                         ),
+                        None,
                     );
                 })
                 .await;
@@ -188,6 +191,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                             SPRITE_X + SPRITE_W - 1,
                             SPRITE_Y + SPRITE_H - 1,
                         ),
+                        None,
                     );
                 })
                 .await;
@@ -221,6 +225,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                         SPRITE_X + SPRITE_W - 1,
                         SPRITE_Y + SPRITE_H - 1,
                     ),
+                    None,
                 );
             })
             .await;
@@ -252,6 +257,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                             SPRITE_X + SPRITE_W - 1,
                             SPRITE_Y + SPRITE_H - 1,
                         ),
+                        None,
                     );
                 })
                 .await;

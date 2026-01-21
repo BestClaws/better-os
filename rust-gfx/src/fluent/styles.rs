@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use crate::color::Rgba8888;
-use crate::types::{BorderSide, Opa, OPA_COVER, Point};
+use crate::types::{BorderSide, Opa, Point, OPA_COVER};
 
 use micromath::F32Ext;
 
@@ -528,9 +528,7 @@ fn sample_gradient(gradient: &GradientPlan, t: f32) -> (Rgba8888, Opa) {
 }
 
 fn lerp_stop(a: GradientStop, b: GradientStop, t: f32) -> (Rgba8888, Opa) {
-    let lerp = |x0: u8, x1: u8| -> u8 {
-        (x0 as f32 + (x1 as f32 - x0 as f32) * t).round() as u8
-    };
+    let lerp = |x0: u8, x1: u8| -> u8 { (x0 as f32 + (x1 as f32 - x0 as f32) * t).round() as u8 };
     let color = Rgba8888::rgba(
         lerp(a.color.r(), b.color.r()),
         lerp(a.color.g(), b.color.g()),

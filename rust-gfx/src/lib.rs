@@ -4,15 +4,15 @@ extern crate alloc;
 
 // Public modules
 pub mod color;
+pub mod fluent;
 pub mod masks;
 pub mod math;
 pub mod primitives;
 pub mod rasterizer;
-pub mod three_d;
-pub mod surface;
-pub mod types;
 mod rasterizer_rgb565;
-pub mod fluent;
+pub mod surface;
+pub mod three_d;
+pub mod types;
 
 // Public API exports
 pub use color::{blend_colors, lerp_color, Rgba8888};

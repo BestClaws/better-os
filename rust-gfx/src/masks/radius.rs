@@ -2,8 +2,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::min;
 
-use crate::types::{Area, Opa};
 use super::{clamp_i32, mask_mix, MaskResult};
+use crate::types::{Area, Opa};
 
 /// Cached data for rounded rectangle masks.
 #[derive(Clone, Debug)]

@@ -1,9 +1,9 @@
 //! Fluent graphics API builders overlaying the legacy descriptors.
 
-pub mod types;
-pub mod styles;
 pub mod primitives;
+pub mod styles;
+pub mod types;
 
-pub use types::*;
-pub use styles::*;
 pub use primitives::*;
+pub use styles::*;
+pub use types::*;
