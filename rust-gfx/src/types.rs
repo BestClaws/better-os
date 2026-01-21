@@ -28,6 +28,9 @@ pub enum GradDir {
     Conical,
 }
 
+/// Maximum number of gradient stops supported.
+pub const MAX_GRADIENT_STOPS: usize = 8;
+
 /// Gradient stop matching LVGL's gradient system
 #[derive(Copy, Clone, Debug)]
 pub struct GradStop {
@@ -36,11 +39,21 @@ pub struct GradStop {
     pub frac: u8, // 0-255
 }
 
+impl Default for GradStop {
+    fn default() -> Self {
+        Self {
+            color: Rgba8888::WHITE,
+            opa: OPA_COVER,
+            frac: 0,
+        }
+    }
+}
+
 /// Gradient descriptor matching LVGL
 #[derive(Clone, Debug)]
 pub struct Gradient {
     pub dir: GradDir,
-    pub stops: [GradStop; 2],
+    pub stops: [GradStop; MAX_GRADIENT_STOPS],
     pub stops_count: usize,
 }
 
@@ -48,7 +61,7 @@ impl Gradient {
     pub fn none() -> Self {
         Self {
             dir: GradDir::None,
-            stops: [
+            stops: Self::build_stops([
                 GradStop {
                     color: Rgba8888::WHITE,
                     opa: OPA_COVER,
@@ -59,7 +72,7 @@ impl Gradient {
                     opa: OPA_COVER,
                     frac: 255,
                 },
-            ],
+            ]),
             stops_count: 2,
         }
     }
@@ -67,7 +80,7 @@ impl Gradient {
     pub fn horizontal(start_color: Rgba8888, end_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Hor,
-            stops: [
+            stops: Self::build_stops([
                 GradStop {
                     color: start_color,
                     opa: OPA_COVER,
@@ -78,7 +91,7 @@ impl Gradient {
                     opa: OPA_COVER,
                     frac: 255,
                 },
-            ],
+            ]),
             stops_count: 2,
         }
     }
@@ -86,7 +99,7 @@ impl Gradient {
     pub fn vertical(start_color: Rgba8888, end_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Ver,
-            stops: [
+            stops: Self::build_stops([
                 GradStop {
                     color: start_color,
                     opa: OPA_COVER,
@@ -97,7 +110,7 @@ impl Gradient {
                     opa: OPA_COVER,
                     frac: 255,
                 },
-            ],
+            ]),
             stops_count: 2,
         }
     }
@@ -105,7 +118,7 @@ impl Gradient {
     pub fn radial(inner_color: Rgba8888, outer_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Radial,
-            stops: [
+            stops: Self::build_stops([
                 GradStop {
                     color: inner_color,
                     opa: OPA_COVER,
@@ -116,7 +129,7 @@ impl Gradient {
                     opa: OPA_COVER,
                     frac: 255,
                 },
-            ],
+            ]),
             stops_count: 2,
         }
     }
@@ -124,7 +137,7 @@ impl Gradient {
     pub fn conical(start_color: Rgba8888, end_color: Rgba8888) -> Self {
         Self {
             dir: GradDir::Conical,
-            stops: [
+            stops: Self::build_stops([
                 GradStop {
                     color: start_color,
                     opa: OPA_COVER,
@@ -135,9 +148,35 @@ impl Gradient {
                     opa: OPA_COVER,
                     frac: 255,
                 },
-            ],
+            ]),
             stops_count: 2,
         }
+    }
+
+    pub fn from_stops(dir: GradDir, stops: &[GradStop]) -> Self {
+        let mut gradient = Self::none();
+        gradient.dir = dir;
+        let mut idx = 0;
+        for stop in stops.iter().take(MAX_GRADIENT_STOPS) {
+            gradient.stops[idx] = *stop;
+            idx += 1;
+        }
+        if idx == 0 {
+            gradient.stops_count = 1;
+            gradient.stops[0] = GradStop::default();
+        } else {
+            gradient.stops_count = idx;
+        }
+        gradient
+    }
+
+    fn build_stops<const N: usize>(stops: [GradStop; N]) -> [GradStop; MAX_GRADIENT_STOPS] {
+        let mut result = [GradStop::default(); MAX_GRADIENT_STOPS];
+        let limit = N.min(MAX_GRADIENT_STOPS);
+        for i in 0..limit {
+            result[i] = stops[i];
+        }
+        result
     }
 }
 

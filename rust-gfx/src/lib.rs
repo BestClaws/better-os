@@ -12,6 +12,7 @@ pub mod three_d;
 pub mod surface;
 pub mod types;
 mod rasterizer_rgb565;
+pub mod fluent;
 
 // Public API exports
 pub use color::{blend_colors, lerp_color, Rgba8888};
