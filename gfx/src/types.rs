@@ -2,20 +2,20 @@
 use crate::colors::Color;
 
 /// Opacity type matching LVGL's lv_opa_t
-pub type Opa = u8;
+pub type Opacity = u8;
 
 /// Common opacity values (matching LVGL's LV_OPA_* constants exactly)
-pub const OPA_TRANSP: Opa = 0;
-pub const OPA_30: Opa = 76;
-pub const OPA_40: Opa = 102;
-pub const OPA_50: Opa = 127;
-pub const OPA_70: Opa = 178;
-pub const OPA_COVER: Opa = 255;
+pub const OPA0: Opacity = 0;
+pub const OPA30: Opacity = 76;
+pub const OPA40: Opacity = 102;
+pub const OPA50: Opacity = 127;
+pub const OPA70: Opacity = 178;
+pub const OPA100: Opacity = 255;
 
 /// Matches LVGL's LV_OPA_MIX2(a, b) = (a * b) >> 8.
 #[inline]
-pub fn opa_mix(a: Opa, b: Opa) -> Opa {
-    (((a as u16) * (b as u16)) >> 8) as Opa
+pub fn opa_mix(a: Opacity, b: Opacity) -> Opacity {
+    (((a as u16) * (b as u16)) >> 8) as Opacity
 }
 
 /// Gradient direction matching LVGL
@@ -32,7 +32,7 @@ pub enum GradDir {
 #[derive(Copy, Clone, Debug)]
 pub struct GradStop {
     pub color: Color,
-    pub opa: Opa,
+    pub opa: Opacity,
     pub frac: u8, // 0-255
 }
 
@@ -51,12 +51,12 @@ impl Gradient {
             stops: [
                 GradStop {
                     color: Color::WHITE,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 0,
                 },
                 GradStop {
                     color: Color::BLACK,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 255,
                 },
             ],
@@ -70,12 +70,12 @@ impl Gradient {
             stops: [
                 GradStop {
                     color: start_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 0,
                 },
                 GradStop {
                     color: end_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 255,
                 },
             ],
@@ -89,12 +89,12 @@ impl Gradient {
             stops: [
                 GradStop {
                     color: start_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 0,
                 },
                 GradStop {
                     color: end_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 255,
                 },
             ],
@@ -108,12 +108,12 @@ impl Gradient {
             stops: [
                 GradStop {
                     color: inner_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 0,
                 },
                 GradStop {
                     color: outer_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 255,
                 },
             ],
@@ -127,12 +127,12 @@ impl Gradient {
             stops: [
                 GradStop {
                     color: start_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 0,
                 },
                 GradStop {
                     color: end_color,
-                    opa: OPA_COVER,
+                    opa: OPA100,
                     frac: 255,
                 },
             ],

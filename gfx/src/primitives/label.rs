@@ -26,7 +26,7 @@ pub enum TextDecor {
 pub struct LabelDsc {
     pub text: String,
     pub color: Color,
-    pub opa: Opa,
+    pub opa: Opacity,
     pub decor: TextDecor,
     pub letter_space: i32,
     pub font: FontId,
@@ -37,7 +37,7 @@ impl LabelDsc {
         Self {
             text,
             color: Color::WHITE,
-            opa: OPA_COVER,
+            opa: OPA100,
             decor: TextDecor::None,
             letter_space: 0,
             font: FontId::Montserrat14,
@@ -166,7 +166,7 @@ fn draw_decoration_line<R: Rasterizer>(
     let span_len = x2 - x1 + 1;
     for dy in 0..thickness {
         let py = y + dy;
-        if dsc.opa == OPA_COVER {
+        if dsc.opa == OPA100 {
             rast.fill_rect(x1, py, span_len, 1, dsc.color);
         } else {
             rast.blend_hspan_with(x1, py, span_len, |_| (dsc.color, dsc.opa));

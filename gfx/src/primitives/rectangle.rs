@@ -12,24 +12,24 @@ use crate::Rasterizer;
 #[derive(Clone, Debug)]
 pub struct RectDsc {
     pub bg_color: Color,
-    pub bg_opa: Opa,
+    pub bg_opa: Opacity,
     pub bg_grad: Gradient,
     pub radius: i32,
 
     pub border_color: Color,
-    pub border_opa: Opa,
+    pub border_opa: Opacity,
     pub border_width: i32,
     pub border_side: BorderSide,
 
     pub shadow_color: Color,
-    pub shadow_opa: Opa,
+    pub shadow_opa: Opacity,
     pub shadow_width: i32,
     pub shadow_offset_x: i32,
     pub shadow_offset_y: i32,
     pub shadow_spread: i32,
 
     pub outline_color: Color,
-    pub outline_opa: Opa,
+    pub outline_opa: Opacity,
     pub outline_width: i32,
     pub outline_pad: i32,
 }
@@ -38,7 +38,7 @@ impl RectDsc {
     pub fn new() -> Self {
         Self {
             bg_color: Color::WHITE,
-            bg_opa: OPA_COVER,
+            bg_opa: OPA100,
             bg_grad: Gradient::none(),
             radius: 0,
 
@@ -120,7 +120,7 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     let has_radius = radius > 0;
     let has_grad = dsc.bg_grad.dir != GradDir::None;
 
-    if !has_radius && !has_grad && dsc.bg_opa == OPA_COVER {
+    if !has_radius && !has_grad && dsc.bg_opa == OPA100 {
         rast.fill_rect(
             clipped.x1,
             clipped.y1,
@@ -164,14 +164,14 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
                 colors[idx] = col;
                 (col, opa)
             } else {
-                (dsc.bg_color, OPA_COVER)
+                (dsc.bg_color, OPA100)
             };
 
             let mut cover = (dsc.bg_opa as u32 * grad_opa as u32) / 255;
             if let Some(ref buf) = mask_buf {
                 cover = (cover * buf[idx] as u32) / 255;
             }
-            let cover = cover as Opa;
+            let cover = cover as Opacity;
 
             if cover == 0 {
                 rast.stamp_rgb_zero_alpha(x, y, color);
@@ -181,7 +181,7 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             }
 
             any_coverage = true;
-            if cover != OPA_COVER {
+            if cover != OPA100 {
                 all_full = false;
             }
             coverage_row[idx] = cover;
@@ -248,7 +248,7 @@ fn render_border_for_style<R: Rasterizer>(
     width: i32,
     sides: BorderSide,
     color: Color,
-    opa: Opa,
+    opa: Opacity,
 ) {
     if width <= 0 || opa == 0 || sides == BorderSide::NONE {
         return;
@@ -293,7 +293,7 @@ fn render_border_simple<R: Rasterizer>(
     outer: &Area,
     sides: BorderSide,
     color: Color,
-    opa: Opa,
+    opa: Opacity,
 ) {
     let top_side = outer.y1 <= inner.y1;
     let bottom_side = outer.y2 >= inner.y2;
@@ -333,7 +333,7 @@ fn render_border_complex<R: Rasterizer>(
     rin: i32,
     _sides: BorderSide,
     color: Color,
-    opa: Opa,
+    opa: Opacity,
 ) {
     const SPLIT_LIMIT: i32 = 50;
 
@@ -617,7 +617,7 @@ fn render_border_complex<R: Rasterizer>(
     }
 }
 
-fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Color, opa: Opa) {
+fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Color, opa: Opacity) {
     if opa == 0 {
         return;
     }
@@ -634,7 +634,7 @@ fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Color, opa
         return;
     }
 
-    if opa == OPA_COVER {
+    if opa == OPA100 {
         rast.fill_rect(
             clamped.x1,
             clamped.y1,
@@ -651,12 +651,12 @@ fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Color, opa
 }
 
 fn prepare_mask_line(
-    buf: &mut [Opa],
+    buf: &mut [Opacity],
     inner: &RadiusMask,
     outer: Option<&RadiusMask>,
     y: i32,
     x_start: i32,
-    inner_snapshot: Option<&mut [Opa]>,
+    inner_snapshot: Option<&mut [Opacity]>,
 ) {
     buf.fill(255);
     let _ = inner.apply(buf, x_start, y);
@@ -671,13 +671,13 @@ fn prepare_mask_line(
 fn paint_masked_span<R: Rasterizer>(
     rast: &mut R,
     color: Color,
-    base_opa: Opa,
-    mask: &[Opa],
+    base_opa: Opacity,
+    mask: &[Opacity],
     span_x1: i32,
     y: i32,
     inner: &Area,
-    inner_snapshot: Option<&[Opa]>,
-    outer_snapshot: Option<&[Opa]>,
+    inner_snapshot: Option<&[Opacity]>,
+    outer_snapshot: Option<&[Opacity]>,
 ) {
     if mask.is_empty() || base_opa == 0 {
         return;
@@ -702,7 +702,7 @@ fn paint_masked_span<R: Rasterizer>(
             continue;
         }
 
-        let coverage = ((base_opa as u32 * mask_val as u32) / 255) as Opa;
+        let coverage = ((base_opa as u32 * mask_val as u32) / 255) as Opacity;
         if coverage == 0 {
             continue;
         }
@@ -767,7 +767,7 @@ fn render_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
             if shadow_cov == 0 {
                 continue;
             }
-            let final_opa = ((dsc.shadow_opa as u32 * shadow_cov as u32) / 255) as Opa;
+            let final_opa = ((dsc.shadow_opa as u32 * shadow_cov as u32) / 255) as Opacity;
             if final_opa == 0 {
                 continue;
             }
@@ -781,7 +781,7 @@ fn render_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     }
 }
 
-fn calculate_shadow_opa(x: i32, y: i32, rect: &Area, radius: i32, width: i32) -> Opa {
+fn calculate_shadow_opa(x: i32, y: i32, rect: &Area, radius: i32, width: i32) -> Opacity {
     let cx = x.max(rect.x1).min(rect.x2);
     let cy = y.max(rect.y1).min(rect.y2);
 
@@ -805,12 +805,12 @@ fn calculate_shadow_opa(x: i32, y: i32, rect: &Area, radius: i32, width: i32) ->
     if dist >= width {
         0
     } else {
-        (((width - dist) * 255) / width).max(0) as Opa
+        (((width - dist) * 255) / width).max(0) as Opacity
     }
 }
 
 fn background_area(area: &Area, dsc: &RectDsc) -> Area {
-    if dsc.border_width > 1 && dsc.border_opa >= OPA_COVER && dsc.radius != 0 {
+    if dsc.border_width > 1 && dsc.border_opa >= OPA100 && dsc.radius != 0 {
         Area::new(
             area.x1 + if dsc.border_side.has_left() { 1 } else { 0 },
             area.y1 + if dsc.border_side.has_top() { 1 } else { 0 },

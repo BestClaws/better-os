@@ -16,7 +16,7 @@ use gfx::primitives::rectangle::{draw_rect, RectDsc};
 use gfx::three_d::{
     load_glb, render_scene, Camera, Mat4, Quaternion, RenderOptions, ShadingMode, Vec3,
 };
-use gfx::types::{Area, Gradient, OPA_COVER};
+use gfx::types::{Area, Gradient, OPA100};
 
 const GLB_DATA: &[u8] = include_bytes!("../assets/arrow2.glb");
 
@@ -127,13 +127,13 @@ pub async fn arrow_app(context: AppContext) {
                 let mut viewport_bg = RectDsc::new();
                 viewport_bg.bg_color = palette.container;
                 viewport_bg.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-                viewport_bg.bg_opa = OPA_COVER;
+                viewport_bg.bg_opa = OPA100;
                 viewport_bg.radius = metrics.section_radius;
                 draw_rect(surface, &viewport_bg, &viewport_area);
 
                 let mut accent = RectDsc::new();
                 accent.bg_color = palette.accent_yellow;
-                accent.bg_opa = OPA_COVER;
+                accent.bg_opa = OPA100;
                 accent.radius = metrics.section_radius.max(3);
                 let accent_width = 4;
                 let accent_area = Area::new(

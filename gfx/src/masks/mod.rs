@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::cmp::{max, min};
 
 use crate::math::{trigo_cos, trigo_sin};
-use crate::types::{opa_mix, Area, Opa, Point};
+use crate::types::{opa_mix, Area, Opacity, Point};
 
 /// Result of applying masks to a scanline.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -84,7 +84,7 @@ impl AngleMask {
     }
 
     /// Apply angle mask to the provided buffer.
-    pub fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+    pub fn apply(&self, mask_buf: &mut [Opacity], abs_x: i32, abs_y: i32) -> MaskResult {
         if mask_buf.is_empty() {
             return MaskResult::FullCover;
         }
@@ -381,7 +381,7 @@ impl LineMask {
         Self::from_points(p, Point::new(p2x, p2y), side)
     }
 
-    fn apply_flat(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+    fn apply_flat(&self, mask_buf: &mut [Opacity], abs_x: i32, abs_y: i32) -> MaskResult {
         let len = mask_buf.len() as i32;
         let mut y_at_x = ((self.yx_steep as i64 * abs_x as i64) >> 10) as i32;
 
@@ -439,7 +439,7 @@ impl LineMask {
                 if self.inv {
                     m = 255 - m;
                 }
-                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
             }
             k += 1;
         }
@@ -450,7 +450,7 @@ impl LineMask {
                 if self.inv {
                     m = 255 - m;
                 }
-                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
             }
             px_h -= self.spx;
             k += 1;
@@ -468,7 +468,7 @@ impl LineMask {
             if self.inv {
                 m = 255 - m;
             }
-            mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+            mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
         }
 
         if self.inv {
@@ -492,7 +492,7 @@ impl LineMask {
         MaskResult::Changed
     }
 
-    fn apply_steep(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+    fn apply_steep(&self, mask_buf: &mut [Opacity], abs_x: i32, abs_y: i32) -> MaskResult {
         let len = mask_buf.len() as i32;
         let mut x_at_y = ((self.xy_steep as i64 * abs_y as i64) >> 10) as i32;
         if self.xy_steep > 0 {
@@ -536,7 +536,7 @@ impl LineMask {
                 if self.inv {
                     m = 255 - m;
                 }
-                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
             }
             k += 1;
 
@@ -567,7 +567,7 @@ impl LineMask {
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
                 }
                 k -= 1;
 
@@ -577,7 +577,7 @@ impl LineMask {
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
                 }
                 k += 2;
 
@@ -604,7 +604,7 @@ impl LineMask {
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
                 }
                 k += 1;
 
@@ -614,7 +614,7 @@ impl LineMask {
                     if self.inv {
                         m = 255 - m;
                     }
-                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opa);
+                    mask_buf[k as usize] = mask_mix(mask_buf[k as usize], m as Opacity);
                 }
                 k += 1;
 
@@ -644,7 +644,7 @@ impl LineMask {
     }
 
     /// Apply line mask to a scanline buffer.
-    pub fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+    pub fn apply(&self, mask_buf: &mut [Opacity], abs_x: i32, abs_y: i32) -> MaskResult {
         let len = mask_buf.len() as i32;
 
         let rel_y = abs_y - self.origo.y;
@@ -707,7 +707,7 @@ impl LineMask {
 #[derive(Clone, Debug)]
 struct RadiusCircle {
     radius: i32,
-    cir_opa: Vec<Opa>,
+    cir_opa: Vec<Opacity>,
     opa_start_on_y: Vec<usize>,
     x_start_on_y: Vec<i32>,
 }
@@ -867,7 +867,7 @@ impl RadiusCircle {
             let mut min_x = cir_x[i];
             while i < cir_size && cir_y[i] == y {
                 min_x = min(min_x, cir_x[i]);
-                self.cir_opa.push(cir_opa_vals[i].min(255) as Opa);
+                self.cir_opa.push(cir_opa_vals[i].min(255) as Opacity);
                 i += 1;
             }
             self.x_start_on_y.push(min_x);
@@ -877,7 +877,7 @@ impl RadiusCircle {
         self.opa_start_on_y.push(self.cir_opa.len());
     }
 
-    fn get_line(&self, y: i32) -> Option<(usize, i32, &[Opa])> {
+    fn get_line(&self, y: i32) -> Option<(usize, i32, &[Opacity])> {
         if y < 0 || y + 1 >= self.opa_start_on_y.len() as i32 {
             return None;
         }
@@ -926,7 +926,7 @@ impl RadiusMask {
     }
 
     /// Apply radius mask to the provided buffer.
-    pub fn apply(&self, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+    pub fn apply(&self, mask_buf: &mut [Opacity], abs_x: i32, abs_y: i32) -> MaskResult {
         let len = mask_buf.len() as i32;
         let rect = self.rect;
 
@@ -1053,7 +1053,7 @@ impl RadiusMask {
     }
 
     #[cfg(debug_assertions)]
-    pub fn debug_line_info(&self, rel_y: i32) -> Option<(i32, Vec<Opa>)> {
+    pub fn debug_line_info(&self, rel_y: i32) -> Option<(i32, Vec<Opacity>)> {
         let circle = self.circle.as_ref()?;
         let h = self.rect.height();
         let cir_y = if rel_y < self.radius {
@@ -1069,7 +1069,7 @@ impl RadiusMask {
 /// Apply multiple masks to a scanline buffer.
 pub fn apply_masks(
     masks: &[MaskRef<'_>],
-    mask_buf: &mut [Opa],
+    mask_buf: &mut [Opacity],
     abs_x: i32,
     abs_y: i32,
 ) -> MaskResult {
@@ -1099,7 +1099,7 @@ pub fn apply_masks(
 }
 
 #[inline]
-fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
+fn mask_mix(mask_act: Opacity, mask_new: Opacity) -> Opacity {
     if mask_act >= 255 {
         return mask_new;
     }
@@ -1107,7 +1107,7 @@ fn mask_mix(mask_act: Opa, mask_new: Opa) -> Opa {
         return 0;
     }
     let prod = (mask_act as u32) * (mask_new as u32);
-    ((prod * 0x8081) >> 23) as Opa
+    ((prod * 0x8081) >> 23) as Opacity
 }
 
 #[inline]
@@ -1115,7 +1115,7 @@ fn clamp_i32(min_v: i32, val: i32, max_v: i32) -> i32 {
     min(max(val, min_v), max_v)
 }
 
-fn apply_line_segment(line: &LineMask, mask_buf: &mut [Opa], abs_x: i32, abs_y: i32) -> MaskResult {
+fn apply_line_segment(line: &LineMask, mask_buf: &mut [Opacity], abs_x: i32, abs_y: i32) -> MaskResult {
     if mask_buf.is_empty() {
         return MaskResult::FullCover;
     }

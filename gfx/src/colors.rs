@@ -1,3 +1,5 @@
+use crate::math;
+
 /// Primary color type for the public API.
 /// Stored as 0xRRGGBBAA (RGBA8888 format).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
@@ -52,7 +54,7 @@ impl Color {
     #[inline]
     pub fn multiply_alpha(self, alpha: u8) -> Self {
         let existing = self.alpha() as u32;
-        let effective = ((existing * alpha as u32) / 255) as u8;
+        let effective = math::udiv255(existing * alpha as u32);
         self.with_alpha(effective)
     }
 
@@ -127,18 +129,11 @@ pub fn blend_colors(bg: Color, fg: Color, opa: u8) -> Color {
     }
 
     let inv_ratio = 255 - ratio;
-    let r = udiv255(fg.r() as u32 * ratio as u32 + bg.r() as u32 * inv_ratio as u32);
-    let g = udiv255(fg.g() as u32 * ratio as u32 + bg.g() as u32 * inv_ratio as u32);
-    let b = udiv255(fg.b() as u32 * ratio as u32 + bg.b() as u32 * inv_ratio as u32);
+    let r = math::udiv255(fg.r() as u32 * ratio as u32 + bg.r() as u32 * inv_ratio as u32);
+    let g = math::udiv255(fg.g() as u32 * ratio as u32 + bg.g() as u32 * inv_ratio as u32);
+    let b = math::udiv255(fg.b() as u32 * ratio as u32 + bg.b() as u32 * inv_ratio as u32);
 
     Color::rgba(r, g, b, result_alpha)
-}
-
-/// Fast divide by 255 using LVGL's method
-/// LV_UDIV255(x) = ((x * 0x8081) >> 23)
-#[inline]
-fn udiv255(x: u32) -> u8 {
-    ((x * 0x8081) >> 23) as u8
 }
 
 /// Linear interpolation between two colors
@@ -154,9 +149,9 @@ pub fn lerp_color(c1: Color, c2: Color, t: u8) -> Color {
     }
     let inv_t = 255 - t;
     // LVGL does: color2 * mix + color1 * (255-mix), then udiv255
-    let r = udiv255(c2.r() as u32 * t as u32 + c1.r() as u32 * inv_t as u32);
-    let g = udiv255(c2.g() as u32 * t as u32 + c1.g() as u32 * inv_t as u32);
-    let b = udiv255(c2.b() as u32 * t as u32 + c1.b() as u32 * inv_t as u32);
-    let a = udiv255(c2.a() as u32 * t as u32 + c1.a() as u32 * inv_t as u32);
+    let r = math::udiv255(c2.r() as u32 * t as u32 + c1.r() as u32 * inv_t as u32);
+    let g = math::udiv255(c2.g() as u32 * t as u32 + c1.g() as u32 * inv_t as u32);
+    let b = math::udiv255(c2.b() as u32 * t as u32 + c1.b() as u32 * inv_t as u32);
+    let a = math::udiv255(c2.a() as u32 * t as u32 + c1.a() as u32 * inv_t as u32);
     Color::rgba(r, g, b, a)
 }

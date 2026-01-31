@@ -64,11 +64,7 @@ pub fn trigo_cos(angle: i32) -> i32 {
     trigo_sin(angle + 90)
 }
 
-/// Alias for isqrt matching LVGL's naming
-#[inline]
-pub fn sqrt32(n: u32) -> u32 {
-    isqrt(n)
-}
+
 
 /// Fast atan2 in degrees (matching LVGL's lv_atan2)
 /// Takes (x, y) parameter order like LVGL, not standard atan2(y, x)
@@ -284,4 +280,13 @@ mod tests {
         assert!(!angle_in_range(100, 0, 90));
         assert!(angle_in_range(10, 350, 20)); // Wraps around
     }
+}
+
+
+
+/// Fast divide by 255 using LVGL's method
+/// LV_UDIV255(x) = ((x * 0x8081) >> 23)
+#[inline]
+pub fn udiv255(x: u32) -> u8 {
+    ((x * 0x8081) >> 23) as u8
 }

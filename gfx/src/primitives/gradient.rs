@@ -1,7 +1,7 @@
 /// Gradient computation matching LVGL's system
 use crate::colors::{lerp_color, Color};
 use crate::math::{atan2_deg, frac_255};
-use crate::types::{GradDir, Gradient, Opa};
+use crate::types::{GradDir, Gradient, Opacity};
 
 /// Compute color from gradient at a specific position
 pub fn gradient_get_color(
@@ -12,7 +12,7 @@ pub fn gradient_get_color(
     height: i32,
     cx: i32,
     cy: i32,
-) -> (Color, Opa) {
+) -> (Color, Opacity) {
     if grad.stops_count < 2 {
         return (grad.stops[0].color, grad.stops[0].opa);
     }
@@ -65,7 +65,7 @@ pub fn gradient_get_color(
 
 /// Get gradient color for horizontal gradients (optimized)
 #[inline]
-pub fn gradient_get_color_hor(grad: &Gradient, x: i32, width: i32) -> (Color, Opa) {
+pub fn gradient_get_color_hor(grad: &Gradient, x: i32, width: i32) -> (Color, Opacity) {
     if width <= 0 {
         return (grad.stops[0].color, grad.stops[0].opa);
     }
@@ -77,7 +77,7 @@ pub fn gradient_get_color_hor(grad: &Gradient, x: i32, width: i32) -> (Color, Op
 
 /// Get gradient color for vertical gradients (optimized)
 #[inline]
-pub fn gradient_get_color_ver(grad: &Gradient, y: i32, height: i32) -> (Color, Opa) {
+pub fn gradient_get_color_ver(grad: &Gradient, y: i32, height: i32) -> (Color, Opacity) {
     if height <= 0 {
         return (grad.stops[0].color, grad.stops[0].opa);
     }

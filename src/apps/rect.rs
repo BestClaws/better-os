@@ -6,7 +6,7 @@ use defmt::info;
 use embassy_time::{Duration, Timer};
 use gfx::colors::Color;
 use gfx::primitives::rectangle::{draw_rect, RectDsc};
-use gfx::types::{Area, BorderSide, GradDir, Gradient, OPA_COVER};
+use gfx::types::{Area, BorderSide, GradDir, Gradient, OPA100};
 
 #[embassy_executor::task]
 pub async fn rect_app(ctx: AppContext) {
@@ -31,7 +31,7 @@ pub async fn rect_app(ctx: AppContext) {
             // Draw a fancy rectangle with gradient, border, and rounded corners
             let mut dsc = RectDsc::new();
             dsc.bg_color = Color::rgba(r, g, b, 255);
-            dsc.bg_opa = OPA_COVER;
+            dsc.bg_opa = OPA100;
             dsc.bg_grad = Gradient::vertical(
                 Color::rgba(r2, g2, b2, 255),
                 Color::rgba(r, g, b, 255),
@@ -39,7 +39,7 @@ pub async fn rect_app(ctx: AppContext) {
             dsc.radius = 10;
             dsc.border_color = Color::rgba(200, 200, 200, 255);
             dsc.border_width = 2;
-            dsc.border_opa = OPA_COVER;
+            dsc.border_opa = OPA100;
             dsc.border_side = BorderSide::FULL;
 
             let area = Area {

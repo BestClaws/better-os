@@ -3,7 +3,7 @@ use alloc::string::String;
 use gfx::colors::Color;
 use gfx::primitives::label::{draw_label, measure_text_with_font, FontId, LabelDsc};
 use gfx::primitives::rectangle::{draw_rect, RectDsc};
-use gfx::types::{Area, BorderSide, Gradient, OPA_COVER, RADIUS_CIRCLE};
+use gfx::types::{Area, BorderSide, Gradient, OPA100, RADIUS_CIRCLE};
 
 use crate::system::ui::drawing_surface::DrawingSurface;
 
@@ -134,7 +134,7 @@ pub fn draw_background(
 
     let mut base = RectDsc::new();
     base.bg_color = palette.background;
-    base.bg_opa = OPA_COVER;
+    base.bg_opa = OPA100;
     let base_area = Area::new(0, 0, width - 1, height - 1);
     draw_rect(surface, &base, &base_area);
 
@@ -172,7 +172,7 @@ pub fn draw_status_bar(
     let mut bar = RectDsc::new();
     bar.bg_color = palette.accent_dark;
     bar.bg_grad = Gradient::vertical(palette.accent_dark, Color::rgba(34, 34, 34, 255));
-    bar.bg_opa = OPA_COVER;
+    bar.bg_opa = OPA100;
     bar.radius = metrics.section_radius.max(2);
     draw_rect(surface, &bar, &area);
 
@@ -232,7 +232,7 @@ pub fn draw_time_display(
     let mut block = RectDsc::new();
     block.bg_color = palette.container;
     block.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    block.bg_opa = OPA_COVER;
+    block.bg_opa = OPA100;
     block.radius = metrics.section_radius.max(3);
     draw_rect(surface, &block, &area);
 
@@ -286,7 +286,7 @@ pub fn draw_card(
 
     let mut shadow = RectDsc::new();
     shadow.bg_color = palette.shadow;
-    shadow.bg_opa = OPA_COVER;
+    shadow.bg_opa = OPA100;
     shadow.radius = metrics.section_radius;
     let shadow_area = Area::new(
         card_area.x1 + 2,
@@ -299,11 +299,11 @@ pub fn draw_card(
     let mut card = RectDsc::new();
     card.bg_color = palette.container;
     card.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    card.bg_opa = OPA_COVER;
+    card.bg_opa = OPA100;
     card.radius = metrics.section_radius;
     card.border_width = 1;
     card.border_color = palette.outline;
-    card.border_opa = OPA_COVER;
+    card.border_opa = OPA100;
     draw_rect(surface, &card, &card_area);
 
     let accent_width = 4;
@@ -311,7 +311,7 @@ pub fn draw_card(
     accent.bg_opa = 0;
     accent.border_width = accent_width;
     accent.border_color = accent_color;
-    accent.border_opa = OPA_COVER;
+    accent.border_opa = OPA100;
     accent.border_side = BorderSide::LEFT;
     accent.radius = metrics.section_radius.max(3);
     draw_rect(surface, &accent, &card_area);
@@ -393,10 +393,10 @@ pub fn draw_quick_actions(
         let tile_area = Area::new(x, y, x + cell_width - 1, y + cell_height - 1);
         let mut tile = RectDsc::new();
         tile.bg_color = palette.container_alt;
-        tile.bg_opa = OPA_COVER;
+        tile.bg_opa = OPA100;
         tile.border_width = 1;
         tile.border_color = palette.outline;
-        tile.border_opa = OPA_COVER;
+        tile.border_opa = OPA100;
         tile.radius = metrics.section_radius;
         draw_rect(surface, &tile, &tile_area);
 
@@ -452,7 +452,7 @@ pub fn draw_stat_card(
         let mut card = RectDsc::new();
         card.bg_color = palette.stat_gradient_start;
         card.bg_grad = Gradient::vertical(palette.stat_gradient_start, palette.stat_gradient_end);
-        card.bg_opa = OPA_COVER;
+        card.bg_opa = OPA100;
         card.radius = metrics.section_radius;
         draw_rect(surface, &card, &area);
 
@@ -515,7 +515,7 @@ pub fn draw_progress_bar(
 
     let mut track = RectDsc::new();
     track.bg_color = palette.text_secondary;
-    track.bg_opa = OPA_COVER;
+    track.bg_opa = OPA100;
     track.radius = bar_height / 2;
     draw_rect(surface, &track, &bar_area);
 
@@ -531,7 +531,7 @@ pub fn draw_progress_bar(
             );
             let mut fill = RectDsc::new();
             fill.bg_color = palette.accent_yellow;
-            fill.bg_opa = OPA_COVER;
+            fill.bg_opa = OPA100;
             fill.radius = bar_height / 2;
             draw_rect(surface, &fill, &fill_area);
         }
@@ -572,7 +572,7 @@ pub fn draw_toggle(
         } else {
             palette.accent_light
         };
-        track.bg_opa = OPA_COVER;
+        track.bg_opa = OPA100;
         track.radius = switch_height / 2;
         let track_area = Area::new(
             switch_x,
@@ -596,7 +596,7 @@ pub fn draw_toggle(
         );
         let mut knob = RectDsc::new();
         knob.bg_color = palette.container;
-        knob.bg_opa = OPA_COVER;
+        knob.bg_opa = OPA100;
         knob.radius = RADIUS_CIRCLE;
         draw_rect(surface, &knob, &knob_area);
 
@@ -623,7 +623,7 @@ pub fn draw_button(
             button.bg_color = palette.accent_dark;
             button.bg_grad =
                 Gradient::vertical(palette.accent_dark, Color::rgba(20, 20, 20, 255));
-            button.bg_opa = OPA_COVER;
+            button.bg_opa = OPA100;
             button.radius = metrics.section_radius;
             draw_rect(surface, &button, &area);
             let text_y = area.y1 + (height - fonts.line_height_body()) / 2;
@@ -640,11 +640,11 @@ pub fn draw_button(
         }
         ButtonKind::Secondary => {
             button.bg_color = palette.container;
-            button.bg_opa = OPA_COVER;
+            button.bg_opa = OPA100;
             button.radius = metrics.section_radius;
             button.border_width = 1;
             button.border_color = palette.accent_dark;
-            button.border_opa = OPA_COVER;
+            button.border_opa = OPA100;
             draw_rect(surface, &button, &area);
             let text_y = area.y1 + (height - fonts.line_height_body()) / 2;
             let text_width = measure_text_with_font(config.text, 0, fonts.body);
@@ -671,7 +671,7 @@ pub fn draw_button(
             } else {
                 palette.container
             };
-            button.bg_opa = OPA_COVER;
+            button.bg_opa = OPA100;
             button.radius = RADIUS_CIRCLE;
             button.border_width = if matches!(config.kind, ButtonKind::IconSecondary) {
                 1
@@ -680,7 +680,7 @@ pub fn draw_button(
             };
             button.border_color = palette.outline;
             button.border_opa = if button.border_width > 0 {
-                OPA_COVER
+                OPA100
             } else {
                 0
             };
@@ -773,7 +773,7 @@ pub fn draw_badge(
 
     let mut pill = RectDsc::new();
     pill.bg_color = bg;
-    pill.bg_opa = OPA_COVER;
+    pill.bg_opa = OPA100;
     pill.radius = height / 2;
     let area = Area::new(x1, y1, x1 + width, y1 + height);
     draw_rect(surface, &pill, &area);
@@ -804,7 +804,7 @@ fn draw_battery(
     outline.bg_opa = 0;
     outline.border_width = 1;
     outline.border_color = palette.container;
-    outline.border_opa = OPA_COVER;
+    outline.border_opa = OPA100;
     outline.radius = 2;
     let area = Area::new(x1, y1, x2, y2);
     draw_rect(surface, &outline, &area);
@@ -818,7 +818,7 @@ fn draw_battery(
     );
     let mut knob = RectDsc::new();
     knob.bg_color = palette.container;
-    knob.bg_opa = OPA_COVER;
+    knob.bg_opa = OPA100;
     knob.radius = 1;
     draw_rect(surface, &knob, &knob_area);
 
@@ -829,7 +829,7 @@ fn draw_battery(
         let fill_area = Area::new(x1 + 2, y1 + 2, x1 + 1 + fill_width, y2 - 2);
         let mut fill = RectDsc::new();
         fill.bg_color = palette.accent_yellow;
-        fill.bg_opa = OPA_COVER;
+        fill.bg_opa = OPA100;
         fill.radius = 1;
         draw_rect(surface, &fill, &fill_area);
     }

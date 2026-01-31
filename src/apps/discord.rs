@@ -11,7 +11,7 @@ use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
 use gfx::primitives::label::measure_text_with_font;
 use gfx::primitives::rectangle::{draw_rect, RectDsc};
-use gfx::types::{Area, OPA_COVER};
+use gfx::types::{Area, OPA100};
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds
@@ -224,7 +224,7 @@ fn draw_message_bubbles(
 
         let mut bubble = RectDsc::new();
         bubble.bg_color = palette.container;
-        bubble.bg_opa = OPA_COVER;
+        bubble.bg_opa = OPA100;
         bubble.radius = metrics.section_radius.max(4);
         bubble.border_width = 1;
         bubble.border_color = palette.outline;

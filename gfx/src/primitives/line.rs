@@ -23,7 +23,7 @@ pub struct LineDsc {
     pub p2: Point,
     pub width: i32,
     pub color: Color,
-    pub opa: Opa,
+    pub opa: Opacity,
     pub dash_width: i32,
     pub dash_gap: i32,
     pub round_start: bool,
@@ -37,7 +37,7 @@ impl LineDsc {
             p2,
             width: 1,
             color: Color::WHITE,
-            opa: OPA_COVER,
+            opa: OPA100,
             dash_width: 0,
             dash_gap: 0,
             round_start: false,
@@ -94,7 +94,7 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         if x1 <= x2 && y1 <= y2 {
             let width = x2 - x1 + 1;
             let height = y2 - y1 + 1;
-            if dsc.opa == OPA_COVER {
+            if dsc.opa == OPA100 {
                 rast.fill_rect(x1, y1, width, height, dsc.color);
             } else {
                 for y in y1..=y2 {
@@ -244,14 +244,14 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             continue;
         }
 
-        if res == MaskResult::FullCover && dsc.opa == OPA_COVER {
+        if res == MaskResult::FullCover && dsc.opa == OPA100 {
             rast.fill_rect(blend_area.x1, y, draw_width, 1, dsc.color);
             continue;
         }
 
         let mut any = false;
         for (i, &opa) in mask_buf.iter().enumerate() {
-            let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opa;
+            let final_opa = ((dsc.opa as u32 * opa as u32) / 255) as Opacity;
             coverage_row[i] = final_opa;
             if final_opa != 0 {
                 any = true;
@@ -375,7 +375,7 @@ fn draw_vertical_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             for x in x_start..=x_end {
                 rast.stamp_rgb_zero_alpha(x, y, dsc.color);
             }
-        } else if dsc.opa == OPA_COVER {
+        } else if dsc.opa == OPA100 {
             rast.fill_rect(x_start, y, span_len, 1, dsc.color);
         } else {
             rast.blend_hspan_with(x_start, y, span_len, |_| (dsc.color, dsc.opa));

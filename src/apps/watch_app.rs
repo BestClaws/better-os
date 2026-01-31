@@ -16,11 +16,10 @@ use micromath::F32Ext;
 use gfx::colors::Color;
 use gfx::primitives::label::measure_text_with_font;
 use gfx::primitives::{
-    arc::{draw_arc, ArcDsc},
     line::{draw_line, LineDsc},
     rectangle::{draw_rect, RectDsc},
 };
-use gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
+use gfx::types::{Area, Gradient, Point, OPA100, RADIUS_CIRCLE};
 
 extern crate alloc;
 use alloc::{format, string::String, vec, vec::Vec};
@@ -389,7 +388,7 @@ fn draw_scroll_progress(
     );
     let mut fill = RectDsc::new();
     fill.bg_color = palette.accent_yellow;
-    fill.bg_opa = OPA_COVER;
+    fill.bg_opa = OPA100;
     fill.radius = 1;
     draw_rect(surface, &fill, &fill_area);
 }
@@ -443,24 +442,9 @@ fn draw_watch_dial(
 
     draw_face_plate(surface, palette, cx, cy, radius);
 
-    let mut ring = ArcDsc::new(Point::new(cx, cy), radius, 0, 360);
-    ring.width = 3;
-    ring.color = palette.accent_gray;
-    ring.opa = OPA_COVER;
-    ring.rounded = true;
-    draw_arc(surface, &ring);
 
-    draw_accent_arcs(surface, palette, cx, cy, radius);
-    draw_hands(
-        surface,
-        palette,
-        cx,
-        cy,
-        radius,
-        state.hour_progress,
-        state.minute_progress,
-        state.second_progress,
-    );
+
+
     draw_center_hub(surface, palette, cx, cy);
 
     let pill_area = Area::new(area.x1, area.y2 - label_height, area.x2, area.y2);
@@ -498,11 +482,11 @@ fn draw_time_pill(
 
     let mut pill = RectDsc::new();
     pill.bg_color = palette.container_alt;
-    pill.bg_opa = OPA_COVER;
+    pill.bg_opa = OPA100;
     pill.radius = pill_height / 2;
     pill.border_width = 1;
     pill.border_color = palette.outline;
-    pill.border_opa = OPA_COVER;
+    pill.border_opa = OPA100;
     draw_rect(surface, &pill, &pill_area);
 
     let text_x = x1 + pill_padding_x;
@@ -532,53 +516,17 @@ fn draw_face_plate(
     let mut plate = RectDsc::new();
     plate.bg_color = palette.container;
     plate.bg_grad = Gradient::vertical(palette.container, palette.container_alt);
-    plate.bg_opa = OPA_COVER;
+    plate.bg_opa = OPA100;
     plate.radius = RADIUS_CIRCLE;
     let area = Area::new(cx - inset, cy - inset, cx + inset, cy + inset);
     draw_rect(surface, &plate, &area);
 }
 
-fn draw_accent_arcs(
-    surface: &mut DrawingSurface,
-    palette: StylePalette,
-    cx: i32,
-    cy: i32,
-    radius: i32,
-) {
-    if radius <= 6 {
-        return;
-    }
-
-    let arc_radius = radius - 2;
-    let accents = [
-        (18, 40, palette.accent_yellow),
-        (138, 32, Color::rgba(80, 120, 180, 255)),
-        (252, 30, Color::rgba(90, 200, 240, 255)),
-    ];
-
-    for (start, sweep, color) in accents {
-        let mut accent = ArcDsc::new(Point::new(cx, cy), arc_radius, start, start + sweep);
-        accent.width = 4;
-        accent.color = color;
-        accent.opa = OPA_COVER;
-        accent.rounded = true;
-        draw_arc(surface, &accent);
-    }
-
-    if arc_radius > 6 {
-        let mut inner_ring = ArcDsc::new(Point::new(cx, cy), arc_radius - 6, 0, 360);
-        inner_ring.width = 1;
-        inner_ring.color = palette.accent_light;
-        inner_ring.opa = OPA_COVER;
-        inner_ring.rounded = true;
-        draw_arc(surface, &inner_ring);
-    }
-}
 
 fn draw_center_hub(surface: &mut DrawingSurface, palette: StylePalette, cx: i32, cy: i32) {
     let mut hub = RectDsc::new();
     hub.bg_color = palette.accent_dark;
-    hub.bg_opa = OPA_COVER;
+    hub.bg_opa = OPA100;
     hub.radius = RADIUS_CIRCLE;
     let hub_area = Area::new(cx - 2, cy - 2, cx + 2, cy + 2);
     draw_rect(surface, &hub, &hub_area);

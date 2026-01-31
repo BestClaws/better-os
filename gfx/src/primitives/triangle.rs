@@ -14,7 +14,7 @@ pub struct TriangleDsc {
     pub p2: Point,
     pub p3: Point,
     pub color: Color,
-    pub opa: Opa,
+    pub opa: Opacity,
     pub grad: Gradient,
 }
 
@@ -25,16 +25,16 @@ impl TriangleDsc {
             p2,
             p3,
             color: Color::WHITE,
-            opa: OPA_COVER,
+            opa: OPA100,
             grad: Gradient::none(),
         }
     }
 }
 
 #[inline]
-fn triangle_opa_mix(a: Opa, b: Opa) -> Opa {
+fn triangle_opa_mix(a: Opacity, b: Opacity) -> Opacity {
     let prod = (a as u32) * (b as u32);
-    (((prod * 0x8081) >> 23) & 0xFF) as Opa
+    (((prod * 0x8081) >> 23) & 0xFF) as Opacity
 }
 
 /// Draw a filled triangle with anti-aliased edges using LVGL's 3-line-mask approach
@@ -133,24 +133,24 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
 
         coverage_row.fill(0);
         let mut any = false;
-        let mut all_full = mask_full_cover && !has_grad && dsc.opa == OPA_COVER;
+        let mut all_full = mask_full_cover && !has_grad && dsc.opa == OPA100;
 
         for i in 0..area_w {
             let x = min_x + i as i32;
             let mut mask_opa = if mask_full_cover {
-                OPA_COVER
+                OPA100
             } else {
                 mask_buf[i]
             };
             if mask_opa <= 2 {
-                mask_opa = OPA_TRANSP;
+                mask_opa = OPA0;
             } else if mask_opa >= 253 {
-                mask_opa = OPA_COVER;
+                mask_opa = OPA100;
             }
 
             let mut base_opa = dsc.opa;
             let mut final_color = dsc.color;
-            let mut use_mask = !mask_full_cover || dsc.opa < OPA_COVER;
+            let mut use_mask = !mask_full_cover || dsc.opa < OPA100;
 
             if has_grad {
                 let rel_x = x - min_x;
@@ -168,7 +168,7 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
                 final_color = grad_color;
                 match dsc.grad.dir {
                     GradDir::Ver => {
-                        base_opa = if dsc.opa < OPA_COVER {
+                        base_opa = if dsc.opa < OPA100 {
                             opa_mix(grad_opa, dsc.opa)
                         } else {
                             grad_opa
@@ -179,13 +179,13 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
                         if mask_full_cover {
                             mask_opa = grad_opa;
                             use_mask = true;
-                        } else if grad_opa < OPA_COVER {
+                        } else if grad_opa < OPA100 {
                             mask_opa = opa_mix(mask_opa, grad_opa);
                         }
                         base_opa = dsc.opa;
                     }
                     _ => {
-                        base_opa = if dsc.opa < OPA_COVER {
+                        base_opa = if dsc.opa < OPA100 {
                             opa_mix(grad_opa, dsc.opa)
                         } else {
                             grad_opa
@@ -193,7 +193,7 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
                         if mask_full_cover {
                             mask_opa = grad_opa;
                             use_mask = true;
-                        } else if grad_opa < OPA_COVER {
+                        } else if grad_opa < OPA100 {
                             mask_opa = opa_mix(mask_opa, grad_opa);
                         }
                     }
@@ -201,7 +201,7 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             }
 
             let final_opa = if use_mask {
-                if base_opa >= OPA_COVER {
+                if base_opa >= OPA100 {
                     triangle_opa_mix(base_opa, mask_opa)
                 } else {
                     opa_mix(base_opa, mask_opa)
@@ -217,7 +217,7 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             if final_opa != 0 {
                 coverage_row[i] = final_opa;
                 any = true;
-                all_full = all_full && final_opa == OPA_COVER;
+                all_full = all_full && final_opa == OPA100;
             } else {
                 coverage_row[i] = 0;
                 all_full = false;
