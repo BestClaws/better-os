@@ -1,7 +1,7 @@
 use super::math::{Mat4, Vec2, Vec3, Vec4};
 use super::model::{Material, Mesh, Scene, Texture};
 use crate::colors::Color;
-use crate::rasterizer::Rasterizer;
+use crate::rasterizer::RasterTarget;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use micromath::F32Ext;
@@ -66,7 +66,7 @@ impl Camera {
     }
 }
 
-pub fn render_scene<R: Rasterizer>(
+pub fn render_scene<R: RasterTarget>(
     rasterizer: &mut R,
     scene: &Scene,
     camera: &Camera,
@@ -119,7 +119,7 @@ struct PreparedVertex {
     inv_w: f32,
 }
 
-fn render_mesh<R: Rasterizer>(
+fn render_mesh<R: RasterTarget>(
     rasterizer: &mut R,
     mesh: &Mesh,
     material: Option<&Material>,
@@ -227,7 +227,7 @@ fn render_mesh<R: Rasterizer>(
     }
 }
 
-fn rasterize_triangle<R: Rasterizer>(
+fn rasterize_triangle<R: RasterTarget>(
     rasterizer: &mut R,
     v0: &PreparedVertex,
     v1: &PreparedVertex,
@@ -274,11 +274,6 @@ fn rasterize_triangle<R: Rasterizer>(
     let y0 = min_y.max(0);
     let y1 = max_y.min(height - 1);
 
-    let mut dirty_min_x = width;
-    let mut dirty_min_y = height;
-    let mut dirty_max_x = 0;
-    let mut dirty_max_y = 0;
-
     for y in y0..=y1 {
         let py = y as f32 + 0.5;
         let mut w0 = edge_fn(p1, p2, x0 as f32 + 0.5, py) * orient;
@@ -290,7 +285,7 @@ fn rasterize_triangle<R: Rasterizer>(
             continue;
         }
 
-        rasterizer.blend_hspan_with(x0, y, span_len, |i| {
+        rasterizer.blend_hspan_with(x0, y, span_len, |_i| {
             let mut color = Color::TRANSPARENT;
             let mut coverage = 0u8;
 
@@ -325,11 +320,6 @@ fn rasterize_triangle<R: Rasterizer>(
 
                     color = lit_color;
                     coverage = 255;
-
-                    dirty_min_x = dirty_min_x.min(x0 + i as i32);
-                    dirty_min_y = dirty_min_y.min(y);
-                    dirty_max_x = dirty_max_x.max(x0 + i as i32);
-                    dirty_max_y = dirty_max_y.max(y);
                 }
             }
 
@@ -338,10 +328,6 @@ fn rasterize_triangle<R: Rasterizer>(
             w2 += step_x2;
             (color, coverage)
         });
-    }
-
-    if dirty_min_x <= dirty_max_x && dirty_min_y <= dirty_max_y {
-        rasterizer.mark_dirty(dirty_min_x, dirty_min_y, dirty_max_x + 1, dirty_max_y + 1);
     }
 }
 
@@ -405,7 +391,7 @@ fn apply_lighting(
     Color::rgba(r, g, b, base.a())
 }
 
-fn draw_wireframe_triangle<R: Rasterizer>(
+fn draw_wireframe_triangle<R: RasterTarget>(
     rasterizer: &mut R,
     v0: &PreparedVertex,
     v1: &PreparedVertex,
@@ -417,7 +403,7 @@ fn draw_wireframe_triangle<R: Rasterizer>(
     draw_line(rasterizer, &v2.screen, &v0.screen, color);
 }
 
-fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Color) {
+fn draw_line<R: RasterTarget>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Color) {
     let width = rasterizer.width() as i32;
     let height = rasterizer.height() as i32;
 
@@ -425,10 +411,6 @@ fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Color
     let mut y0 = a.y.round() as i32;
     let x1 = b.x.round() as i32;
     let y1 = b.y.round() as i32;
-    let min_x = x0.min(x1).max(0);
-    let max_x = x0.max(x1).min(width - 1);
-    let min_y = y0.min(y1).max(0);
-    let max_y = y0.max(y1).min(height - 1);
 
     let dx = (x1 - x0).abs();
     let sx = if x0 < x1 { 1 } else { -1 };
@@ -452,10 +434,6 @@ fn draw_line<R: Rasterizer>(rasterizer: &mut R, a: &Vec3, b: &Vec3, color: Color
             err += dx;
             y0 += sy;
         }
-    }
-
-    if min_x <= max_x && min_y <= max_y {
-        rasterizer.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
     }
 }
 

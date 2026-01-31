@@ -6,7 +6,7 @@ use crate::masks::RadiusMask;
 use crate::math::{dist_sq, isqrt};
 use crate::primitives::gradient::gradient_get_color;
 use crate::types::*;
-use crate::Rasterizer;
+use crate::RasterTarget;
 
 /// Rectangle descriptor mirroring lv_draw_rect_dsc_t (subset needed by gfx).
 #[derive(Clone, Debug)]
@@ -69,16 +69,12 @@ impl Default for RectDsc {
 }
 
 /// High-level rectangle draw matching LVGL's order: shadow → outline → fill → border.
-pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, coords: &Area) {
+pub fn draw_rect<R: RasterTarget>(rast: &mut R, dsc: &RectDsc, coords: &Area) {
     if coords.width() <= 0 || coords.height() <= 0 {
         return;
     }
 
-    let mut dirty = *coords;
-
     if dsc.shadow_opa > 0 && dsc.shadow_width > 0 {
-        let shadow_bounds = shadow_bounds(coords, dsc);
-        dirty = merge_bounds(dirty, shadow_bounds);
         render_shadow(rast, dsc, coords);
     }
 
@@ -92,15 +88,11 @@ pub fn draw_rect<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, coords: &Area) {
     }
 
     if dsc.outline_opa > 0 && dsc.outline_width > 0 {
-        let outline_outer = outline_outer_area(coords, dsc);
-        dirty = merge_bounds(dirty, outline_outer);
         render_outline(rast, dsc, coords);
     }
-
-    rast.mark_dirty(dirty.x1, dirty.y1, dirty.x2 + 1, dirty.y2 + 1);
 }
 
-fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+fn render_background<R: RasterTarget>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     if area.width() <= 0 || area.height() <= 0 {
         return;
     }
@@ -131,7 +123,7 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
         return;
     }
 
-    let mut mask = has_radius.then(|| RadiusMask::new(*area, radius, false));
+    let mask = has_radius.then(|| RadiusMask::new(*area, radius, false));
     let mut mask_buf = has_radius.then(|| alloc::vec![255u8; clipped.width() as usize]);
 
     let span_width = clipped.width() as usize;
@@ -207,7 +199,7 @@ fn render_background<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     }
 }
 
-fn render_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+fn render_border<R: RasterTarget>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     render_border_for_style(
         rast,
         area,
@@ -219,7 +211,7 @@ fn render_border<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     );
 }
 
-fn render_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+fn render_outline<R: RasterTarget>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     if dsc.outline_opa == 0 || dsc.outline_width <= 0 {
         return;
     }
@@ -241,7 +233,7 @@ fn render_outline<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     );
 }
 
-fn render_border_for_style<R: Rasterizer>(
+fn render_border_for_style<R: RasterTarget>(
     rast: &mut R,
     outer: &Area,
     raw_radius: i32,
@@ -287,7 +279,7 @@ fn render_border_for_style<R: Rasterizer>(
     }
 }
 
-fn render_border_simple<R: Rasterizer>(
+fn render_border_simple<R: RasterTarget>(
     rast: &mut R,
     inner: &Area,
     outer: &Area,
@@ -325,7 +317,7 @@ fn render_border_simple<R: Rasterizer>(
     }
 }
 
-fn render_border_complex<R: Rasterizer>(
+fn render_border_complex<R: RasterTarget>(
     rast: &mut R,
     outer: &Area,
     inner: &Area,
@@ -617,7 +609,7 @@ fn render_border_complex<R: Rasterizer>(
     }
 }
 
-fn fill_rect_clipped<R: Rasterizer>(rast: &mut R, rect: &Area, color: Color, opa: Opacity) {
+fn fill_rect_clipped<R: RasterTarget>(rast: &mut R, rect: &Area, color: Color, opa: Opacity) {
     if opa == 0 {
         return;
     }
@@ -668,7 +660,7 @@ fn prepare_mask_line(
     }
 }
 
-fn paint_masked_span<R: Rasterizer>(
+fn paint_masked_span<R: RasterTarget>(
     rast: &mut R,
     color: Color,
     base_opa: Opacity,
@@ -715,7 +707,7 @@ fn paint_masked_span<R: Rasterizer>(
     }
 }
 
-fn render_shadow<R: Rasterizer>(rast: &mut R, dsc: &RectDsc, area: &Area) {
+fn render_shadow<R: RasterTarget>(rast: &mut R, dsc: &RectDsc, area: &Area) {
     if dsc.shadow_width <= 0 || dsc.shadow_opa == 0 {
         return;
     }
@@ -822,11 +814,6 @@ fn background_area(area: &Area, dsc: &RectDsc) -> Area {
     }
 }
 
-fn outline_outer_area(area: &Area, dsc: &RectDsc) -> Area {
-    let ext = dsc.outline_pad + dsc.outline_width;
-    Area::new(area.x1 - ext, area.y1 - ext, area.x2 + ext, area.y2 + ext)
-}
-
 fn shadow_bounds(area: &Area, dsc: &RectDsc) -> Area {
     let core = Area::new(
         area.x1 + dsc.shadow_offset_x - dsc.shadow_spread,
@@ -839,15 +826,6 @@ fn shadow_bounds(area: &Area, dsc: &RectDsc) -> Area {
         core.y1 - dsc.shadow_width,
         core.x2 + dsc.shadow_width,
         core.y2 + dsc.shadow_width,
-    )
-}
-
-fn merge_bounds(a: Area, b: Area) -> Area {
-    Area::new(
-        a.x1.min(b.x1),
-        a.y1.min(b.y1),
-        a.x2.max(b.x2),
-        a.y2.max(b.y2),
     )
 }
 

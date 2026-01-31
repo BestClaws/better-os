@@ -2,7 +2,7 @@ use crate::colors::Color;
 use crate::masks::{apply_masks, LineMask, LineSide, MaskRef, MaskResult};
 use crate::primitives::gradient::*;
 use crate::types::*;
-use crate::Rasterizer;
+use crate::RasterTarget;
 /// Triangle drawing matching LVGL's lv_draw_triangle
 use alloc::vec;
 use alloc::vec::Vec;
@@ -38,7 +38,7 @@ fn triangle_opa_mix(a: Opacity, b: Opacity) -> Opacity {
 }
 
 /// Draw a filled triangle with anti-aliased edges using LVGL's 3-line-mask approach
-pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
+pub fn draw_triangle<R: RasterTarget>(rast: &mut R, dsc: &TriangleDsc) {
     // Sort points: p[0] has smallest y, p[1] has largest y, p[2] is middle
     // LVGL does: sort so p[0].y <= p[2].y <= p[1].y
     let mut p = [dsc.p1, dsc.p2, dsc.p3];
@@ -236,6 +236,4 @@ pub fn draw_triangle<R: Rasterizer>(rast: &mut R, dsc: &TriangleDsc) {
             rast.blend_solid_hspan(min_x, y, dsc.color, &coverage_row);
         }
     }
-
-    rast.mark_dirty(min_x, min_y, max_x + 1, max_y + 1);
 }

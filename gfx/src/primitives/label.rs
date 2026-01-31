@@ -7,7 +7,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::types::*;
-use crate::Rasterizer;
+use crate::RasterTarget;
 
 use label_font::{default_font, font, glyph_for_char, kerning, Font};
 
@@ -45,7 +45,7 @@ impl LabelDsc {
     }
 }
 
-pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
+pub fn draw_label<R: RasterTarget>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
     if dsc.opa == 0 || dsc.text.is_empty() {
         return;
     }
@@ -152,7 +152,7 @@ pub fn draw_label<R: Rasterizer>(rast: &mut R, dsc: &LabelDsc, area: &Area) {
     }
 }
 
-fn draw_decoration_line<R: Rasterizer>(
+fn draw_decoration_line<R: RasterTarget>(
     rast: &mut R,
     x1: i32,
     x2: i32,

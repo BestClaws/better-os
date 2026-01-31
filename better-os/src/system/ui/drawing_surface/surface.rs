@@ -7,7 +7,7 @@ use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::Rect;
 use gfx::colors::Color;
 
-const MAX_DIRTY_REGIONS: usize = 16;
+
 
 #[inline]
 pub(crate) fn rgba8888_to_rgb565(color: Color) -> u16 {
@@ -183,12 +183,13 @@ impl<'a> DrawingSurface<'a> {
 
         self.dirty_regions.clear();
         let rect = Rect::from_coords(0, 0, self.width, self.height);
-        self.mark_dirty_clipped(rect);
+        self.dirty_regions.push(rect);
     }
 
     pub fn flush(&mut self) {
         self.dirty_regions.clear();
     }
+
     pub fn dirty_regions(&self) -> &[Rect] {
         &self.dirty_regions
     }
@@ -265,37 +266,6 @@ impl<'a> DrawingSurface<'a> {
         Some(y as usize * self.width as usize + x as usize)
     }
 
-    fn accumulate_dirty(&mut self, rect: Rect) {
-        let mut pending = rect;
-        let mut i = 0;
-        while i < self.dirty_regions.len() {
-            if intersects_or_touches(&self.dirty_regions[i], &pending) {
-                let merged = union_rect(self.dirty_regions[i], pending);
-                self.dirty_regions.remove(i);
-                pending = merged;
-            } else {
-                i += 1;
-            }
-        }
 
-        if self.dirty_regions.len() < MAX_DIRTY_REGIONS {
-            self.dirty_regions.push(pending);
-        } else {
-            let mut collapsed = pending;
-            for existing in self.dirty_regions.iter() {
-                collapsed = union_rect(*existing, collapsed);
-            }
-            self.dirty_regions.clear();
-            self.dirty_regions.push(collapsed);
-        }
-    }
 
-    pub(crate) fn mark_dirty_clipped(&mut self, rect: Rect) {
-        let (x0, y0, x1, y1) = clip_rect(&rect, self.width, self.height);
-        if x0 >= x1 || y0 >= y1 {
-            return;
-        }
-        let clipped = Rect::from_coords(x0 as i32, y0 as i32, x1 - x0, y1 - y0);
-        self.accumulate_dirty(clipped);
-    }
 }

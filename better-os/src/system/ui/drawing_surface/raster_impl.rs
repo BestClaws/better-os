@@ -1,8 +1,3 @@
-//! Rasterizer trait implementation for `DrawingSurface` using the new gfx API.
-//!
-//! All color inputs are `Rgba8888`; storage is in the negotiated native
-//! pixel format (reference: RGB565). Dirty regions are reported explicitly
-//! via `mark_dirty` and not computed per-pixel.
 
 use super::surface::{
     gray4_to_rgba8888, rgb565_to_rgba8888, rgba8888_to_gray4, rgba8888_to_rgb565, DrawingSurface,
@@ -10,9 +5,9 @@ use super::surface::{
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::Rect;
 use gfx::colors::{blend_colors, Color};
-use gfx::rasterizer::Rasterizer;
+use gfx::rasterizer::RasterTarget;
 
-impl<'a> Rasterizer for DrawingSurface<'a> {
+impl<'a> RasterTarget for DrawingSurface<'a> {
     fn width(&self) -> usize {
         self.width() as usize
     }
@@ -25,15 +20,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         self.buffer_mut()
     }
 
-    fn mark_dirty(&mut self, min_x: i32, min_y: i32, max_x: i32, max_y: i32) {
-        if max_x <= min_x || max_y <= min_y {
-            return;
-        }
-        let width = (max_x - min_x) as u32;
-        let height = (max_y - min_y) as u32;
-        let rect = Rect::from_coords(min_x, min_y, width, height);
-        self.mark_dirty_clipped(rect);
-    }
+
 
     fn clear(&mut self, color: Color) {
         self.clear(color);
@@ -102,8 +89,6 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
             }
         }
 
-        let rect = Rect::from_coords(x, y, 1, 1);
-        self.mark_dirty_clipped(rect);
     }
 
     fn blend_hspan_with(
@@ -191,8 +176,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
             }
         }
 
-        let rect = Rect::from_coords(start_x, y, run_len as u32, 1);
-        self.mark_dirty_clipped(rect);
+
     }
 
     fn blend_vspan_with(
@@ -225,8 +209,6 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
             self.blend_pixel(x, start_y + i as i32, color, coverage);
         }
 
-        let rect = Rect::from_coords(x, start_y, 1, run_len as u32);
-        self.mark_dirty_clipped(rect);
     }
 
     fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Color) {
@@ -282,8 +264,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
             }
         }
 
-        let rect = Rect::from_coords(x0, y0, (x1 - x0) as u32, (y1 - y0) as u32);
-        self.mark_dirty_clipped(rect);
+
     }
 
     fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Color) {

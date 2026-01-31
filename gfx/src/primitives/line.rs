@@ -6,7 +6,7 @@ use crate::colors::Color;
 use crate::masks::{apply_masks, LineMask, LineSide, MaskRef, MaskResult};
 use crate::primitives::rectangle::{draw_rect, RectDsc};
 use crate::types::*;
-use crate::Rasterizer;
+use crate::RasterTarget;
 
 fn pos_mod(value: i32, modulo: i32) -> i32 {
     let mut result = value % modulo;
@@ -47,7 +47,7 @@ impl LineDsc {
 }
 
 /// Draw a line
-pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
+pub fn draw_line<R: RasterTarget>(rast: &mut R, dsc: &LineDsc) {
     let dx = dsc.p2.x - dsc.p1.x;
     let dy = dsc.p2.y - dsc.p1.y;
 
@@ -102,7 +102,6 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
                 }
             }
         }
-        rast.mark_dirty(x1, y1, x2 + 1, y2 + 1);
         return;
     }
 
@@ -112,7 +111,6 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     if len_sq == 0 {
         // Point
         rast.blend_pixel(dsc.p1.x, dsc.p1.y, dsc.color, dsc.opa);
-        rast.mark_dirty(dsc.p1.x, dsc.p1.y, dsc.p1.x + 1, dsc.p1.y + 1);
         return;
     }
 
@@ -263,14 +261,6 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
         }
     }
 
-    // Mark dirty region
-    rast.mark_dirty(
-        blend_area.x1,
-        blend_area.y1,
-        blend_area.x2 + 1,
-        blend_area.y2 + 1,
-    );
-
     if dsc.round_start || dsc.round_end {
         let mut cap_dsc = RectDsc::new();
         cap_dsc.bg_color = dsc.color;
@@ -302,7 +292,7 @@ pub fn draw_line<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
     }
 }
 
-fn draw_horizontal_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
+fn draw_horizontal_dashed<R: RasterTarget>(rast: &mut R, dsc: &LineDsc) {
     let w = dsc.width - 1;
     let w_half0 = w >> 1;
     let w_half1 = w_half0 + (w & 1);
@@ -344,11 +334,9 @@ fn draw_horizontal_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             rast.blend_solid_hspan(x_start, y, dsc.color, &coverage_row);
         }
     }
-
-    rast.mark_dirty(x_start, y_start, x_end + 1, y_end + 1);
 }
 
-fn draw_vertical_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
+fn draw_vertical_dashed<R: RasterTarget>(rast: &mut R, dsc: &LineDsc) {
     let w = dsc.width - 1;
     let w_half0 = w >> 1;
     let w_half1 = w_half0 + (w & 1);
@@ -386,6 +374,4 @@ fn draw_vertical_dashed<R: Rasterizer>(rast: &mut R, dsc: &LineDsc) {
             dash_cnt = 0;
         }
     }
-
-    rast.mark_dirty(x_start, y_start, x_end + 1, y_end + 1);
 }

@@ -1,10 +1,9 @@
 use crate::colors::Color;
 
-pub trait Rasterizer {
+pub trait RasterTarget {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn buffer_mut(&mut self) -> &mut [u8];
-    fn mark_dirty(&mut self, min_x: i32, min_y: i32, max_x: i32, max_y: i32);
 
     /// Clear entire surface with a solid color.
     fn clear(&mut self, color: Color);
