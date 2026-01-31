@@ -10,7 +10,7 @@ use crate::system::ui::compositor::{
     animation::{ease_in_out_circular, ease_in_out_cubic, ease_out_bounce, AnimationConfig},
     UICompositor,
 };
-use crate::system::ui::display::{Display, DisplayService};
+use crate::system::services::display::{Display, DisplayService};
 use crate::system::ui::display_metrics;
 use crate::system::ui::windowing::WindowManager;
 

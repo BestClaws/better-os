@@ -3,7 +3,7 @@ use crate::apps::components::{
     StylePalette,
 };
 use crate::system::app::app_context::AppContext;
-use crate::system::services::gyro_accel_srv::{latest_orientation, wait_for_orientation_update};
+use crate::system::services::tasks::gyro_accel_srv::{latest_orientation, wait_for_orientation_update};
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::util::math::primitives as util_math;
 use alloc::vec::Vec;

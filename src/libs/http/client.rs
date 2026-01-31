@@ -6,7 +6,7 @@ use crate::libs::hps::types::{
 use crate::libs::http::error::{Error, Result};
 use crate::libs::http::request::RequestBuilder;
 use crate::libs::http::response::Response;
-use crate::system::services::http_service::{http_request_sender, http_response_receiver};
+use crate::system::services::tasks::http_service::{http_request_sender, http_response_receiver};
 use defmt::{debug, info};
 
 /// HTTP Client

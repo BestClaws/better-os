@@ -3,7 +3,7 @@ use crate::apps::components::{
     CardConfig, CardFrame, StatusBarData, StyleFonts, StyleMetrics, StylePalette,
 };
 use crate::system::app::app_context::AppContext;
-use crate::system::services::gyro_accel_srv::{
+use crate::system::services::tasks::gyro_accel_srv::{
     latest_imu_snapshot, wait_for_imu_snapshot, ImuSnapshot,
 };
 use crate::system::ui::drawing_surface::DrawingSurface;

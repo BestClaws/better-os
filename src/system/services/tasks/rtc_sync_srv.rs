@@ -1,6 +1,6 @@
 use crate::libs::http;
 use crate::system::services::hps_service::wait_for_hps_ready;
-use crate::system::services::rtc_srv::{set_datetime_from_worldtime, RtcServiceError};
+use crate::system::services::tasks::rtc_srv::{set_datetime_from_worldtime, RtcServiceError};
 use defmt::{info, warn};
 use embassy_time::{Duration, Timer};
 

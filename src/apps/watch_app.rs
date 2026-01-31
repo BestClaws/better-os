@@ -7,8 +7,8 @@ use crate::apps::components::{
 };
 use crate::system::app::app_context::AppContext;
 use crate::system::hal::rtc::RtcDateTime;
-use crate::system::services::audio_srv::AudioService;
-use crate::system::services::rtc_srv::current_datetime;
+use crate::system::services::tasks::audio_srv::AudioService;
+use crate::system::services::tasks::rtc_srv::current_datetime;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_time::{Duration, Instant, Timer};
