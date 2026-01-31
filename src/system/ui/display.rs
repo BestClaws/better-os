@@ -14,15 +14,7 @@ pub struct DisplayPreferences {
 }
 
 impl DisplayPreferences {
-    pub const fn new(
-        pixel_formats: &'static [PixelFormat],
-        logical_resolutions: &'static [DisplaySize],
-    ) -> Self {
-        Self {
-            pixel_formats,
-            logical_resolutions,
-        }
-    }
+
 
     #[rustfmt::skip]
     pub const fn default() -> Self {
@@ -34,7 +26,10 @@ impl DisplayPreferences {
                 DisplaySize::new(205, 251),
                 DisplaySize::new(102, 125),
         ];
-        Self::new(FORMATS, RESOLUTIONS)
+        DisplayPreferences {
+            pixel_formats: FORMATS,
+            logical_resolutions: RESOLUTIONS
+        }
     }
 
     pub fn pixel_formats(&self) -> &'static [PixelFormat] {
@@ -46,7 +41,8 @@ impl DisplayPreferences {
     }
 }
 
-/// Negotiates capabilities with the driver and exposes drawing primitives.
+/// Sole owner of the display service. manages negotiating display preferences
+/// and writing to it.
 pub struct DisplayService {
     driver: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     preferences: DisplayPreferences,
@@ -68,12 +64,12 @@ impl DisplayService {
 
     pub async fn initialize(&self) -> Display {
         let (pixel_format, resolution) = {
-            let mut guard = self.driver.lock().await;
-            let caps = guard.capabilities();
-            let format = negotiate_format(&self.preferences, &caps);
-            let resolution = negotiate_resolution(&self.preferences, &caps);
-            guard.set_pixel_format(format);
-            guard.set_resolution(resolution);
+            let mut display_g = self.driver.lock().await;
+            let caps = display_g.capabilities();
+            let format = self.negotiate_format(&caps);
+            let resolution = self.negotiate_resolution(&caps);
+            display_g.set_pixel_format(format);
+            display_g.set_resolution(resolution);
             (format, resolution)
         };
 
@@ -88,9 +84,35 @@ impl DisplayService {
         let mut guard = self.driver.lock().await;
         guard.capabilities()
     }
+
+
+    fn negotiate_format(&self, capabilities: &DisplayCapabilities) -> PixelFormat {
+        for preference in self.preferences.pixel_formats() {
+            if capabilities.supported_formats.contains(preference) {
+                return *preference;
+            }
+        }
+        capabilities.preferred_format
+    }
+
+
+    fn negotiate_resolution(&self, capabilities: &DisplayCapabilities, ) -> DisplayResolution {
+        for logical in self.preferences.logical_resolutions() {
+            if let Some(mode) = capabilities
+                .supported_resolutions
+                .iter()
+                .copied()
+                .find(|candidate| candidate.logical == *logical)
+            {
+                return mode;
+            }
+        }
+        capabilities.preferred_resolution
+    }
+
 }
 
-/// UI-level Display facade that exposes logical framebuffer properties and draw methods.
+/// Display facade that exposes logical framebuffer properties and draw methods.
 pub struct Display {
     driver: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
     pixel_format: PixelFormat,
@@ -127,30 +149,9 @@ impl Display {
         let mut guard = self.driver.lock().await;
         guard.draw_region(buffer, region).await;
     }
+
+
+
 }
 
-fn negotiate_format(preferences: &DisplayPreferences, caps: &DisplayCapabilities) -> PixelFormat {
-    for preference in preferences.pixel_formats() {
-        if caps.supported_formats.contains(preference) {
-            return *preference;
-        }
-    }
-    caps.preferred_format
-}
 
-fn negotiate_resolution(
-    preferences: &DisplayPreferences,
-    capabilities: &DisplayCapabilities,
-) -> DisplayResolution {
-    for logical in preferences.logical_resolutions() {
-        if let Some(mode) = capabilities
-            .supported_resolutions
-            .iter()
-            .copied()
-            .find(|candidate| candidate.logical == *logical)
-        {
-            return mode;
-        }
-    }
-    capabilities.preferred_resolution
-}
