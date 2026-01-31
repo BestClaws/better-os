@@ -11,7 +11,7 @@ use crate::system::services::audio_srv::AudioService;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_time::{Duration, Timer};
-use rust_gfx::types::Area;
+use gfx::types::Area;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AudioStage {

@@ -64,6 +64,7 @@ dependencies = [
  "esp-radio",
  "esp-rtos",
  "fixed",
+ "gfx",
  "httparse",
  "libm",
  "log",
@@ -71,7 +72,6 @@ dependencies = [
  "nb 1.1.0",
  "panic-rtt-target",
  "rtt-target",
- "rust-gfx",
  "serde",
  "serde-json-core",
  "static_cell",
@@ -1076,6 +1076,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfx"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "micromath",
+ "miniz_oxide",
+ "serde",
+ "serde-json-core",
+ "zune-core",
+ "zune-jpeg",
+]
+
+[[package]]
 name = "half"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1535,19 +1548,6 @@ dependencies = [
  "defmt 0.3.100",
  "portable-atomic",
  "ufmt-write",
-]
-
-[[package]]
-name = "rust-gfx"
-version = "0.1.0"
-dependencies = [
- "libm",
- "micromath",
- "miniz_oxide",
- "serde",
- "serde-json-core",
- "zune-core",
- "zune-jpeg",
 ]
 
 [[package]]

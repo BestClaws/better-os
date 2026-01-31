@@ -4,9 +4,9 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Timer};
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, BorderSide, GradDir, Gradient, OPA_COVER};
+use gfx::colors::Color;
+use gfx::primitives::rectangle::{draw_rect, RectDsc};
+use gfx::types::{Area, BorderSide, GradDir, Gradient, OPA_COVER};
 
 #[embassy_executor::task]
 pub async fn rect_app(ctx: AppContext) {
@@ -30,14 +30,14 @@ pub async fn rect_app(ctx: AppContext) {
         ctx.draw(move |surface: &mut DrawingSurface| {
             // Draw a fancy rectangle with gradient, border, and rounded corners
             let mut dsc = RectDsc::new();
-            dsc.bg_color = Rgba8888::rgba(r, g, b, 255);
+            dsc.bg_color = Color::rgba(r, g, b, 255);
             dsc.bg_opa = OPA_COVER;
             dsc.bg_grad = Gradient::vertical(
-                Rgba8888::rgba(r2, g2, b2, 255),
-                Rgba8888::rgba(r, g, b, 255),
+                Color::rgba(r2, g2, b2, 255),
+                Color::rgba(r, g, b, 255),
             );
             dsc.radius = 10;
-            dsc.border_color = Rgba8888::rgba(200, 200, 200, 255);
+            dsc.border_color = Color::rgba(200, 200, 200, 255);
             dsc.border_width = 2;
             dsc.border_opa = OPA_COVER;
             dsc.border_side = BorderSide::FULL;

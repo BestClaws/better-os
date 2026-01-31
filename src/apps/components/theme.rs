@@ -1,43 +1,43 @@
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::label::{line_height_for_font, FontId};
+use gfx::colors::Color;
+use gfx::primitives::label::{line_height_for_font, FontId};
 
 use crate::system::ui::drawing_surface::DrawingSurface;
 
 #[derive(Clone, Copy, Debug)]
 pub struct StylePalette {
-    pub background: Rgba8888,
-    pub container: Rgba8888,
-    pub container_alt: Rgba8888,
-    pub text_primary: Rgba8888,
-    pub text_secondary: Rgba8888,
-    pub text_muted: Rgba8888,
-    pub accent_yellow: Rgba8888,
-    pub accent_dark: Rgba8888,
-    pub accent_gray: Rgba8888,
-    pub accent_light: Rgba8888,
-    pub stat_gradient_start: Rgba8888,
-    pub stat_gradient_end: Rgba8888,
-    pub outline: Rgba8888,
-    pub shadow: Rgba8888,
+    pub background: Color,
+    pub container: Color,
+    pub container_alt: Color,
+    pub text_primary: Color,
+    pub text_secondary: Color,
+    pub text_muted: Color,
+    pub accent_yellow: Color,
+    pub accent_dark: Color,
+    pub accent_gray: Color,
+    pub accent_light: Color,
+    pub stat_gradient_start: Color,
+    pub stat_gradient_end: Color,
+    pub outline: Color,
+    pub shadow: Color,
 }
 
 impl StylePalette {
     pub const fn arknights() -> Self {
         Self {
-            background: Rgba8888::rgba(232, 232, 232, 255),
-            container: Rgba8888::rgba(255, 255, 255, 240),
-            container_alt: Rgba8888::rgba(250, 250, 250, 255),
-            text_primary: Rgba8888::rgba(44, 44, 44, 255),
-            text_secondary: Rgba8888::rgba(102, 102, 102, 255),
-            text_muted: Rgba8888::rgba(136, 136, 136, 255),
-            accent_yellow: Rgba8888::rgba(247, 255, 0, 255),
-            accent_dark: Rgba8888::rgba(44, 44, 44, 255),
-            accent_gray: Rgba8888::rgba(102, 102, 102, 255),
-            accent_light: Rgba8888::rgba(216, 216, 216, 255),
-            stat_gradient_start: Rgba8888::rgba(44, 44, 44, 255),
-            stat_gradient_end: Rgba8888::rgba(68, 68, 68, 255),
-            outline: Rgba8888::rgba(210, 210, 210, 255),
-            shadow: Rgba8888::rgba(120, 120, 120, 40),
+            background: Color::rgba(232, 232, 232, 255),
+            container: Color::rgba(255, 255, 255, 240),
+            container_alt: Color::rgba(250, 250, 250, 255),
+            text_primary: Color::rgba(44, 44, 44, 255),
+            text_secondary: Color::rgba(102, 102, 102, 255),
+            text_muted: Color::rgba(136, 136, 136, 255),
+            accent_yellow: Color::rgba(247, 255, 0, 255),
+            accent_dark: Color::rgba(44, 44, 44, 255),
+            accent_gray: Color::rgba(102, 102, 102, 255),
+            accent_light: Color::rgba(216, 216, 216, 255),
+            stat_gradient_start: Color::rgba(44, 44, 44, 255),
+            stat_gradient_end: Color::rgba(68, 68, 68, 255),
+            outline: Color::rgba(210, 210, 210, 255),
+            shadow: Color::rgba(120, 120, 120, 40),
         }
     }
 }

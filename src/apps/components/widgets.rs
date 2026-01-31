@@ -1,9 +1,9 @@
 use alloc::string::String;
 
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::label::{draw_label, measure_text_with_font, FontId, LabelDsc};
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, BorderSide, Gradient, OPA_COVER, RADIUS_CIRCLE};
+use gfx::colors::Color;
+use gfx::primitives::label::{draw_label, measure_text_with_font, FontId, LabelDsc};
+use gfx::primitives::rectangle::{draw_rect, RectDsc};
+use gfx::types::{Area, BorderSide, Gradient, OPA_COVER, RADIUS_CIRCLE};
 
 use crate::system::ui::drawing_surface::DrawingSurface;
 
@@ -14,11 +14,11 @@ pub enum AccentColor {
     Yellow,
     Gray,
     Dark,
-    Custom(Rgba8888),
+    Custom(Color),
 }
 
 impl AccentColor {
-    fn resolve(self, palette: StylePalette) -> Rgba8888 {
+    fn resolve(self, palette: StylePalette) -> Color {
         match self {
             AccentColor::Yellow => palette.accent_yellow,
             AccentColor::Gray => palette.accent_gray,
@@ -171,7 +171,7 @@ pub fn draw_status_bar(
 
     let mut bar = RectDsc::new();
     bar.bg_color = palette.accent_dark;
-    bar.bg_grad = Gradient::vertical(palette.accent_dark, Rgba8888::rgba(34, 34, 34, 255));
+    bar.bg_grad = Gradient::vertical(palette.accent_dark, Color::rgba(34, 34, 34, 255));
     bar.bg_opa = OPA_COVER;
     bar.radius = metrics.section_radius.max(2);
     draw_rect(surface, &bar, &area);
@@ -622,7 +622,7 @@ pub fn draw_button(
         ButtonKind::Primary => {
             button.bg_color = palette.accent_dark;
             button.bg_grad =
-                Gradient::vertical(palette.accent_dark, Rgba8888::rgba(20, 20, 20, 255));
+                Gradient::vertical(palette.accent_dark, Color::rgba(20, 20, 20, 255));
             button.bg_opa = OPA_COVER;
             button.radius = metrics.section_radius;
             draw_rect(surface, &button, &area);
@@ -768,7 +768,7 @@ pub fn draw_badge(
     let (bg, fg) = match badge.tone {
         BadgeTone::Accent => (palette.accent_yellow, palette.accent_dark),
         BadgeTone::Gray => (palette.accent_gray, palette.container),
-        BadgeTone::Danger => (Rgba8888::rgba(255, 59, 48, 255), palette.container),
+        BadgeTone::Danger => (Color::rgba(255, 59, 48, 255), palette.container),
     };
 
     let mut pill = RectDsc::new();
@@ -841,9 +841,9 @@ pub fn draw_text(
     font: FontId,
     x: i32,
     y: i32,
-    color: Rgba8888,
+    color: Color,
 ) -> i32 {
-    use rust_gfx::primitives::label::line_height_for_font;
+    use gfx::primitives::label::line_height_for_font;
 
     if text.is_empty() {
         return 0;

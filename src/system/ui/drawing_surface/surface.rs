@@ -5,12 +5,12 @@ use core::ptr::NonNull;
 use super::util::{clip_rect, intersects_or_touches, union_rect};
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::Rect;
-use rust_gfx::color::Rgba8888;
+use gfx::colors::Color;
 
 const MAX_DIRTY_REGIONS: usize = 16;
 
 #[inline]
-pub(crate) fn rgba8888_to_rgb565(color: Rgba8888) -> u16 {
+pub(crate) fn rgba8888_to_rgb565(color: Color) -> u16 {
     let r = color.r() as u16;
     let g = color.g() as u16;
     let b = color.b() as u16;
@@ -21,24 +21,24 @@ pub(crate) fn rgba8888_to_rgb565(color: Rgba8888) -> u16 {
 }
 
 #[inline]
-pub(crate) fn rgb565_to_rgba8888(pixel: u16) -> Rgba8888 {
+pub(crate) fn rgb565_to_rgba8888(pixel: u16) -> Color {
     let r5 = (pixel >> 11) & 0x1F;
     let g6 = (pixel >> 5) & 0x3F;
     let b5 = pixel & 0x1F;
     let r = ((r5 * 255) + 15) / 31;
     let g = ((g6 * 255) + 31) / 63;
     let b = ((b5 * 255) + 15) / 31;
-    Rgba8888::rgba(r as u8, g as u8, b as u8, 255)
+    Color::rgba(r as u8, g as u8, b as u8, 255)
 }
 
 #[inline]
-pub(crate) fn gray4_to_rgba8888(gray: u8) -> Rgba8888 {
+pub(crate) fn gray4_to_rgba8888(gray: u8) -> Color {
     let value = (gray as u16 * 17) as u8;
-    Rgba8888::rgba(value, value, value, 255)
+    Color::rgba(value, value, value, 255)
 }
 
 #[inline]
-pub(crate) fn rgba8888_to_gray4(color: Rgba8888) -> u8 {
+pub(crate) fn rgba8888_to_gray4(color: Color) -> u8 {
     let r = color.r() as u32;
     let g = color.g() as u32;
     let b = color.b() as u32;
@@ -153,7 +153,7 @@ impl<'a> DrawingSurface<'a> {
     pub fn pixel_format(&self) -> PixelFormat {
         self.pixel_format
     }
-    pub fn clear(&mut self, color: Rgba8888) {
+    pub fn clear(&mut self, color: Color) {
         if self.width == 0 || self.height == 0 {
             self.flush();
             return;
@@ -193,16 +193,16 @@ impl<'a> DrawingSurface<'a> {
         &self.dirty_regions
     }
 
-    pub fn get_pixel_at_index(&self, index: usize) -> Rgba8888 {
+    pub fn get_pixel_at_index(&self, index: usize) -> Color {
         if self.buf.is_none() {
-            return Rgba8888::TRANSPARENT;
+            return Color::TRANSPARENT;
         }
         match self.pixel_format {
             PixelFormat::Rgb565 => {
                 let byte_index = index * 2;
                 let buf = self.buffer();
                 if byte_index + 1 >= buf.len() {
-                    return Rgba8888::TRANSPARENT;
+                    return Color::TRANSPARENT;
                 }
                 let value = u16::from_be_bytes([buf[byte_index], buf[byte_index + 1]]);
                 rgb565_to_rgba8888(value)
@@ -211,7 +211,7 @@ impl<'a> DrawingSurface<'a> {
                 let buf = self.buffer();
                 let byte_index = index / 2;
                 if byte_index >= buf.len() {
-                    return Rgba8888::TRANSPARENT;
+                    return Color::TRANSPARENT;
                 }
                 let high = (index & 1) == 0;
                 let byte = buf[byte_index];
@@ -221,7 +221,7 @@ impl<'a> DrawingSurface<'a> {
         }
     }
 
-    pub fn set_pixel_at_index(&mut self, index: usize, color: Rgba8888) {
+    pub fn set_pixel_at_index(&mut self, index: usize, color: Color) {
         if self.buf.is_none() {
             return;
         }

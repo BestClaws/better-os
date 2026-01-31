@@ -11,12 +11,12 @@ use alloc::{format, string::String};
 use defmt::{error, info};
 use embassy_time::{with_timeout, Duration, Instant, Timer};
 use micromath::F32Ext;
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::three_d::{
+use gfx::colors::Color;
+use gfx::primitives::rectangle::{draw_rect, RectDsc};
+use gfx::three_d::{
     load_glb, render_scene, Camera, Mat4, Quaternion, RenderOptions, ShadingMode, Vec3,
 };
-use rust_gfx::types::{Area, Gradient, OPA_COVER};
+use gfx::types::{Area, Gradient, OPA_COVER};
 
 const GLB_DATA: &[u8] = include_bytes!("../assets/arrow2.glb");
 
@@ -49,7 +49,7 @@ pub async fn arrow_app(context: AppContext) {
     let render_options = RenderOptions {
         mode: ShadingMode::Wireframe,
         overlay_wireframe: false,
-        wireframe_color: Rgba8888::rgb(90, 200, 255),
+        wireframe_color: Color::rgb(90, 200, 255),
         light_direction: Vec3::new(0.4, -0.6, -1.0),
         ambient_intensity: 0.25,
         diffuse_intensity: 0.65,

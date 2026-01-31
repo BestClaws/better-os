@@ -9,8 +9,8 @@ use super::surface::{
 };
 use crate::system::hal::display::PixelFormat;
 use crate::util::math::primitives::Rect;
-use rust_gfx::color::{blend_colors, Rgba8888};
-use rust_gfx::rasterizer::Rasterizer;
+use gfx::colors::{blend_colors, Color};
+use gfx::rasterizer::Rasterizer;
 
 impl<'a> Rasterizer for DrawingSurface<'a> {
     fn width(&self) -> usize {
@@ -35,11 +35,11 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         self.mark_dirty_clipped(rect);
     }
 
-    fn clear(&mut self, color: Rgba8888) {
+    fn clear(&mut self, color: Color) {
         self.clear(color);
     }
 
-    fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba8888, coverage: u8) {
+    fn blend_pixel(&mut self, x: i32, y: i32, color: Color, coverage: u8) {
         if coverage == 0 {
             return;
         }
@@ -111,7 +111,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         x: i32,
         y: i32,
         len: i32,
-        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+        mut f: impl FnMut(usize) -> (Color, u8),
     ) {
         if len <= 0 {
             return;
@@ -200,7 +200,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         x: i32,
         y: i32,
         len: i32,
-        mut f: impl FnMut(usize) -> (Rgba8888, u8),
+        mut f: impl FnMut(usize) -> (Color, u8),
     ) {
         if len <= 0 {
             return;
@@ -229,7 +229,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         self.mark_dirty_clipped(rect);
     }
 
-    fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgba8888) {
+    fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Color) {
         if w <= 0 || h <= 0 {
             return;
         }
@@ -286,7 +286,7 @@ impl<'a> Rasterizer for DrawingSurface<'a> {
         self.mark_dirty_clipped(rect);
     }
 
-    fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Rgba8888) {
+    fn stamp_rgb_zero_alpha(&mut self, x: i32, y: i32, color: Color) {
         match self.pixel_format() {
             PixelFormat::Rgb565 | PixelFormat::Gray4 => {
                 let _ = (x, y, color);

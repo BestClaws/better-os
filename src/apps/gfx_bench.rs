@@ -4,10 +4,10 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Instant, Timer};
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::line::{draw_line, LineDsc};
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::{
+use gfx::colors::Color;
+use gfx::primitives::line::{draw_line, LineDsc};
+use gfx::primitives::rectangle::{draw_rect, RectDsc};
+use gfx::{
     Area, BorderSide, GradDir, Point, OPA_30, OPA_50, OPA_70, OPA_COVER, RADIUS_CIRCLE,
 };
 
@@ -30,10 +30,10 @@ pub async fn gfx_bench_app(context: AppContext) {
         let radii = [0, 5, 10, 20, RADIUS_CIRCLE];
         let radius_names = ["r0", "r5", "r10", "r20", "rcircle"];
         let colors = [
-            Rgba8888::rgb(255, 100, 100),
-            Rgba8888::rgb(100, 255, 100),
-            Rgba8888::rgb(100, 100, 255),
-            Rgba8888::rgb(255, 255, 100),
+            Color::rgb(255, 100, 100),
+            Color::rgb(100, 255, 100),
+            Color::rgb(100, 100, 255),
+            Color::rgb(255, 255, 100),
         ];
         let color_names = ["red", "green", "blue", "yellow"];
 
@@ -42,7 +42,7 @@ pub async fn gfx_bench_app(context: AppContext) {
                 let start = Instant::now();
                 context
                     .draw(|surface| {
-                        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                        surface.clear(Color::rgba(0, 0, 0, 255));
                         let mut dsc = RectDsc::new();
                         dsc.radius = radii[r];
                         dsc.bg_opa = OPA_COVER;
@@ -76,13 +76,13 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = RectDsc::new();
                     dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                    dsc.bg_color = Color::rgb(255, 0, 0);
                     dsc.bg_opa = OPA_COVER;
                     dsc.bg_grad.dir = GradDir::Hor;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
+                    dsc.bg_grad.stops[1].color = Color::rgb(0, 0, 255);
                     draw_rect(
                         surface,
                         &dsc,
@@ -108,13 +108,13 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = RectDsc::new();
                     dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                    dsc.bg_color = Color::rgb(255, 0, 0);
                     dsc.bg_opa = OPA_COVER;
                     dsc.bg_grad.dir = GradDir::Ver;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
+                    dsc.bg_grad.stops[1].color = Color::rgb(0, 0, 255);
                     draw_rect(
                         surface,
                         &dsc,
@@ -140,13 +140,13 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = RectDsc::new();
                     dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                    dsc.bg_color = Color::rgb(255, 0, 0);
                     dsc.bg_opa = OPA_COVER;
                     dsc.bg_grad.dir = GradDir::Radial;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
+                    dsc.bg_grad.stops[1].color = Color::rgb(0, 0, 255);
                     draw_rect(
                         surface,
                         &dsc,
@@ -172,13 +172,13 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = RectDsc::new();
                     dsc.radius = radius;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                    dsc.bg_color = Color::rgb(255, 0, 0);
                     dsc.bg_opa = OPA_COVER;
                     dsc.bg_grad.dir = GradDir::Conical;
-                    dsc.bg_grad.stops[1].color = Rgba8888::rgb(0, 0, 255);
+                    dsc.bg_grad.stops[1].color = Color::rgb(0, 0, 255);
                     draw_rect(
                         surface,
                         &dsc,
@@ -203,13 +203,13 @@ pub async fn gfx_bench_app(context: AppContext) {
         let start = Instant::now();
         context
             .draw(|surface| {
-                surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                surface.clear(Color::rgba(0, 0, 0, 255));
                 let mut dsc = RectDsc::new();
                 dsc.radius = 10;
-                dsc.bg_color = Rgba8888::rgb(50, 50, 50);
+                dsc.bg_color = Color::rgb(50, 50, 50);
                 dsc.bg_opa = OPA_COVER;
                 dsc.border_width = 10;
-                dsc.border_color = Rgba8888::rgb(255, 255, 0);
+                dsc.border_color = Color::rgb(255, 255, 0);
                 dsc.border_opa = OPA_COVER;
                 dsc.border_side = BorderSide::FULL;
                 draw_rect(
@@ -238,10 +238,10 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = RectDsc::new();
                     dsc.radius = 10;
-                    dsc.bg_color = Rgba8888::rgb(255, 0, 0);
+                    dsc.bg_color = Color::rgb(255, 0, 0);
                     dsc.bg_opa = opa;
                     draw_rect(
                         surface,
@@ -266,10 +266,10 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = LineDsc::new(Point::new(15, 62), Point::new(87, 62));
                     dsc.width = width;
-                    dsc.color = Rgba8888::WHITE;
+                    dsc.color = Color::WHITE;
                     draw_line(surface, &dsc);
                 })
                 .await;
@@ -282,10 +282,10 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = LineDsc::new(Point::new(50, 30), Point::new(50, 95));
                     dsc.width = width;
-                    dsc.color = Rgba8888::WHITE;
+                    dsc.color = Color::WHITE;
                     draw_line(surface, &dsc);
                 })
                 .await;
@@ -299,10 +299,10 @@ pub async fn gfx_bench_app(context: AppContext) {
             let start = Instant::now();
             context
                 .draw(|surface| {
-                    surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+                    surface.clear(Color::rgba(0, 0, 0, 255));
                     let mut dsc = LineDsc::new(Point::new(15, 62), Point::new(87, 62));
                     dsc.width = 3;
-                    dsc.color = Rgba8888::WHITE;
+                    dsc.color = Color::WHITE;
                     dsc.opa = opa;
                     draw_line(surface, &dsc);
                 })

@@ -4,7 +4,7 @@ use crate::system::app::app_context::AppContext;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::info;
 use embassy_time::{Duration, Timer};
-use rust_gfx::color::Rgba8888;
+use gfx::colors::Color;
 
 #[embassy_executor::task]
 pub async fn gray_test_app(ctx: AppContext) {
@@ -31,7 +31,7 @@ pub async fn gray_test_app(ctx: AppContext) {
             name, gray_val, gray_val, gray_val
         );
 
-        let color = Rgba8888::rgba(*gray_val, *gray_val, *gray_val, 255);
+        let color = Color::rgba(*gray_val, *gray_val, *gray_val, 255);
 
         ctx.draw(|surface: &mut DrawingSurface| {
             surface.clear(color);

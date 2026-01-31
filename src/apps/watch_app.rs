@@ -13,14 +13,14 @@ use crate::system::ui::drawing_surface::DrawingSurface;
 use defmt::{info, warn};
 use embassy_time::{Duration, Instant, Timer};
 use micromath::F32Ext;
-use rust_gfx::color::Rgba8888;
-use rust_gfx::primitives::label::measure_text_with_font;
-use rust_gfx::primitives::{
+use gfx::colors::Color;
+use gfx::primitives::label::measure_text_with_font;
+use gfx::primitives::{
     arc::{draw_arc, ArcDsc},
     line::{draw_line, LineDsc},
     rectangle::{draw_rect, RectDsc},
 };
-use rust_gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
+use gfx::types::{Area, Gradient, Point, OPA_COVER, RADIUS_CIRCLE};
 
 extern crate alloc;
 use alloc::{format, string::String, vec, vec::Vec};
@@ -552,8 +552,8 @@ fn draw_accent_arcs(
     let arc_radius = radius - 2;
     let accents = [
         (18, 40, palette.accent_yellow),
-        (138, 32, Rgba8888::rgba(80, 120, 180, 255)),
-        (252, 30, Rgba8888::rgba(90, 200, 240, 255)),
+        (138, 32, Color::rgba(80, 120, 180, 255)),
+        (252, 30, Color::rgba(90, 200, 240, 255)),
     ];
 
     for (start, sweep, color) in accents {

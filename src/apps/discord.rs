@@ -9,9 +9,9 @@ use alloc::string::{String, ToString};
 use defmt::{info, warn};
 use embassy_executor::task;
 use embassy_time::{Duration, Ticker};
-use rust_gfx::primitives::label::measure_text_with_font;
-use rust_gfx::primitives::rectangle::{draw_rect, RectDsc};
-use rust_gfx::types::{Area, OPA_COVER};
+use gfx::primitives::label::measure_text_with_font;
+use gfx::primitives::rectangle::{draw_rect, RectDsc};
+use gfx::types::{Area, OPA_COVER};
 
 const MESSAGE_CAPACITY: usize = 64;
 const POLL_INTERVAL_MS: u64 = 5_000; // Poll every 5 seconds

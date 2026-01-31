@@ -1,3 +1,0 @@
-/home/boby/projects/better-os/build/CMakeFiles/sprite_gen.dir
-/home/boby/projects/better-os/build/CMakeFiles/edit_cache.dir
-/home/boby/projects/better-os/build/CMakeFiles/rebuild_cache.dir

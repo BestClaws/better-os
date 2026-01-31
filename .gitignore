@@ -20,7 +20,7 @@ target/
 /references/
 esp-hal/
 /embedded-graphics/
-/extras/tools/venv/
+/tools/venv/
 /venv/
 
 /references/

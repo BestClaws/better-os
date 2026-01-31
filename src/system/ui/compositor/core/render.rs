@@ -6,7 +6,7 @@ use super::state::UICompositor;
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
 use crate::util::math::primitives::Rect;
-use rust_gfx::color::Rgba8888;
+use gfx::colors::Color;
 
 use super::super::blitter::SurfaceBlitter;
 use super::super::region::extract_region_buffer_format;
@@ -42,7 +42,7 @@ impl UICompositor {
             let scratch = self.scratch.acquire(width, height, pixel_format);
             let mut composite_surface = DrawingSurface::new_unattached(width, height, pixel_format);
             composite_surface.attach_buffer(scratch);
-            composite_surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+            composite_surface.clear(Color::rgba(0, 0, 0, 255));
 
             Self::blit_window_regions(wm, &mut composite_surface, handle, &dirty_regions);
 

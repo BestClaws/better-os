@@ -7,7 +7,7 @@ use super::super::blitter::SurfaceBlitter;
 use super::state::{TransitionSession, UICompositor};
 use crate::system::ui::drawing_surface::DrawingSurface;
 use crate::system::ui::windowing::{WindowHandle, WindowManager};
-use rust_gfx::color::Rgba8888;
+use gfx::colors::Color;
 
 impl UICompositor {
     pub async fn animate_to_next_window(&mut self, wm: &mut WindowManager) {
@@ -194,7 +194,7 @@ impl UICompositor {
         let scratch = self.scratch.acquire(width, height, pixel_format);
         let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
         surface.attach_buffer(scratch);
-        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+        surface.clear(Color::rgba(0, 0, 0, 255));
 
         Self::compose_transition_frame(
             wm,
@@ -234,7 +234,7 @@ impl UICompositor {
         let scratch = self.scratch.acquire(width, height, pixel_format);
         let mut surface = DrawingSurface::new_unattached(width, height, pixel_format);
         surface.attach_buffer(scratch);
-        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+        surface.clear(Color::rgba(0, 0, 0, 255));
 
         let mut start_idx = ((start_progress.clamp(0.0, 1.0)) * steps as f32).round() as i32;
         let mut end_idx = ((end_progress.clamp(0.0, 1.0)) * steps as f32).round() as i32;
@@ -277,7 +277,7 @@ impl UICompositor {
         source: WindowHandle,
         target: WindowHandle,
     ) {
-        surface.clear(Rgba8888::rgba(0, 0, 0, 255));
+        surface.clear(Color::rgba(0, 0, 0, 255));
         let frame = animation.animate_frame(progress, direction, screen_width);
         let _ = wm.with_surface(source, |src| {
             SurfaceBlitter::copy_full(surface, src, frame.source_x, frame.source_y);
