@@ -24,10 +24,16 @@ impl DisplayPreferences {
         }
     }
 
+    #[rustfmt::skip]
     pub const fn default() -> Self {
-        const FORMATS: &[PixelFormat] = &[PixelFormat::Gray4, PixelFormat::Rgb565];
-        const RESOLUTIONS: &[DisplaySize] =
-            &[DisplaySize::new(205, 251), DisplaySize::new(102, 125)];
+        const FORMATS: &[PixelFormat] = &[
+            PixelFormat::Gray4,
+            PixelFormat::Rgb565,
+        ];
+        const RESOLUTIONS: &[DisplaySize] = &[
+                DisplaySize::new(205, 251),
+                DisplaySize::new(102, 125),
+        ];
         Self::new(FORMATS, RESOLUTIONS)
     }
 
@@ -134,10 +140,10 @@ fn negotiate_format(preferences: &DisplayPreferences, caps: &DisplayCapabilities
 
 fn negotiate_resolution(
     preferences: &DisplayPreferences,
-    caps: &DisplayCapabilities,
+    capabilities: &DisplayCapabilities,
 ) -> DisplayResolution {
     for logical in preferences.logical_resolutions() {
-        if let Some(mode) = caps
+        if let Some(mode) = capabilities
             .supported_resolutions
             .iter()
             .copied()
@@ -146,5 +152,5 @@ fn negotiate_resolution(
             return mode;
         }
     }
-    caps.preferred_resolution
+    capabilities.preferred_resolution
 }
