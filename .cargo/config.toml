@@ -1,18 +1,6 @@
-[target.riscv32imac-unknown-none-elf]
-runner = "probe-rs run --chip=esp32c6 --always-print-stacktrace --no-location --catch-hardfault"
+# Workspace-level cargo configuration
+# No architecture-specific settings here - keeps workspace clean like esp-hal
+# Architecture-specific settings are in better-os/.cargo/config.toml
 
 [env]
 DEFMT_LOG="info"
-
-[build]
-rustflags = [
-  # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
-  # NOTE: May negatively impact performance of produced code
-  "-C", "force-frame-pointers",
-  "-Awarnings"
-]
-
-target = "riscv32imac-unknown-none-elf"
-
-[unstable]
-build-std = ["alloc", "core"]

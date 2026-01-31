@@ -97,11 +97,11 @@ mod tests {
 
         // At start, should be red
         let (color, _) = gradient_get_color_hor(&grad, 0, 100);
-        assert_eq!(color.red(), 255);
-        assert_eq!(color.blue(), 0);
+        assert_eq!(color.r(), 255);
+        assert_eq!(color.b(), 0);
 
         // At end, should be blue
         let (color, _) = gradient_get_color_hor(&grad, 99, 100);
-        assert_eq!(color.blue() > 200, true);
+        assert_eq!(color.b() > 200, true);
     }
 }

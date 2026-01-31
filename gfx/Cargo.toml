@@ -1,17 +1,42 @@
 [package]
 name = "gfx"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A graphics library for embedded systems with no_std and std support"
+keywords = ["graphics", "embedded", "no_std", "rasterizer"]
+categories = ["embedded", "graphics", "no-std"]
 
+[lib]
+bench = true
+test = true
 
 [dependencies]
-libm = "0.2.15"
-micromath = "2.1.0"
-miniz_oxide = { version = "0.7", default-features = false, features = ["with-alloc"] }
-serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-serde-json-core = { version = "0.5", default-features = false }
-zune-core = { version = "0.5", default-features = false }
-zune-jpeg = { version = "0.5.8", default-features = false }
+libm = { workspace = true }
+micromath = { workspace = true }
+miniz_oxide = { workspace = true, features = ["with-alloc"] }
+serde = { workspace = true, features = ["derive", "alloc"] }
+serde-json-core = { workspace = true }
+zune-core = { workspace = true }
+zune-jpeg = { workspace = true }
 
 [dev-dependencies]
 png = "0.17"
+
+[features]
+default = []
+
+## Enable std support. This is disabled by default for no_std environments.
+std = []
+
+## Enable defmt support for debugging
+defmt = ["dep:defmt-03"]
+
+[dependencies.defmt-03]
+package = "defmt"
+version = "1.0.1"
+optional = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
