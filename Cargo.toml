@@ -7,8 +7,10 @@ members = [
 # panzer is excluded like esp-hal excludes examples/target-specific binaries
 # because it requires riscv32imac target and will fail workspace checks
 # Build it from its own directory: cd panzer && cargo build
+# sprite-generator is a standalone utility for generating test sprites
 exclude = [
     "panzer",
+    "sprite-generator",
 ]
 
 

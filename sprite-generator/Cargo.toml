@@ -1,0 +1,9 @@
+[package]
+name = "sprite-generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gfx = { path = "../gfx" }
+math = { path = "../math" }
+bmp = "0.5"
