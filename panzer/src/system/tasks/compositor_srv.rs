@@ -12,7 +12,7 @@ use crate::system::services::display::{Display, DisplayService};
 use gfx::rasterizer::RasterTarget;
 use gfx::colors::Color;
 use gfx::primitives::font::Font;
-use gfx::rgb565::Rgb565Rasterizer;
+use gfx::luma4::Luma4Rasterizer;
 
 /// Embedded pixel font
 const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/pixel.ttf");
@@ -42,7 +42,7 @@ pub async fn ui_compositor_service(
     let width = resolution.logical.width as usize;
     let height = resolution.logical.height as usize;
     let pixel_count = width * height;
-    let mut frame_buffer = alloc::vec![0u8; pixel_count * 2]; // RGB565 = 2 bytes per pixel
+    let mut frame_buffer = alloc::vec![0u8; (pixel_count + 1) / 2]; // Luma4 = 4 bits per pixel (2 pixels per byte)
 
     // Build font with builder pattern
     let cache_start = Instant::now();
@@ -55,8 +55,8 @@ pub async fn ui_compositor_service(
     let cache_time = cache_start.elapsed().as_millis();
     info!("Font built in {} ms", cache_time);
 
-    // Red background (RGB565 format)
-    let bg_color = (0xF8, 0x00); // Pure red: 0xF800
+    // Gray background (Luma4 format)
+    let bg_color = 0x77; // Gray: 0x7 in 4-bit grayscale (mid-gray for both pixels)
     let mut frame_counter = 0u32;
 
     info!("Starting font rendering demo");
@@ -66,16 +66,15 @@ pub async fn ui_compositor_service(
         let render_start = Instant::now();
         frame_counter += 1;
         
-        // Fill with solid red background
-        for chunk in frame_buffer.chunks_exact_mut(2) {
-            chunk[0] = bg_color.0;
-            chunk[1] = bg_color.1;
+        // Fill with solid gray background
+        for byte in frame_buffer.iter_mut() {
+            *byte = bg_color;
         }
         
         let render_time = render_start.elapsed().as_micros();
         
         // Create rasterizer for text drawing
-        let mut rasterizer = Rgb565Rasterizer::new(&mut frame_buffer, width as u16, height as u16);
+        let mut rasterizer = Luma4Rasterizer::new(&mut frame_buffer, width as u16, height as u16);
         let white = Color::rgba(255, 255, 255, 255);
         
         // Draw text using font
