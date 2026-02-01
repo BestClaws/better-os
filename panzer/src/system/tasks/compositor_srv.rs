@@ -6,7 +6,7 @@ use embassy_sync::mutex::Mutex;
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::services::display::{Display, DisplayService};
-use crate::system::tasks::{benchmark_luma4, benchmark_rgb565};
+use crate::system::tasks::{benchmark_luma4, benchmark_rgb565, font_demo_luma4, font_demo_rgb565};
 
 /// Compositor service task - handles UI rendering, animations, and display upkeep.
 #[embassy_executor::task]
@@ -40,11 +40,30 @@ pub async fn ui_compositor_service(
 
     info!("Starting RGB565 and Luma4 benchmark loop");
 
+    let mut frame_counter = 0u32;
     loop {
-        info!("=== RGB565 Benchmarks ===");
-        benchmark_rgb565::run(display, &mut rgb565_buffer, width_u16, height_u16).await;
+        frame_counter += 1;
+        //
+        // info!("=== RGB565 Benchmarks ===");
+        // benchmark_rgb565::run(display, &mut rgb565_buffer, width_u16, height_u16).await;
         
         // info!("=== Luma4 Benchmarks ===");
         // benchmark_luma4::run(display, &mut luma4_buffer, width_u16, height_u16).await;
+
+        info!("=== Luma4 Font Demo ===");
+        font_demo_luma4::run_font_demo(&mut luma4_buffer, width_u16, height_u16, frame_counter);
+
+        // Draw to display
+        let mut display_lock = display.lock().await;
+        display_lock.draw(&luma4_buffer).await;
+        drop(display_lock);
+
+        // info!("=== RGB565 Font Demo ===");
+        // font_demo_rgb565::run_font_demo(&mut rgb565_buffer, width_u16, height_u16, frame_counter);
+        //
+        // // Draw to display
+        // let mut display_lock = display.lock().await;
+        // display_lock.draw(&rgb565_buffer).await;
+        // drop(display_lock);
     }
 }

@@ -1,0 +1,105 @@
+use defmt::info;
+use embassy_time::Instant;
+
+use gfx::colors::Color;
+use gfx::rgb565::Rgb565Rasterizer;
+use gfx::primitives::font::Font;
+use gfx::rasterizer::RasterTarget;
+
+/// Embedded pixel font
+const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/pixel.ttf");
+
+/// Run RGB565 font rendering demonstration
+///
+/// This demo:
+/// 1. Builds a font cache with common ASCII characters (one-time cost)
+/// 2. Renders pangrams and text to test glyph rasterization
+/// 3. Displays dynamic frame counter to show text formatting
+/// 4. Measures rendering and text drawing times separately
+///
+/// Performance expectations:
+/// - Font cache build: ~few ms (one-time initialization)
+/// - Background fill: ~100-300µs
+/// - Text drawing: varies by character count and complexity
+pub fn run_font_demo(frame_buffer: &mut [u8], width: u16, height: u16, frame_counter: u32) {
+    // Build font with cached glyphs (one-time operation in real usage)
+    let cache_start = Instant::now();
+    let font = Font::builder()
+        .data(FONT_DATA_PIXEL)
+        .size(8.0)
+        .cache("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !?.:,'-Frame\u{00b5}s")
+        .hint(true)
+        .build();
+    let cache_time = cache_start.elapsed().as_millis();
+
+    info!("=== RGB565 Font Rendering Demo (Frame {}) ===", frame_counter);
+    info!("Font cache built in {} ms", cache_time);
+
+    // Render frame
+    let render_start = Instant::now();
+
+    // Fill with dark blue background (RGB565: 0x0010 = dark blue)
+    let bg_color = 0x0010u16.to_le_bytes();
+    for chunk in frame_buffer.chunks_exact_mut(2) {
+        chunk[0] = bg_color[0];
+        chunk[1] = bg_color[1];
+    }
+
+    let render_time = render_start.elapsed().as_micros();
+
+    // Draw text using font
+    let text_start = Instant::now();
+    let mut rasterizer = Rgb565Rasterizer::new(frame_buffer, width, height);
+    let white = Color::rgba(255, 255, 255, 255);
+
+    // Pangrams to test various glyphs
+    font.draw_text(
+        &mut rasterizer,
+        "THE QUICK BROWN FOX JUMPS OVER",
+        10,
+        15 + font.baseline(),
+        white,
+    );
+    font.draw_text(
+        &mut rasterizer,
+        "THE LAZY DOG. PACK MY BOX WITH",
+        10,
+        30 + font.baseline(),
+        white,
+    );
+    font.draw_text(
+        &mut rasterizer,
+        "FIVE DOZEN LIQUOR JUGS. HOW",
+        10,
+        45 + font.baseline(),
+        white,
+    );
+    font.draw_text(
+        &mut rasterizer,
+        "VEXINGLY QUICK DAFT ZEBRAS JUMP.",
+        10,
+        60 + font.baseline(),
+        white,
+    );
+
+    // Dynamic frame counter with formatted text
+    use core::fmt::Write;
+    let mut frame_text_buf = heapless::String::<32>::new();
+    let _ = write!(frame_text_buf, "Frame: {}", frame_counter);
+    font.draw_text(
+        &mut rasterizer,
+        &frame_text_buf,
+        10,
+        80 + font.baseline(),
+        white,
+    );
+
+    let text_time = text_start.elapsed().as_micros();
+
+    info!("Background fill: {} µs", render_time);
+    info!("Text rendering: {} µs", text_time);
+    info!(
+        "Total frame time: {} µs",
+        render_time + text_time
+    );
+}
