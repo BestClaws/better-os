@@ -8,3 +8,8 @@ test = true
 
 [dependencies]
 math = { path = "../math"}
+swash = { version = "0.2.6", default-features = false, features = ["scale", "render", "libm"] }
+
+[features]
+default = []
+alloc = []

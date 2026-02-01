@@ -1,3 +1,5 @@
+#![no_std]
+
 pub fn integer_sqrt(value: u32) -> u32 {
     if value <= 1 {
         return value;
