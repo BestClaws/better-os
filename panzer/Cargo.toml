@@ -42,8 +42,10 @@ esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c6"] }
 # Math and utilities
 micromath = "2.1.0"
 fixed = "1.28.0"
+heapless = "0.9.2"
 
-
+# font
+swash ={ version = "0.2.6", default-features = false, features = ["scale", "render", "libm"] }
 
 # Logging and debug
 defmt = "1.0.1"
