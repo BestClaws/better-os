@@ -1,4 +1,100 @@
 //! RGB565 pixel format rasterizer (16-bit color, 5-6-5 bit packing)
+//!
+//! # Format Details
+//!
+//! RGB565 uses 16 bits per pixel with the following bit layout:
+//! ```text
+//! Bit:  15 14 13 12 11 | 10 09 08 07 06 05 | 04 03 02 01 00
+//! Field:  R  R  R  R  R |  G  G  G  G  G  G |  B  B  B  B  B
+//!       └─────5 bits───┘ └─────6 bits─────┘ └─────5 bits───┘
+//! ```
+//!
+//! Green gets 6 bits (most sensitive to human vision), red and blue get 5 bits each.
+//!
+//! # Critical Implementation Learnings
+//!
+//! ## 1. Little-Endian Byte Order (Fixed Critical Bug)
+//!
+//! **Problem**: Initial implementation wrote bytes in big-endian (high byte first):
+//! ```rust,ignore
+//! buffer[idx] = (rgb565 >> 8) as u8;     // High byte
+//! buffer[idx+1] = (rgb565 & 0xFF) as u8; // Low byte
+//! ```
+//!
+//! This caused incorrect colors - red appeared as blue!
+//!
+//! **Solution**: Write in LITTLE-ENDIAN byte order (low byte first):
+//! ```rust
+//! let bytes = rgb565.to_le_bytes();  // [low_byte, high_byte]
+//! buffer[idx] = bytes[0];            // Low byte first
+//! buffer[idx+1] = bytes[1];          // High byte second
+//! ```
+//!
+//! Example for pure red (RGB 255,0,0):
+//! - RGB565 value: 0xF800 (binary: 11111_000000_00000)
+//! - Little-endian bytes: [0x00, 0xF8]
+//! - Buffer: [0x00, 0xF8, ...]
+//!
+//! ## 2. RGB888 to RGB565 Conversion
+//!
+//! Conversion loses precision due to bit reduction:
+//! ```text
+//! R: 8-bit (0-255) → 5-bit (0-31):  right shift by 3
+//! G: 8-bit (0-255) → 6-bit (0-63):  right shift by 2
+//! B: 8-bit (0-255) → 5-bit (0-31):  right shift by 3
+//! ```
+//!
+//! Pack into RGB565:
+//! ```rust
+//! rgb565 = (r5 << 11) | (g6 << 5) | b5
+//! ```
+//!
+//! ## 3. RGB565 to RGB888 Expansion
+//!
+//! When reading back for display, expand with bit replication for better quality:
+//! ```rust
+//! r8 = (r5 << 3) | (r5 >> 2)  // Replicate top bits to bottom
+//! g8 = (g6 << 2) | (g6 >> 4)  // Replicate top bits to bottom  
+//! b8 = (b5 << 3) | (b5 >> 2)  // Replicate top bits to bottom
+//! ```
+//!
+//! This gives better interpolation than simple left-shift.
+//!
+//! ## 4. Performance Optimizations for RISC-V32IMAC
+//!
+//! ### Branchless Blending
+//! Like Luma4, always compute full blend formula - branches are expensive:
+//! ```rust
+//! // Extract 5/6-bit components
+//! let src_r = (src >> 11) & 0x1F;
+//! let src_g = (src >> 5) & 0x3F;
+//! let src_b = src & 0x1F;
+//!
+//! // Blend each component separately
+//! let out_r = udiv255(src_r * alpha + dst_r * (255 - alpha));
+//! let out_g = udiv255(src_g * alpha + dst_g * (255 - alpha));
+//! let out_b = udiv255(src_b * alpha + dst_b * (255 - alpha));
+//!
+//! // Pack back to RGB565
+//! let result = (out_r << 11) | (out_g << 5) | out_b;
+//! ```
+//!
+//! ### Fast Division with udiv255
+//! Critical for performance - hardware division is very slow on RISC-V.
+//!
+//! ### Volatile Operations
+//! Use `ptr::write_volatile` and `ptr::read_volatile` for all framebuffer access
+//! to prevent compiler from optimizing away what it thinks are redundant writes.
+//!
+//! ## 5. Memory Layout
+//!
+//! Unlike Luma4, RGB565 has simple linear layout - one pixel per 16-bit word:
+//! ```text
+//! Pixel offset: y * width + x
+//! Byte offset: pixel_offset * 2
+//! ```
+//!
+//! No complex nibble packing - each pixel is independently addressable.
 
 use core::{cmp::min, ptr};
 
@@ -7,7 +103,50 @@ use crate::rasterizer::RasterTarget;
 use math::udiv255;
 
 /// RGB565 rasterizer that wraps a framebuffer
-/// Each pixel is 16 bits: RRRRRGGG GGGBBBBB
+///
+/// # Buffer Layout
+///
+/// Each pixel is exactly 16 bits (2 bytes) stored in LITTLE-ENDIAN order:
+/// ```text
+/// Pixel 0: [byte_0 (low), byte_1 (high)]
+/// Pixel 1: [byte_2 (low), byte_3 (high)]
+/// Pixel 2: [byte_4 (low), byte_5 (high)]
+/// ...
+/// ```
+///
+/// For a 20x20 framebuffer:
+/// ```text
+/// Buffer size = 20 * 20 * 2 = 800 bytes
+/// ```
+///
+/// # Bit Layout within 16-bit Value
+///
+/// ```text
+/// MSB                           LSB
+/// 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+/// R  R  R  R  R  G  G  G  G  G  G  B  B  B  B  B
+/// ```
+///
+/// # Pixel Addressing
+///
+/// Simple linear addressing (no packing complexity like Luma4):
+/// - pixel_offset = y * width + x
+/// - byte_offset = pixel_offset * 2
+///
+/// # CRITICAL: Always use little-endian byte operations!
+///
+/// ✅ Correct:
+/// ```rust
+/// let bytes = rgb565.to_le_bytes();
+/// buffer[offset] = bytes[0];     // Low byte
+/// buffer[offset+1] = bytes[1];   // High byte
+/// ```
+///
+/// ❌ Wrong (writes big-endian, causes wrong colors):
+/// ```rust,ignore
+/// buffer[offset] = (rgb565 >> 8) as u8;
+/// buffer[offset+1] = (rgb565 & 0xFF) as u8;
+/// ```
 pub struct Rgb565Rasterizer<'a> {
     buffer: &'a mut [u8],
     width: u16,
@@ -215,10 +354,40 @@ impl<'a> RasterTarget for Rgb565Rasterizer<'a> {
 }
 
 // ============================================================================
-// OPTIMIZED CONVERSION & BLENDING PRIMITIVES
+// OPTIMIZED CONVERSION & BLENDING PRIMITIVES  
 // ============================================================================
 
 /// Convert RGBA color to RGB565 format (16-bit: RRRRRGGGGGGBBBBB)
+///
+/// # Bit Reduction
+///
+/// RGB888 (24-bit) → RGB565 (16-bit) loses precision:
+/// ```text
+/// Red:   8-bit (256 levels) → 5-bit (32 levels)  → Divide by 8
+/// Green: 8-bit (256 levels) → 6-bit (64 levels)  → Divide by 4
+/// Blue:  8-bit (256 levels) → 5-bit (32 levels)  → Divide by 8
+/// ```
+///
+/// # Bit Packing
+///
+/// ```text
+/// Input:  R=255, G=128, B=64
+/// 
+/// Step 1: Reduce bit depth
+///   r5 = 255 >> 3 = 31  (0b11111)
+///   g6 = 128 >> 2 = 32  (0b100000)
+///   b5 = 64 >> 3  = 8   (0b01000)
+///
+/// Step 2: Pack into 16-bit value
+///   rgb565 = (31 << 11) | (32 << 5) | 8
+///          = 0b1111100000001000
+///          = 0xF808
+/// ```
+///
+/// # Why 6 bits for green?
+///
+/// Human eyes are most sensitive to green wavelengths, so giving green
+/// an extra bit provides better perceived color accuracy.
 #[inline(always)]
 fn color_to_rgb565(color: Color) -> u16 {
     let r = (color.r() as u16) >> 3; // 8-bit to 5-bit
@@ -242,7 +411,54 @@ fn rgb565_to_rgb888(rgb565: u16) -> (u8, u8, u8) {
     (r, g, b)
 }
 
-/// Blend RGB565 pixels with coverage and alpha - OPTIMIZED
+/// Blend RGB565 pixels with coverage and alpha
+///
+/// # Component-Wise Blending Strategy
+///
+/// Instead of unpacking to RGB888, blending, and repacking, we blend
+/// directly in RGB565 color space:
+///
+/// ```text
+/// 1. Extract 5/6-bit components from src and dst
+/// 2. Blend each component: out = (src * alpha + dst * (255-alpha)) / 255
+/// 3. Pack components back to RGB565
+/// ```
+///
+/// # Why blend in RGB565 space?
+///
+/// **Alternative approach:**
+/// ```rust,ignore
+/// let (r8, g8, b8) = rgb565_to_rgb888(src);
+/// // blend at 8-bit precision...
+/// let result = rgb888_to_rgb565(r8, g8, b8);
+/// ```
+///
+/// **Our approach:**
+/// ```rust
+/// let src_r5 = (src >> 11) & 0x1F;
+/// let blended_r5 = udiv255(src_r5 * alpha + dst_r5 * (255-alpha));
+/// ```
+///
+/// Benefits:
+/// - Fewer conversions (no expansion to 8-bit and back)
+/// - Simpler code
+/// - Similar visual quality (RGB565 is lossy anyway)
+///
+/// # Masking After Blend
+///
+/// After blending, mask to ensure values fit in reduced bit depth:
+/// ```rust
+/// out_r = blend_result & 0x1F  // Keep only 5 bits
+/// out_g = blend_result & 0x3F  // Keep only 6 bits  
+/// out_b = blend_result & 0x1F  // Keep only 5 bits
+/// ```
+///
+/// This handles potential overflow from udiv255 rounding.
+///
+/// # Performance
+///
+/// Like Luma4, this is completely branchless except for the predictable
+/// alpha==255 fast path. Benchmarks show this is optimal for RISC-V.
 #[inline(always)]
 fn blend_rgb565(dst: u16, src: u16, alpha: u8, coverage: u8) -> u16 {
     // Combine alpha and coverage
@@ -276,8 +492,49 @@ fn blend_rgb565(dst: u16, src: u16, alpha: u8, coverage: u8) -> u16 {
 // ============================================================================
 // UNSAFE OPTIMIZED SPAN OPERATIONS
 // ============================================================================
+//
+// These functions use unsafe pointer operations for maximum performance.
+// All bounds checking is done by the safe wrapper functions above.
+//
+// # Memory Layout Simplicity
+//
+// Unlike Luma4, RGB565 has straightforward linear layout:
+// - Each pixel = 2 bytes
+// - pixel_offset = y * width + x
+// - byte_offset = pixel_offset * 2
+//
+// No nibble packing, no pixel-pairing optimization needed.
+//
+// # Critical: Little-Endian Byte Order
+//
+// ALL reads and writes MUST use little-endian byte order:
+//
+// ✅ Reading:
+// ```rust
+// let rgb565 = u16::from_le_bytes([
+//     ptr::read_volatile(byte_ptr),
+//     ptr::read_volatile(byte_ptr.add(1))
+// ]);
+// ```
+//
+// ✅ Writing:
+// ```rust  
+// let bytes = rgb565.to_le_bytes();
+// ptr::write_volatile(byte_ptr, bytes[0]);
+// ptr::write_volatile(byte_ptr.add(1), bytes[1]);
+// ```
+//
+// ❌ WRONG (big-endian - causes incorrect colors):
+// ```rust,ignore
+// ptr::write_volatile(byte_ptr, (rgb565 >> 8) as u8);
+// ptr::write_volatile(byte_ptr.add(1), (rgb565 & 0xFF) as u8);
+// ```
+//
+// # Volatile Operations
+//
+// Like Luma4, all framebuffer access is volatile to prevent optimization.
 
-/// Fill horizontal span - OPTIMIZED
+/// Fill horizontal span - writes RGB565 values in little-endian byte order
 #[inline(always)]
 unsafe fn fill_hspan_unchecked(
     buffer: *mut u8,
