@@ -1,7 +1,103 @@
 //! Luma4 pixel format rasterizer (4-bit grayscale, 2 pixels per byte)
 
+use core::{cmp::min, ptr};
+
 use crate::colors::Color;
 use crate::rasterizer::RasterTarget;
+use math::udiv255;
+
+#[inline(always)]
+fn color_to_luma(color: Color) -> (u8, u8) {
+    let r = color.r() as u32;
+    let g = color.g() as u32;
+    let b = color.b() as u32;
+    let luma = ((r * 77 + g * 150 + b * 29 + 128) >> 8) as u8;
+    (luma, color.a())
+}
+
+#[inline(always)]
+fn luma4_from_luma8(luma: u8) -> u8 {
+    // Convert 0..255 to 0..15 with rounding using fast divide by 255.
+    let scaled = (luma as u32) * 15 + 128;
+    (udiv255(scaled) as u8) & 0x0F
+}
+
+#[inline(always)]
+fn expand_luma4(nibble: u8) -> u8 {
+    nibble * 0x11
+}
+
+#[inline(always)]
+fn mul_div_255(value: u8, factor: u8) -> u8 {
+    let product = (value as u32) * (factor as u32) + 128;
+    udiv255(product) as u8
+}
+
+#[inline(always)]
+unsafe fn load_nibble(ptr_base: *const u8, pixel_index: usize) -> u8 {
+    let byte = unsafe { *ptr_base.add(pixel_index >> 1) };
+    if (pixel_index & 1) == 0 {
+        byte >> 4
+    } else {
+        byte & 0x0F
+    }
+}
+
+#[inline(always)]
+unsafe fn store_nibble(ptr_base: *mut u8, pixel_index: usize, nibble: u8) {
+    let byte_ptr = unsafe { ptr_base.add(pixel_index >> 1) };
+    let current = unsafe { *byte_ptr };
+    let value = if (pixel_index & 1) == 0 {
+        (current & 0x0F) | ((nibble & 0x0F) << 4)
+    } else {
+        (current & 0xF0) | (nibble & 0x0F)
+    };
+    unsafe { *byte_ptr = value; }
+}
+
+#[inline(always)]
+unsafe fn write_solid_contiguous(ptr_base: *mut u8, start_pixel: usize, count: usize, nibble: u8) {
+    if count == 0 {
+        return;
+    }
+
+    let mut remaining = count;
+    let mut pixel_index = start_pixel;
+    let fill_byte = ((nibble & 0x0F) << 4) | (nibble & 0x0F);
+
+    if (pixel_index & 1) != 0 {
+        let byte_ptr = unsafe { ptr_base.add(pixel_index >> 1) };
+        let current = unsafe { *byte_ptr };
+        unsafe {
+            *byte_ptr = (current & 0xF0) | (nibble & 0x0F);
+        }
+        pixel_index += 1;
+        remaining -= 1;
+    }
+
+    if remaining >= 2 {
+        let full_pairs = remaining >> 1;
+        unsafe {
+            ptr::write_bytes(ptr_base.add(pixel_index >> 1), fill_byte, full_pairs);
+        }
+        pixel_index += full_pairs << 1;
+        remaining &= 1;
+    }
+
+    if remaining != 0 {
+        let byte_ptr = unsafe { ptr_base.add(pixel_index >> 1) };
+        let current = unsafe { *byte_ptr };
+        unsafe {
+            *byte_ptr = (current & 0x0F) | ((nibble & 0x0F) << 4);
+        }
+    }
+}
+
+#[inline(always)]
+fn row_end(width: u16, x_start: u16, length: usize) -> usize {
+    let max_span = (width - x_start) as usize;
+    min(max_span, length)
+}
 
 /// Luma4 rasterizer that wraps a framebuffer
 /// Each byte contains two 4-bit grayscale pixels (high nibble = even pixel, low nibble = odd pixel)
@@ -16,173 +112,320 @@ impl<'a> Luma4Rasterizer<'a> {
     pub fn new(buffer: &'a mut [u8], width: u16, height: u16) -> Self {
         Self { buffer, width, height }
     }
-
-    /// Get the byte index and shift for a pixel coordinate
-    #[inline]
-    fn pixel_address(&self, x: u16, y: u16) -> (usize, u8) {
-        let pixel_idx = y as usize * self.width as usize + x as usize;
-        let byte_idx = pixel_idx / 2;
-        let shift = if pixel_idx & 1 == 0 { 4 } else { 0 }; // Even pixels in high nibble, odd in low
-        (byte_idx, shift)
-    }
-
-    /// Read a pixel value (0-15)
-    #[inline]
-    fn read_pixel(&self, x: u16, y: u16) -> u8 {
-        let (byte_idx, shift) = self.pixel_address(x, y);
-        (self.buffer[byte_idx] >> shift) & 0x0F
-    }
-
-    /// Write a pixel value (0-15)
-    #[inline]
-    fn write_pixel(&mut self, x: u16, y: u16, luma: u8) {
-        let (byte_idx, shift) = self.pixel_address(x, y);
-        let mask = 0x0F << shift;
-        self.buffer[byte_idx] = (self.buffer[byte_idx] & !mask) | ((luma & 0x0F) << shift);
-    }
 }
 
 impl<'a> RasterTarget for Luma4Rasterizer<'a> {
+    #[inline]
     fn width(&self) -> u16 {
         self.width
     }
 
+    #[inline]
     fn height(&self) -> u16 {
         self.height
     }
 
     fn fill_solid_hspan(&mut self, y: u16, x_start: u16, color: Color, length: u16) {
-        let luma = color_to_luma4(color);
-        
-        for x in x_start..x_start.saturating_add(length) {
-            if x < self.width && y < self.height {
-                self.write_pixel(x, y, luma);
+        if y >= self.height || x_start >= self.width || length == 0 {
+            return;
+        }
+
+        let span = row_end(self.width, x_start, length as usize);
+        if span == 0 {
+            return;
+        }
+
+        let (src_luma, alpha) = color_to_luma(color);
+        if alpha == 0 {
+            return;
+        }
+
+        let base_pixel = y as usize * self.width as usize + x_start as usize;
+        let ptr_base = self.buffer.as_mut_ptr();
+
+        if alpha == 255 {
+            unsafe {
+                write_solid_contiguous(ptr_base, base_pixel, span, luma4_from_luma8(src_luma));
+            }
+            return;
+        }
+
+        let inv_alpha = 255u8.wrapping_sub(alpha);
+        let src_scaled = mul_div_255(src_luma, alpha);
+
+        unsafe {
+            let mut pixel_index = base_pixel;
+            for _ in 0..span {
+                let dest_nibble = load_nibble(ptr_base, pixel_index);
+                let dest_luma = expand_luma4(dest_nibble);
+                let dest_scaled = mul_div_255(dest_luma, inv_alpha);
+                let blended = dest_scaled as u16 + src_scaled as u16;
+                let blended_luma = if blended > 255 { 255 } else { blended as u8 };
+                let out_nibble = luma4_from_luma8(blended_luma);
+                store_nibble(ptr_base, pixel_index, out_nibble);
+                pixel_index += 1;
             }
         }
     }
 
     fn blend_solid_hspan(&mut self, y: u16, x_start: u16, color: Color, coverage: &[u8]) {
-        let fg_luma = color_to_luma4(color);
-        
-        for (i, &alpha) in coverage.iter().enumerate() {
-            let x = x_start + i as u16;
-            if x < self.width && y < self.height && alpha > 0 {
-                if alpha == 255 {
-                    // Fast path: fully opaque
-                    self.write_pixel(x, y, fg_luma);
+        if y >= self.height || x_start >= self.width || coverage.is_empty() {
+            return;
+        }
+
+        let span = row_end(self.width, x_start, coverage.len());
+        if span == 0 {
+            return;
+        }
+
+        let (src_luma, src_alpha) = color_to_luma(color);
+        if src_alpha == 0 {
+            return;
+        }
+
+        let ptr_base = self.buffer.as_mut_ptr();
+        let mut pixel_index = y as usize * self.width as usize + x_start as usize;
+
+        unsafe {
+            for &cover in &coverage[..span] {
+                let effective_alpha = if cover == 255 {
+                    src_alpha
+                } else if cover == 0 {
+                    pixel_index += 1;
+                    continue;
                 } else {
-                    // Alpha blend
-                    let bg_luma = self.read_pixel(x, y);
-                    let alpha_norm = alpha as u16;
-                    let inv_alpha = 255 - alpha_norm;
-                    let out_luma = ((fg_luma as u16 * alpha_norm + bg_luma as u16 * inv_alpha) / 255) as u8;
-                    self.write_pixel(x, y, out_luma & 0x0F);
+                    mul_div_255(src_alpha, cover)
+                };
+
+                if effective_alpha == 0 {
+                    pixel_index += 1;
+                    continue;
                 }
+
+                let out_nibble = if effective_alpha == 255 {
+                    luma4_from_luma8(src_luma)
+                } else {
+                    let inv_alpha = 255u8.wrapping_sub(effective_alpha);
+                    let src_scaled = mul_div_255(src_luma, effective_alpha);
+                    let dest_nibble = load_nibble(ptr_base, pixel_index);
+                    let dest_luma = expand_luma4(dest_nibble);
+                    let dest_scaled = mul_div_255(dest_luma, inv_alpha);
+                    let blended = dest_scaled as u16 + src_scaled as u16;
+                    let blended_luma = if blended > 255 { 255 } else { blended as u8 };
+                    luma4_from_luma8(blended_luma)
+                };
+
+                store_nibble(ptr_base, pixel_index, out_nibble);
+                pixel_index += 1;
             }
         }
     }
 
     fn blend_color_hspan(&mut self, y: u16, x_start: u16, colors: &[Color], coverage: &[u8]) {
-        for (i, (&color, &alpha)) in colors.iter().zip(coverage.iter()).enumerate() {
-            let x = x_start + i as u16;
-            if x < self.width && y < self.height && alpha > 0 {
-                let fg_luma = color_to_luma4(color);
-                
-                if alpha == 255 {
-                    // Fast path: fully opaque
-                    self.write_pixel(x, y, fg_luma);
-                } else {
-                    // Alpha blend
-                    let bg_luma = self.read_pixel(x, y);
-                    let alpha_norm = alpha as u16;
-                    let inv_alpha = 255 - alpha_norm;
-                    let out_luma = ((fg_luma as u16 * alpha_norm + bg_luma as u16 * inv_alpha) / 255) as u8;
-                    self.write_pixel(x, y, out_luma & 0x0F);
+        if y >= self.height || x_start >= self.width || colors.is_empty() || coverage.is_empty() {
+            return;
+        }
+
+        let count = min(colors.len(), coverage.len());
+        let span = row_end(self.width, x_start, count);
+        if span == 0 {
+            return;
+        }
+
+        let ptr_base = self.buffer.as_mut_ptr();
+        let mut pixel_index = y as usize * self.width as usize + x_start as usize;
+
+        unsafe {
+            for i in 0..span {
+                let (src_luma, src_alpha) = color_to_luma(colors[i]);
+                if src_alpha == 0 {
+                    pixel_index += 1;
+                    continue;
                 }
+
+                let cover = coverage[i];
+                let effective_alpha = if cover == 255 {
+                    src_alpha
+                } else if cover == 0 {
+                    pixel_index += 1;
+                    continue;
+                } else {
+                    mul_div_255(src_alpha, cover)
+                };
+
+                let out_nibble = if effective_alpha == 255 {
+                    luma4_from_luma8(src_luma)
+                } else {
+                    let inv_alpha = 255u8.wrapping_sub(effective_alpha);
+                    let src_scaled = mul_div_255(src_luma, effective_alpha);
+                    let dest_nibble = load_nibble(ptr_base, pixel_index);
+                    let dest_luma = expand_luma4(dest_nibble);
+                    let dest_scaled = mul_div_255(dest_luma, inv_alpha);
+                    let blended = dest_scaled as u16 + src_scaled as u16;
+                    let blended_luma = if blended > 255 { 255 } else { blended as u8 };
+                    luma4_from_luma8(blended_luma)
+                };
+
+                store_nibble(ptr_base, pixel_index, out_nibble);
+                pixel_index += 1;
             }
         }
     }
 
     fn fill_solid_vspan(&mut self, x: u16, y_start: u16, color: Color, length: u16) {
-        let luma = color_to_luma4(color);
-        
-        for y in y_start..y_start.saturating_add(length) {
-            if x < self.width && y < self.height {
-                self.write_pixel(x, y, luma);
+        if x >= self.width || y_start >= self.height || length == 0 {
+            return;
+        }
+
+        let span = min((self.height - y_start) as usize, length as usize);
+        if span == 0 {
+            return;
+        }
+
+        let (src_luma, alpha) = color_to_luma(color);
+        if alpha == 0 {
+            return;
+        }
+
+        let mut pixel_index = y_start as usize * self.width as usize + x as usize;
+        let stride = self.width as usize;
+        let ptr_base = self.buffer.as_mut_ptr();
+
+        unsafe {
+            if alpha == 255 {
+                let nibble = luma4_from_luma8(src_luma);
+                for _ in 0..span {
+                    store_nibble(ptr_base, pixel_index, nibble);
+                    pixel_index += stride;
+                }
+                return;
+            }
+
+            let inv_alpha = 255u8.wrapping_sub(alpha);
+            let src_scaled = mul_div_255(src_luma, alpha);
+
+            for _ in 0..span {
+                let dest_nibble = load_nibble(ptr_base, pixel_index);
+                let dest_luma = expand_luma4(dest_nibble);
+                let dest_scaled = mul_div_255(dest_luma, inv_alpha);
+                let blended = dest_scaled as u16 + src_scaled as u16;
+                let blended_luma = if blended > 255 { 255 } else { blended as u8 };
+                let out_nibble = luma4_from_luma8(blended_luma);
+                store_nibble(ptr_base, pixel_index, out_nibble);
+                pixel_index += stride;
             }
         }
     }
 
     fn blend_solid_vspan(&mut self, x: u16, y_start: u16, color: Color, coverage: &[u8]) {
-        let fg_luma = color_to_luma4(color);
-        
-        for (i, &alpha) in coverage.iter().enumerate() {
-            let y = y_start + i as u16;
-            if x < self.width && y < self.height && alpha > 0 {
-                if alpha == 255 {
-                    // Fast path: fully opaque
-                    self.write_pixel(x, y, fg_luma);
+        if x >= self.width || y_start >= self.height || coverage.is_empty() {
+            return;
+        }
+
+        let span = min((self.height - y_start) as usize, coverage.len());
+        if span == 0 {
+            return;
+        }
+
+        let (src_luma, src_alpha) = color_to_luma(color);
+        if src_alpha == 0 {
+            return;
+        }
+
+        let mut pixel_index = y_start as usize * self.width as usize + x as usize;
+        let stride = self.width as usize;
+        let ptr_base = self.buffer.as_mut_ptr();
+
+        unsafe {
+            for i in 0..span {
+                let cover = coverage[i];
+                let effective_alpha = if cover == 255 {
+                    src_alpha
+                } else if cover == 0 {
+                    pixel_index += stride;
+                    continue;
                 } else {
-                    // Alpha blend
-                    let bg_luma = self.read_pixel(x, y);
-                    let alpha_norm = alpha as u16;
-                    let inv_alpha = 255 - alpha_norm;
-                    let out_luma = ((fg_luma as u16 * alpha_norm + bg_luma as u16 * inv_alpha) / 255) as u8;
-                    self.write_pixel(x, y, out_luma & 0x0F);
+                    mul_div_255(src_alpha, cover)
+                };
+
+                if effective_alpha == 0 {
+                    pixel_index += stride;
+                    continue;
                 }
+
+                let out_nibble = if effective_alpha == 255 {
+                    luma4_from_luma8(src_luma)
+                } else {
+                    let inv_alpha = 255u8.wrapping_sub(effective_alpha);
+                    let src_scaled = mul_div_255(src_luma, effective_alpha);
+                    let dest_nibble = load_nibble(ptr_base, pixel_index);
+                    let dest_luma = expand_luma4(dest_nibble);
+                    let dest_scaled = mul_div_255(dest_luma, inv_alpha);
+                    let blended = dest_scaled as u16 + src_scaled as u16;
+                    let blended_luma = if blended > 255 { 255 } else { blended as u8 };
+                    luma4_from_luma8(blended_luma)
+                };
+
+                store_nibble(ptr_base, pixel_index, out_nibble);
+                pixel_index += stride;
             }
         }
     }
 
     fn blend_color_vspan(&mut self, x: u16, y_start: u16, colors: &[Color], coverage: &[u8]) {
-        for (i, (&color, &alpha)) in colors.iter().zip(coverage.iter()).enumerate() {
-            let y = y_start + i as u16;
-            if x < self.width && y < self.height && alpha > 0 {
-                let fg_luma = color_to_luma4(color);
-                
-                if alpha == 255 {
-                    // Fast path: fully opaque
-                    self.write_pixel(x, y, fg_luma);
+        if x >= self.width || y_start >= self.height || colors.is_empty() || coverage.is_empty() {
+            return;
+        }
+
+        let count = min(colors.len(), coverage.len());
+        let span = min((self.height - y_start) as usize, count);
+        if span == 0 {
+            return;
+        }
+
+        let mut pixel_index = y_start as usize * self.width as usize + x as usize;
+        let stride = self.width as usize;
+        let ptr_base = self.buffer.as_mut_ptr();
+
+        unsafe {
+            for i in 0..span {
+                let (src_luma, src_alpha) = color_to_luma(colors[i]);
+                if src_alpha == 0 {
+                    pixel_index += stride;
+                    continue;
+                }
+
+                let cover = coverage[i];
+                let effective_alpha = if cover == 255 {
+                    src_alpha
+                } else if cover == 0 {
+                    pixel_index += stride;
+                    continue;
                 } else {
-                    // Alpha blend
-                    let bg_luma = self.read_pixel(x, y);
-                    let alpha_norm = alpha as u16;
-                    let inv_alpha = 255 - alpha_norm;
-                    let out_luma = ((fg_luma as u16 * alpha_norm + bg_luma as u16 * inv_alpha) / 255) as u8;
-                    self.write_pixel(x, y, out_luma & 0x0F);
+                    mul_div_255(src_alpha, cover)
+                };
+
+                if effective_alpha == 0 {
+                    pixel_index += stride;
+                    continue;
                 }
+
+                let out_nibble = if effective_alpha == 255 {
+                    luma4_from_luma8(src_luma)
+                } else {
+                    let inv_alpha = 255u8.wrapping_sub(effective_alpha);
+                    let src_scaled = mul_div_255(src_luma, effective_alpha);
+                    let dest_nibble = load_nibble(ptr_base, pixel_index);
+                    let dest_luma = expand_luma4(dest_nibble);
+                    let dest_scaled = mul_div_255(dest_luma, inv_alpha);
+                    let blended = dest_scaled as u16 + src_scaled as u16;
+                    let blended_luma = if blended > 255 { 255 } else { blended as u8 };
+                    luma4_from_luma8(blended_luma)
+                };
+
+                store_nibble(ptr_base, pixel_index, out_nibble);
+                pixel_index += stride;
             }
         }
     }
-
-    fn fill_solid_rect(&mut self, x: u16, y: u16, width: u16, height: u16, color: Color) {
-        let luma = color_to_luma4(color);
-        
-        for dy in 0..height {
-            let py = y.saturating_add(dy);
-            if py >= self.height {
-                break;
-            }
-            
-            for dx in 0..width {
-                let px = x.saturating_add(dx);
-                if px >= self.width {
-                    break;
-                }
-                
-                self.write_pixel(px, py, luma);
-            }
-        }
-    }
-}
-
-/// Convert RGB color to 4-bit grayscale using ITU-R BT.601 luma coefficients
-/// Returns a value in the range 0-15
-#[inline]
-fn color_to_luma4(color: Color) -> u8 {
-    // Y = 0.299*R + 0.587*G + 0.114*B
-    // Use integer approximation: Y = (77*R + 150*G + 29*B) / 256
-    let luma8 = ((77 * color.r() as u16 + 150 * color.g() as u16 + 29 * color.b() as u16) / 256) as u8;
-    // Convert 8-bit (0-255) to 4-bit (0-15)
-    luma8 >> 4
 }
