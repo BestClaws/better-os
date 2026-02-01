@@ -6,7 +6,7 @@ use embassy_sync::mutex::Mutex;
 use crate::system::hal::display::AsyncDisplay;
 use crate::system::resources::framebuffer::FRAMEBUFFER_POOL;
 use crate::system::services::display::{Display, DisplayService};
-use crate::system::tasks::benchmark_luma4;
+use crate::system::tasks::{benchmark_luma4, benchmark_rgb565};
 
 /// Compositor service task - handles UI rendering, animations, and display upkeep.
 #[embassy_executor::task]
@@ -32,11 +32,19 @@ pub async fn ui_compositor_service(
     let width_u16 = width as u16;
     let height_u16 = height as u16;
     let pixel_count = width * height;
-    let mut frame_buffer = alloc::vec![0u8; (pixel_count + 1) / 2]; // Luma4 = 4 bits per pixel (2 pixels per byte)
+    
+    // RGB565 = 16 bits per pixel (2 bytes per pixel)
+    let mut rgb565_buffer = alloc::vec![0u8; pixel_count * 2];
+    // Luma4 = 4 bits per pixel (2 pixels per byte)
+    let mut luma4_buffer = alloc::vec![0u8; (pixel_count + 1) / 2];
 
-    info!("Starting Luma4 benchmark loop");
+    info!("Starting RGB565 and Luma4 benchmark loop");
 
     loop {
-        benchmark_luma4::run(display, &mut frame_buffer, width_u16, height_u16).await;
+        info!("=== RGB565 Benchmarks ===");
+        benchmark_rgb565::run(display, &mut rgb565_buffer, width_u16, height_u16).await;
+        
+        // info!("=== Luma4 Benchmarks ===");
+        // benchmark_luma4::run(display, &mut luma4_buffer, width_u16, height_u16).await;
     }
 }

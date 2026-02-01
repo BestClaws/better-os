@@ -19,12 +19,12 @@ impl DisplayPreferences {
     #[rustfmt::skip]
     pub const fn default() -> Self {
         const FORMATS: &[PixelFormat] = &[
-            PixelFormat::Gray4,
             PixelFormat::Rgb565,
+            PixelFormat::Gray4,
         ];
         const RESOLUTIONS: &[DisplaySize] = &[
-                DisplaySize::new(205, 251),
                 DisplaySize::new(102, 125),
+                DisplaySize::new(205, 251),
         ];
         DisplayPreferences {
             pixel_formats: FORMATS,
