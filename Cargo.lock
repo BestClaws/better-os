@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "gfx"
 version = "0.0.1"
+dependencies = [
+ "math",
+]
+
+[[package]]
+name = "math"
+version = "0.0.1"
