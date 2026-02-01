@@ -1,6 +1,6 @@
 # Workspace-level cargo configuration
 # No architecture-specific settings here - keeps workspace clean like esp-hal
-# Architecture-specific settings are in better-os/.cargo/config.toml
+# Architecture-specific settings are in panzer/.cargo/config.toml
 
 [env]
 DEFMT_LOG="info"
