@@ -159,29 +159,44 @@ fn render_fill(
                 process_solid_row(canvas, color, y, x0, row_data, start_idx, end_idx);
             }
             FillRender::Gradient(ctx) => {
-                let span_len = end_idx - start_idx;
-                color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
                 match ctx.axis() {
                     GradientAxis::Horizontal => {
                         let mut stepper = ctx.horizontal_stepper(x0, start_idx);
-                        for (i, idx) in (start_idx..end_idx).enumerate() {
-                            if row_data[idx] != 0 {
-                                color_row[i] = stepper.sample_color();
+                        let mut idx = start_idx;
+                        while idx < end_idx {
+                            if row_data[idx] == 0 {
+                                let mut zero_end = idx + 1;
+                                while zero_end < end_idx && row_data[zero_end] == 0 {
+                                    zero_end += 1;
+                                }
+                                stepper.advance_by(zero_end - idx);
+                                idx = zero_end;
+                                continue;
                             }
-                            stepper.advance();
+
+                            let run_start = idx;
+                            while idx < end_idx && row_data[idx] != 0 {
+                                idx += 1;
+                            }
+                            let run_len = idx - run_start;
+                            color_row.resize(run_len, Color::rgba(0, 0, 0, 0));
+                            for color in color_row.iter_mut() {
+                                *color = stepper.sample_color();
+                                stepper.advance();
+                            }
+                            canvas.blend_color_hspan(
+                                y as u16,
+                                (x0 + run_start as i32) as u16,
+                                &color_row,
+                                &row_data[run_start..run_start + run_len],
+                            );
                         }
                     }
                     GradientAxis::Vertical => {
                         let color = ctx.sample_vertical_row(y);
-                        for (i, idx) in (start_idx..end_idx).enumerate() {
-                            if row_data[idx] == 0 {
-                                continue;
-                            }
-                            color_row[i] = color;
-                        }
+                        process_solid_row(canvas, &color, y, x0, row_data, start_idx, end_idx);
                     }
                 }
-                process_color_row(canvas, y, x0, row_data, start_idx, end_idx, &color_row);
             }
         }
     }
@@ -365,7 +380,7 @@ impl LinearGradientContext {
         let origin_fp = to_fixed(bounds.min.x);
         let width_fp = to_fixed(bounds.width());
         let step_q16 = if width_fp > 0 {
-            (((GRADIENT_MAX as i64) << FIXED_SHIFT) / width_fp as i64) as i32
+            (((GRADIENT_MAX as i64) << (FIXED_SHIFT * 2)) / width_fp as i64) as i32
         } else {
             0
         };
@@ -381,7 +396,7 @@ impl LinearGradientContext {
         let origin_fp = to_fixed(bounds.min.y);
         let height_fp = to_fixed(bounds.height());
         let step_q16 = if height_fp > 0 {
-            (((GRADIENT_MAX as i64) << FIXED_SHIFT) / height_fp as i64) as i32
+            (((GRADIENT_MAX as i64) << (FIXED_SHIFT * 2)) / height_fp as i64) as i32
         } else {
             0
         };
@@ -451,7 +466,13 @@ impl<'a> GradientStepper<'a> {
 
     #[inline(always)]
     fn advance(&mut self) {
-        self.acc_q16 += self.step_q16 as i64;
+        self.advance_by(1);
+    }
+
+    #[inline(always)]
+    fn advance_by(&mut self, count: usize) {
+        let delta = self.step_q16 as i64 * count as i64;
+        self.acc_q16 += delta;
         let max = (GRADIENT_MAX as i64) << FIXED_SHIFT;
         if self.acc_q16 < 0 {
             self.acc_q16 = 0;
