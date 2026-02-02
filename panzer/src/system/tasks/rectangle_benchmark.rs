@@ -27,68 +27,163 @@ pub async fn run_rect_benchmark(
     let (area, clip) = centered_rect_bounds(width, height);
 
     let mut test_num = 0;
+    let format_prefix = match pixel_format {
+        PixelFormat::Gray4 => "luma4",
+        PixelFormat::Rgb565 => "rgb565",
+    };
 
-    // Test all combinations: fills x corners x strokes
+    // Test all combinations: 3 fills x 4 corners x 9 strokes = 108 variants
     for fill_idx in 0..3 {
         for corner_idx in 0..4 {
             let (corner_name, corner_radii) = match corner_idx {
-                0 => ("Sharp", [CornerRadius::new(0.0, 0.0); 4]),
-                1 => ("R10", [CornerRadius::new(10.0, 10.0); 4]),
-                2 => ("R20", [CornerRadius::new(20.0, 20.0); 4]),
-                _ => ("MultiR", [
+                0 => ("sharp", [CornerRadius::new(0.0, 0.0); 4]),
+                1 => ("r4", [CornerRadius::new(4.0, 4.0); 4]),
+                2 => ("r6", [CornerRadius::new(6.0, 6.0); 4]),
+                _ => ("multi", [
                     CornerRadius::new(0.0, 0.0),
-                    CornerRadius::new(10.0, 10.0),
-                    CornerRadius::new(20.0, 20.0),
-                    CornerRadius::new(30.0, 30.0),
+                    CornerRadius::new(4.0, 4.0),
+                    CornerRadius::new(6.0, 6.0),
+                    CornerRadius::new(8.0, 8.0),
                 ]),
             };
 
-            for stroke_idx in 0..6 {
+            for stroke_idx in 0..9 {
+                // Recreate fill each iteration since FillStyle doesn't implement Copy
                 let (fill_name, fill) = match fill_idx {
-                    0 => ("Solid", FillStyle::Solid(Color::rgba(150, 150, 150, 255))),
-                    1 => ("VGrad", FillStyle::Gradient(Gradient::Vertical(GradientStop([
-                        (Color::rgba(40, 40, 40, 255), 0),
-                        (Color::rgba(180, 180, 180, 255), 128),
-                        (Color::rgba(255, 255, 255, 255), 255),
+                    0 => ("solid", FillStyle::Solid(Color::rgba(100, 180, 220, 255))),  // Cyan-blue
+                    1 => ("vgrad", FillStyle::Gradient(Gradient::Vertical(GradientStop([
+                        (Color::rgba(220, 60, 100, 255), 0),     // Pink-red
+                        (Color::rgba(120, 180, 240, 255), 128),  // Sky blue
+                        (Color::rgba(100, 255, 150, 255), 255),  // Mint green
                     ])))),
-                    _ => ("HGrad", FillStyle::Gradient(Gradient::Horizontal(GradientStop([
-                        (Color::rgba(40, 40, 40, 255), 0),
-                        (Color::rgba(180, 180, 180, 255), 128),
-                        (Color::rgba(255, 255, 255, 255), 255),
+                    _ => ("hgrad", FillStyle::Gradient(Gradient::Horizontal(GradientStop([
+                        (Color::rgba(240, 180, 60, 255), 0),     // Orange-yellow
+                        (Color::rgba(160, 100, 220, 255), 128),  // Purple
+                        (Color::rgba(80, 220, 200, 255), 255),   // Turquoise
                     ])))),
                 };
 
-                let (stroke_name, edges) = match stroke_idx {
-                    0 => ("NoStroke", [None, None, None, None]),
-                    1 => ("1px", [
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                let (stroke_name, edges): (&str, [Option<StrokeStyle<2>>; 4]) = match stroke_idx {
+                    0 => ("nostroke", [None, None, None, None]),
+                    1 => ("s1", [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
                     ]),
-                    2 => ("3px", [
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                    2 => ("s2", [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
                     ]),
-                    3 => ("5px", [
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(5.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(5.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(5.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(5.0) }),
+                    3 => ("s3", [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
                     ]),
-                    4 => ("Asym1357", [
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(5.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(7.0) }),
+                    4 => ("asym_w", [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(4.0) }),
                     ]),
-                    _ => ("AsymCol", [
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 100, 100, 255)), stroke: Stroke::new(2.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(100, 255, 100, 255)), stroke: Stroke::new(2.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(100, 100, 255, 255)), stroke: Stroke::new(2.0) }),
-                        Some(StrokeStyle { color: StrokeColor::Solid(Color::rgba(255, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                    5 => ("asym_c", [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 100, 100, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(100, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(100, 100, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                    ]),
+                    6 => ("grad_h", [
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                    ]),
+                    7 => ("grad_v", [
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                    ]),
+                    _ => ("grad_mix", [
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 80, 80, 255), 0),
+                                (Color::rgba(80, 80, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(80, 255, 80, 255), 0),
+                                (Color::rgba(255, 255, 80, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 140, 200, 255), 0),
+                                (Color::rgba(140, 200, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(200, 140, 255, 255), 0),
+                                (Color::rgba(255, 200, 140, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
                     ]),
                 };
 
@@ -114,8 +209,9 @@ pub async fn run_rect_benchmark(
                         rect.draw(&mut rasterizer);
                     }
                 }
-                info!("{}. {} + {} + {}: {} µs", test_num, fill_name, corner_name, stroke_name, t.elapsed().as_micros());
-                present_frame(display, buffer).await;
+                let elapsed = t.elapsed().as_micros();
+                
+                info!("{}_rect_{:03}_{}_{}_{}  {} µs", format_prefix, test_num, fill_name, corner_name, stroke_name, elapsed);
             }
         }
     }
@@ -135,14 +231,4 @@ fn centered_rect_bounds(width: u16, height: u16) -> (Bounds, Bounds) {
     );
     let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width_f, height_f));
     (area, clip)
-}
-
-async fn present_frame(
-    display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
-    buffer: &[u8],
-) {
-    let mut display_lock = display.lock().await;
-    display_lock.draw(buffer).await;
-    drop(display_lock);
-    Timer::after(Duration::from_millis(1000)).await;
 }
