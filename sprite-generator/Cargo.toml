@@ -7,3 +7,4 @@ edition = "2021"
 gfx = { path = "../gfx" }
 math = { path = "../math" }
 bmp = "0.5"
+zeno = { version = "0.3.3", default-features = false, features = ["libm", "eval"] }

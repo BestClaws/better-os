@@ -4,6 +4,8 @@ use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
 use gfx::rgb565::Rgb565Rasterizer;
 use gfx::rasterizer::RasterTarget;
+use gfx::primitives::{CornerRadius, FillStyle, Gradient, GradientStop, Rectangle, StrokeColor, StrokeStyle};
+use zeno::{Bounds, Point, Stroke};
 
 fn main() {
     println!("Generating sprite BMPs...");
@@ -111,6 +113,59 @@ fn generate_luma4_sprites() {
         save_luma4_as_bmp(&buffer, width, height, "output/luma4_vline_gradient.bmp");
         println!("Generated: luma4_vline_gradient.bmp");
     }
+
+    // 5. Rounded rectangle demo (16x16 centered)
+    {
+        buffer.fill(0);
+        let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
+
+        let area = Bounds::new(Point::new(2.0, 2.0), Point::new(18.0, 18.0));
+        let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width as f32, height as f32));
+
+        let rectangle = Rectangle {
+            area,
+            fill: FillStyle::Gradient(Gradient::Vertical(GradientStop([
+                (Color::rgba(24, 24, 24, 255), 0),
+                (Color::rgba(160, 160, 200, 255), 160),
+                (Color::rgba(240, 240, 255, 255), 255),
+            ]))),
+            edges: [
+                Some(StrokeStyle {
+                    color: StrokeColor::Gradient(Gradient::Horizontal(GradientStop([
+                        (Color::rgba(255, 120, 120, 255), 0),
+                        (Color::rgba(255, 255, 255, 255), 255),
+                    ]))),
+                    stroke: Stroke::new(3.0),
+                }),
+                Some(StrokeStyle {
+                    color: StrokeColor::Solid(Color::rgba(120, 255, 200, 255)),
+                    stroke: Stroke::new(2.0),
+                }),
+                Some(StrokeStyle {
+                    color: StrokeColor::Gradient(Gradient::Horizontal(GradientStop([
+                        (Color::rgba(80, 120, 255, 255), 0),
+                        (Color::rgba(255, 80, 200, 255), 255),
+                    ]))),
+                    stroke: Stroke::new(4.0),
+                }),
+                Some(StrokeStyle {
+                    color: StrokeColor::Solid(Color::rgba(255, 220, 120, 255)),
+                    stroke: Stroke::new(1.5),
+                }),
+            ],
+            clip,
+            corner_radii: [
+                CornerRadius::new(4.0, 6.0),
+                CornerRadius::new(8.0, 8.0),
+                CornerRadius::new(6.0, 4.0),
+                CornerRadius::new(2.0, 10.0),
+            ],
+        };
+
+        rectangle.draw(&mut rasterizer);
+        save_luma4_as_bmp(&buffer, width, height, "output/luma4_rectangle_demo.bmp");
+        println!("Generated: luma4_rectangle_demo.bmp");
+    }
 }
 
 fn generate_rgb565_sprites() {
@@ -198,6 +253,59 @@ fn generate_rgb565_sprites() {
         
         save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_vline_gradient.bmp");
         println!("Generated: rgb565_vline_gradient.bmp");
+    }
+
+    // 5. Rounded rectangle demo (16x16 centered)
+    {
+        buffer.fill(0);
+        let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
+
+        let area = Bounds::new(Point::new(2.0, 2.0), Point::new(18.0, 18.0));
+        let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width as f32, height as f32));
+
+        let rectangle = Rectangle {
+            area,
+            fill: FillStyle::Gradient(Gradient::Horizontal(GradientStop([
+                (Color::rgba(40, 180, 220, 255), 0),
+                (Color::rgba(120, 80, 220, 255), 128),
+                (Color::rgba(255, 120, 200, 255), 255),
+            ]))),
+            edges: [
+                Some(StrokeStyle {
+                    color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)),
+                    stroke: Stroke::new(2.0),
+                }),
+                Some(StrokeStyle {
+                    color: StrokeColor::Gradient(Gradient::Vertical(GradientStop([
+                        (Color::rgba(255, 180, 80, 255), 0),
+                        (Color::rgba(80, 255, 200, 255), 255),
+                    ]))),
+                    stroke: Stroke::new(3.0),
+                }),
+                Some(StrokeStyle {
+                    color: StrokeColor::Solid(Color::rgba(60, 120, 255, 255)),
+                    stroke: Stroke::new(2.5),
+                }),
+                Some(StrokeStyle {
+                    color: StrokeColor::Gradient(Gradient::Vertical(GradientStop([
+                        (Color::rgba(200, 60, 255, 255), 0),
+                        (Color::rgba(60, 255, 120, 255), 255),
+                    ]))),
+                    stroke: Stroke::new(3.5),
+                }),
+            ],
+            clip,
+            corner_radii: [
+                CornerRadius::new(5.0, 7.0),
+                CornerRadius::new(9.0, 9.0),
+                CornerRadius::new(5.0, 3.0),
+                CornerRadius::new(3.0, 8.0),
+            ],
+        };
+
+        rectangle.draw(&mut rasterizer);
+        save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_rectangle_demo.bmp");
+        println!("Generated: rgb565_rectangle_demo.bmp");
     }
 }
 
