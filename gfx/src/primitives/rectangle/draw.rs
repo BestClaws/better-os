@@ -1,5 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::array;
 
 use crate::colors::Color;
 use crate::primitives::features::fill::FillStyle;
@@ -66,9 +67,11 @@ impl<'a> Rectangle<'a> {
         let inner_radii = compute_inner_radii(&outer_radii, &edge_widths);
         let inner_bounds = compute_inner_bounds(&self.area, &edge_widths);
 
+        let mut scratch = Scratch::new();
+
         if let Some(inner_bounds) = inner_bounds.as_ref() {
             if inner_bounds.width() > 0.0 && inner_bounds.height() > 0.0 {
-                render_fill(self, canvas, inner_bounds, &inner_radii);
+                render_fill(self, canvas, inner_bounds, &inner_radii, &mut scratch);
             }
         }
 
@@ -86,6 +89,7 @@ impl<'a> Rectangle<'a> {
                 &inner_radii,
                 &edge_widths,
                 &edge_styles,
+                &mut scratch,
             );
         }
     }
@@ -96,6 +100,7 @@ fn render_fill(
     canvas: &mut dyn RasterTarget,
     bounds: &Bounds,
     radii: &[CornerRadius; 4],
+    scratch: &mut Scratch,
 ) {
     let path = build_round_rect_path(bounds, radii, true);
     if path.is_empty() {
@@ -122,13 +127,13 @@ fn render_fill(
         return;
     }
 
-    let mask_buffer = render_mask(&path, x0, y0, width, height);
+    let mask_buffer = render_mask(&path, x0, y0, width, height, scratch);
     if mask_buffer.is_empty() {
         return;
     }
 
-    let mut coverage_row = vec![0u8; width];
     let mut color_row: Vec<Color> = Vec::new();
+    let fill_render = make_fill_render(&rect.fill, bounds);
 
     for row in 0..height {
         let y = y0 + row as i32;
@@ -137,10 +142,9 @@ fn render_fill(
         }
 
         let row_data = mask_buffer.row(row);
-        if row_data.iter().all(|&c| c == 0) {
+        if !row_data.iter().any(|&c| c != 0) {
             continue;
         }
-        coverage_row.copy_from_slice(row_data);
 
         let start = clip.left.max(x0);
         let end = clip.right.min(x1);
@@ -150,22 +154,34 @@ fn render_fill(
         let start_idx = (start - x0) as usize;
         let end_idx = (end - x0) as usize;
 
-        match &rect.fill {
-            FillStyle::Solid(color) => {
-                process_solid_row(canvas, color, y, x0, &coverage_row, start_idx, end_idx);
+        match &fill_render {
+            FillRender::Solid(color) => {
+                process_solid_row(canvas, color, y, x0, row_data, start_idx, end_idx);
             }
-            FillStyle::Gradient(gradient) => {
+            FillRender::Gradient(ctx) => {
                 let span_len = end_idx - start_idx;
                 color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
-                for (i, idx) in (start_idx..end_idx).enumerate() {
-                    if coverage_row[idx] == 0 {
-                        continue;
+                match ctx.axis() {
+                    GradientAxis::Horizontal => {
+                        let mut stepper = ctx.horizontal_stepper(x0, start_idx);
+                        for (i, idx) in (start_idx..end_idx).enumerate() {
+                            if row_data[idx] != 0 {
+                                color_row[i] = stepper.sample_color();
+                            }
+                            stepper.advance();
+                        }
                     }
-                    let px = (x0 + idx as i32) as f32 + 0.5;
-                    let py = y as f32 + 0.5;
-                    color_row[i] = sample_gradient_color(gradient, px, py, bounds);
+                    GradientAxis::Vertical => {
+                        let color = ctx.sample_vertical_row(y);
+                        for (i, idx) in (start_idx..end_idx).enumerate() {
+                            if row_data[idx] == 0 {
+                                continue;
+                            }
+                            color_row[i] = color;
+                        }
+                    }
                 }
-                process_color_row(canvas, y, x0, &coverage_row, start_idx, end_idx, &color_row);
+                process_color_row(canvas, y, x0, row_data, start_idx, end_idx, &color_row);
             }
         }
     }
@@ -179,6 +195,7 @@ fn render_border<'a>(
     inner_radii: &[CornerRadius; 4],
     edge_widths: &[f32; 4],
     edge_styles: &[Option<&'a StrokeStyle<'a, 2>>; 4],
+    scratch: &mut Scratch,
 ) {
     let path = build_border_path(&rect.area, outer_radii, inner_bounds, inner_radii);
     if path.is_empty() {
@@ -205,13 +222,13 @@ fn render_border<'a>(
         return;
     }
 
-    let mask_buffer = render_mask(&path, x0, y0, width, height);
+    let mut mask_buffer = render_mask(&path, x0, y0, width, height, scratch);
     if mask_buffer.is_empty() {
         return;
     }
 
-    let mut coverage_row = vec![0u8; width];
     let mut color_row: Vec<Color> = Vec::new();
+    let stroke_caches = build_stroke_caches(edge_styles, &rect.area);
 
     for row in 0..height {
         let y = y0 + row as i32;
@@ -219,11 +236,10 @@ fn render_border<'a>(
             continue;
         }
 
-        let row_data = mask_buffer.row(row);
-        if row_data.iter().all(|&c| c == 0) {
+        let row_data = mask_buffer.row_mut(row);
+        if !row_data.iter().any(|&c| c != 0) {
             continue;
         }
-        coverage_row.copy_from_slice(row_data);
 
         let start = clip.left.max(x0);
         let end = clip.right.min(x1);
@@ -236,24 +252,26 @@ fn render_border<'a>(
         color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
 
         for (i, idx) in (start_idx..end_idx).enumerate() {
-            if coverage_row[idx] == 0 {
+            if row_data[idx] == 0 {
                 continue;
             }
             let px = (x0 + idx as i32) as f32 + 0.5;
             let py = y as f32 + 0.5;
             let edge = classify_edge(px, py, &rect.area, edge_widths, edge_styles);
             let Some(edge_idx) = edge else {
-                coverage_row[idx] = 0;
+                row_data[idx] = 0;
                 continue;
             };
-            let Some(style) = edge_styles[edge_idx] else {
-                coverage_row[idx] = 0;
+            let px_fp = pixel_center_fixed(x0 + idx as i32);
+            let py_fp = pixel_center_fixed(y);
+            let Some(color) = stroke_caches[edge_idx].sample(px_fp, py_fp) else {
+                row_data[idx] = 0;
                 continue;
             };
-            color_row[i] = sample_stroke_color(&style.color, px, py, &rect.area);
+            color_row[i] = color;
         }
 
-        process_color_row(canvas, y, x0, &coverage_row, start_idx, end_idx, &color_row);
+        process_color_row(canvas, y, x0, row_data, start_idx, end_idx, &color_row);
     }
 }
 
@@ -271,6 +289,236 @@ impl MaskBuffer {
         let start = row * self.width;
         let end = start + self.width;
         &self.data[start..end]
+    }
+
+    fn row_mut(&mut self, row: usize) -> &mut [u8] {
+        let start = row * self.width;
+        let end = start + self.width;
+        &mut self.data[start..end]
+    }
+}
+
+const FIXED_SHIFT: i32 = 16;
+const FIXED_ONE: i32 = 1 << FIXED_SHIFT;
+const FIXED_HALF: i32 = FIXED_ONE >> 1;
+const GRADIENT_MAX: i32 = 255;
+
+#[derive(Clone)]
+struct GradientTable {
+    colors: [Color; 256],
+}
+
+impl GradientTable {
+    fn from_stops<const GS: usize>(stops: &GradientStop<GS>) -> Self {
+        let colors = array::from_fn(|idx| sample_gradient_stop(stops, idx as u8));
+        Self { colors }
+    }
+
+    #[inline(always)]
+    fn color(&self, index: u8) -> Color {
+        self.colors[index as usize]
+    }
+}
+
+#[inline(always)]
+fn to_fixed(value: f32) -> i32 {
+    let scaled = value * FIXED_ONE as f32;
+    if scaled >= 0.0 {
+        (scaled + 0.5) as i32
+    } else {
+        (scaled - 0.5) as i32
+    }
+}
+
+#[inline(always)]
+fn pixel_center_fixed(value: i32) -> i64 {
+    ((value as i64) << FIXED_SHIFT) + FIXED_HALF as i64
+}
+
+#[inline(always)]
+fn clamp_gradient_value(value_q16: i64) -> u8 {
+    let mut idx = (value_q16 >> FIXED_SHIFT) as i32;
+    if idx < 0 {
+        idx = 0;
+    } else if idx > GRADIENT_MAX {
+        idx = GRADIENT_MAX;
+    }
+    idx as u8
+}
+
+#[derive(Clone, Copy)]
+enum GradientAxis {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Clone)]
+struct LinearGradientContext {
+    table: GradientTable,
+    origin_fp: i32,
+    step_q16: i32,
+    axis: GradientAxis,
+}
+
+impl LinearGradientContext {
+    fn horizontal<const GS: usize>(stops: &GradientStop<GS>, bounds: &Bounds) -> Self {
+        let origin_fp = to_fixed(bounds.min.x);
+        let width_fp = to_fixed(bounds.width());
+        let step_q16 = if width_fp > 0 {
+            (((GRADIENT_MAX as i64) << FIXED_SHIFT) / width_fp as i64) as i32
+        } else {
+            0
+        };
+        Self {
+            table: GradientTable::from_stops(stops),
+            origin_fp,
+            step_q16,
+            axis: GradientAxis::Horizontal,
+        }
+    }
+
+    fn vertical<const GS: usize>(stops: &GradientStop<GS>, bounds: &Bounds) -> Self {
+        let origin_fp = to_fixed(bounds.min.y);
+        let height_fp = to_fixed(bounds.height());
+        let step_q16 = if height_fp > 0 {
+            (((GRADIENT_MAX as i64) << FIXED_SHIFT) / height_fp as i64) as i32
+        } else {
+            0
+        };
+        Self {
+            table: GradientTable::from_stops(stops),
+            origin_fp,
+            step_q16,
+            axis: GradientAxis::Vertical,
+        }
+    }
+
+    #[inline(always)]
+    fn axis(&self) -> GradientAxis {
+        self.axis
+    }
+
+    #[inline(always)]
+    fn horizontal_stepper(&self, x0: i32, start_idx: usize) -> GradientStepper<'_> {
+        let pixel = x0 + start_idx as i32;
+        let acc_q16 = self.acc_for(pixel_center_fixed(pixel));
+        GradientStepper {
+            table: &self.table,
+            acc_q16,
+            step_q16: self.step_q16,
+        }
+    }
+
+    #[inline(always)]
+    fn sample_vertical_row(&self, y: i32) -> Color {
+        let acc_q16 = self.acc_for(pixel_center_fixed(y));
+        self.table.color(clamp_gradient_value(acc_q16))
+    }
+
+    #[inline(always)]
+    fn sample_fixed(&self, x_fp: i64, y_fp: i64) -> Color {
+        let coord_fp = match self.axis {
+            GradientAxis::Horizontal => x_fp,
+            GradientAxis::Vertical => y_fp,
+        };
+        let acc_q16 = self.acc_for(coord_fp);
+        self.table.color(clamp_gradient_value(acc_q16))
+    }
+
+    #[inline(always)]
+    fn acc_for(&self, coord_fp: i64) -> i64 {
+        let offset_fp = coord_fp - self.origin_fp as i64;
+        (offset_fp * self.step_q16 as i64) >> FIXED_SHIFT
+    }
+}
+
+enum FillRender {
+    Solid(Color),
+    Gradient(LinearGradientContext),
+}
+
+struct GradientStepper<'a> {
+    table: &'a GradientTable,
+    acc_q16: i64,
+    step_q16: i32,
+}
+
+impl<'a> GradientStepper<'a> {
+    #[inline(always)]
+    fn sample_color(&self) -> Color {
+        self.table.color(clamp_gradient_value(self.acc_q16))
+    }
+
+    #[inline(always)]
+    fn advance(&mut self) {
+        self.acc_q16 += self.step_q16 as i64;
+        let max = (GRADIENT_MAX as i64) << FIXED_SHIFT;
+        if self.acc_q16 < 0 {
+            self.acc_q16 = 0;
+        } else if self.acc_q16 > max {
+            self.acc_q16 = max;
+        }
+    }
+}
+
+#[derive(Clone)]
+enum StrokeColorCache {
+    None,
+    Solid(Color),
+    Gradient(LinearGradientContext),
+}
+
+impl StrokeColorCache {
+    #[inline(always)]
+    fn sample(&self, x_fp: i64, y_fp: i64) -> Option<Color> {
+        match self {
+            StrokeColorCache::None => None,
+            StrokeColorCache::Solid(color) => Some(*color),
+            StrokeColorCache::Gradient(ctx) => Some(ctx.sample_fixed(x_fp, y_fp)),
+        }
+    }
+}
+
+fn make_linear_context<const GS: usize>(
+    gradient: &Gradient<GS>,
+    bounds: &Bounds,
+) -> LinearGradientContext {
+    match gradient {
+        Gradient::Horizontal(stops) => LinearGradientContext::horizontal(stops, bounds),
+        Gradient::Vertical(stops) => LinearGradientContext::vertical(stops, bounds),
+    }
+}
+
+fn make_fill_render<const GS: usize>(fill: &FillStyle<GS>, bounds: &Bounds) -> FillRender {
+    match fill {
+        FillStyle::Solid(color) => FillRender::Solid(*color),
+        FillStyle::Gradient(gradient) => {
+            FillRender::Gradient(make_linear_context(gradient, bounds))
+        }
+    }
+}
+
+fn build_stroke_caches(
+    styles: &[Option<&StrokeStyle<'_, 2>>; 4],
+    bounds: &Bounds,
+) -> [StrokeColorCache; 4] {
+    [
+        make_stroke_cache(styles[TOP], bounds),
+        make_stroke_cache(styles[RIGHT], bounds),
+        make_stroke_cache(styles[BOTTOM], bounds),
+        make_stroke_cache(styles[LEFT], bounds),
+    ]
+}
+
+fn make_stroke_cache(style: Option<&StrokeStyle<'_, 2>>, bounds: &Bounds) -> StrokeColorCache {
+    match style {
+        None => StrokeColorCache::None,
+        Some(style) => match &style.color {
+            StrokeColor::Solid(color) => StrokeColorCache::Solid(*color),
+            StrokeColor::Gradient(gradient) => {
+                StrokeColorCache::Gradient(make_linear_context(gradient, bounds))
+            }
+        },
     }
 }
 
@@ -344,46 +592,6 @@ fn process_color_row(
             &colors[color_offset..color_offset + run_len],
             &coverage[run_start..run_start + run_len],
         );
-    }
-}
-
-fn sample_gradient_color<const GS: usize>(
-    gradient: &Gradient<GS>,
-    x: f32,
-    y: f32,
-    bounds: &Bounds,
-) -> Color {
-    match gradient {
-        Gradient::Horizontal(stops) => {
-            let width = bounds.width();
-            let t = if width > 0.0 {
-                ((x - bounds.min.x) / width * 255.0).clamp(0.0, 255.0)
-            } else {
-                0.0
-            };
-            sample_gradient_stop(stops, t as u8)
-        }
-        Gradient::Vertical(stops) => {
-            let height = bounds.height();
-            let t = if height > 0.0 {
-                ((y - bounds.min.y) / height * 255.0).clamp(0.0, 255.0)
-            } else {
-                0.0
-            };
-            sample_gradient_stop(stops, t as u8)
-        }
-    }
-}
-
-fn sample_stroke_color<const GS: usize>(
-    color: &StrokeColor<GS>,
-    x: f32,
-    y: f32,
-    bounds: &Bounds,
-) -> Color {
-    match color {
-        StrokeColor::Solid(c) => *c,
-        StrokeColor::Gradient(gradient) => sample_gradient_color(gradient, x, y, bounds),
     }
 }
 
@@ -767,7 +975,14 @@ fn ceil_i32(value: f32) -> i32 {
     n
 }
 
-fn render_mask(path: &[Command], x0: i32, y0: i32, width: usize, height: usize) -> MaskBuffer {
+fn render_mask(
+    path: &[Command],
+    x0: i32,
+    y0: i32,
+    width: usize,
+    height: usize,
+    scratch: &mut Scratch,
+) -> MaskBuffer {
     if width == 0 || height == 0 {
         return MaskBuffer {
             data: Vec::new(),
@@ -775,8 +990,7 @@ fn render_mask(path: &[Command], x0: i32, y0: i32, width: usize, height: usize) 
         };
     }
 
-    let mut scratch = Scratch::new();
-    let mut mask = Mask::with_scratch(path, &mut scratch);
+    let mut mask = Mask::with_scratch(path, scratch);
     mask.style(ZenoFill::NonZero);
     mask.origin(Origin::TopLeft);
     mask.size(width as u32, 1);
@@ -785,10 +999,7 @@ fn render_mask(path: &[Command], x0: i32, y0: i32, width: usize, height: usize) 
     let mut row_buf = vec![0u8; width];
     for row in 0..height {
         row_buf.fill(0);
-        mask.offset(Vector::new(
-            -(x0 as f32),
-            -((y0 + row as i32) as f32),
-        ));
+        mask.offset(Vector::new(-(x0 as f32), -((y0 + row as i32) as f32)));
         mask.render_into(&mut row_buf, None);
         let start = row * width;
         let end = start + width;

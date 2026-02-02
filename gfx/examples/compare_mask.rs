@@ -10,13 +10,41 @@ fn main() {
     let ry = 6.0;
     path.move_to((x0 + rx, y0));
     path.line_to((x1 - rx, y0));
-    path.arc_to(rx, ry, Angle::ZERO, ArcSize::Small, ArcSweep::Positive, Point::new(x1, y0 + ry));
+    path.arc_to(
+        rx,
+        ry,
+        Angle::ZERO,
+        ArcSize::Small,
+        ArcSweep::Positive,
+        Point::new(x1, y0 + ry),
+    );
     path.line_to((x1, y1 - ry));
-    path.arc_to(rx, ry, Angle::ZERO, ArcSize::Small, ArcSweep::Positive, Point::new(x1 - rx, y1));
+    path.arc_to(
+        rx,
+        ry,
+        Angle::ZERO,
+        ArcSize::Small,
+        ArcSweep::Positive,
+        Point::new(x1 - rx, y1),
+    );
     path.line_to((x0 + rx, y1));
-    path.arc_to(rx, ry, Angle::ZERO, ArcSize::Small, ArcSweep::Positive, Point::new(x0, y1 - ry));
+    path.arc_to(
+        rx,
+        ry,
+        Angle::ZERO,
+        ArcSize::Small,
+        ArcSweep::Positive,
+        Point::new(x0, y1 - ry),
+    );
     path.line_to((x0, y0 + ry));
-    path.arc_to(rx, ry, Angle::ZERO, ArcSize::Small, ArcSweep::Positive, Point::new(x0 + rx, y0));
+    path.arc_to(
+        rx,
+        ry,
+        Angle::ZERO,
+        ArcSize::Small,
+        ArcSweep::Positive,
+        Point::new(x0 + rx, y0),
+    );
     path.close();
 
     let mut mask_full = Mask::new(&path);
@@ -35,10 +63,18 @@ fn main() {
             let value = full[idx];
             if value == 0 {
                 let mut neighbor = false;
-                if col > 0 && full[idx - 1] > 0 { neighbor = true; }
-                if col + 1 < width && full[idx + 1] > 0 { neighbor = true; }
-                if row > 0 && full[idx - width] > 0 { neighbor = true; }
-                if row + 1 < height && full[idx + width] > 0 { neighbor = true; }
+                if col > 0 && full[idx - 1] > 0 {
+                    neighbor = true;
+                }
+                if col + 1 < width && full[idx + 1] > 0 {
+                    neighbor = true;
+                }
+                if row > 0 && full[idx - width] > 0 {
+                    neighbor = true;
+                }
+                if row + 1 < height && full[idx + width] > 0 {
+                    neighbor = true;
+                }
                 if neighbor {
                     adjusted[idx] = 1;
                 }
@@ -64,15 +100,20 @@ fn main() {
             let adjusted_value = adjusted[row * 16 + col];
             let row_value = row_buf[col];
             if adjusted_value != row_value {
-                println!("diff at row {}, col {}: adjusted={}, row={} (orig={})", row, col, adjusted_value, row_value, full_value);
+                println!(
+                    "diff at row {}, col {}: adjusted={}, row={} (orig={})",
+                    row, col, adjusted_value, row_value, full_value
+                );
                 let idx = row * 16 + col;
-                println!("  neighbors full: left={}, right={}, up={}, down={}",
+                println!(
+                    "  neighbors full: left={}, right={}, up={}, down={}",
                     if col > 0 { full[idx - 1] } else { 0 },
                     if col + 1 < 16 { full[idx + 1] } else { 0 },
                     if row > 0 { full[idx - 16] } else { 0 },
                     if row + 1 < 16 { full[idx + 16] } else { 0 },
                 );
-                println!("  neighbors row: left={}, right={}, up={}, down={}",
+                println!(
+                    "  neighbors row: left={}, right={}, up={}, down={}",
                     if col > 0 { row_buf[col - 1] } else { 0 },
                     if col + 1 < 16 { row_buf[col + 1] } else { 0 },
                     0,
