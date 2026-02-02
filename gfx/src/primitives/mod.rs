@@ -1,8 +1,8 @@
 //! Graphics primitives
 
 pub mod font;
-mod features;
-mod rectangle;
+pub mod features;
+pub mod rectangle;
 
 pub use rectangle::{CornerRadius, Rectangle};
 pub use features::fill::FillStyle;
