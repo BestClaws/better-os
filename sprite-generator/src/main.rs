@@ -3,310 +3,401 @@ use bmp::{Image, Pixel};
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
 use gfx::rgb565::Rgb565Rasterizer;
-use gfx::rasterizer::RasterTarget;
 use gfx::primitives::{CornerRadius, FillStyle, Gradient, GradientStop, Rectangle, StrokeColor, StrokeStyle};
 use zeno::{Bounds, Point, Stroke};
 
 fn main() {
-    println!("Generating sprite BMPs...");
+    println!("Generating rectangle sprite BMPs with permutations...");
     
     // Create output directory
     fs::create_dir_all("output").expect("Failed to create output directory");
     
-    // Generate Luma4 sprites (grayscale)
-    generate_luma4_sprites();
+    // Generate all permutation variants for both pixel formats
+    generate_rectangle_permutations();
     
-    // Generate RGB565 sprites (color)
-    generate_rgb565_sprites();
-    
-    println!("All sprites generated successfully!");
+    println!("\nAll sprites generated successfully!");
 }
 
-fn generate_luma4_sprites() {
-    println!("\n=== Generating Luma4 Sprites ===");
-    
+fn generate_rectangle_permutations() {
     let width = 20u16;
     let height = 20u16;
-    let pixel_count = (width as usize) * (height as usize);
     
-    // Luma4 = 4 bits per pixel (2 pixels per byte)
-    let mut buffer = vec![0u8; (pixel_count + 1) / 2];
+    // Rectangle bounds: 16x16 centered in 20x20 sprite
+    let area = Bounds::new(Point::new(2.0, 2.0), Point::new(18.0, 18.0));
+    let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width as f32, height as f32));
     
-    // 1. Horizontal solid line (16x1 in center)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
-        let y = 10u16; // Center vertically
-        let x_start = 2u16; // Start 2 pixels from left
-        let solid_color = Color::rgba(255, 255, 255, 255); // White
-        rasterizer.fill_solid_hspan(y, x_start, solid_color, 16);
-        
-        save_luma4_as_bmp(&buffer, width, height, "output/luma4_hline_solid.bmp");
-        println!("Generated: luma4_hline_solid.bmp");
-    }
+    let mut test_num = 0;
     
-    // 2. Vertical solid line (1x16 in center)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
-        let x = 10u16; // Center horizontally
-        let y_start = 2u16; // Start 2 pixels from top
-        let solid_color = Color::rgba(255, 255, 255, 255); // White
-        rasterizer.fill_solid_vspan(x, y_start, solid_color, 16);
+    // Permutation loops: 3 fills × 4 corners × 6 strokes = 72 variants
+    for fill_idx in 0..3 {
+        let (fill, fill_name) = match fill_idx {
+            0 => {
+                // Solid gray fill
+                (FillStyle::Solid(Color::rgba(150, 150, 150, 255)), "solid")
+            }
+            1 => {
+                // Vertical gradient (dark to light)
+                (FillStyle::Gradient(Gradient::Vertical(GradientStop([
+                    (Color::rgba(40, 40, 40, 255), 0),
+                    (Color::rgba(180, 180, 180, 255), 128),
+                    (Color::rgba(255, 255, 255, 255), 255),
+                ]))), "vgrad")
+            }
+            2 => {
+                // Horizontal gradient (dark to light)
+                (FillStyle::Gradient(Gradient::Horizontal(GradientStop([
+                    (Color::rgba(40, 40, 40, 255), 0),
+                    (Color::rgba(180, 180, 180, 255), 128),
+                    (Color::rgba(255, 255, 255, 255), 255),
+                ]))), "hgrad")
+            }
+            _ => unreachable!(),
+        };
         
-        save_luma4_as_bmp(&buffer, width, height, "output/luma4_vline_solid.bmp");
-        println!("Generated: luma4_vline_solid.bmp");
-    }
-    
-    // 3. Horizontal gradient line (16x1, red to green in grayscale)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
-        let y = 10u16;
-        let x_start = 2u16;
-        
-        // Draw gradient pixel by pixel
-        for i in 0..16 {
-            let t = ((i * 255) / 15) as u8;
-            let red = 255u8 - t;
-            let green = t;
-            let color = Color::rgba(red, green, 0, 255);
-            println!("  Pixel {}: t={} R={} G={} B={} -> Color", i, t, red, green, 0);
-            rasterizer.fill_solid_hspan(y, x_start + i, color, 1);
-        }
-        
-        // Debug: Print buffer contents for the gradient row
-        println!("Buffer contents after gradient:");
-        for x in 0..20 {
-            let pixel_idx = (y as usize) * 20 + (x as usize);
-            let byte_idx = pixel_idx >> 1;
-            let is_high = (pixel_idx & 1) == 0;
-            let luma4 = if is_high {
-                (buffer[byte_idx] >> 4) & 0x0F
-            } else {
-                buffer[byte_idx] & 0x0F
+        for corner_idx in 0..4 {
+            let (corner_radii, corner_name) = match corner_idx {
+                0 => ([CornerRadius::new(0.0, 0.0); 4], "sharp"),
+                1 => ([CornerRadius::new(4.0, 4.0); 4], "r4"),
+                2 => ([CornerRadius::new(6.0, 6.0); 4], "r6"),
+                3 => (
+                    [
+                        CornerRadius::new(0.0, 0.0),
+                        CornerRadius::new(4.0, 4.0),
+                        CornerRadius::new(6.0, 6.0),
+                        CornerRadius::new(8.0, 8.0),
+                    ],
+                    "multi"
+                ),
+                _ => unreachable!(),
             };
-            print!("{:2} ", luma4);
-        }
-        println!();
-        
-        save_luma4_as_bmp(&buffer, width, height, "output/luma4_hline_gradient.bmp");
-        println!("Generated: luma4_hline_gradient.bmp");
-    }
-    
-    // 4. Vertical gradient line (1x16, red to green in grayscale)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
-        let x = 10u16;
-        let y_start = 2u16;
-        
-        // Draw gradient pixel by pixel
-        for i in 0..16 {
-            let t = ((i * 255) / 15) as u8;
-            let red = 255u8 - t;
-            let green = t;
-            let color = Color::rgba(red, green, 0, 255);
-            rasterizer.fill_solid_vspan(x, y_start + i, color, 1);
-        }
-        
-        save_luma4_as_bmp(&buffer, width, height, "output/luma4_vline_gradient.bmp");
-        println!("Generated: luma4_vline_gradient.bmp");
-    }
-
-    // 5. Rounded rectangle demo (16x16 centered)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
-
-        let area = Bounds::new(Point::new(2.0, 2.0), Point::new(18.0, 18.0));
-        let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width as f32, height as f32));
-
-        let rectangle = Rectangle {
-            area,
-            fill: FillStyle::Gradient(Gradient::Vertical(GradientStop([
-                (Color::rgba(24, 24, 24, 255), 0),
-                (Color::rgba(160, 160, 200, 255), 160),
-                (Color::rgba(240, 240, 255, 255), 255),
-            ]))),
-            edges: [
-                Some(StrokeStyle {
-                    color: StrokeColor::Gradient(Gradient::Horizontal(GradientStop([
-                        (Color::rgba(255, 120, 120, 255), 0),
-                        (Color::rgba(255, 255, 255, 255), 255),
+            
+            for stroke_idx in 0..9 {
+                let (edges, stroke_name) = match stroke_idx {
+                    0 => ([None, None, None, None], "nostroke"),
+                    1 => (
+                        [
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        ],
+                        "s1"
+                    ),
+                    2 => (
+                        [
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        ],
+                        "s2"
+                    ),
+                    3 => (
+                        [
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        ],
+                        "s3"
+                    ),
+                    4 => (
+                        [
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(4.0) }),
+                        ],
+                        "asym_w"
+                    ),
+                    5 => (
+                        [
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 100, 100, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(100, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(100, 100, 255, 255)), stroke: Stroke::new(2.0) }),
+                            Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                        ],
+                        "asym_c"
+                    ),
+                    6 => (
+                        [
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                    (Color::rgba(255, 100, 100, 255), 0),
+                                    (Color::rgba(100, 100, 255, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                    (Color::rgba(255, 100, 100, 255), 0),
+                                    (Color::rgba(100, 100, 255, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                    (Color::rgba(255, 100, 100, 255), 0),
+                                    (Color::rgba(100, 100, 255, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                    (Color::rgba(255, 100, 100, 255), 0),
+                                    (Color::rgba(100, 100, 255, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                        ],
+                        "grad_h"
+                    ),
+                    7 => (
+                        [
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                    (Color::rgba(100, 255, 100, 255), 0),
+                                    (Color::rgba(255, 255, 100, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                    (Color::rgba(100, 255, 100, 255), 0),
+                                    (Color::rgba(255, 255, 100, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                    (Color::rgba(100, 255, 100, 255), 0),
+                                    (Color::rgba(255, 255, 100, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                    (Color::rgba(100, 255, 100, 255), 0),
+                                    (Color::rgba(255, 255, 100, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                        ],
+                        "grad_v"
+                    ),
+                    8 => (
+                        [
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                    (Color::rgba(255, 80, 80, 255), 0),
+                                    (Color::rgba(80, 80, 255, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                    (Color::rgba(80, 255, 80, 255), 0),
+                                    (Color::rgba(255, 255, 80, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                    (Color::rgba(255, 140, 200, 255), 0),
+                                    (Color::rgba(140, 200, 255, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                            Some(StrokeStyle { 
+                                color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                    (Color::rgba(200, 140, 255, 255), 0),
+                                    (Color::rgba(255, 200, 140, 255), 255),
+                                ]))), 
+                                stroke: Stroke::new(2.0) 
+                            }),
+                        ],
+                        "grad_mix"
+                    ),
+                    _ => unreachable!(),
+                };
+                
+                test_num += 1;
+                let filename = format!("rect_{:03}_{}_{}_{}", test_num, fill_name, corner_name, stroke_name);
+                
+                // Recreate fill since FillStyle doesn't implement Clone
+                let fill = match fill_idx {
+                    0 => FillStyle::Solid(Color::rgba(100, 180, 220, 255)),  // Cyan-blue
+                    1 => FillStyle::Gradient(Gradient::Vertical(GradientStop([
+                        (Color::rgba(220, 60, 100, 255), 0),     // Pink-red
+                        (Color::rgba(120, 180, 240, 255), 128),  // Sky blue
+                        (Color::rgba(100, 255, 150, 255), 255),  // Mint green
                     ]))),
-                    stroke: Stroke::new(3.0),
-                }),
-                Some(StrokeStyle {
-                    color: StrokeColor::Solid(Color::rgba(120, 255, 200, 255)),
-                    stroke: Stroke::new(2.0),
-                }),
-                Some(StrokeStyle {
-                    color: StrokeColor::Gradient(Gradient::Horizontal(GradientStop([
-                        (Color::rgba(80, 120, 255, 255), 0),
-                        (Color::rgba(255, 80, 200, 255), 255),
+                    2 => FillStyle::Gradient(Gradient::Horizontal(GradientStop([
+                        (Color::rgba(240, 180, 60, 255), 0),     // Orange-yellow
+                        (Color::rgba(160, 100, 220, 255), 128),  // Purple
+                        (Color::rgba(80, 220, 200, 255), 255),   // Turquoise
                     ]))),
-                    stroke: Stroke::new(4.0),
-                }),
-                Some(StrokeStyle {
-                    color: StrokeColor::Solid(Color::rgba(255, 220, 120, 255)),
-                    stroke: Stroke::new(1.5),
-                }),
-            ],
-            clip,
-            corner_radii: [
-                CornerRadius::new(4.0, 6.0),
-                CornerRadius::new(8.0, 8.0),
-                CornerRadius::new(6.0, 4.0),
-                CornerRadius::new(2.0, 10.0),
-            ],
-        };
-
-        rectangle.draw(&mut rasterizer);
-        save_luma4_as_bmp(&buffer, width, height, "output/luma4_rectangle_demo.bmp");
-        println!("Generated: luma4_rectangle_demo.bmp");
-    }
-}
-
-fn generate_rgb565_sprites() {
-    println!("\n=== Generating RGB565 Sprites ===");
-    
-    let width = 20u16;
-    let height = 20u16;
-    let pixel_count = (width as usize) * (height as usize);
-    
-    // RGB565 = 16 bits per pixel (2 bytes per pixel)
-    let mut buffer = vec![0u8; pixel_count * 2];
-    
-    // 1. Horizontal solid line (16x1 in center)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
-        let y = 10u16; // Center vertically
-        let x_start = 2u16; // Start 2 pixels from left
-        let solid_color = Color::rgba(255, 255, 255, 255); // White
-        rasterizer.fill_solid_hspan(y, x_start, solid_color, 16);
-        
-        save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_hline_solid.bmp");
-        println!("Generated: rgb565_hline_solid.bmp");
-    }
-    
-    // 2. Vertical solid line (1x16 in center)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
-        let x = 10u16; // Center horizontally
-        let y_start = 2u16; // Start 2 pixels from top
-        let solid_color = Color::rgba(255, 255, 255, 255); // White
-        rasterizer.fill_solid_vspan(x, y_start, solid_color, 16);
-        
-        save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_vline_solid.bmp");
-        println!("Generated: rgb565_vline_solid.bmp");
-    }
-    
-    // 3. Horizontal gradient line (16x1, red to green)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
-        let y = 10u16;
-        let x_start = 2u16;
-        
-        // Draw gradient pixel by pixel
-        for i in 0..16 {
-            let t = ((i * 255) / 15) as u8;
-            let red = 255u8 - t;
-            let green = t;
-            let color = Color::rgba(red, green, 0, 255);
-            println!("  Pixel {}: t={} R={} G={} B={}", i, t, red, green, 0);
-            rasterizer.fill_solid_hspan(y, x_start + i, color, 1);
+                    _ => unreachable!(),
+                };
+                
+                // Recreate edges since StrokeStyle doesn't implement Copy
+                let edges: [Option<StrokeStyle<'_, 2>>; 4] = match stroke_idx {
+                    0 => [None, None, None, None],
+                    1 => [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                    ],
+                    2 => [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                    ],
+                    3 => [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                    ],
+                    4 => [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(1.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(3.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 255, 255)), stroke: Stroke::new(4.0) }),
+                    ],
+                    5 => [
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 100, 100, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(100, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(100, 100, 255, 255)), stroke: Stroke::new(2.0) }),
+                        Some(StrokeStyle { color: StrokeColor::<2>::Solid(Color::rgba(255, 255, 100, 255)), stroke: Stroke::new(2.0) }),
+                    ],
+                    6 => [
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 100, 100, 255), 0),
+                                (Color::rgba(100, 100, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                    ],
+                    7 => [
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(100, 255, 100, 255), 0),
+                                (Color::rgba(255, 255, 100, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                    ],
+                    8 => [
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 80, 80, 255), 0),
+                                (Color::rgba(80, 80, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(80, 255, 80, 255), 0),
+                                (Color::rgba(255, 255, 80, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Horizontal(GradientStop([
+                                (Color::rgba(255, 140, 200, 255), 0),
+                                (Color::rgba(140, 200, 255, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                        Some(StrokeStyle { 
+                            color: StrokeColor::<2>::Gradient(Gradient::Vertical(GradientStop([
+                                (Color::rgba(200, 140, 255, 255), 0),
+                                (Color::rgba(255, 200, 140, 255), 255),
+                            ]))), 
+                            stroke: Stroke::new(2.0) 
+                        }),
+                    ],
+                    _ => unreachable!(),
+                };
+                
+                let rect = Rectangle {
+                    area,
+                    fill,
+                    edges,
+                    clip,
+                    corner_radii,
+                };
+                
+                // Generate Luma4 version
+                {
+                    let pixel_count = (width as usize) * (height as usize);
+                    let mut buffer = vec![0u8; (pixel_count + 1) / 2];
+                    let mut rasterizer = Luma4Rasterizer::new(&mut buffer, width, height);
+                    rect.draw(&mut rasterizer);
+                    save_luma4_as_bmp(&buffer, width, height, &format!("output/luma4_{}.bmp", filename));
+                }
+                
+                // Generate RGB565 version
+                {
+                    let pixel_count = (width as usize) * (height as usize);
+                    let mut buffer = vec![0u8; pixel_count * 2];
+                    let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
+                    rect.draw(&mut rasterizer);
+                    save_rgb565_as_bmp(&buffer, width, height, &format!("output/rgb565_{}.bmp", filename));
+                }
+                
+                println!("Generated: {} (luma4 + rgb565)", filename);
+            }
         }
-        
-        // Debug: Print buffer contents for the gradient row
-        println!("Buffer contents after gradient (RGB565 values):");
-        for x in 0..20 {
-            let pixel_offset = (y as usize) * 20 + (x as usize);
-            let byte_offset = pixel_offset * 2;
-            let rgb565 = u16::from_le_bytes([buffer[byte_offset], buffer[byte_offset + 1]]);
-            print!("{:04x} ", rgb565);
-        }
-        println!();
-        
-        save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_hline_gradient.bmp");
-        println!("Generated: rgb565_hline_gradient.bmp");
     }
     
-    // 4. Vertical gradient line (1x16, red to green)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
-        let x = 10u16;
-        let y_start = 2u16;
-        
-        // Draw gradient pixel by pixel
-        for i in 0..16 {
-            let t = ((i * 255) / 15) as u8;
-            let red = 255u8 - t;
-            let green = t;
-            let color = Color::rgba(red, green, 0, 255);
-            rasterizer.fill_solid_vspan(x, y_start + i, color, 1);
-        }
-        
-        save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_vline_gradient.bmp");
-        println!("Generated: rgb565_vline_gradient.bmp");
-    }
-
-    // 5. Rounded rectangle demo (16x16 centered)
-    {
-        buffer.fill(0);
-        let mut rasterizer = Rgb565Rasterizer::new(&mut buffer, width, height);
-
-        let area = Bounds::new(Point::new(2.0, 2.0), Point::new(18.0, 18.0));
-        let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width as f32, height as f32));
-
-        let rectangle = Rectangle {
-            area,
-            fill: FillStyle::Gradient(Gradient::Horizontal(GradientStop([
-                (Color::rgba(40, 180, 220, 255), 0),
-                (Color::rgba(120, 80, 220, 255), 128),
-                (Color::rgba(255, 120, 200, 255), 255),
-            ]))),
-            edges: [
-                Some(StrokeStyle {
-                    color: StrokeColor::Solid(Color::rgba(255, 255, 255, 255)),
-                    stroke: Stroke::new(2.0),
-                }),
-                Some(StrokeStyle {
-                    color: StrokeColor::Gradient(Gradient::Vertical(GradientStop([
-                        (Color::rgba(255, 180, 80, 255), 0),
-                        (Color::rgba(80, 255, 200, 255), 255),
-                    ]))),
-                    stroke: Stroke::new(3.0),
-                }),
-                Some(StrokeStyle {
-                    color: StrokeColor::Solid(Color::rgba(60, 120, 255, 255)),
-                    stroke: Stroke::new(2.5),
-                }),
-                Some(StrokeStyle {
-                    color: StrokeColor::Gradient(Gradient::Vertical(GradientStop([
-                        (Color::rgba(200, 60, 255, 255), 0),
-                        (Color::rgba(60, 255, 120, 255), 255),
-                    ]))),
-                    stroke: Stroke::new(3.5),
-                }),
-            ],
-            clip,
-            corner_radii: [
-                CornerRadius::new(5.0, 7.0),
-                CornerRadius::new(9.0, 9.0),
-                CornerRadius::new(5.0, 3.0),
-                CornerRadius::new(3.0, 8.0),
-            ],
-        };
-
-        rectangle.draw(&mut rasterizer);
-        save_rgb565_as_bmp(&buffer, width, height, "output/rgb565_rectangle_demo.bmp");
-        println!("Generated: rgb565_rectangle_demo.bmp");
-    }
+    println!("\nTotal variants generated: {} (×2 for both pixel formats = {} files)", test_num, test_num * 2);
 }
 
 fn save_luma4_as_bmp(buffer: &[u8], width: u16, height: u16, filename: &str) {
