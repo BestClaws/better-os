@@ -993,18 +993,11 @@ fn render_mask(
     let mut mask = Mask::with_scratch(path, scratch);
     mask.style(ZenoFill::NonZero);
     mask.origin(Origin::TopLeft);
-    mask.size(width as u32, 1);
+    mask.size(width as u32, height as u32);
+    mask.offset(Vector::new(-(x0 as f32), -(y0 as f32)));
 
     let mut data = vec![0u8; width * height];
-    let mut row_buf = vec![0u8; width];
-    for row in 0..height {
-        row_buf.fill(0);
-        mask.offset(Vector::new(-(x0 as f32), -((y0 + row as i32) as f32)));
-        mask.render_into(&mut row_buf, None);
-        let start = row * width;
-        let end = start + width;
-        data[start..end].copy_from_slice(&row_buf);
-    }
+    mask.render_into(&mut data, None);
 
     MaskBuffer { data, width }
 }
