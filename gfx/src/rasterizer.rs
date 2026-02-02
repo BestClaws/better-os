@@ -1,6 +1,5 @@
 use crate::colors::Color;
 
-
 pub trait RasterTarget {
     /// Returns the width of the drawing surface measured in pixels.
     fn width(&self) -> u16;
@@ -112,6 +111,4 @@ pub trait RasterTarget {
             self.fill_solid_hspan(row, x, color, width);
         }
     }
-
-
 }

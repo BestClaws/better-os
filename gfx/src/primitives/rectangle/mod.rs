@@ -13,7 +13,10 @@ pub struct CornerRadius {
 
 impl CornerRadius {
     pub const fn new(horizontal: f32, vertical: f32) -> Self {
-        Self { horizontal, vertical }
+        Self {
+            horizontal,
+            vertical,
+        }
     }
 }
 
@@ -30,4 +33,3 @@ pub struct Rectangle<'a> {
     /// Corner radii: [top-left, top-right, bottom-right, bottom-left]
     pub corner_radii: [CornerRadius; 4],
 }
-

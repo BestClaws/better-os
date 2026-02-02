@@ -8,6 +8,3 @@ pub enum Gradient<const GS: usize> {
 
 #[derive(Clone)]
 pub struct GradientStop<const GS: usize>(pub [(Color, u8); GS]);
-
-
-

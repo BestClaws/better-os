@@ -157,7 +157,11 @@ impl<'a> Rgb565Rasterizer<'a> {
     /// Create a new RGB565 rasterizer wrapping a framebuffer
     /// Buffer must be at least width * height * 2 bytes
     pub fn new(buffer: &'a mut [u8], width: u16, height: u16) -> Self {
-        Self { buffer, width, height }
+        Self {
+            buffer,
+            width,
+            height,
+        }
     }
 }
 
@@ -187,7 +191,14 @@ impl<'a> RasterTarget for Rgb565Rasterizer<'a> {
         let rgb565 = color_to_rgb565(color);
 
         unsafe {
-            fill_hspan_unchecked(self.buffer.as_mut_ptr(), self.width, y, x_start, actual_len, rgb565);
+            fill_hspan_unchecked(
+                self.buffer.as_mut_ptr(),
+                self.width,
+                y,
+                x_start,
+                actual_len,
+                rgb565,
+            );
         }
     }
 
@@ -262,7 +273,14 @@ impl<'a> RasterTarget for Rgb565Rasterizer<'a> {
         let rgb565 = color_to_rgb565(color);
 
         unsafe {
-            fill_vspan_unchecked(self.buffer.as_mut_ptr(), self.width, x, y_start, actual_len, rgb565);
+            fill_vspan_unchecked(
+                self.buffer.as_mut_ptr(),
+                self.width,
+                x,
+                y_start,
+                actual_len,
+                rgb565,
+            );
         }
     }
 
@@ -354,7 +372,7 @@ impl<'a> RasterTarget for Rgb565Rasterizer<'a> {
 }
 
 // ============================================================================
-// OPTIMIZED CONVERSION & BLENDING PRIMITIVES  
+// OPTIMIZED CONVERSION & BLENDING PRIMITIVES
 // ============================================================================
 
 /// Convert RGBA color to RGB565 format (16-bit: RRRRRGGGGGGBBBBB)
@@ -372,7 +390,7 @@ impl<'a> RasterTarget for Rgb565Rasterizer<'a> {
 ///
 /// ```text
 /// Input:  R=255, G=128, B=64
-/// 
+///
 /// Step 1: Reduce bit depth
 ///   r5 = 255 >> 3 = 31  (0b11111)
 ///   g6 = 128 >> 2 = 32  (0b100000)
@@ -518,7 +536,7 @@ fn blend_rgb565(dst: u16, src: u16, alpha: u8, coverage: u8) -> u16 {
 // ```
 //
 // ✅ Writing:
-// ```rust  
+// ```rust
 // let bytes = rgb565.to_le_bytes();
 // ptr::write_volatile(byte_ptr, bytes[0]);
 // ptr::write_volatile(byte_ptr.add(1), bytes[1]);

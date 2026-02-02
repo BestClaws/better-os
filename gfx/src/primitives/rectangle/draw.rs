@@ -8,8 +8,11 @@ use crate::primitives::features::stroke::{StrokeColor, StrokeStyle};
 use crate::primitives::rectangle::{CornerRadius, Rectangle};
 use crate::rasterizer::RasterTarget;
 
-use zeno::{Angle, ArcSize, ArcSweep, Bounds, Command, Fill as ZenoFill, Mask, Origin, Point, Vector};
 use zeno::PathBuilder;
+use zeno::{
+    Angle, ArcSize, ArcSweep, Bounds, Command, Fill as ZenoFill, Mask, Origin, Point, Scratch,
+    Vector,
+};
 
 const TOP: usize = 0;
 const RIGHT: usize = 1;
@@ -88,7 +91,12 @@ impl<'a> Rectangle<'a> {
     }
 }
 
-fn render_fill(rect: &Rectangle<'_>, canvas: &mut dyn RasterTarget, bounds: &Bounds, radii: &[CornerRadius; 4]) {
+fn render_fill(
+    rect: &Rectangle<'_>,
+    canvas: &mut dyn RasterTarget,
+    bounds: &Bounds,
+    radii: &[CornerRadius; 4],
+) {
     let path = build_round_rect_path(bounds, radii, true);
     if path.is_empty() {
         return;
@@ -108,27 +116,31 @@ fn render_fill(rect: &Rectangle<'_>, canvas: &mut dyn RasterTarget, bounds: &Bou
     let x1 = ceil_i32(mask_bounds.max.x);
     let y0 = floor_i32(mask_bounds.min.y);
     let y1 = ceil_i32(mask_bounds.max.y);
-    if x1 <= x0 || y1 <= y0 {
+    let width = (x1 - x0).max(0) as usize;
+    let height = (y1 - y0).max(0) as usize;
+    if width == 0 || height == 0 {
         return;
     }
 
-    let width = (x1 - x0) as usize;
+    let mask_buffer = render_mask(&path, x0, y0, width, height);
+    if mask_buffer.is_empty() {
+        return;
+    }
+
     let mut coverage_row = vec![0u8; width];
     let mut color_row: Vec<Color> = Vec::new();
 
-    for row in 0..(y1 - y0) {
-        let y = y0 + row;
+    for row in 0..height {
+        let y = y0 + row as i32;
         if y < clip.top || y >= clip.bottom {
             continue;
         }
 
-        coverage_row.fill(0);
-        let mut mask = Mask::new(&path);
-        mask.style(ZenoFill::NonZero);
-        mask.origin(Origin::TopLeft);
-        mask.offset(Vector::new(-(x0 as f32), -((y0 + row) as f32)));
-        mask.size(width as u32, 1);
-        mask.render_into(&mut coverage_row, None);
+        let row_data = mask_buffer.row(row);
+        if row_data.iter().all(|&c| c == 0) {
+            continue;
+        }
+        coverage_row.copy_from_slice(row_data);
 
         let start = clip.left.max(x0);
         let end = clip.right.min(x1);
@@ -153,15 +165,7 @@ fn render_fill(rect: &Rectangle<'_>, canvas: &mut dyn RasterTarget, bounds: &Bou
                     let py = y as f32 + 0.5;
                     color_row[i] = sample_gradient_color(gradient, px, py, bounds);
                 }
-                process_color_row(
-                    canvas,
-                    y,
-                    x0,
-                    &coverage_row,
-                    start_idx,
-                    end_idx,
-                    &color_row,
-                );
+                process_color_row(canvas, y, x0, &coverage_row, start_idx, end_idx, &color_row);
             }
         }
     }
@@ -195,27 +199,31 @@ fn render_border<'a>(
     let x1 = ceil_i32(mask_bounds.max.x);
     let y0 = floor_i32(mask_bounds.min.y);
     let y1 = ceil_i32(mask_bounds.max.y);
-    if x1 <= x0 || y1 <= y0 {
+    let width = (x1 - x0).max(0) as usize;
+    let height = (y1 - y0).max(0) as usize;
+    if width == 0 || height == 0 {
         return;
     }
 
-    let width = (x1 - x0) as usize;
+    let mask_buffer = render_mask(&path, x0, y0, width, height);
+    if mask_buffer.is_empty() {
+        return;
+    }
+
     let mut coverage_row = vec![0u8; width];
     let mut color_row: Vec<Color> = Vec::new();
 
-    for row in 0..(y1 - y0) {
-        let y = y0 + row;
+    for row in 0..height {
+        let y = y0 + row as i32;
         if y < clip.top || y >= clip.bottom {
             continue;
         }
 
-        coverage_row.fill(0);
-        let mut mask = Mask::new(&path);
-        mask.style(ZenoFill::NonZero);
-        mask.origin(Origin::TopLeft);
-        mask.offset(Vector::new(-(x0 as f32), -((y0 + row) as f32)));
-        mask.size(width as u32, 1);
-        mask.render_into(&mut coverage_row, None);
+        let row_data = mask_buffer.row(row);
+        if row_data.iter().all(|&c| c == 0) {
+            continue;
+        }
+        coverage_row.copy_from_slice(row_data);
 
         let start = clip.left.max(x0);
         let end = clip.right.min(x1);
@@ -245,15 +253,24 @@ fn render_border<'a>(
             color_row[i] = sample_stroke_color(&style.color, px, py, &rect.area);
         }
 
-        process_color_row(
-            canvas,
-            y,
-            x0,
-            &coverage_row,
-            start_idx,
-            end_idx,
-            &color_row,
-        );
+        process_color_row(canvas, y, x0, &coverage_row, start_idx, end_idx, &color_row);
+    }
+}
+
+struct MaskBuffer {
+    data: Vec<u8>,
+    width: usize,
+}
+
+impl MaskBuffer {
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    fn row(&self, row: usize) -> &[u8] {
+        let start = row * self.width;
+        let end = start + self.width;
+        &self.data[start..end]
     }
 }
 
@@ -330,7 +347,12 @@ fn process_color_row(
     }
 }
 
-fn sample_gradient_color<const GS: usize>(gradient: &Gradient<GS>, x: f32, y: f32, bounds: &Bounds) -> Color {
+fn sample_gradient_color<const GS: usize>(
+    gradient: &Gradient<GS>,
+    x: f32,
+    y: f32,
+    bounds: &Bounds,
+) -> Color {
     match gradient {
         Gradient::Horizontal(stops) => {
             let width = bounds.width();
@@ -353,7 +375,12 @@ fn sample_gradient_color<const GS: usize>(gradient: &Gradient<GS>, x: f32, y: f3
     }
 }
 
-fn sample_stroke_color<const GS: usize>(color: &StrokeColor<GS>, x: f32, y: f32, bounds: &Bounds) -> Color {
+fn sample_stroke_color<const GS: usize>(
+    color: &StrokeColor<GS>,
+    x: f32,
+    y: f32,
+    bounds: &Bounds,
+) -> Color {
     match color {
         StrokeColor::Solid(c) => *c,
         StrokeColor::Gradient(gradient) => sample_gradient_color(gradient, x, y, bounds),
@@ -431,7 +458,11 @@ fn classify_edge<'a>(
     Some(candidate)
 }
 
-fn edge_available<'a>(idx: usize, widths: &[f32; 4], styles: &[Option<&'a StrokeStyle<'a, 2>>; 4]) -> bool {
+fn edge_available<'a>(
+    idx: usize,
+    widths: &[f32; 4],
+    styles: &[Option<&'a StrokeStyle<'a, 2>>; 4],
+) -> bool {
     widths[idx] > 0.0 && styles[idx].is_some()
 }
 
@@ -462,7 +493,11 @@ fn fallback_edge<'a>(
     best.map(|(idx, _)| idx)
 }
 
-fn build_round_rect_path(bounds: &Bounds, radii: &[CornerRadius; 4], clockwise: bool) -> Vec<Command> {
+fn build_round_rect_path(
+    bounds: &Bounds,
+    radii: &[CornerRadius; 4],
+    clockwise: bool,
+) -> Vec<Command> {
     let mut path = Vec::new();
     if clockwise {
         append_round_rect_clockwise(&mut path, bounds, radii);
@@ -491,7 +526,11 @@ fn build_border_path(
     path
 }
 
-fn append_round_rect_clockwise(path: &mut Vec<Command>, bounds: &Bounds, radii: &[CornerRadius; 4]) {
+fn append_round_rect_clockwise(
+    path: &mut Vec<Command>,
+    bounds: &Bounds,
+    radii: &[CornerRadius; 4],
+) {
     let x0 = bounds.min.x;
     let y0 = bounds.min.y;
     let x1 = bounds.max.x;
@@ -503,16 +542,44 @@ fn append_round_rect_clockwise(path: &mut Vec<Command>, bounds: &Bounds, radii: 
 
     path.move_to((x0 + tl.horizontal, y0));
     path.line_to((x1 - tr.horizontal, y0));
-    arc_or_line(path, tr.horizontal, tr.vertical, Point::new(x1, y0 + tr.vertical), ArcSweep::Positive);
+    arc_or_line(
+        path,
+        tr.horizontal,
+        tr.vertical,
+        Point::new(x1, y0 + tr.vertical),
+        ArcSweep::Positive,
+    );
     path.line_to((x1, y1 - br.vertical));
-    arc_or_line(path, br.horizontal, br.vertical, Point::new(x1 - br.horizontal, y1), ArcSweep::Positive);
+    arc_or_line(
+        path,
+        br.horizontal,
+        br.vertical,
+        Point::new(x1 - br.horizontal, y1),
+        ArcSweep::Positive,
+    );
     path.line_to((x0 + bl.horizontal, y1));
-    arc_or_line(path, bl.horizontal, bl.vertical, Point::new(x0, y1 - bl.vertical), ArcSweep::Positive);
+    arc_or_line(
+        path,
+        bl.horizontal,
+        bl.vertical,
+        Point::new(x0, y1 - bl.vertical),
+        ArcSweep::Positive,
+    );
     path.line_to((x0, y0 + tl.vertical));
-    arc_or_line(path, tl.horizontal, tl.vertical, Point::new(x0 + tl.horizontal, y0), ArcSweep::Positive);
+    arc_or_line(
+        path,
+        tl.horizontal,
+        tl.vertical,
+        Point::new(x0 + tl.horizontal, y0),
+        ArcSweep::Positive,
+    );
 }
 
-fn append_round_rect_counter_clockwise(path: &mut Vec<Command>, bounds: &Bounds, radii: &[CornerRadius; 4]) {
+fn append_round_rect_counter_clockwise(
+    path: &mut Vec<Command>,
+    bounds: &Bounds,
+    radii: &[CornerRadius; 4],
+) {
     let x0 = bounds.min.x;
     let y0 = bounds.min.y;
     let x1 = bounds.max.x;
@@ -523,13 +590,37 @@ fn append_round_rect_counter_clockwise(path: &mut Vec<Command>, bounds: &Bounds,
     let bl = radii[3];
 
     path.move_to((x0 + tl.horizontal, y0));
-    arc_or_line(path, tl.horizontal, tl.vertical, Point::new(x0, y0 + tl.vertical), ArcSweep::Negative);
+    arc_or_line(
+        path,
+        tl.horizontal,
+        tl.vertical,
+        Point::new(x0, y0 + tl.vertical),
+        ArcSweep::Negative,
+    );
     path.line_to((x0, y1 - bl.vertical));
-    arc_or_line(path, bl.horizontal, bl.vertical, Point::new(x0 + bl.horizontal, y1), ArcSweep::Negative);
+    arc_or_line(
+        path,
+        bl.horizontal,
+        bl.vertical,
+        Point::new(x0 + bl.horizontal, y1),
+        ArcSweep::Negative,
+    );
     path.line_to((x1 - br.horizontal, y1));
-    arc_or_line(path, br.horizontal, br.vertical, Point::new(x1, y1 - br.vertical), ArcSweep::Negative);
+    arc_or_line(
+        path,
+        br.horizontal,
+        br.vertical,
+        Point::new(x1, y1 - br.vertical),
+        ArcSweep::Negative,
+    );
     path.line_to((x1, y0 + tr.vertical));
-    arc_or_line(path, tr.horizontal, tr.vertical, Point::new(x1 - tr.horizontal, y0), ArcSweep::Negative);
+    arc_or_line(
+        path,
+        tr.horizontal,
+        tr.vertical,
+        Point::new(x1 - tr.horizontal, y0),
+        ArcSweep::Negative,
+    );
 }
 
 fn arc_or_line(path: &mut Vec<Command>, rx: f32, ry: f32, to: Point, sweep: ArcSweep) {
@@ -619,10 +710,17 @@ fn compute_inner_bounds(outer: &Bounds, widths: &[f32; 4]) -> Option<Bounds> {
         return None;
     }
 
-    Some(Bounds::new(Point::new(left, top), Point::new(right, bottom)))
+    Some(Bounds::new(
+        Point::new(left, top),
+        Point::new(right, bottom),
+    ))
 }
 
-fn shape_clip(rect: &Rectangle<'_>, canvas: &dyn RasterTarget, bounds: &Bounds) -> Option<ClipRect> {
+fn shape_clip(
+    rect: &Rectangle<'_>,
+    canvas: &dyn RasterTarget,
+    bounds: &Bounds,
+) -> Option<ClipRect> {
     let area_left = floor_i32(bounds.min.x);
     let area_top = floor_i32(bounds.min.y);
     let area_right = ceil_i32(bounds.max.x);
@@ -644,7 +742,12 @@ fn shape_clip(rect: &Rectangle<'_>, canvas: &dyn RasterTarget, bounds: &Bounds) 
     if left >= right || top >= bottom {
         None
     } else {
-        Some(ClipRect { left, top, right, bottom })
+        Some(ClipRect {
+            left,
+            top,
+            right,
+            bottom,
+        })
     }
 }
 
@@ -664,3 +767,33 @@ fn ceil_i32(value: f32) -> i32 {
     n
 }
 
+fn render_mask(path: &[Command], x0: i32, y0: i32, width: usize, height: usize) -> MaskBuffer {
+    if width == 0 || height == 0 {
+        return MaskBuffer {
+            data: Vec::new(),
+            width,
+        };
+    }
+
+    let mut scratch = Scratch::new();
+    let mut mask = Mask::with_scratch(path, &mut scratch);
+    mask.style(ZenoFill::NonZero);
+    mask.origin(Origin::TopLeft);
+    mask.size(width as u32, 1);
+
+    let mut data = vec![0u8; width * height];
+    let mut row_buf = vec![0u8; width];
+    for row in 0..height {
+        row_buf.fill(0);
+        mask.offset(Vector::new(
+            -(x0 as f32),
+            -((y0 + row as i32) as f32),
+        ));
+        mask.render_into(&mut row_buf, None);
+        let start = row * width;
+        let end = start + width;
+        data[start..end].copy_from_slice(&row_buf);
+    }
+
+    MaskBuffer { data, width }
+}

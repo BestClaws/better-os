@@ -64,8 +64,6 @@ use crate::colors::Color;
 use crate::rasterizer::RasterTarget;
 use math::udiv255;
 
-
-
 /// Luma4 rasterizer that wraps a framebuffer
 ///
 /// # Buffer Layout
@@ -101,7 +99,11 @@ pub struct Luma4Rasterizer<'a> {
 impl<'a> Luma4Rasterizer<'a> {
     /// Create a new Luma4 rasterizer wrapping a framebuffer
     pub fn new(buffer: &'a mut [u8], width: u16, height: u16) -> Self {
-        Self { buffer, width, height }
+        Self {
+            buffer,
+            width,
+            height,
+        }
     }
 }
 
@@ -132,7 +134,14 @@ impl<'a> RasterTarget for Luma4Rasterizer<'a> {
         let luma = color_to_luma4(color);
 
         unsafe {
-            fill_hspan_unchecked(self.buffer.as_mut_ptr(), self.width, y, x_start, actual_len, luma);
+            fill_hspan_unchecked(
+                self.buffer.as_mut_ptr(),
+                self.width,
+                y,
+                x_start,
+                actual_len,
+                luma,
+            );
         }
     }
 
@@ -179,7 +188,7 @@ impl<'a> RasterTarget for Luma4Rasterizer<'a> {
         }
 
         let len = min(len, actual_len);
-        
+
         unsafe {
             blend_color_hspan_unchecked(
                 self.buffer.as_mut_ptr(),
@@ -205,9 +214,16 @@ impl<'a> RasterTarget for Luma4Rasterizer<'a> {
         }
 
         let luma = color_to_luma4(color);
-        
+
         unsafe {
-            fill_vspan_unchecked(self.buffer.as_mut_ptr(), self.width, x, y_start, actual_len, luma);
+            fill_vspan_unchecked(
+                self.buffer.as_mut_ptr(),
+                self.width,
+                x,
+                y_start,
+                actual_len,
+                luma,
+            );
         }
     }
 
@@ -336,10 +352,10 @@ fn color_to_luma4(color: Color) -> u8 {
     let r = color.r() as u32;
     let g = color.g() as u32;
     let b = color.b() as u32;
-    
+
     // Fast approximate RGB->Luma conversion
     let luma8 = (r * 77 + g * 151 + b * 28) >> 8;
-    
+
     // Scale to 4-bit (0-15)
     (luma8 >> 4) as u8
 }
@@ -397,7 +413,7 @@ fn blend_luma4(dst: u8, src: u8, alpha: u8, coverage: u8) -> u8 {
     } else {
         udiv255((alpha as u32) * (coverage as u32))
     };
-    
+
     // Completely branchless blend using standard formula:
     // result = (src * alpha + dst * (255 - alpha)) / 255
     let inv_alpha = 255 - effective_alpha;
@@ -425,10 +441,10 @@ unsafe fn fill_hspan_unchecked(
         let mut byte_idx = start_pixel_idx >> 1;
         let mut pixel_idx = start_pixel_idx;
         let mut remaining = len;
-        
+
         // Duplicate luma to both nibbles for fast fill
         let luma_both = (luma << 4) | luma;
-        
+
         // Handle leading odd pixel (low nibble)
         if (pixel_idx & 1) != 0 && remaining > 0 {
             let byte_ptr = buffer.add(byte_idx);
@@ -437,10 +453,10 @@ unsafe fn fill_hspan_unchecked(
             byte_idx += 1;
             remaining -= 1;
         }
-        
+
         // Fast path: fill pairs of pixels using byte writes
         let pairs = (remaining >> 1) as usize;
-        
+
         if pairs > 0 {
             let byte_ptr = buffer.add(byte_idx);
             // Use ptr::write_bytes for memset-like performance when possible
@@ -458,7 +474,7 @@ unsafe fn fill_hspan_unchecked(
             byte_idx += pairs;
             remaining -= (pairs as u16) << 1;
         }
-        
+
         // Handle trailing odd pixel (high nibble)
         if remaining > 0 {
             let byte_ptr = buffer.add(byte_idx);
@@ -484,10 +500,10 @@ unsafe fn blend_solid_hspan_unchecked(
         let mut pixel_idx = start_pixel_idx;
         let mut cov_ptr = coverage.as_ptr();
         let remaining = coverage.len();
-        
+
         // Optimized: process pairs of pixels when aligned
         let mut i = 0;
-        
+
         // Handle leading odd pixel
         if (pixel_idx & 1) != 0 && i < remaining {
             let byte_idx = pixel_idx >> 1;
@@ -501,30 +517,30 @@ unsafe fn blend_solid_hspan_unchecked(
             cov_ptr = cov_ptr.add(1);
             i += 1;
         }
-        
+
         // Process pairs of pixels together (same byte)
         while i + 1 < remaining {
             let byte_idx = pixel_idx >> 1;
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
-            
+
             let cov0 = ptr::read(cov_ptr);
             let cov1 = ptr::read(cov_ptr.add(1));
-            
+
             let dst_hi = current >> 4;
             let dst_lo = current & 0x0F;
-            
+
             let blend_hi = blend_luma4(dst_hi, src_luma, alpha, cov0);
             let blend_lo = blend_luma4(dst_lo, src_luma, alpha, cov1);
-            
+
             let new_val = (blend_hi << 4) | blend_lo;
             ptr::write_volatile(byte_ptr, new_val);
-            
+
             pixel_idx += 2;
             cov_ptr = cov_ptr.add(2);
             i += 2;
         }
-        
+
         // Handle trailing pixel
         if i < remaining {
             let byte_idx = pixel_idx >> 1;
@@ -554,72 +570,72 @@ unsafe fn blend_color_hspan_unchecked(
         let mut color_ptr = colors.as_ptr();
         let mut cov_ptr = coverage.as_ptr();
         let len = colors.len();
-        
+
         let mut i = 0;
-        
+
         // Handle leading odd pixel
         if (pixel_idx & 1) != 0 && i < len {
             let byte_idx = pixel_idx >> 1;
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
-            
+
             let color = ptr::read(color_ptr);
             let cov = ptr::read(cov_ptr);
             let src_luma = color_to_luma4(color);
             let alpha = color.a();
-            
+
             let dst_luma = current & 0x0F;
             let blended = blend_luma4(dst_luma, src_luma, alpha, cov);
             ptr::write_volatile(byte_ptr, (current & 0xF0) | blended);
-            
+
             pixel_idx += 1;
             color_ptr = color_ptr.add(1);
             cov_ptr = cov_ptr.add(1);
             i += 1;
         }
-        
+
         // Process pairs of pixels together (same byte)
         while i + 1 < len {
             let byte_idx = pixel_idx >> 1;
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
-            
+
             let color0 = ptr::read(color_ptr);
             let color1 = ptr::read(color_ptr.add(1));
             let cov0 = ptr::read(cov_ptr);
             let cov1 = ptr::read(cov_ptr.add(1));
-            
+
             let src_luma0 = color_to_luma4(color0);
             let src_luma1 = color_to_luma4(color1);
             let alpha0 = color0.a();
             let alpha1 = color1.a();
-            
+
             let dst_hi = current >> 4;
             let dst_lo = current & 0x0F;
-            
+
             let blend_hi = blend_luma4(dst_hi, src_luma0, alpha0, cov0);
             let blend_lo = blend_luma4(dst_lo, src_luma1, alpha1, cov1);
-            
+
             let new_val = (blend_hi << 4) | blend_lo;
             ptr::write_volatile(byte_ptr, new_val);
-            
+
             pixel_idx += 2;
             color_ptr = color_ptr.add(2);
             cov_ptr = cov_ptr.add(2);
             i += 2;
         }
-        
+
         // Handle trailing pixel
         if i < len {
             let byte_idx = pixel_idx >> 1;
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
-            
+
             let color = ptr::read(color_ptr);
             let cov = ptr::read(cov_ptr);
             let src_luma = color_to_luma4(color);
             let alpha = color.a();
-            
+
             let dst_luma = current >> 4;
             let blended = blend_luma4(dst_luma, src_luma, alpha, cov);
             ptr::write_volatile(byte_ptr, (blended << 4) | (current & 0x0F));
@@ -642,20 +658,20 @@ unsafe fn fill_vspan_unchecked(
         let start_pixel_idx = (y_start as usize) * (width as usize) + (x as usize);
         let mut pixel_idx = start_pixel_idx;
         let pixel_stride = width as usize;
-        
+
         for _ in 0..len {
             let byte_idx = pixel_idx >> 1;
             let is_high_nibble = (pixel_idx & 1) == 0;
-            
+
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
-            
+
             let new_val = if is_high_nibble {
                 (luma << 4) | (current & 0x0F)
             } else {
                 (current & 0xF0) | luma
             };
-            
+
             ptr::write_volatile(byte_ptr, new_val);
             pixel_idx += pixel_stride;
         }
@@ -678,26 +694,30 @@ unsafe fn blend_solid_vspan_unchecked(
         let mut pixel_idx = start_pixel_idx;
         let pixel_stride = width as usize;
         let mut cov_ptr = coverage.as_ptr();
-        
+
         for _ in 0..coverage.len() {
             let byte_idx = pixel_idx >> 1;
             let is_high_nibble = (pixel_idx & 1) == 0;
-            
+
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
             let cov = ptr::read(cov_ptr);
-            
-            let dst_luma = if is_high_nibble { current >> 4 } else { current & 0x0F };
+
+            let dst_luma = if is_high_nibble {
+                current >> 4
+            } else {
+                current & 0x0F
+            };
             let blended = blend_luma4(dst_luma, src_luma, alpha, cov);
-            
+
             let new_val = if is_high_nibble {
                 (blended << 4) | (current & 0x0F)
             } else {
                 (current & 0xF0) | blended
             };
-            
+
             ptr::write_volatile(byte_ptr, new_val);
-            
+
             pixel_idx += pixel_stride;
             cov_ptr = cov_ptr.add(1);
         }
@@ -720,30 +740,34 @@ unsafe fn blend_color_vspan_unchecked(
         let pixel_stride = width as usize;
         let mut color_ptr = colors.as_ptr();
         let mut cov_ptr = coverage.as_ptr();
-        
+
         for _ in 0..colors.len() {
             let byte_idx = pixel_idx >> 1;
             let is_high_nibble = (pixel_idx & 1) == 0;
-            
+
             let byte_ptr = buffer.add(byte_idx);
             let current = ptr::read_volatile(byte_ptr);
-            
+
             let color = ptr::read(color_ptr);
             let cov = ptr::read(cov_ptr);
             let src_luma = color_to_luma4(color);
             let alpha = color.a();
-            
-            let dst_luma = if is_high_nibble { current >> 4 } else { current & 0x0F };
+
+            let dst_luma = if is_high_nibble {
+                current >> 4
+            } else {
+                current & 0x0F
+            };
             let blended = blend_luma4(dst_luma, src_luma, alpha, cov);
-            
+
             let new_val = if is_high_nibble {
                 (blended << 4) | (current & 0x0F)
             } else {
                 (current & 0xF0) | blended
             };
-            
+
             ptr::write_volatile(byte_ptr, new_val);
-            
+
             pixel_idx += pixel_stride;
             color_ptr = color_ptr.add(1);
             cov_ptr = cov_ptr.add(1);
@@ -764,7 +788,7 @@ unsafe fn fill_rect_unchecked(
 ) {
     unsafe {
         let luma_both = (luma << 4) | luma;
-        
+
         // Special case: full-width aligned rectangles with even width
         if x == 0 && rect_width == width && (width & 1) == 0 {
             let start_pixel_idx = (y as usize) * (width as usize);
@@ -774,7 +798,7 @@ unsafe fn fill_rect_unchecked(
             ptr::write_bytes(ptr, luma_both, total_bytes);
             return;
         }
-        
+
         // General case: process row by row with optimizations
         for row in 0..rect_height {
             let current_y = y + row;

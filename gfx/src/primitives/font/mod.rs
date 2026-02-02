@@ -3,10 +3,10 @@
 use crate::colors::Color;
 use crate::rasterizer::RasterTarget;
 
-use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
-use swash::{FontRef, scale::ScaleContext, scale::Render, scale::Source, GlyphId};
+use alloc::vec::Vec;
 use swash::scale::image::Content;
+use swash::{FontRef, GlyphId, scale::Render, scale::ScaleContext, scale::Source};
 
 /// Cached glyph data
 struct CachedGlyph {
@@ -47,7 +47,7 @@ impl Font {
         color: Color,
     ) {
         let mut cursor_x = x;
-        
+
         for ch in text.chars() {
             if let Some(glyph) = self.glyphs.get(&ch) {
                 // Draw glyph with baseline alignment using RasterTarget
@@ -56,27 +56,28 @@ impl Font {
                     if py < 0 || py >= target.height() as i32 {
                         continue;
                     }
-                    
+
                     let px_start = cursor_x + glyph.left;
                     if px_start >= target.width() as i32 {
                         continue;
                     }
-                    
+
                     // Extract coverage for this row
                     let row_start = gy * glyph.width;
                     let coverage = &glyph.data[row_start..row_start + glyph.width];
-                    
+
                     // Clip to visible range
                     let clip_start = if px_start < 0 { -px_start as usize } else { 0 };
-                    let visible_width = (glyph.width - clip_start).min((target.width() as i32 - (px_start + clip_start as i32)) as usize);
-                    
+                    let visible_width = (glyph.width - clip_start)
+                        .min((target.width() as i32 - (px_start + clip_start as i32)) as usize);
+
                     if visible_width > 0 {
                         let x_coord = (px_start + clip_start as i32) as u16;
                         target.blend_solid_hspan(
                             py as u16,
                             x_coord,
                             color,
-                            &coverage[clip_start..clip_start + visible_width]
+                            &coverage[clip_start..clip_start + visible_width],
                         );
                     }
                 }
@@ -144,28 +145,29 @@ impl FontBuilder {
     pub fn build(self) -> Font {
         let font_data = self.font_data.expect("Font data is required");
         let font_ref = FontRef::from_index(font_data, 0).expect("Failed to load font");
-        
+
         let mut scale_context = ScaleContext::new();
-        let mut scaler = scale_context.builder(font_ref)
+        let mut scaler = scale_context
+            .builder(font_ref)
             .size(self.font_size)
             .hint(self.hint)
             .build();
-        
+
         // Get font metrics to calculate baseline
         let metrics = font_ref.metrics(&[]).scale(self.font_size);
         let baseline = metrics.ascent as i32;
-        
+
         let charmap = font_ref.charmap();
         let mut glyphs = BTreeMap::new();
-        
+
         // Cache specified characters or use default set
-        let chars_to_cache = self.cache_chars.unwrap_or(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !?.:,'-"
-        );
-        
+        let chars_to_cache = self
+            .cache_chars
+            .unwrap_or("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !?.:,'-");
+
         for ch in chars_to_cache.chars() {
             let glyph_id = charmap.map(ch);
-            
+
             if let Some(img) = Render::new(&[Source::Outline]).render(&mut scaler, glyph_id) {
                 if let Content::Mask = img.content {
                     let cached = CachedGlyph {
@@ -176,12 +178,12 @@ impl FontBuilder {
                         top: img.placement.top,
                         advance: img.placement.width as i32 + 2,
                     };
-                    
+
                     glyphs.insert(ch, cached);
                 }
             }
         }
-        
+
         Font {
             glyphs,
             font_size: self.font_size,

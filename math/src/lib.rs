@@ -2,7 +2,7 @@
 
 /// Fast divide by 255 using multiplication and shift
 /// Based on LVGL's method: (x * 0x8081) >> 23
-/// 
+///
 /// This is significantly faster than division on embedded platforms
 /// and produces the same result as x / 255 for values up to 65535.
 #[inline]
