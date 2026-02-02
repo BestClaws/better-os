@@ -132,73 +132,21 @@ fn render_fill(
         return;
     }
 
-    let mut color_row: Vec<Color> = Vec::new();
     let fill_render = make_fill_render(&rect.fill, bounds);
-
-    for row in 0..height {
-        let y = y0 + row as i32;
-        if y < clip.top || y >= clip.bottom {
-            continue;
+    match &fill_render {
+        FillRender::Solid(color) => {
+            render_rows_with_color(canvas, &mask_buffer, clip, x0, x1, y0, height, |_| *color);
         }
-
-        let row_data = mask_buffer.row(row);
-        if !row_data.iter().any(|&c| c != 0) {
-            continue;
-        }
-
-        let start = clip.left.max(x0);
-        let end = clip.right.min(x1);
-        if start >= end {
-            continue;
-        }
-        let start_idx = (start - x0) as usize;
-        let end_idx = (end - x0) as usize;
-
-        match &fill_render {
-            FillRender::Solid(color) => {
-                process_solid_row(canvas, color, y, x0, row_data, start_idx, end_idx);
+        FillRender::Gradient(ctx) => match ctx.axis() {
+            GradientAxis::Vertical => {
+                render_rows_with_color(canvas, &mask_buffer, clip, x0, x1, y0, height, |row_y| {
+                    ctx.sample_vertical_row(row_y)
+                });
             }
-            FillRender::Gradient(ctx) => {
-                match ctx.axis() {
-                    GradientAxis::Horizontal => {
-                        let mut stepper = ctx.horizontal_stepper(x0, start_idx);
-                        let mut idx = start_idx;
-                        while idx < end_idx {
-                            if row_data[idx] == 0 {
-                                let mut zero_end = idx + 1;
-                                while zero_end < end_idx && row_data[zero_end] == 0 {
-                                    zero_end += 1;
-                                }
-                                stepper.advance_by(zero_end - idx);
-                                idx = zero_end;
-                                continue;
-                            }
-
-                            let run_start = idx;
-                            while idx < end_idx && row_data[idx] != 0 {
-                                idx += 1;
-                            }
-                            let run_len = idx - run_start;
-                            color_row.resize(run_len, Color::rgba(0, 0, 0, 0));
-                            for color in color_row.iter_mut() {
-                                *color = stepper.sample_color();
-                                stepper.advance();
-                            }
-                            canvas.blend_color_hspan(
-                                y as u16,
-                                (x0 + run_start as i32) as u16,
-                                &color_row,
-                                &row_data[run_start..run_start + run_len],
-                            );
-                        }
-                    }
-                    GradientAxis::Vertical => {
-                        let color = ctx.sample_vertical_row(y);
-                        process_solid_row(canvas, &color, y, x0, row_data, start_idx, end_idx);
-                    }
-                }
+            GradientAxis::Horizontal => {
+                render_horizontal_gradient(canvas, ctx, &mask_buffer, clip, x0, x1, y0, height);
             }
-        }
+        },
     }
 }
 
@@ -310,6 +258,10 @@ impl MaskBuffer {
         let start = row * self.width;
         let end = start + self.width;
         &mut self.data[start..end]
+    }
+
+    fn sample(&self, row: usize, col: usize) -> u8 {
+        self.data[row * self.width + col]
     }
 }
 
@@ -613,6 +565,123 @@ fn process_color_row(
             &colors[color_offset..color_offset + run_len],
             &coverage[run_start..run_start + run_len],
         );
+    }
+}
+
+fn render_rows_with_color<F>(
+    canvas: &mut dyn RasterTarget,
+    mask_buffer: &MaskBuffer,
+    clip: ClipRect,
+    x0: i32,
+    x1: i32,
+    y0: i32,
+    height: usize,
+    mut color_fn: F,
+) where
+    F: FnMut(i32) -> Color,
+{
+    let start = clip.left.max(x0);
+    let end = clip.right.min(x1);
+    if start >= end {
+        return;
+    }
+    let start_idx = (start - x0) as usize;
+    let end_idx = (end - x0) as usize;
+
+    for row in 0..height {
+        let y = y0 + row as i32;
+        if y < clip.top || y >= clip.bottom {
+            continue;
+        }
+
+        let row_data = mask_buffer.row(row);
+        if !row_data.iter().any(|&c| c != 0) {
+            continue;
+        }
+
+        let color = color_fn(y);
+        process_solid_row(canvas, &color, y, x0, row_data, start_idx, end_idx);
+    }
+}
+
+fn render_horizontal_gradient(
+    canvas: &mut dyn RasterTarget,
+    ctx: &LinearGradientContext,
+    mask_buffer: &MaskBuffer,
+    clip: ClipRect,
+    x0: i32,
+    x1: i32,
+    y0: i32,
+    height: usize,
+) {
+    let start = clip.left.max(x0);
+    let end = clip.right.min(x1);
+    if start >= end {
+        return;
+    }
+
+    let start_idx = (start - x0) as usize;
+    let end_idx = (end - x0) as usize;
+    let mut stepper = ctx.horizontal_stepper(x0, start_idx);
+    let mut coverage_col: Vec<u8> = Vec::new();
+
+    for col_idx in start_idx..end_idx {
+        let x = x0 + col_idx as i32;
+        let color = stepper.sample_color();
+
+        let mut row = 0;
+        while row < height {
+            let y = y0 + row as i32;
+            if y < clip.top || y >= clip.bottom {
+                row += 1;
+                continue;
+            }
+
+            let coverage = mask_buffer.sample(row, col_idx);
+            if coverage == 0 {
+                row += 1;
+                continue;
+            }
+
+            let run_start = row;
+            let mut run_end = row + 1;
+            let mut opaque = coverage == 255;
+            while run_end < height {
+                let y_abs = y0 + run_end as i32;
+                if y_abs >= clip.bottom {
+                    break;
+                }
+                let cov = mask_buffer.sample(run_end, col_idx);
+                if cov == 0 {
+                    break;
+                }
+                if cov != 255 {
+                    opaque = false;
+                }
+                run_end += 1;
+            }
+
+            let span_len = run_end - run_start;
+            let y_start = y0 + run_start as i32;
+            if opaque {
+                canvas.fill_solid_vspan(x as u16, y_start as u16, color, span_len as u16);
+            } else {
+                coverage_col.resize(span_len, 0);
+                for (dst, src_row) in coverage_col.iter_mut().zip(run_start..run_end) {
+                    *dst = mask_buffer.sample(src_row, col_idx);
+                }
+                canvas.blend_solid_vspan(
+                    x as u16,
+                    y_start as u16,
+                    color,
+                    &coverage_col[..span_len],
+                );
+            }
+
+            row = run_end;
+        }
+
+        stepper.advance();
     }
 }
 
