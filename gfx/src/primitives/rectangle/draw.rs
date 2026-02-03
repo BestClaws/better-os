@@ -139,13 +139,9 @@ fn render_fill(
     let chunk_rows = max_rows.min(height);
 
     let mut mask_buffer: Vec<u8> = Vec::with_capacity(width * chunk_rows);
-    let mut coverage_buf: Vec<u8> = Vec::with_capacity(width);
     let mut color_buf: Vec<Color> = Vec::with_capacity(width);
     record_temp_allocation(
-        path_bytes
-            + mask_buffer.capacity()
-            + coverage_buf.capacity()
-            + color_buf.capacity() * mem::size_of::<Color>(),
+        path_bytes + mask_buffer.capacity() + color_buf.capacity() * mem::size_of::<Color>(),
     );
 
     let fill_render = make_fill_render(&rect.fill, bounds);
@@ -173,6 +169,28 @@ fn render_fill(
         mask.offset(Vector::new(-(x0 as f32), -(chunk_top as f32)));
         mask.render_into(&mut mask_buffer, Some(width));
 
+        let gradient_colors = match &fill_render {
+            FillRender::Gradient(ctx) if ctx.axis() == GradientAxis::Horizontal => {
+                let span_len = end_idx - start_idx;
+                color_buf.clear();
+                color_buf.reserve(span_len);
+                // SAFETY: we reserve above and immediately write every element.
+                unsafe {
+                    color_buf.set_len(span_len);
+                }
+                let dest = color_buf.as_mut_ptr();
+                let mut stepper = ctx.horizontal_stepper(x0, start_idx);
+                unsafe {
+                    for i in 0..span_len {
+                        *dest.add(i) = stepper.sample_color();
+                        stepper.advance();
+                    }
+                }
+                Some(color_buf.as_slice())
+            }
+            _ => None,
+        };
+
         for row in 0..rows {
             let row_idx = chunk_start + row;
             let y = y0 + row_idx as i32;
@@ -195,17 +213,10 @@ fn render_fill(
                         process_solid_row(canvas, &color, y, x0, row_slice, start_idx, end_idx);
                     }
                     GradientAxis::Horizontal => {
-                        process_horizontal_gradient_row(
-                            canvas,
-                            ctx,
-                            y,
-                            x0,
-                            row_slice,
-                            start_idx,
-                            end_idx,
-                            &mut coverage_buf,
-                            &mut color_buf,
-                        );
+                        let Some(colors) = gradient_colors else {
+                            continue;
+                        }; // defensive fallback
+                        process_color_row(canvas, y, x0, row_slice, start_idx, end_idx, colors);
                     }
                 },
             }
@@ -330,68 +341,6 @@ fn render_border<'a>(
     }
 }
 
-fn process_horizontal_gradient_row(
-    canvas: &mut dyn RasterTarget,
-    ctx: &LinearGradientContext,
-    y: i32,
-    x0: i32,
-    row_data: &[u8],
-    start_idx: usize,
-    end_idx: usize,
-    coverage_buf: &mut Vec<u8>,
-    color_buf: &mut Vec<Color>,
-) {
-    if start_idx >= end_idx {
-        return;
-    }
-
-    coverage_buf.clear();
-    color_buf.clear();
-
-    let mut stepper = ctx.horizontal_stepper(x0, start_idx);
-    let mut run_start: Option<usize> = None;
-
-    for idx in start_idx..end_idx {
-        let coverage = row_data[idx];
-        let color = stepper.sample_color();
-
-        if coverage == 0 {
-            if let Some(start) = run_start {
-                let x_start = x0 + start as i32;
-                canvas.blend_color_hspan(
-                    y as u16,
-                    x_start as u16,
-                    color_buf.as_slice(),
-                    coverage_buf.as_slice(),
-                );
-                coverage_buf.clear();
-                color_buf.clear();
-                run_start = None;
-            }
-        } else {
-            if run_start.is_none() {
-                run_start = Some(idx);
-            }
-            color_buf.push(color);
-            coverage_buf.push(coverage);
-        }
-
-        stepper.advance();
-    }
-
-    if let Some(start) = run_start {
-        let x_start = x0 + start as i32;
-        canvas.blend_color_hspan(
-            y as u16,
-            x_start as u16,
-            color_buf.as_slice(),
-            coverage_buf.as_slice(),
-        );
-        coverage_buf.clear();
-        color_buf.clear();
-    }
-}
-
 const FIXED_SHIFT: i32 = 16;
 const FIXED_ONE: i32 = 1 << FIXED_SHIFT;
 const FIXED_HALF: i32 = FIXED_ONE >> 1;
@@ -440,7 +389,7 @@ fn clamp_gradient_value(value_q16: i64) -> u8 {
     idx as u8
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum GradientAxis {
     Horizontal,
     Vertical,
@@ -631,35 +580,23 @@ fn process_solid_row(
     start_idx: usize,
     end_idx: usize,
 ) {
-    let mut idx = start_idx;
-    while idx < end_idx {
-        while idx < end_idx && coverage[idx] == 0 {
-            idx += 1;
-        }
-        if idx >= end_idx {
-            break;
-        }
-        let run_start = idx;
-        let mut opaque = true;
-        while idx < end_idx && coverage[idx] > 0 {
-            if coverage[idx] != 255 {
-                opaque = false;
-            }
-            idx += 1;
-        }
-        let run_len = idx - run_start;
-        let x_start = x0 + run_start as i32;
-        if opaque {
-            canvas.fill_solid_hspan(y as u16, x_start as u16, *color, run_len as u16);
-        } else {
-            canvas.blend_solid_hspan(
-                y as u16,
-                x_start as u16,
-                *color,
-                &coverage[run_start..run_start + run_len],
-            );
-        }
+    if start_idx >= end_idx {
+        return;
     }
+
+    let span = &coverage[start_idx..end_idx];
+    if span.is_empty() {
+        return;
+    }
+
+    for_each_coverage_run(span, |offset, coverage, opaque| {
+        let x_start = x0 + (start_idx + offset) as i32;
+        if opaque {
+            canvas.fill_solid_hspan(y as u16, x_start as u16, *color, coverage.len() as u16);
+        } else {
+            canvas.blend_solid_hspan(y as u16, x_start as u16, *color, coverage);
+        }
+    });
 }
 
 fn process_color_row(
@@ -671,27 +608,52 @@ fn process_color_row(
     end_idx: usize,
     colors: &[Color],
 ) {
-    let mut idx = start_idx;
-    while idx < end_idx {
-        while idx < end_idx && coverage[idx] == 0 {
+    if start_idx >= end_idx {
+        return;
+    }
+
+    let span = &coverage[start_idx..end_idx];
+    if span.is_empty() {
+        return;
+    }
+
+    debug_assert!(colors.len() >= span.len());
+
+    for_each_coverage_run(span, |offset, coverage, _| {
+        let x_start = x0 + (start_idx + offset) as i32;
+        let color_slice = &colors[offset..offset + coverage.len()];
+        canvas.blend_color_hspan(y as u16, x_start as u16, color_slice, coverage);
+    });
+}
+
+#[inline(always)]
+fn for_each_coverage_run(span: &[u8], mut visit: impl FnMut(usize, &[u8], bool)) {
+    // Walk contiguous non-zero alpha runs once, collapsing repeated branching.
+    let len = span.len();
+    let mut idx = 0;
+
+    while idx < len {
+        while idx < len && span[idx] == 0 {
             idx += 1;
         }
-        if idx >= end_idx {
+        if idx >= len {
             break;
         }
-        let run_start = idx;
-        while idx < end_idx && coverage[idx] > 0 {
+
+        let start = idx;
+        let mut opaque = true;
+        while idx < len {
+            let alpha = span[idx];
+            if alpha == 0 {
+                break;
+            }
+            if alpha != 255 {
+                opaque = false;
+            }
             idx += 1;
         }
-        let run_len = idx - run_start;
-        let x_start = x0 + run_start as i32;
-        let color_offset = run_start - start_idx;
-        canvas.blend_color_hspan(
-            y as u16,
-            x_start as u16,
-            &colors[color_offset..color_offset + run_len],
-            &coverage[run_start..run_start + run_len],
-        );
+
+        visit(start, &span[start..idx], opaque);
     }
 }
 
