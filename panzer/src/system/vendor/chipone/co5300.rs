@@ -49,7 +49,7 @@ use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use async_trait::async_trait;
-use defmt::{debug, error};
+use defmt::{debug, error, info};
 use embassy_time::{Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
@@ -639,6 +639,8 @@ where
         let mut chunk = vec![0u8; (scaled_w * SCALING_CHUNK_HEIGHT * 2) as usize]; // RGB565 = 2 bytes per pixel
 
         let t0 = Instant::now();
+        let mut total_scaling_us = 0u64;
+        let mut total_transfer_us = 0u64;
 
         for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
             let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
@@ -659,6 +661,7 @@ where
 
             // Scale and convert Gray4→RGB565 for this chunk
             let mut dst_idx = 0;
+            let t_scale = Instant::now();
 
             for row in 0..chunk_h as usize {
                 let src_row = (row + y_chunk as usize) / 2;
@@ -688,20 +691,25 @@ where
                     dst_idx += 4;
                 }
             }
+            total_scaling_us += t_scale.elapsed().as_micros();
 
             let chunk_bytes = &chunk[0..(scaled_w * chunk_h * 2) as usize]; // RGB565 = 2 bytes/pixel
 
+            let t_tx = Instant::now();
             if self.send_pixels(chunk_bytes).await.is_err() {
                 error!("Pixel transfer failed (scale 2× Gray4)");
                 return;
             }
+            total_transfer_us += t_tx.elapsed().as_micros();
         }
 
-        debug!(
-            "draw_scaled_2x_gray4: {}×{} in {}ms",
+        info!(
+            "draw_scaled_2x_gray4: {}x{} in {}ms (scale:{}ms, tx:{}ms)",
             w,
             h,
-            t0.elapsed().as_millis()
+            t0.elapsed().as_millis(),
+            total_scaling_us / 1000,
+            total_transfer_us / 1000
         );
     }
 
