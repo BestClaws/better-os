@@ -159,6 +159,7 @@ fn render_fill(
     while chunk_start < height {
         let rows = chunk_rows.min(height - chunk_start);
         mask_buffer.resize(width * rows, 0);
+        mask_buffer.fill(0);
 
         let chunk_top = y0 + chunk_start as i32;
         let mut mask = Mask::with_scratch(&path, scratch);
@@ -292,6 +293,7 @@ fn render_border<'a>(
     while chunk_start < height {
         let rows = chunk_rows.min(height - chunk_start);
         mask_buffer.resize(width * rows, 0);
+        mask_buffer.fill(0);
 
         let chunk_top = y0 + chunk_start as i32;
         let mut mask = Mask::with_scratch(&path, scratch);

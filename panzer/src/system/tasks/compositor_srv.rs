@@ -12,7 +12,7 @@ use crate::system::services::display::{Display, DisplayService};
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
 use gfx::primitives::font::Font;
-use gfx::primitives::{CornerRadius, FillStyle, Gradient, GradientStop, Rectangle};
+use gfx::primitives::{CornerRadius, FillStyle, Rectangle};
 use gfx::rasterizer::RasterTarget;
 use gfx::rgb565::Rgb565Rasterizer;
 use swash::zeno::{Bounds, Point};
@@ -131,33 +131,6 @@ fn layout_scale(width: f32, height: f32) -> f32 {
     width_scale.min(height_scale).clamp(0.45, 1.4)
 }
 
-fn draw_rect<T: RasterTarget>(
-    rasterizer: &mut T,
-    clip: Bounds,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    fill: FillStyle<3>,
-    radius: f32,
-) {
-    let right = x + width;
-    let bottom = y + height;
-    if right <= x || bottom <= y {
-        return;
-    }
-
-    let corner = CornerRadius::new(radius, radius);
-    let rect = Rectangle {
-        area: Bounds::new(Point::new(x, y), Point::new(right, bottom)),
-        fill,
-        edges: [None, None, None, None],
-        clip,
-        corner_radii: [corner; 4],
-    };
-    rect.draw(rasterizer);
-}
-
 fn draw_text<T: RasterTarget>(
     font: &Font,
     rasterizer: &mut T,
@@ -214,52 +187,73 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     let panel_radius = 7.0 * scale;
 
     // Background gradient
-    draw_rect(
-        rasterizer,
-        clip,
-        0.0,
-        0.0,
-        width_f,
-        height_f,
-        FillStyle::Gradient(Gradient::Vertical(GradientStop([
-            (Palette::background_dark(), 0),
-            (Palette::background_deep(), 140),
-            (Palette::background_panel(), 255),
-        ]))),
-        0.0,
-    );
+    {
+        let width = width_f;
+        let height = height_f;
+        if width > 0.0 && height > 0.0 {
+            Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(0.0, 0.0),
+                    Point::new(width, height),
+                ))
+                .fill(FillStyle::vertical_gradient([
+                    (Palette::background_dark(), 0),
+                    (Palette::background_deep(), 140),
+                    (Palette::background_panel(), 255),
+                ]))
+                .clip(clip)
+                .draw(rasterizer);
+        }
+    }
 
     // Status bar container
     let status_x = margin;
     let status_y = margin;
     let status_width = (width_f - 2.0 * margin).max(48.0 * scale);
-    draw_rect(
-        rasterizer,
-        clip,
-        status_x,
-        status_y,
-        status_width,
-        status_height,
-        FillStyle::Gradient(Gradient::Horizontal(GradientStop([
-            (Palette::background_panel(), 0),
-            (Palette::background_soft(), 128),
-            (Palette::background_deep(), 255),
-        ]))),
-        panel_radius,
-    );
+    {
+        let width = status_width;
+        let height = status_height;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(status_x, status_y),
+                    Point::new(status_x + width, status_y + height),
+                ))
+                .fill(FillStyle::horizontal_gradient([
+                    (Palette::background_panel(), 0),
+                    (Palette::background_soft(), 128),
+                    (Palette::background_deep(), 255),
+                ]))
+                .clip(clip);
+            if panel_radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(panel_radius, panel_radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     // Status accent strip
     let accent_strip_width = (4.0 * scale).clamp(2.0, 6.0);
-    draw_rect(
-        rasterizer,
-        clip,
-        status_x + 4.0 * scale,
-        status_y + 4.0 * scale,
-        accent_strip_width,
-        status_height - 8.0 * scale,
-        FillStyle::Solid(Palette::accent_copper()),
-        accent_strip_width.min(3.0 * scale),
-    );
+    {
+        let x = status_x + 4.0 * scale;
+        let y = status_y + 4.0 * scale;
+        let width = accent_strip_width;
+        let height = status_height - 8.0 * scale;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(x, y),
+                    Point::new(x + width, y + height),
+                ))
+                .fill(FillStyle::solid(Palette::accent_copper()))
+                .clip(clip);
+            let radius = accent_strip_width.min(3.0 * scale);
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     // Status text
     draw_text(
@@ -298,52 +292,90 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     let battery_y = status_y + (status_height - battery_height) * 0.5;
     let border = (1.0 * scale).clamp(0.5, 1.5);
 
-    draw_rect(
-        rasterizer,
-        clip,
-        battery_x,
-        battery_y,
-        battery_width,
-        battery_height,
-        FillStyle::Solid(Palette::accent_umber()),
-        1.5 * scale,
-    );
+    {
+        let width = battery_width;
+        let height = battery_height;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(battery_x, battery_y),
+                    Point::new(battery_x + width, battery_y + height),
+                ))
+                .fill(FillStyle::solid(Palette::accent_umber()))
+                .clip(clip);
+            let radius = 1.5 * scale;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     let inner_width = (battery_width - 2.0 * border).max(1.0);
     let inner_height = (battery_height - 2.0 * border).max(1.0);
-    draw_rect(
-        rasterizer,
-        clip,
-        battery_x + border,
-        battery_y + border,
-        inner_width,
-        inner_height,
-        FillStyle::Solid(Palette::background_soft()),
-        1.0 * scale,
-    );
+    {
+        let x = battery_x + border;
+        let y = battery_y + border;
+        let width = inner_width;
+        let height = inner_height;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(x, y),
+                    Point::new(x + width, y + height),
+                ))
+                .fill(FillStyle::solid(Palette::background_soft()))
+                .clip(clip);
+            let radius = 1.0 * scale;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     let fill_width = inner_width * 0.78;
-    draw_rect(
-        rasterizer,
-        clip,
-        battery_x + border + 1.0 * scale,
-        battery_y + border + 0.5 * scale,
-        fill_width.max(1.0),
-        (inner_height - scale).max(1.0),
-        FillStyle::Solid(Palette::accent_gold()),
-        0.8 * scale,
-    );
+    {
+        let x = battery_x + border + 1.0 * scale;
+        let y = battery_y + border + 0.5 * scale;
+        let width = fill_width.max(1.0);
+        let height = (inner_height - scale).max(1.0);
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(x, y),
+                    Point::new(x + width, y + height),
+                ))
+                .fill(FillStyle::solid(Palette::accent_gold()))
+                .clip(clip);
+            let radius = 0.8 * scale;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
-    draw_rect(
-        rasterizer,
-        clip,
-        battery_x + battery_width + 1.0 * scale,
-        battery_y + (battery_height * 0.35),
-        (1.2 * scale).clamp(0.8, 2.0),
-        (battery_height * 0.3).max(1.0),
-        FillStyle::Solid(Palette::accent_umber()),
-        0.5 * scale,
-    );
+    {
+        let x = battery_x + battery_width + 1.0 * scale;
+        let y = battery_y + (battery_height * 0.35);
+        let width = (1.2 * scale).clamp(0.8, 2.0);
+        let height = (battery_height * 0.3).max(1.0);
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(x, y),
+                    Point::new(x + width, y + height),
+                ))
+                .fill(FillStyle::solid(Palette::accent_umber()))
+                .clip(clip);
+            let radius = 0.5 * scale;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     // Time display block
     let label_y = status_y + status_height + 8.0 * scale;
@@ -407,44 +439,62 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         let card_y = quick_top + row * (card_height + quick_gap);
 
         let fill = if idx == 0 {
-            FillStyle::Gradient(Gradient::Vertical(GradientStop([
+            FillStyle::vertical_gradient([
                 (Palette::accent_rose(), 0),
                 (Palette::accent_copper(), 128),
                 (Palette::background_panel(), 255),
-            ])))
+            ])
         } else {
-            FillStyle::Gradient(Gradient::Vertical(GradientStop([
+            FillStyle::vertical_gradient([
                 (Palette::background_panel(), 0),
                 (Palette::background_soft(), 128),
-                (Palette::background_deep(), 255),
-            ])))
+                (Palette::background_soft(), 255),
+            ])
         };
 
-        draw_rect(
-            rasterizer,
-            clip,
-            card_x,
-            card_y,
-            card_width,
-            card_height,
-            fill,
-            6.0 * scale,
-        );
+        {
+            let width = card_width;
+            let height = card_height;
+            if width > 0.0 && height > 0.0 {
+                let mut rect = Rectangle::new()
+                    .bounds(Bounds::new(
+                        Point::new(card_x, card_y),
+                        Point::new(card_x + width, card_y + height),
+                    ))
+                    .fill(fill)
+                    .clip(clip);
+                let radius = 6.0 * scale;
+                if radius > 0.0 {
+                    rect = rect.corner_radii(CornerRadius::new(radius, radius));
+                }
+                rect.draw(rasterizer);
+            }
+        }
 
-        draw_rect(
-            rasterizer,
-            clip,
-            card_x + 6.0 * scale,
-            card_y + 6.0 * scale,
-            3.0 * scale,
-            card_height - 12.0 * scale,
-            FillStyle::Solid(if idx == 0 {
-                Palette::accent_gold()
-            } else {
-                Palette::accent_umber()
-            }),
-            1.5 * scale,
-        );
+        {
+            let x = card_x + 6.0 * scale;
+            let y = card_y + 6.0 * scale;
+            let width = 3.0 * scale;
+            let height = card_height - 12.0 * scale;
+            if width > 0.0 && height > 0.0 {
+                let mut rect = Rectangle::new()
+                    .bounds(Bounds::new(
+                        Point::new(x, y),
+                        Point::new(x + width, y + height),
+                    ))
+                    .fill(FillStyle::solid(if idx == 0 {
+                        Palette::accent_gold()
+                    } else {
+                        Palette::accent_umber()
+                    }))
+                    .clip(clip);
+                let radius = 1.5 * scale;
+                if radius > 0.0 {
+                    rect = rect.corner_radii(CornerRadius::new(radius, radius));
+                }
+                rect.draw(rasterizer);
+            }
+        }
 
         draw_text(
             &fonts.body,
@@ -482,31 +532,49 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         stats_height = (height_f - stats_top - bottom_margin).max(30.0 * scale);
     }
 
-    draw_rect(
-        rasterizer,
-        clip,
-        status_x,
-        stats_top,
-        status_width,
-        stats_height,
-        FillStyle::Gradient(Gradient::Horizontal(GradientStop([
-            (Palette::background_panel(), 0),
-            (Palette::background_soft(), 128),
-            (Palette::background_deep(), 255),
-        ]))),
-        6.0 * scale,
-    );
+    {
+        let width = status_width;
+        let height = stats_height;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(status_x, stats_top),
+                    Point::new(status_x + width, stats_top + height),
+                ))
+                .fill(FillStyle::horizontal_gradient([
+                    (Palette::background_panel(), 0),
+                    (Palette::background_soft(), 128),
+                    (Palette::background_deep(), 255),
+                ]))
+                .clip(clip);
+            let radius = 6.0 * scale;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
-    draw_rect(
-        rasterizer,
-        clip,
-        status_x + 6.0 * scale,
-        stats_top + 8.0 * scale,
-        3.0 * scale,
-        stats_height - 16.0 * scale,
-        FillStyle::Solid(Palette::accent_gold()),
-        1.5 * scale,
-    );
+    {
+        let x = status_x + 6.0 * scale;
+        let y = stats_top + 8.0 * scale;
+        let width = 3.0 * scale;
+        let height = stats_height - 16.0 * scale;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(x, y),
+                    Point::new(x + width, y + height),
+                ))
+                .fill(FillStyle::solid(Palette::accent_gold()))
+                .clip(clip);
+            let radius = 1.5 * scale;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     draw_text(
         &fonts.body,
@@ -535,16 +603,24 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     progress_y = progress_y.clamp(lower_bound, upper_bound);
     let progress_width = status_width - 28.0 * scale;
 
-    draw_rect(
-        rasterizer,
-        clip,
-        progress_x,
-        progress_y,
-        progress_width,
-        progress_height,
-        FillStyle::Solid(Palette::progress_back()),
-        progress_height * 0.5,
-    );
+    {
+        let width = progress_width;
+        let height = progress_height;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(progress_x, progress_y),
+                    Point::new(progress_x + width, progress_y + height),
+                ))
+                .fill(FillStyle::solid(Palette::progress_back()))
+                .clip(clip);
+            let radius = progress_height * 0.5;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     let cycle = (frame_counter % 180) as f32 / 180.0;
     let ramp = if cycle < 0.5 {
@@ -555,20 +631,28 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     let progress_ratio = 0.42 + 0.48 * ramp;
     let active_width = (progress_width * progress_ratio).min(progress_width);
 
-    draw_rect(
-        rasterizer,
-        clip,
-        progress_x,
-        progress_y,
-        active_width,
-        progress_height,
-        FillStyle::Gradient(Gradient::Horizontal(GradientStop([
-            (Palette::accent_rose(), 0),
-            (Palette::accent_gold(), 128),
-            (Palette::accent_gold(), 255),
-        ]))),
-        progress_height * 0.5,
-    );
+    {
+        let width = active_width;
+        let height = progress_height;
+        if width > 0.0 && height > 0.0 {
+            let mut rect = Rectangle::new()
+                .bounds(Bounds::new(
+                    Point::new(progress_x, progress_y),
+                    Point::new(progress_x + width, progress_y + height),
+                ))
+                .fill(FillStyle::horizontal_gradient([
+                    (Palette::accent_rose(), 0),
+                    (Palette::accent_gold(), 128),
+                    (Palette::accent_gold(), 255),
+                ]))
+                .clip(clip);
+            let radius = progress_height * 0.5;
+            if radius > 0.0 {
+                rect = rect.corner_radii(CornerRadius::new(radius, radius));
+            }
+            rect.draw(rasterizer);
+        }
+    }
 
     let mut status_buf = String::<24>::new();
     let _ = write!(status_buf, "Output {:>3}% Nominal", (progress_ratio * 100.0) as u32);
@@ -662,6 +746,6 @@ pub async fn ui_compositor_service(
         );
 
         frame_counter = frame_counter.wrapping_add(1);
-        Timer::after(Duration::from_millis(33)).await;
+        Timer::after(Duration::from_millis(3)).await;
     }
 }
