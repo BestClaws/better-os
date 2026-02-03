@@ -88,6 +88,62 @@ const DMA_CHUNK_SIZE: usize = 16380; // ~16KB
 /// use less memory but increase loop/DMA overhead.
 const SCALING_CHUNK_HEIGHT: u16 = 50;
 
+const GRAY4_TO_RGB565_DOUBLE: [u32; 16] = build_gray4_lut();
+
+const fn build_gray4_lut() -> [u32; 16] {
+    let mut table = [0u32; 16];
+    let mut i = 0;
+    while i < 16 {
+        let gray4 = i as u16;
+        let gray5 = (gray4 << 1) | (gray4 >> 3);
+        let gray6 = (gray4 << 2) | (gray4 >> 2);
+        let rgb565 = ((gray5 << 11) | (gray6 << 5) | gray5) as u16;
+        let hi = (rgb565 >> 8) as u32;
+        let lo = (rgb565 & 0xFF) as u32;
+        table[i] = hi | (lo << 8) | (hi << 16) | (lo << 24);
+        i += 1;
+    }
+    table
+}
+
+#[inline(always)]
+fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]) {
+    let mut byte_idx = start_pixel / 2;
+    if byte_idx >= src.len() {
+        return;
+    }
+
+    let mut nibble_high = (start_pixel & 1) == 0;
+    let mut dst_ptr = dst.as_mut_ptr();
+    let mut current_byte = unsafe { *src.get_unchecked(byte_idx) };
+
+    for _ in 0..width {
+        let nibble = if nibble_high {
+            current_byte >> 4
+        } else {
+            let value = current_byte & 0x0F;
+            byte_idx += 1;
+            if byte_idx < src.len() {
+                current_byte = unsafe { *src.get_unchecked(byte_idx) };
+            }
+            value
+        };
+
+        unsafe {
+            core::ptr::write_unaligned(
+                dst_ptr as *mut u32,
+                GRAY4_TO_RGB565_DOUBLE[nibble as usize],
+            );
+            dst_ptr = dst_ptr.add(4);
+        }
+
+        nibble_high = !nibble_high;
+        if nibble_high && byte_idx < src.len() {
+            current_byte = unsafe { *src.get_unchecked(byte_idx) };
+        }
+    }
+}
+
 /// SH8601 display controller command set
 ///
 /// These commands control the display hardware. Commands are sent via
@@ -659,37 +715,30 @@ where
                 return;
             }
 
-            // Scale and convert Gray4→RGB565 for this chunk
-            let mut dst_idx = 0;
             let t_scale = Instant::now();
+            let scaled_row_bytes = scaled_w as usize * 2; // RGB565 bytes per scaled row
+            let mut row_offset = 0usize;
 
-            for row in 0..chunk_h as usize {
-                let src_row = (row + y_chunk as usize) / 2;
+            while row_offset < chunk_h as usize {
+                let src_row = (y_chunk as usize + row_offset) / 2;
+                let start_pixel = src_row * w as usize;
+                let dst0 = row_offset * scaled_row_bytes;
 
-                // Process one source row, writing to scaled output
-                for col in 0..w as usize {
-                    // Read Gray4 pixel
-                    let src_pixel_idx = src_row * w as usize + col;
-                    let byte_idx = src_pixel_idx / 2;
-                    let is_high = (src_pixel_idx & 1) == 0;
-                    let gray4 = if is_high {
-                        (buffer[byte_idx] >> 4) & 0x0F
-                    } else {
-                        buffer[byte_idx] & 0x0F
-                    } as u16;
-
-                    // Expand 4-bit to RGB565 grayscale
-                    let gray5 = (gray4 << 1) | (gray4 >> 3); // 4-bit to 5-bit
-                    let gray6 = (gray4 << 2) | (gray4 >> 2); // 4-bit to 6-bit
-                    let rgb565 = (gray5 << 11) | (gray6 << 5) | gray5;
-
-                    // Write pixel 2× horizontally (2× width scaling), RGB565 big-endian
-                    chunk[dst_idx] = (rgb565 >> 8) as u8;
-                    chunk[dst_idx + 1] = (rgb565 & 0xFF) as u8;
-                    chunk[dst_idx + 2] = (rgb565 >> 8) as u8;
-                    chunk[dst_idx + 3] = (rgb565 & 0xFF) as u8;
-                    dst_idx += 4;
+                {
+                    let row_slice = &mut chunk[dst0..dst0 + scaled_row_bytes];
+                    expand_gray4_row(buffer, start_pixel, w as usize, row_slice);
                 }
+
+                let next = row_offset + 1;
+                if next < chunk_h as usize {
+                    let dst1 = next * scaled_row_bytes;
+                    let (head, tail) = chunk.split_at_mut(dst1);
+                    let dst_slice = &mut tail[..scaled_row_bytes];
+                    let src_slice = &head[dst0..dst0 + scaled_row_bytes];
+                    dst_slice.copy_from_slice(src_slice);
+                }
+
+                row_offset += 2;
             }
             total_scaling_us += t_scale.elapsed().as_micros();
 
@@ -697,7 +746,7 @@ where
 
             let t_tx = Instant::now();
             if self.send_pixels(chunk_bytes).await.is_err() {
-                error!("Pixel transfer failed (scale 2× Gray4)");
+                error!("Pixel transfer failed (scale 2x Gray4)");
                 return;
             }
             total_transfer_us += t_tx.elapsed().as_micros();
