@@ -86,7 +86,7 @@ const DMA_CHUNK_SIZE: usize = 16380; // ~16KB
 ///
 /// Larger values use more memory but reduce overhead. Smaller values
 /// use less memory but increase loop/DMA overhead.
-const SCALING_CHUNK_HEIGHT: u16 = 50;
+const SCALING_CHUNK_HEIGHT: u16 = 6;
 
 const GRAY4_TO_RGB565_DOUBLE: [u32; 16] = build_gray4_lut();
 
