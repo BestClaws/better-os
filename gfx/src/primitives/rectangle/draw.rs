@@ -286,6 +286,8 @@ fn render_border<'a>(
         path_bytes + mask_buffer.capacity() + span_len * mem::size_of::<Color>(),
     );
     let stroke_caches = build_stroke_caches(edge_styles, &rect.area);
+    let classifier = EdgeClassifier::new(&rect.area, edge_widths, edge_styles);
+    let step_fp = FIXED_ONE as i64;
 
     let mut chunk_start = 0;
     while chunk_start < height {
@@ -312,26 +314,37 @@ fn render_border<'a>(
                 continue;
             }
 
-            color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
+            if color_row.len() < span_len {
+                color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
+            } else {
+                color_row.truncate(span_len);
+            }
+
+            // Fixed-point centers let us preserve the old classification behavior without per-pixel floats.
+            let mut px_fp = pixel_center_fixed(x0 + start_idx as i32);
+            let py_fp = pixel_center_fixed(y);
 
             for (i, idx) in (start_idx..end_idx).enumerate() {
                 if row_slice[idx] == 0 {
+                    px_fp += step_fp;
                     continue;
                 }
-                let px = (x0 + idx as i32) as f32 + 0.5;
-                let py = y as f32 + 0.5;
-                let edge = classify_edge(px, py, &rect.area, edge_widths, edge_styles);
+
+                let edge = classifier.classify(px_fp, py_fp);
                 let Some(edge_idx) = edge else {
                     row_slice[idx] = 0;
+                    px_fp += step_fp;
                     continue;
-                };
-                let px_fp = pixel_center_fixed(x0 + idx as i32);
-                let py_fp = pixel_center_fixed(y);
+                }; // drop coverage if no edge accepts the pixel
+
                 let Some(color) = stroke_caches[edge_idx].sample(px_fp, py_fp) else {
                     row_slice[idx] = 0;
+                    px_fp += step_fp;
                     continue;
                 };
+
                 color_row[i] = color;
+                px_fp += step_fp;
             }
 
             process_color_row(canvas, y, x0, row_slice, start_idx, end_idx, &color_row);
@@ -528,6 +541,84 @@ impl StrokeColorCache {
     }
 }
 
+struct EdgeClassifier {
+    center_x_fp: i64,
+    center_y_fp: i64,
+    outer_min_x_fp: i64,
+    outer_max_x_fp: i64,
+    outer_min_y_fp: i64,
+    outer_max_y_fp: i64,
+    available: [bool; 4],
+}
+
+impl EdgeClassifier {
+    fn new(bounds: &Bounds, widths: &[f32; 4], styles: &[Option<&StrokeStyle<'_, 2>>; 4]) -> Self {
+        let center_x = (bounds.min.x + bounds.max.x) * 0.5;
+        let center_y = (bounds.min.y + bounds.max.y) * 0.5;
+        let available = [
+            widths[TOP] > 0.0 && styles[TOP].is_some(),
+            widths[RIGHT] > 0.0 && styles[RIGHT].is_some(),
+            widths[BOTTOM] > 0.0 && styles[BOTTOM].is_some(),
+            widths[LEFT] > 0.0 && styles[LEFT].is_some(),
+        ];
+
+        Self {
+            center_x_fp: to_fixed(center_x) as i64,
+            center_y_fp: to_fixed(center_y) as i64,
+            outer_min_x_fp: to_fixed(bounds.min.x) as i64,
+            outer_max_x_fp: to_fixed(bounds.max.x) as i64,
+            outer_min_y_fp: to_fixed(bounds.min.y) as i64,
+            outer_max_y_fp: to_fixed(bounds.max.y) as i64,
+            available,
+        }
+    }
+
+    #[inline(always)]
+    fn classify(&self, px_fp: i64, py_fp: i64) -> Option<usize> {
+        let dx = px_fp - self.center_x_fp;
+        let dy = py_fp - self.center_y_fp;
+        let abs_dx = dx.abs();
+        let abs_dy = dy.abs();
+
+        let mut candidate = if abs_dy >= abs_dx {
+            if dy < 0 { TOP } else { BOTTOM }
+        } else if dx > 0 {
+            RIGHT
+        } else {
+            LEFT
+        };
+
+        if !self.available[candidate] {
+            candidate = self.fallback(px_fp, py_fp)?;
+        }
+
+        Some(candidate)
+    }
+
+    #[inline(always)]
+    fn fallback(&self, px_fp: i64, py_fp: i64) -> Option<usize> {
+        let distances = [
+            (py_fp - self.outer_min_y_fp).abs(),
+            (self.outer_max_x_fp - px_fp).abs(),
+            (self.outer_max_y_fp - py_fp).abs(),
+            (px_fp - self.outer_min_x_fp).abs(),
+        ];
+
+        let mut best: Option<(usize, i64)> = None;
+        for idx in 0..4 {
+            if !self.available[idx] {
+                continue;
+            }
+            let distance = distances[idx];
+            match best {
+                Some((_, best_dist)) if distance >= best_dist => {}
+                _ => best = Some((idx, distance)),
+            }
+        }
+        best.map(|(idx, _)| idx)
+    }
+}
+
 fn make_linear_context<const GS: usize>(
     gradient: &Gradient<GS>,
     bounds: &Bounds,
@@ -696,71 +787,6 @@ fn lerp_channel(a: u8, b: u8, offset: u32, span: u32) -> u8 {
     let b = b as u32;
     let value = (a * (span - offset) + b * offset + (span / 2)) / span;
     value as u8
-}
-
-fn classify_edge<'a>(
-    x: f32,
-    y: f32,
-    outer: &Bounds,
-    widths: &[f32; 4],
-    styles: &[Option<&'a StrokeStyle<'a, 2>>; 4],
-) -> Option<usize> {
-    let center_x = (outer.min.x + outer.max.x) * 0.5;
-    let center_y = (outer.min.y + outer.max.y) * 0.5;
-    let dx = x - center_x;
-    let dy = y - center_y;
-
-    let mut candidate = if dy.abs() >= dx.abs() {
-        if dy < 0.0 { TOP } else { BOTTOM }
-    } else if dx > 0.0 {
-        RIGHT
-    } else {
-        LEFT
-    };
-
-    if !edge_available(candidate, widths, styles) {
-        if let Some(fallback) = fallback_edge(x, y, outer, widths, styles) {
-            candidate = fallback;
-        } else {
-            return None;
-        }
-    }
-    Some(candidate)
-}
-
-fn edge_available<'a>(
-    idx: usize,
-    widths: &[f32; 4],
-    styles: &[Option<&'a StrokeStyle<'a, 2>>; 4],
-) -> bool {
-    widths[idx] > 0.0 && styles[idx].is_some()
-}
-
-fn fallback_edge<'a>(
-    x: f32,
-    y: f32,
-    outer: &Bounds,
-    widths: &[f32; 4],
-    styles: &[Option<&'a StrokeStyle<'a, 2>>; 4],
-) -> Option<usize> {
-    let distances = [
-        (y - outer.min.y).abs(),
-        (outer.max.x - x).abs(),
-        (outer.max.y - y).abs(),
-        (x - outer.min.x).abs(),
-    ];
-    let mut best: Option<(usize, f32)> = None;
-    for idx in 0..4 {
-        if !edge_available(idx, widths, styles) {
-            continue;
-        }
-        let distance = distances[idx];
-        match best {
-            Some((_, best_dist)) if distance >= best_dist => {}
-            _ => best = Some((idx, distance)),
-        }
-    }
-    best.map(|(idx, _)| idx)
 }
 
 fn build_round_rect_path(
