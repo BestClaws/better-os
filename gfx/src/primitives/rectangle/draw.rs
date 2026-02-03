@@ -111,9 +111,7 @@ fn render_fill(
     }
 
     let path_bytes = path.capacity() * mem::size_of::<Command>();
-    if path_bytes > 0 {
-        record_temp_allocation(path_bytes);
-    }
+    let _path_alloc = TempAllocationGuard::track(path_bytes);
 
     let mask_bounds = zeno::bounds(&path[..], ZenoFill::NonZero, None);
     if mask_bounds.is_empty() {
@@ -139,10 +137,11 @@ fn render_fill(
     let chunk_rows = max_rows.min(height);
 
     let mut mask_buffer: Vec<u8> = Vec::with_capacity(width * chunk_rows);
+    let _mask_alloc =
+        TempAllocationGuard::track(mask_buffer.capacity() * mem::size_of::<u8>());
     let mut color_buf: Vec<Color> = Vec::with_capacity(width);
-    record_temp_allocation(
-        path_bytes + mask_buffer.capacity() + color_buf.capacity() * mem::size_of::<Color>(),
-    );
+    let mut color_alloc =
+        TempAllocationGuard::track(color_buf.capacity() * mem::size_of::<Color>());
 
     let fill_render = make_fill_render(&rect.fill, bounds);
     let start = clip.left.max(x0);
@@ -174,6 +173,7 @@ fn render_fill(
                 let span_len = end_idx - start_idx;
                 color_buf.clear();
                 color_buf.reserve(span_len);
+                color_alloc.update(color_buf.capacity() * mem::size_of::<Color>());
                 // SAFETY: we reserve above and immediately write every element.
                 unsafe {
                     color_buf.set_len(span_len);
@@ -242,9 +242,7 @@ fn render_border<'a>(
     }
 
     let path_bytes = path.capacity() * mem::size_of::<Command>();
-    if path_bytes > 0 {
-        record_temp_allocation(path_bytes);
-    }
+    let _path_alloc = TempAllocationGuard::track(path_bytes);
 
     let mask_bounds = zeno::bounds(&path[..], ZenoFill::NonZero, None);
     if mask_bounds.is_empty() {
@@ -281,10 +279,11 @@ fn render_border<'a>(
     let chunk_rows = max_rows.min(height);
 
     let mut mask_buffer: Vec<u8> = Vec::with_capacity(width * chunk_rows);
+    let _mask_alloc =
+        TempAllocationGuard::track(mask_buffer.capacity() * mem::size_of::<u8>());
     let mut color_row: Vec<Color> = Vec::with_capacity(span_len);
-    record_temp_allocation(
-        path_bytes + mask_buffer.capacity() + span_len * mem::size_of::<Color>(),
-    );
+    let mut color_alloc =
+        TempAllocationGuard::track(color_row.capacity() * mem::size_of::<Color>());
     let stroke_caches = build_stroke_caches(edge_styles, &rect.area);
     let classifier = EdgeClassifier::new(&rect.area, edge_widths, edge_styles);
     let step_fp = FIXED_ONE as i64;
@@ -316,6 +315,7 @@ fn render_border<'a>(
 
             if color_row.len() < span_len {
                 color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
+                color_alloc.update(color_row.capacity() * mem::size_of::<Color>());
             } else {
                 color_row.truncate(span_len);
             }
@@ -1063,14 +1063,70 @@ fn ceil_i32(value: f32) -> i32 {
     n
 }
 
+static TEMP_ALLOCATION_CURRENT: AtomicUsize = AtomicUsize::new(0);
 static TEMP_ALLOCATION_PEAK: AtomicUsize = AtomicUsize::new(0);
 
-fn record_temp_allocation(bytes: usize) {
+struct TempAllocationGuard {
+    bytes: usize,
+}
+
+impl TempAllocationGuard {
+    #[inline]
+    fn track(bytes: usize) -> Self {
+        if bytes == 0 {
+            return Self { bytes: 0 };
+        }
+        increase_temp_allocation(bytes);
+        Self { bytes }
+    }
+
+    #[inline]
+    fn update(&mut self, new_bytes: usize) {
+        if new_bytes == self.bytes {
+            return;
+        }
+        if new_bytes > self.bytes {
+            let delta = new_bytes - self.bytes;
+            increase_temp_allocation(delta);
+        } else {
+            let delta = self.bytes - new_bytes;
+            decrease_temp_allocation(delta);
+        }
+        self.bytes = new_bytes;
+    }
+}
+
+impl Drop for TempAllocationGuard {
+    fn drop(&mut self) {
+        decrease_temp_allocation(self.bytes);
+        self.bytes = 0;
+    }
+}
+
+#[inline]
+fn increase_temp_allocation(bytes: usize) {
+    if bytes == 0 {
+        return;
+    }
+    let total = TEMP_ALLOCATION_CURRENT.fetch_add(bytes, Ordering::Relaxed) + bytes;
+    update_temp_allocation_peak(total);
+}
+
+#[inline]
+fn decrease_temp_allocation(bytes: usize) {
+    if bytes == 0 {
+        return;
+    }
+    TEMP_ALLOCATION_CURRENT.fetch_sub(bytes, Ordering::Relaxed);
+}
+
+#[inline]
+fn update_temp_allocation_peak(candidate: usize) {
     let mut peak = TEMP_ALLOCATION_PEAK.load(Ordering::Relaxed);
-    while bytes > peak {
+    while candidate > peak {
         match TEMP_ALLOCATION_PEAK.compare_exchange_weak(
             peak,
-            bytes,
+            candidate,
             Ordering::Relaxed,
             Ordering::Relaxed,
         ) {
