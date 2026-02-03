@@ -113,22 +113,12 @@ fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]
         return;
     }
 
-    let mut nibble_high = (start_pixel & 1) == 0;
     let mut dst_ptr = dst.as_mut_ptr();
-    let mut current_byte = unsafe { *src.get_unchecked(byte_idx) };
+    let mut remaining = width;
 
-    for _ in 0..width {
-        let nibble = if nibble_high {
-            current_byte >> 4
-        } else {
-            let value = current_byte & 0x0F;
-            byte_idx += 1;
-            if byte_idx < src.len() {
-                current_byte = unsafe { *src.get_unchecked(byte_idx) };
-            }
-            value
-        };
-
+    if (start_pixel & 1) != 0 {
+        let current_byte = unsafe { *src.get_unchecked(byte_idx) };
+        let nibble = current_byte & 0x0F;
         unsafe {
             core::ptr::write_unaligned(
                 dst_ptr as *mut u32,
@@ -137,9 +127,36 @@ fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]
             dst_ptr = dst_ptr.add(4);
         }
 
-        nibble_high = !nibble_high;
-        if nibble_high && byte_idx < src.len() {
-            current_byte = unsafe { *src.get_unchecked(byte_idx) };
+        byte_idx += 1;
+        remaining = remaining.saturating_sub(1);
+        if byte_idx >= src.len() {
+            return;
+        }
+    }
+
+    while remaining >= 2 && byte_idx < src.len() {
+        let packed = unsafe { *src.get_unchecked(byte_idx) } as usize;
+        let hi = GRAY4_TO_RGB565_DOUBLE[packed >> 4] as u64;
+        let lo = GRAY4_TO_RGB565_DOUBLE[packed & 0x0F] as u64;
+        unsafe {
+            core::ptr::write_unaligned(
+                dst_ptr as *mut u64,
+                hi | (lo << 32),
+            );
+            dst_ptr = dst_ptr.add(8);
+        }
+        byte_idx += 1;
+        remaining -= 2;
+    }
+
+    if remaining == 1 && byte_idx < src.len() {
+        let current_byte = unsafe { *src.get_unchecked(byte_idx) };
+        let nibble = current_byte >> 4;
+        unsafe {
+            core::ptr::write_unaligned(
+                dst_ptr as *mut u32,
+                GRAY4_TO_RGB565_DOUBLE[nibble as usize],
+            );
         }
     }
 }
@@ -732,10 +749,13 @@ where
                 let next = row_offset + 1;
                 if next < chunk_h as usize {
                     let dst1 = next * scaled_row_bytes;
-                    let (head, tail) = chunk.split_at_mut(dst1);
-                    let dst_slice = &mut tail[..scaled_row_bytes];
-                    let src_slice = &head[dst0..dst0 + scaled_row_bytes];
-                    dst_slice.copy_from_slice(src_slice);
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            chunk.as_ptr().add(dst0),
+                            chunk.as_mut_ptr().add(dst1),
+                            scaled_row_bytes,
+                        );
+                    }
                 }
 
                 row_offset += 2;

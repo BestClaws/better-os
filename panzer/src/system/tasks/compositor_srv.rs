@@ -19,7 +19,7 @@ use swash::zeno::{Bounds, Point};
 
 use micromath::F32Ext;
 
-const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/pixel.ttf");
+const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/RobotoSlab-SemiBold.ttf");
 const FONT_CACHE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:/-.%+<>#'\"?&()[]{} ";
 
 struct UiFonts {
