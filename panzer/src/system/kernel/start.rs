@@ -7,10 +7,9 @@ use embassy_time::Instant;
 use crate::system::hal::display::PixelFormat;
 use crate::system::kernel::platforms;
 
-
+use crate::system::tasks::compositor_srv::ui_compositor_service;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
-use crate::system::tasks::compositor_srv::ui_compositor_service;
 
 pub(crate) fn start(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
@@ -18,9 +17,6 @@ pub(crate) fn start(spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 207 * 1024);
 
     let mut device = platforms::ajax::device::init_device();
-
-
-
 
     let display = match device.display.take() {
         Some(display) => display,
@@ -30,14 +26,11 @@ pub(crate) fn start(spawner: Spawner) {
         }
     };
 
-    if let Err(err) = spawner.spawn(ui_compositor_service(
-        display,
-    )) {
+    if let Err(err) = spawner.spawn(ui_compositor_service(display)) {
         error!(
             "Failed to spawn compositor service: {:?}",
             Debug2Format(&err)
         );
         return;
     }
-
 }

@@ -69,7 +69,7 @@ impl Quaternion {
     }
 
     pub fn magnitude(&self) -> f32 {
-        (self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z).invsqrt() 
+        (self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z).invsqrt()
     }
 
     /// Normalizes the quaternion to have magnitude 1.

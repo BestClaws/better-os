@@ -1,6 +1,8 @@
 extern crate alloc;
 mod draw;
 
+pub use draw::{reset_temp_allocation_peak, temp_allocation_peak_bytes};
+
 use crate::primitives::features::fill::FillStyle;
 use crate::primitives::features::stroke::StrokeStyle;
 use zeno::Bounds;

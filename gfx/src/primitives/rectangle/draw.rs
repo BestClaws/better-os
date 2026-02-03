@@ -1,6 +1,8 @@
-use alloc::vec;
 use alloc::vec::Vec;
-use core::array;
+use core::{
+    array, mem,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use crate::colors::Color;
 use crate::primitives::features::fill::FillStyle;
@@ -19,6 +21,7 @@ const TOP: usize = 0;
 const RIGHT: usize = 1;
 const BOTTOM: usize = 2;
 const LEFT: usize = 3;
+const MAX_MASK_CHUNK_BYTES: usize = 4096;
 
 #[derive(Clone, Copy)]
 struct ClipRect {
@@ -107,6 +110,11 @@ fn render_fill(
         return;
     }
 
+    let path_bytes = path.capacity() * mem::size_of::<Command>();
+    if path_bytes > 0 {
+        record_temp_allocation(path_bytes);
+    }
+
     let mask_bounds = zeno::bounds(&path[..], ZenoFill::NonZero, None);
     if mask_bounds.is_empty() {
         return;
@@ -127,26 +135,83 @@ fn render_fill(
         return;
     }
 
-    let mask_buffer = render_mask(&path, x0, y0, width, height, scratch);
-    if mask_buffer.is_empty() {
+    let max_rows = (MAX_MASK_CHUNK_BYTES / width).max(1);
+    let chunk_rows = max_rows.min(height);
+
+    let mut mask_buffer: Vec<u8> = Vec::with_capacity(width * chunk_rows);
+    let mut coverage_buf: Vec<u8> = Vec::with_capacity(width);
+    let mut color_buf: Vec<Color> = Vec::with_capacity(width);
+    record_temp_allocation(
+        path_bytes
+            + mask_buffer.capacity()
+            + coverage_buf.capacity()
+            + color_buf.capacity() * mem::size_of::<Color>(),
+    );
+
+    let fill_render = make_fill_render(&rect.fill, bounds);
+    let start = clip.left.max(x0);
+    let end = clip.right.min(x1);
+    if start >= end {
+        return;
+    }
+    let start_idx = (start - x0) as usize;
+    let end_idx = (end - x0) as usize;
+    if start_idx >= end_idx {
         return;
     }
 
-    let fill_render = make_fill_render(&rect.fill, bounds);
-    match &fill_render {
-        FillRender::Solid(color) => {
-            render_rows_with_color(canvas, &mask_buffer, clip, x0, x1, y0, height, |_| *color);
+    let mut chunk_start = 0;
+    while chunk_start < height {
+        let rows = chunk_rows.min(height - chunk_start);
+        mask_buffer.resize(width * rows, 0);
+
+        let chunk_top = y0 + chunk_start as i32;
+        let mut mask = Mask::with_scratch(&path, scratch);
+        mask.style(ZenoFill::NonZero);
+        mask.origin(Origin::TopLeft);
+        mask.size(width as u32, rows as u32);
+        mask.offset(Vector::new(-(x0 as f32), -(chunk_top as f32)));
+        mask.render_into(&mut mask_buffer, Some(width));
+
+        for row in 0..rows {
+            let row_idx = chunk_start + row;
+            let y = y0 + row_idx as i32;
+            if y < clip.top || y >= clip.bottom {
+                continue;
+            }
+
+            let row_slice = &mask_buffer[row * width..(row + 1) * width];
+            if !row_slice[start_idx..end_idx].iter().any(|&c| c != 0) {
+                continue;
+            }
+
+            match &fill_render {
+                FillRender::Solid(color) => {
+                    process_solid_row(canvas, color, y, x0, row_slice, start_idx, end_idx);
+                }
+                FillRender::Gradient(ctx) => match ctx.axis() {
+                    GradientAxis::Vertical => {
+                        let color = ctx.sample_vertical_row(y);
+                        process_solid_row(canvas, &color, y, x0, row_slice, start_idx, end_idx);
+                    }
+                    GradientAxis::Horizontal => {
+                        process_horizontal_gradient_row(
+                            canvas,
+                            ctx,
+                            y,
+                            x0,
+                            row_slice,
+                            start_idx,
+                            end_idx,
+                            &mut coverage_buf,
+                            &mut color_buf,
+                        );
+                    }
+                },
+            }
         }
-        FillRender::Gradient(ctx) => match ctx.axis() {
-            GradientAxis::Vertical => {
-                render_rows_with_color(canvas, &mask_buffer, clip, x0, x1, y0, height, |row_y| {
-                    ctx.sample_vertical_row(row_y)
-                });
-            }
-            GradientAxis::Horizontal => {
-                render_horizontal_gradient(canvas, ctx, &mask_buffer, clip, x0, x1, y0, height);
-            }
-        },
+
+        chunk_start += rows;
     }
 }
 
@@ -165,6 +230,11 @@ fn render_border<'a>(
         return;
     }
 
+    let path_bytes = path.capacity() * mem::size_of::<Command>();
+    if path_bytes > 0 {
+        record_temp_allocation(path_bytes);
+    }
+
     let mask_bounds = zeno::bounds(&path[..], ZenoFill::NonZero, None);
     if mask_bounds.is_empty() {
         return;
@@ -185,83 +255,140 @@ fn render_border<'a>(
         return;
     }
 
-    let mut mask_buffer = render_mask(&path, x0, y0, width, height, scratch);
-    if mask_buffer.is_empty() {
+    let start = clip.left.max(x0);
+    let end = clip.right.min(x1);
+    if start >= end {
+        return;
+    }
+    let start_idx = (start - x0) as usize;
+    let end_idx = (end - x0) as usize;
+    if start_idx >= end_idx {
+        return;
+    }
+    let span_len = end_idx - start_idx;
+    let max_rows = (MAX_MASK_CHUNK_BYTES / width).max(1);
+    let chunk_rows = max_rows.min(height);
+
+    let mut mask_buffer: Vec<u8> = Vec::with_capacity(width * chunk_rows);
+    let mut color_row: Vec<Color> = Vec::with_capacity(span_len);
+    record_temp_allocation(
+        path_bytes + mask_buffer.capacity() + span_len * mem::size_of::<Color>(),
+    );
+    let stroke_caches = build_stroke_caches(edge_styles, &rect.area);
+
+    let mut chunk_start = 0;
+    while chunk_start < height {
+        let rows = chunk_rows.min(height - chunk_start);
+        mask_buffer.resize(width * rows, 0);
+
+        let chunk_top = y0 + chunk_start as i32;
+        let mut mask = Mask::with_scratch(&path, scratch);
+        mask.style(ZenoFill::NonZero);
+        mask.origin(Origin::TopLeft);
+        mask.size(width as u32, rows as u32);
+        mask.offset(Vector::new(-(x0 as f32), -(chunk_top as f32)));
+        mask.render_into(&mut mask_buffer, Some(width));
+
+        for row in 0..rows {
+            let row_idx = chunk_start + row;
+            let y = y0 + row_idx as i32;
+            if y < clip.top || y >= clip.bottom {
+                continue;
+            }
+
+            let row_slice = &mut mask_buffer[row * width..(row + 1) * width];
+            if !row_slice[start_idx..end_idx].iter().any(|&c| c != 0) {
+                continue;
+            }
+
+            color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
+
+            for (i, idx) in (start_idx..end_idx).enumerate() {
+                if row_slice[idx] == 0 {
+                    continue;
+                }
+                let px = (x0 + idx as i32) as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let edge = classify_edge(px, py, &rect.area, edge_widths, edge_styles);
+                let Some(edge_idx) = edge else {
+                    row_slice[idx] = 0;
+                    continue;
+                };
+                let px_fp = pixel_center_fixed(x0 + idx as i32);
+                let py_fp = pixel_center_fixed(y);
+                let Some(color) = stroke_caches[edge_idx].sample(px_fp, py_fp) else {
+                    row_slice[idx] = 0;
+                    continue;
+                };
+                color_row[i] = color;
+            }
+
+            process_color_row(canvas, y, x0, row_slice, start_idx, end_idx, &color_row);
+        }
+
+        chunk_start += rows;
+    }
+}
+
+fn process_horizontal_gradient_row(
+    canvas: &mut dyn RasterTarget,
+    ctx: &LinearGradientContext,
+    y: i32,
+    x0: i32,
+    row_data: &[u8],
+    start_idx: usize,
+    end_idx: usize,
+    coverage_buf: &mut Vec<u8>,
+    color_buf: &mut Vec<Color>,
+) {
+    if start_idx >= end_idx {
         return;
     }
 
-    let mut color_row: Vec<Color> = Vec::new();
-    let stroke_caches = build_stroke_caches(edge_styles, &rect.area);
+    coverage_buf.clear();
+    color_buf.clear();
 
-    for row in 0..height {
-        let y = y0 + row as i32;
-        if y < clip.top || y >= clip.bottom {
-            continue;
-        }
+    let mut stepper = ctx.horizontal_stepper(x0, start_idx);
+    let mut run_start: Option<usize> = None;
 
-        let row_data = mask_buffer.row_mut(row);
-        if !row_data.iter().any(|&c| c != 0) {
-            continue;
-        }
+    for idx in start_idx..end_idx {
+        let coverage = row_data[idx];
+        let color = stepper.sample_color();
 
-        let start = clip.left.max(x0);
-        let end = clip.right.min(x1);
-        if start >= end {
-            continue;
-        }
-        let start_idx = (start - x0) as usize;
-        let end_idx = (end - x0) as usize;
-        let span_len = end_idx - start_idx;
-        color_row.resize(span_len, Color::rgba(0, 0, 0, 0));
-
-        for (i, idx) in (start_idx..end_idx).enumerate() {
-            if row_data[idx] == 0 {
-                continue;
+        if coverage == 0 {
+            if let Some(start) = run_start {
+                let x_start = x0 + start as i32;
+                canvas.blend_color_hspan(
+                    y as u16,
+                    x_start as u16,
+                    color_buf.as_slice(),
+                    coverage_buf.as_slice(),
+                );
+                coverage_buf.clear();
+                color_buf.clear();
+                run_start = None;
             }
-            let px = (x0 + idx as i32) as f32 + 0.5;
-            let py = y as f32 + 0.5;
-            let edge = classify_edge(px, py, &rect.area, edge_widths, edge_styles);
-            let Some(edge_idx) = edge else {
-                row_data[idx] = 0;
-                continue;
-            };
-            let px_fp = pixel_center_fixed(x0 + idx as i32);
-            let py_fp = pixel_center_fixed(y);
-            let Some(color) = stroke_caches[edge_idx].sample(px_fp, py_fp) else {
-                row_data[idx] = 0;
-                continue;
-            };
-            color_row[i] = color;
+        } else {
+            if run_start.is_none() {
+                run_start = Some(idx);
+            }
+            color_buf.push(color);
+            coverage_buf.push(coverage);
         }
 
-        process_color_row(canvas, y, x0, row_data, start_idx, end_idx, &color_row);
-    }
-}
-
-struct MaskBuffer {
-    data: Vec<u8>,
-    width: usize,
-}
-
-impl MaskBuffer {
-    fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        stepper.advance();
     }
 
-    fn row(&self, row: usize) -> &[u8] {
-        let start = row * self.width;
-        let end = start + self.width;
-        &self.data[start..end]
-    }
-
-    fn row_mut(&mut self, row: usize) -> &mut [u8] {
-        let start = row * self.width;
-        let end = start + self.width;
-        &mut self.data[start..end]
-    }
-
-    fn sample(&self, row: usize, col: usize) -> u8 {
-        self.data[row * self.width + col]
+    if let Some(start) = run_start {
+        let x_start = x0 + start as i32;
+        canvas.blend_color_hspan(
+            y as u16,
+            x_start as u16,
+            color_buf.as_slice(),
+            coverage_buf.as_slice(),
+        );
+        coverage_buf.clear();
+        color_buf.clear();
     }
 }
 
@@ -565,123 +692,6 @@ fn process_color_row(
             &colors[color_offset..color_offset + run_len],
             &coverage[run_start..run_start + run_len],
         );
-    }
-}
-
-fn render_rows_with_color<F>(
-    canvas: &mut dyn RasterTarget,
-    mask_buffer: &MaskBuffer,
-    clip: ClipRect,
-    x0: i32,
-    x1: i32,
-    y0: i32,
-    height: usize,
-    mut color_fn: F,
-) where
-    F: FnMut(i32) -> Color,
-{
-    let start = clip.left.max(x0);
-    let end = clip.right.min(x1);
-    if start >= end {
-        return;
-    }
-    let start_idx = (start - x0) as usize;
-    let end_idx = (end - x0) as usize;
-
-    for row in 0..height {
-        let y = y0 + row as i32;
-        if y < clip.top || y >= clip.bottom {
-            continue;
-        }
-
-        let row_data = mask_buffer.row(row);
-        if !row_data.iter().any(|&c| c != 0) {
-            continue;
-        }
-
-        let color = color_fn(y);
-        process_solid_row(canvas, &color, y, x0, row_data, start_idx, end_idx);
-    }
-}
-
-fn render_horizontal_gradient(
-    canvas: &mut dyn RasterTarget,
-    ctx: &LinearGradientContext,
-    mask_buffer: &MaskBuffer,
-    clip: ClipRect,
-    x0: i32,
-    x1: i32,
-    y0: i32,
-    height: usize,
-) {
-    let start = clip.left.max(x0);
-    let end = clip.right.min(x1);
-    if start >= end {
-        return;
-    }
-
-    let start_idx = (start - x0) as usize;
-    let end_idx = (end - x0) as usize;
-    let mut stepper = ctx.horizontal_stepper(x0, start_idx);
-    let mut coverage_col: Vec<u8> = Vec::new();
-
-    for col_idx in start_idx..end_idx {
-        let x = x0 + col_idx as i32;
-        let color = stepper.sample_color();
-
-        let mut row = 0;
-        while row < height {
-            let y = y0 + row as i32;
-            if y < clip.top || y >= clip.bottom {
-                row += 1;
-                continue;
-            }
-
-            let coverage = mask_buffer.sample(row, col_idx);
-            if coverage == 0 {
-                row += 1;
-                continue;
-            }
-
-            let run_start = row;
-            let mut run_end = row + 1;
-            let mut opaque = coverage == 255;
-            while run_end < height {
-                let y_abs = y0 + run_end as i32;
-                if y_abs >= clip.bottom {
-                    break;
-                }
-                let cov = mask_buffer.sample(run_end, col_idx);
-                if cov == 0 {
-                    break;
-                }
-                if cov != 255 {
-                    opaque = false;
-                }
-                run_end += 1;
-            }
-
-            let span_len = run_end - run_start;
-            let y_start = y0 + run_start as i32;
-            if opaque {
-                canvas.fill_solid_vspan(x as u16, y_start as u16, color, span_len as u16);
-            } else {
-                coverage_col.resize(span_len, 0);
-                for (dst, src_row) in coverage_col.iter_mut().zip(run_start..run_end) {
-                    *dst = mask_buffer.sample(src_row, col_idx);
-                }
-                canvas.blend_solid_vspan(
-                    x as u16,
-                    y_start as u16,
-                    color,
-                    &coverage_col[..span_len],
-                );
-            }
-
-            row = run_end;
-        }
-
-        stepper.advance();
     }
 }
 
@@ -1065,29 +1075,27 @@ fn ceil_i32(value: f32) -> i32 {
     n
 }
 
-fn render_mask(
-    path: &[Command],
-    x0: i32,
-    y0: i32,
-    width: usize,
-    height: usize,
-    scratch: &mut Scratch,
-) -> MaskBuffer {
-    if width == 0 || height == 0 {
-        return MaskBuffer {
-            data: Vec::new(),
-            width,
-        };
+static TEMP_ALLOCATION_PEAK: AtomicUsize = AtomicUsize::new(0);
+
+fn record_temp_allocation(bytes: usize) {
+    let mut peak = TEMP_ALLOCATION_PEAK.load(Ordering::Relaxed);
+    while bytes > peak {
+        match TEMP_ALLOCATION_PEAK.compare_exchange_weak(
+            peak,
+            bytes,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(updated) => peak = updated,
+        }
     }
+}
 
-    let mut mask = Mask::with_scratch(path, scratch);
-    mask.style(ZenoFill::NonZero);
-    mask.origin(Origin::TopLeft);
-    mask.size(width as u32, height as u32);
-    mask.offset(Vector::new(-(x0 as f32), -(y0 as f32)));
+pub fn temp_allocation_peak_bytes() -> usize {
+    TEMP_ALLOCATION_PEAK.load(Ordering::Relaxed)
+}
 
-    let mut data = vec![0u8; width * height];
-    mask.render_into(&mut data, None);
-
-    MaskBuffer { data, width }
+pub fn reset_temp_allocation_peak() {
+    TEMP_ALLOCATION_PEAK.store(0, Ordering::Relaxed);
 }

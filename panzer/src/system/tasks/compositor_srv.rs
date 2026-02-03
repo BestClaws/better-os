@@ -32,12 +32,15 @@ pub async fn ui_compositor_service(
     let width_u16 = width as u16;
     let height_u16 = height as u16;
     let pixel_count = width * height;
-    
+
     // Allocate buffer based on negotiated pixel format
     let buffer_size = negotiated_pixel_format.framebuffer_size(width as u32, height as u32);
     let mut buffer = alloc::vec![0u8; buffer_size];
 
-    info!("Starting benchmark loop with {:?} format", negotiated_pixel_format);
+    info!(
+        "Starting benchmark loop with {:?} format",
+        negotiated_pixel_format
+    );
 
     let mut frame_counter = 0u32;
     loop {
@@ -47,12 +50,20 @@ pub async fn ui_compositor_service(
         // All modules are unified - they handle pixel format internally and create
         // appropriate rasterizers (Luma4/Rgb565) based on the negotiated format.
         // Simply pass: display, buffer, dimensions, frame_counter, and pixel_format.
-        
+
         // 1. Rectangle Benchmark - Tests rectangle primitive with systematic permutations
         //    - 72 test combinations: 3 fills × 4 corner configs × 6 stroke configs
         //    - Tests: solid fills, gradients, rounded corners, strokes (uniform + asymmetric)
         //    - Each test displays for 1 second with timing measurements
-        rectangle_benchmark::run_rect_benchmark(display, &mut buffer, width_u16, height_u16, frame_counter, negotiated_pixel_format).await;
+        rectangle_benchmark::run_rect_benchmark(
+            display,
+            &mut buffer,
+            width_u16,
+            height_u16,
+            frame_counter,
+            negotiated_pixel_format,
+        )
+        .await;
 
         // 2. Rasterizer Benchmark - Tests low-level rasterizer span operations
         //    - 6 tests: fill/blend operations for hspan and vspan (horizontal/vertical)

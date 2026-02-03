@@ -24,7 +24,6 @@ static SPI_BUS: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticC
 pub(crate) static DISPLAY: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
     StaticCell::new();
 
-
 pub(crate) fn init_device() -> PlatformDevice<'static> {
     let peripherals = mcu::init();
     let system_timer = SystemTimer::new(peripherals.SYSTIMER);
@@ -35,7 +34,6 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
         ..
     } = sw_interrupts;
     crate::system::kernel::platforms::ajax::async_runtime::init(st_alarm, sw_int0);
-
 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(16384);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
@@ -58,12 +56,9 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     .with_buffers(dma_rx_buf, dma_tx_buf)
     .into_async();
 
-
     // Initialize Co5300 driver
     let reset_pin = Output::new(peripherals.GPIO11, Level::High, OutputConfig::default());
     let mut display = Co5300::new(lcd_spi, reset_pin);
-
-
 
     PlatformDevice {
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),

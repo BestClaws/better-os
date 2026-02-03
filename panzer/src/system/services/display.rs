@@ -14,8 +14,6 @@ pub struct DisplayPreferences {
 }
 
 impl DisplayPreferences {
-
-
     #[rustfmt::skip]
     pub const fn default() -> Self {
         const FORMATS: &[PixelFormat] = &[
@@ -85,7 +83,6 @@ impl DisplayService {
         guard.capabilities()
     }
 
-
     fn negotiate_format(&self, capabilities: &DisplayCapabilities) -> PixelFormat {
         for preference in self.preferences.pixel_formats() {
             if capabilities.supported_formats.contains(preference) {
@@ -95,8 +92,7 @@ impl DisplayService {
         capabilities.preferred_format
     }
 
-
-    fn negotiate_resolution(&self, capabilities: &DisplayCapabilities, ) -> DisplayResolution {
+    fn negotiate_resolution(&self, capabilities: &DisplayCapabilities) -> DisplayResolution {
         for logical in self.preferences.logical_resolutions() {
             if let Some(mode) = capabilities
                 .supported_resolutions
@@ -109,7 +105,6 @@ impl DisplayService {
         }
         capabilities.preferred_resolution
     }
-
 }
 
 /// Display facade that exposes logical framebuffer properties and draw methods.
@@ -149,9 +144,4 @@ impl Display {
         let mut guard = self.driver.lock().await;
         guard.draw_region(buffer, region).await;
     }
-
-
-
 }
-
-

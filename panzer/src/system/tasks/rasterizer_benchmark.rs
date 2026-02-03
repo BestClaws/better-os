@@ -9,8 +9,8 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::system::hal::display::{AsyncDisplay, PixelFormat};
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
-use gfx::rgb565::Rgb565Rasterizer;
 use gfx::rasterizer::RasterTarget;
+use gfx::rgb565::Rgb565Rasterizer;
 
 pub async fn run_rasterizer_benchmark(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
