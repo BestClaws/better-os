@@ -2,99 +2,21 @@
 //!
 //! # Format Details
 //!
-//! RGB565 uses 16 bits per pixel with the following bit layout:
+//! RGB565 uses 16 bits per pixel:
+//! - Red: 5 bits (bits 15-11)
+//! - Green: 6 bits (bits 10-5)
+//! - Blue: 5 bits (bits 4-0)
+//!
+//! # Byte Order: BIG-ENDIAN
+//!
+//! Pixels are stored in BIG-ENDIAN byte order (high byte first):
 //! ```text
-//! Bit:  15 14 13 12 11 | 10 09 08 07 06 05 | 04 03 02 01 00
-//! Field:  R  R  R  R  R |  G  G  G  G  G  G |  B  B  B  B  B
-//!       └─────5 bits───┘ └─────6 bits─────┘ └─────5 bits───┘
+//! RGB565 = 0xF800 (red) → [0xF8, 0x00] in buffer
 //! ```
 //!
-//! Green gets 6 bits (most sensitive to human vision), red and blue get 5 bits each.
+//! # Memory Layout
 //!
-//! # Critical Implementation Learnings
-//!
-//! ## 1. Little-Endian Byte Order (Fixed Critical Bug)
-//!
-//! **Problem**: Initial implementation wrote bytes in big-endian (high byte first):
-//! ```rust,ignore
-//! buffer[idx] = (rgb565 >> 8) as u8;     // High byte
-//! buffer[idx+1] = (rgb565 & 0xFF) as u8; // Low byte
-//! ```
-//!
-//! This caused incorrect colors - red appeared as blue!
-//!
-//! **Solution**: Write in LITTLE-ENDIAN byte order (low byte first):
-//! ```rust
-//! let bytes = rgb565.to_le_bytes();  // [low_byte, high_byte]
-//! buffer[idx] = bytes[0];            // Low byte first
-//! buffer[idx+1] = bytes[1];          // High byte second
-//! ```
-//!
-//! Example for pure red (RGB 255,0,0):
-//! - RGB565 value: 0xF800 (binary: 11111_000000_00000)
-//! - Little-endian bytes: [0x00, 0xF8]
-//! - Buffer: [0x00, 0xF8, ...]
-//!
-//! ## 2. RGB888 to RGB565 Conversion
-//!
-//! Conversion loses precision due to bit reduction:
-//! ```text
-//! R: 8-bit (0-255) → 5-bit (0-31):  right shift by 3
-//! G: 8-bit (0-255) → 6-bit (0-63):  right shift by 2
-//! B: 8-bit (0-255) → 5-bit (0-31):  right shift by 3
-//! ```
-//!
-//! Pack into RGB565:
-//! ```rust
-//! rgb565 = (r5 << 11) | (g6 << 5) | b5
-//! ```
-//!
-//! ## 3. RGB565 to RGB888 Expansion
-//!
-//! When reading back for display, expand with bit replication for better quality:
-//! ```rust
-//! r8 = (r5 << 3) | (r5 >> 2)  // Replicate top bits to bottom
-//! g8 = (g6 << 2) | (g6 >> 4)  // Replicate top bits to bottom  
-//! b8 = (b5 << 3) | (b5 >> 2)  // Replicate top bits to bottom
-//! ```
-//!
-//! This gives better interpolation than simple left-shift.
-//!
-//! ## 4. Performance Optimizations for RISC-V32IMAC
-//!
-//! ### Branchless Blending
-//! Like Luma4, always compute full blend formula - branches are expensive:
-//! ```rust
-//! // Extract 5/6-bit components
-//! let src_r = (src >> 11) & 0x1F;
-//! let src_g = (src >> 5) & 0x3F;
-//! let src_b = src & 0x1F;
-//!
-//! // Blend each component separately
-//! let out_r = udiv255(src_r * alpha + dst_r * (255 - alpha));
-//! let out_g = udiv255(src_g * alpha + dst_g * (255 - alpha));
-//! let out_b = udiv255(src_b * alpha + dst_b * (255 - alpha));
-//!
-//! // Pack back to RGB565
-//! let result = (out_r << 11) | (out_g << 5) | out_b;
-//! ```
-//!
-//! ### Fast Division with udiv255
-//! Critical for performance - hardware division is very slow on RISC-V.
-//!
-//! ### Volatile Operations
-//! Use `ptr::write_volatile` and `ptr::read_volatile` for all framebuffer access
-//! to prevent compiler from optimizing away what it thinks are redundant writes.
-//!
-//! ## 5. Memory Layout
-//!
-//! Unlike Luma4, RGB565 has simple linear layout - one pixel per 16-bit word:
-//! ```text
-//! Pixel offset: y * width + x
-//! Byte offset: pixel_offset * 2
-//! ```
-//!
-//! No complex nibble packing - each pixel is independently addressable.
+//! Linear layout: pixel_offset = y * width + x, byte_offset = pixel_offset * 2
 
 use core::{cmp::min, ptr};
 
@@ -102,51 +24,7 @@ use crate::colors::Color;
 use crate::rasterizer::RasterTarget;
 use math::udiv255;
 
-/// RGB565 rasterizer that wraps a framebuffer
-///
-/// # Buffer Layout
-///
-/// Each pixel is exactly 16 bits (2 bytes) stored in LITTLE-ENDIAN order:
-/// ```text
-/// Pixel 0: [byte_0 (low), byte_1 (high)]
-/// Pixel 1: [byte_2 (low), byte_3 (high)]
-/// Pixel 2: [byte_4 (low), byte_5 (high)]
-/// ...
-/// ```
-///
-/// For a 20x20 framebuffer:
-/// ```text
-/// Buffer size = 20 * 20 * 2 = 800 bytes
-/// ```
-///
-/// # Bit Layout within 16-bit Value
-///
-/// ```text
-/// MSB                           LSB
-/// 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
-/// R  R  R  R  R  G  G  G  G  G  G  B  B  B  B  B
-/// ```
-///
-/// # Pixel Addressing
-///
-/// Simple linear addressing (no packing complexity like Luma4):
-/// - pixel_offset = y * width + x
-/// - byte_offset = pixel_offset * 2
-///
-/// # CRITICAL: Always use little-endian byte operations!
-///
-/// ✅ Correct:
-/// ```rust
-/// let bytes = rgb565.to_le_bytes();
-/// buffer[offset] = bytes[0];     // Low byte
-/// buffer[offset+1] = bytes[1];   // High byte
-/// ```
-///
-/// ❌ Wrong (writes big-endian, causes wrong colors):
-/// ```rust,ignore
-/// buffer[offset] = (rgb565 >> 8) as u8;
-/// buffer[offset+1] = (rgb565 & 0xFF) as u8;
-/// ```
+/// RGB565 rasterizer - 16-bit color, BIG-ENDIAN byte order
 pub struct Rgb565Rasterizer<'a> {
     buffer: &'a mut [u8],
     width: u16,
@@ -508,51 +386,10 @@ fn blend_rgb565(dst: u16, src: u16, alpha: u8, coverage: u8) -> u16 {
 }
 
 // ============================================================================
-// UNSAFE OPTIMIZED SPAN OPERATIONS
+// UNSAFE OPTIMIZED SPAN OPERATIONS - BIG-ENDIAN
 // ============================================================================
-//
-// These functions use unsafe pointer operations for maximum performance.
-// All bounds checking is done by the safe wrapper functions above.
-//
-// # Memory Layout Simplicity
-//
-// Unlike Luma4, RGB565 has straightforward linear layout:
-// - Each pixel = 2 bytes
-// - pixel_offset = y * width + x
-// - byte_offset = pixel_offset * 2
-//
-// No nibble packing, no pixel-pairing optimization needed.
-//
-// # Critical: Little-Endian Byte Order
-//
-// ALL reads and writes MUST use little-endian byte order:
-//
-// ✅ Reading:
-// ```rust
-// let rgb565 = u16::from_le_bytes([
-//     ptr::read_volatile(byte_ptr),
-//     ptr::read_volatile(byte_ptr.add(1))
-// ]);
-// ```
-//
-// ✅ Writing:
-// ```rust
-// let bytes = rgb565.to_le_bytes();
-// ptr::write_volatile(byte_ptr, bytes[0]);
-// ptr::write_volatile(byte_ptr.add(1), bytes[1]);
-// ```
-//
-// ❌ WRONG (big-endian - causes incorrect colors):
-// ```rust,ignore
-// ptr::write_volatile(byte_ptr, (rgb565 >> 8) as u8);
-// ptr::write_volatile(byte_ptr.add(1), (rgb565 & 0xFF) as u8);
-// ```
-//
-// # Volatile Operations
-//
-// Like Luma4, all framebuffer access is volatile to prevent optimization.
 
-/// Fill horizontal span - writes RGB565 values in little-endian byte order
+/// Fill horizontal span - optimized with u16 pointer and byte swap
 #[inline(always)]
 unsafe fn fill_hspan_unchecked(
     buffer: *mut u8,
@@ -565,16 +402,17 @@ unsafe fn fill_hspan_unchecked(
     unsafe {
         let row_offset = (y as usize) * (width as usize);
         let pixel_offset = row_offset + (x_start as usize);
-        let byte_ptr = buffer.add(pixel_offset * 2);
-        let pixel_ptr = byte_ptr as *mut u16;
+        let pixel_ptr = buffer.add(pixel_offset * 2) as *mut u16;
+        
+        let rgb565_be = rgb565.swap_bytes(); // Convert to big-endian
 
         for i in 0..(len as usize) {
-            ptr::write_volatile(pixel_ptr.add(i), rgb565);
+            ptr::write_volatile(pixel_ptr.add(i), rgb565_be);
         }
     }
 }
 
-/// Blend solid color horizontal span - OPTIMIZED
+/// Blend solid color horizontal span - optimized with u16 pointer
 #[inline(always)]
 unsafe fn blend_solid_hspan_unchecked(
     buffer: *mut u8,
@@ -588,23 +426,21 @@ unsafe fn blend_solid_hspan_unchecked(
     unsafe {
         let row_offset = (y as usize) * (width as usize);
         let pixel_offset = row_offset + (x_start as usize);
-        let byte_ptr = buffer.add(pixel_offset * 2);
-        let mut pixel_ptr = byte_ptr as *mut u16;
+        let pixel_ptr = buffer.add(pixel_offset * 2) as *mut u16;
         let mut cov_ptr = coverage.as_ptr();
 
-        for _ in 0..coverage.len() {
-            let dst = ptr::read_volatile(pixel_ptr);
+        for i in 0..coverage.len() {
+            let dst_be = ptr::read_volatile(pixel_ptr.add(i));
+            let dst = dst_be.swap_bytes(); // Convert from big-endian
             let cov = ptr::read(cov_ptr);
             let blended = blend_rgb565(dst, src_rgb565, alpha, cov);
-            ptr::write_volatile(pixel_ptr, blended);
-
-            pixel_ptr = pixel_ptr.add(1);
+            ptr::write_volatile(pixel_ptr.add(i), blended.swap_bytes()); // Write as big-endian
             cov_ptr = cov_ptr.add(1);
         }
     }
 }
 
-/// Blend per-pixel colors horizontal span - OPTIMIZED
+/// Blend per-pixel colors horizontal span - BIG-ENDIAN
 #[inline(always)]
 unsafe fn blend_color_hspan_unchecked(
     buffer: *mut u8,
@@ -617,29 +453,28 @@ unsafe fn blend_color_hspan_unchecked(
     unsafe {
         let row_offset = (y as usize) * (width as usize);
         let pixel_offset = row_offset + (x_start as usize);
-        let byte_ptr = buffer.add(pixel_offset * 2);
-        let mut pixel_ptr = byte_ptr as *mut u16;
+        let pixel_ptr = buffer.add(pixel_offset * 2) as *mut u16;
         let mut color_ptr = colors.as_ptr();
         let mut cov_ptr = coverage.as_ptr();
 
-        for _ in 0..colors.len() {
+        for i in 0..colors.len() {
             let color = ptr::read(color_ptr);
             let cov = ptr::read(cov_ptr);
             let src_rgb565 = color_to_rgb565(color);
             let alpha = color.a();
 
-            let dst = ptr::read_volatile(pixel_ptr);
+            let dst_be = ptr::read_volatile(pixel_ptr.add(i));
+            let dst = dst_be.swap_bytes();
             let blended = blend_rgb565(dst, src_rgb565, alpha, cov);
-            ptr::write_volatile(pixel_ptr, blended);
+            ptr::write_volatile(pixel_ptr.add(i), blended.swap_bytes());
 
-            pixel_ptr = pixel_ptr.add(1);
             color_ptr = color_ptr.add(1);
             cov_ptr = cov_ptr.add(1);
         }
     }
 }
 
-/// Fill vertical span - OPTIMIZED
+/// Fill vertical span - optimized with u16 pointer and byte swap
 #[inline(always)]
 unsafe fn fill_vspan_unchecked(
     buffer: *mut u8,
@@ -651,18 +486,19 @@ unsafe fn fill_vspan_unchecked(
 ) {
     unsafe {
         let start_offset = (y_start as usize) * (width as usize) + (x as usize);
-        let byte_ptr = buffer.add(start_offset * 2);
-        let mut pixel_ptr = byte_ptr as *mut u16;
+        let mut pixel_ptr = (buffer.add(start_offset * 2)) as *mut u16;
         let row_stride = width as usize;
+        
+        let rgb565_be = rgb565.swap_bytes();
 
         for _ in 0..len {
-            ptr::write_volatile(pixel_ptr, rgb565);
+            ptr::write_volatile(pixel_ptr, rgb565_be);
             pixel_ptr = pixel_ptr.add(row_stride);
         }
     }
 }
 
-/// Blend solid color vertical span - OPTIMIZED
+/// Blend solid color vertical span - optimized with u16 pointer
 #[inline(always)]
 unsafe fn blend_solid_vspan_unchecked(
     buffer: *mut u8,
@@ -675,16 +511,16 @@ unsafe fn blend_solid_vspan_unchecked(
 ) {
     unsafe {
         let start_offset = (y_start as usize) * (width as usize) + (x as usize);
-        let byte_ptr = buffer.add(start_offset * 2);
-        let mut pixel_ptr = byte_ptr as *mut u16;
+        let mut pixel_ptr = (buffer.add(start_offset * 2)) as *mut u16;
         let row_stride = width as usize;
         let mut cov_ptr = coverage.as_ptr();
 
         for _ in 0..coverage.len() {
-            let dst = ptr::read_volatile(pixel_ptr);
+            let dst_be = ptr::read_volatile(pixel_ptr);
+            let dst = dst_be.swap_bytes();
             let cov = ptr::read(cov_ptr);
             let blended = blend_rgb565(dst, src_rgb565, alpha, cov);
-            ptr::write_volatile(pixel_ptr, blended);
+            ptr::write_volatile(pixel_ptr, blended.swap_bytes());
 
             pixel_ptr = pixel_ptr.add(row_stride);
             cov_ptr = cov_ptr.add(1);
@@ -692,7 +528,7 @@ unsafe fn blend_solid_vspan_unchecked(
     }
 }
 
-/// Blend per-pixel colors vertical span - OPTIMIZED
+/// Blend per-pixel colors vertical span - optimized with u16 pointer
 #[inline(always)]
 unsafe fn blend_color_vspan_unchecked(
     buffer: *mut u8,
@@ -704,8 +540,7 @@ unsafe fn blend_color_vspan_unchecked(
 ) {
     unsafe {
         let start_offset = (y_start as usize) * (width as usize) + (x as usize);
-        let byte_ptr = buffer.add(start_offset * 2);
-        let mut pixel_ptr = byte_ptr as *mut u16;
+        let mut pixel_ptr = (buffer.add(start_offset * 2)) as *mut u16;
         let row_stride = width as usize;
         let mut color_ptr = colors.as_ptr();
         let mut cov_ptr = coverage.as_ptr();
@@ -716,9 +551,10 @@ unsafe fn blend_color_vspan_unchecked(
             let src_rgb565 = color_to_rgb565(color);
             let alpha = color.a();
 
-            let dst = ptr::read_volatile(pixel_ptr);
+            let dst_be = ptr::read_volatile(pixel_ptr);
+            let dst = dst_be.swap_bytes();
             let blended = blend_rgb565(dst, src_rgb565, alpha, cov);
-            ptr::write_volatile(pixel_ptr, blended);
+            ptr::write_volatile(pixel_ptr, blended.swap_bytes());
 
             pixel_ptr = pixel_ptr.add(row_stride);
             color_ptr = color_ptr.add(1);
