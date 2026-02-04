@@ -198,17 +198,18 @@ fn render_ui(
     pixel_format: PixelFormat,
     scale: u32,
     fonts: &UiFonts,
+    gradient_angle: f32,
 ) {
     frame_buffer.fill(0);
 
     match pixel_format {
         PixelFormat::Gray4 => {
             let mut rasterizer = Luma4Rasterizer::new(frame_buffer, width, height);
-            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts);
+            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, gradient_angle);
         }
         PixelFormat::Rgb565 => {
             let mut rasterizer = Rgb565Rasterizer::new(frame_buffer, width, height);
-            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts);
+            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, gradient_angle);
         }
     }
 }
@@ -220,6 +221,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     height: u16,
     frame_counter: u32,
     fonts: &UiFonts,
+    gradient_angle: f32,
 ) {
     // Render starfield background
     render_starfield(rasterizer, width, height, frame_counter);
@@ -377,22 +379,65 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         ("COMMS",  "Secure uplink"),
     ];
 
+    // Grayscale gradient colors for better performance on gray4
+    let color_white = Color::rgba(255, 255, 255, 255);      // White
+    let color_light = Color::rgba(200, 200, 200, 255);      // Light gray
+    let color_mid = Color::rgba(128, 128, 128, 255);        // Mid gray
+    let color_dark = Color::rgba(50, 50, 50, 255);          // Almost black
+    
+    // Calculate which colors should be on which edge based on angle
+    // The gradient "rotates" around the rectangle with smooth interpolation
+    let interpolate_color = |c1: Color, c2: Color, t: f32| -> Color {
+        let r = (c1.r() as f32 + (c2.r() as f32 - c1.r() as f32) * t) as u8;
+        let g = (c1.g() as f32 + (c2.g() as f32 - c1.g() as f32) * t) as u8;
+        let b = (c1.b() as f32 + (c2.b() as f32 - c1.b() as f32) * t) as u8;
+        let a = (c1.a() as f32 + (c2.a() as f32 - c1.a() as f32) * t) as u8;
+        Color::rgba(r, g, b, a)
+    };
+    
+    let get_edge_gradient = |edge_start_angle: f32| -> (Color, Color) {
+        let adjusted_angle = (gradient_angle + edge_start_angle) % 360.0;
+        let sector = (adjusted_angle / 90.0) as usize;
+        let t_within_sector = (adjusted_angle % 90.0) / 90.0; // 0.0 to 1.0 within sector
+        
+        let colors = [color_white, color_light, color_mid, color_dark];
+        let start_idx = sector % 4;
+        let end_idx = (sector + 1) % 4;
+        
+        // Smoothly interpolate colors at the start and end of this edge
+        let start_color = interpolate_color(colors[start_idx], colors[end_idx], t_within_sector);
+        let next_sector_idx = (sector + 1) % 4;
+        let next_next_idx = (sector + 2) % 4;
+        let end_color = interpolate_color(colors[next_sector_idx], colors[next_next_idx], t_within_sector);
+        
+        (start_color, end_color)
+    };
+    
     for (idx, (label, subtitle)) in quick_actions.iter().enumerate() {
         let row = idx as f32;
 
         let card_x = status_x + 14.0;
         let card_y = quick_top + row * (card_height + quick_gap);
 
+        // Get gradients for each edge (they flow continuously)
+        let (top_start, top_end) = get_edge_gradient(0.0);
+        let (right_start, right_end) = get_edge_gradient(90.0);
+        let (bottom_start, bottom_end) = get_edge_gradient(180.0);
+        let (left_start, left_end) = get_edge_gradient(270.0);
 
         {
             let width = card_width;
             let height = card_height;
             if width > 0.0 && height > 0.0 {
                 let mut rect = Rectangle::new()
-                    .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
-                    .edge(Edge::Top, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
-                    .edge(Edge::Bottom, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
-                    .edge(Edge::Right, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
+                    .edge(Edge::Top, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                        .horizontal_gradient([(top_start, 0), (top_end, 255)]))
+                    .edge(Edge::Right, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                        .vertical_gradient([(right_start, 0), (right_end, 255)]))
+                    .edge(Edge::Bottom, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                        .horizontal_gradient([(bottom_end, 0), (bottom_start, 255)]))
+                    .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                        .vertical_gradient([(left_end, 0), (left_start, 255)]))
                     .corner_radii(CornerRadius::new(10., 10.))
                     .bounds(Bounds::new(Point::new(card_x, card_y), Point::new(card_x + width, card_y + height)))
                     .clip(clip);
@@ -451,8 +496,35 @@ pub async fn ui_compositor_service(
     );
 
     let mut frame_counter = 0u32;
+    let mut gradient_angle = 0.0f32;
+    let mut last_frame_time = Instant::now();
+    let mut accumulated_time = 0.0f32;
+    
     loop {
         let frame_start = Instant::now();
+        let time_delta = (frame_start - last_frame_time).as_micros() as f32 / 1_000_000.0;
+        last_frame_time = frame_start;
+        
+        accumulated_time += time_delta;
+
+        // Calculate speed with Gaussian boost
+        let base_speed = 100.0; // degrees per second
+        let boost_peak = 800.0; // peak boost (2x total at peak)
+        let cycle_period = 2.0; // 2 second period
+        
+        let time_in_cycle = accumulated_time % cycle_period;
+        
+        let gaussian_boost = if time_in_cycle < 1.0 {
+            // First second: flat speed (no boost)
+            0.0
+        } else {
+            // Second second: Gaussian boost
+            let phase = (time_in_cycle - 1.0) * 2.0 - 1.0; // -1 to 1 over the second half
+            boost_peak * (-phase * phase * 4.0).exp()
+        };
+        
+        let current_speed = base_speed + gaussian_boost;
+        gradient_angle = (gradient_angle + current_speed * time_delta) % 360.0;
 
         let render_start = Instant::now();
         render_ui(
@@ -463,6 +535,7 @@ pub async fn ui_compositor_service(
             negotiated_pixel_format,
             scale,
             &fonts,
+            gradient_angle,
         );
         let render_time = render_start.elapsed().as_micros();
 
