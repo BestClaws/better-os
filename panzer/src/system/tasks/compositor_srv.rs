@@ -113,7 +113,7 @@ fn generate_stars(frame_counter: u32) -> [Star; STAR_COUNT] {
     let mut stars = [Star { x: 0.0, y: 0.0, z: 0.0, brightness: 255 }; STAR_COUNT];
     
     // Smooth movement speed
-    let time = frame_counter as f32 * 0.024; // Increased for faster star movement
+    let time = frame_counter as f32 * 0.036; // Increased for faster star movement
     
     for i in 0..STAR_COUNT {
         // Use only the star index for position (not frame counter)
@@ -198,6 +198,7 @@ fn render_ui(
     pixel_format: PixelFormat,
     scale: u32,
     fonts: &UiFonts,
+    snake_angle: f32,
     gradient_angle: f32,
 ) {
     frame_buffer.fill(0);
@@ -205,11 +206,11 @@ fn render_ui(
     match pixel_format {
         PixelFormat::Gray4 => {
             let mut rasterizer = Luma4Rasterizer::new(frame_buffer, width, height);
-            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, gradient_angle);
+            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, snake_angle, gradient_angle);
         }
         PixelFormat::Rgb565 => {
             let mut rasterizer = Rgb565Rasterizer::new(frame_buffer, width, height);
-            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, gradient_angle);
+            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, snake_angle, gradient_angle);
         }
     }
 }
@@ -221,15 +222,95 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     height: u16,
     frame_counter: u32,
     fonts: &UiFonts,
+    snake_angle: f32,
     gradient_angle: f32,
 ) {
-    // Render starfield background
-    render_starfield(rasterizer, width, height, frame_counter);
-    
     let width_f  = width  as f32;
     let height_f = height as f32;
-    let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width_f, height_f));
+    let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(1000., 1000.));
     let scale = scale as f32;
+
+    // Grayscale gradient colors for better performance on gray4
+    let color_white = Color::rgba(255, 255, 255, 255);      // White
+    let color_light = Color::rgba(200, 200, 200, 255);      // Light gray
+    let color_mid = Color::rgba(128, 128, 128, 255);        // Mid gray
+    let color_dark = Color::rgba(200, 200, 200, 255);       // Light gray for cards
+    let color_black = Color::rgba(0, 0, 0, 255);            // Complete black for snake background
+    let color_transparent = Color::rgba(0, 0, 0, 0);        // Transparent
+    
+    // Helper function to interpolate colors
+    let interpolate_color = |c1: Color, c2: Color, t: f32| -> Color {
+        let r = (c1.r() as f32 + (c2.r() as f32 - c1.r() as f32) * t) as u8;
+        let g = (c1.g() as f32 + (c2.g() as f32 - c1.g() as f32) * t) as u8;
+        let b = (c1.b() as f32 + (c2.b() as f32 - c1.b() as f32) * t) as u8;
+        let a = (c1.a() as f32 + (c2.a() as f32 - c1.a() as f32) * t) as u8;
+        Color::rgba(r, g, b, a)
+    };
+    
+    // Snake gradient for bigger rect - creates a "snake" segment that rotates around
+    // The snake has a width/length and the rest is completely black
+    let get_snake_edge_gradient = |edge_start_angle: f32| -> (Color, Color) {
+        // Snake parameters
+        let snake_length = 60.0; // How many degrees the snake occupies
+        let snake_head_angle = snake_angle;
+        
+        // Calculate edge position relative to snake
+        let edge_angle = edge_start_angle;
+        let edge_end_angle = edge_start_angle + 90.0;
+        
+        // Check if this edge overlaps with the snake
+        let angle_diff = |a1: f32, a2: f32| -> f32 {
+            let mut diff = (a1 - a2 + 180.0) % 360.0 - 180.0;
+            if diff < -180.0 { diff += 360.0; }
+            diff.abs()
+        };
+        
+        let start_color = {
+            let diff = angle_diff(edge_angle, snake_head_angle);
+            if diff < snake_length / 2.0 {
+                // Within the snake - fade from white (brightest) to black (darkest)
+                let t = diff / (snake_length / 2.0);
+                interpolate_color(color_white, color_black, t)
+            } else {
+                color_black // Rest of rect is completely black
+            }
+        };
+        
+        let end_color = {
+            let diff = angle_diff(edge_end_angle, snake_head_angle);
+            if diff < snake_length / 2.0 {
+                let t = diff / (snake_length / 2.0);
+                interpolate_color(color_white, color_black, t)
+            } else {
+                color_black // Rest of rect is completely black
+            }
+        };
+        
+        (start_color, end_color)
+    };
+
+    // BORDERS RECT - Draw first before everything with snake gradient
+    let (top_start, top_end) = get_snake_edge_gradient(0.0);
+    let (right_start, right_end) = get_snake_edge_gradient(90.0);
+    let (bottom_start, bottom_end) = get_snake_edge_gradient(180.0);
+    let (left_start, left_end) = get_snake_edge_gradient(270.0);
+    
+    let mut rect = Rectangle::new()
+        .edge(Edge::Top, StrokeStyle::from_stroke(zeno::Stroke::new(1.0))
+            .horizontal_gradient([(top_start, 0), (top_end, 255)]))
+        .edge(Edge::Right, StrokeStyle::from_stroke(zeno::Stroke::new(1.0))
+            .vertical_gradient([(right_start, 0), (right_end, 255)]))
+        .edge(Edge::Bottom, StrokeStyle::from_stroke(zeno::Stroke::new(1.0))
+            .horizontal_gradient([(bottom_end, 0), (bottom_start, 255)]))
+        .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(1.0))
+            .vertical_gradient([(left_end, 0), (left_start, 255)]))
+        .corner_radii(CornerRadius::new(64., 64.))
+        .bounds(Bounds::new(Point::new(0., 0.), Point::new(205., 251.)))
+        .clip(clip);
+    rect.draw(rasterizer);
+
+    // Render starfield background
+    render_starfield(rasterizer, width, height, frame_counter);
     let margin       = 5.0 * scale;
     let status_height = 12.0 * scale;
     let panel_radius  =  5.0 * scale;
@@ -245,7 +326,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     draw_text(
         &fonts.title,
         rasterizer,
-        "Home",
+        "HOME",
         status_x + 10.0 * scale,
         status_y + 2.0 * scale,
         Palette::TEXT_PRIMARY,
@@ -366,36 +447,8 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         Palette::TEXT_SECONDARY,
     );
 
-    // Quick actions grid
-    let quick_top = date_y + fonts.body.size() + 8.0 * scale;
-    let mut quick_gap   = 10.0 * scale;
-    let mut card_height = 36.0 * scale;
-    if height_f <= 170.0 {
-        quick_gap   *= 0.75;
-        card_height *= 0.85;
-    }
-    let card_width = ((width_f - 2.0 * margin) - quick_gap).max(40.0 * scale);
-    let quick_actions = [
-        ("COMMS",  "Secure uplink"),
-    ];
-
-    // Grayscale gradient colors for better performance on gray4
-    let color_white = Color::rgba(255, 255, 255, 255);      // White
-    let color_light = Color::rgba(200, 200, 200, 255);      // Light gray
-    let color_mid = Color::rgba(128, 128, 128, 255);        // Mid gray
-    let color_dark = Color::rgba(50, 50, 50, 255);          // Almost black
-    
-    // Calculate which colors should be on which edge based on angle
-    // The gradient "rotates" around the rectangle with smooth interpolation
-    let interpolate_color = |c1: Color, c2: Color, t: f32| -> Color {
-        let r = (c1.r() as f32 + (c2.r() as f32 - c1.r() as f32) * t) as u8;
-        let g = (c1.g() as f32 + (c2.g() as f32 - c1.g() as f32) * t) as u8;
-        let b = (c1.b() as f32 + (c2.b() as f32 - c1.b() as f32) * t) as u8;
-        let a = (c1.a() as f32 + (c2.a() as f32 - c1.a() as f32) * t) as u8;
-        Color::rgba(r, g, b, a)
-    };
-    
-    let get_edge_gradient = |edge_start_angle: f32| -> (Color, Color) {
+    // Gradient function for smaller cards
+    let get_card_gradient = |edge_start_angle: f32| -> (Color, Color) {
         let adjusted_angle = (gradient_angle + edge_start_angle) % 360.0;
         let sector = (adjusted_angle / 90.0) as usize;
         let t_within_sector = (adjusted_angle % 90.0) / 90.0; // 0.0 to 1.0 within sector
@@ -412,6 +465,19 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         
         (start_color, end_color)
     };
+
+    // Quick actions grid
+    let quick_top = date_y + fonts.body.size() + 8.0 * scale;
+    let mut quick_gap   = 10.0 * scale;
+    let mut card_height = 36.0 * scale;
+    if height_f <= 170.0 {
+        quick_gap   *= 0.75;
+        card_height *= 0.85;
+    }
+    let card_width = ((width_f - 2.0 * margin) - quick_gap).max(40.0 * scale);
+    let quick_actions = [
+        ("SLEEP WELL",  "And, Eat well!"),
+    ];
     
     for (idx, (label, subtitle)) in quick_actions.iter().enumerate() {
         let row = idx as f32;
@@ -420,10 +486,10 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         let card_y = quick_top + row * (card_height + quick_gap);
 
         // Get gradients for each edge (they flow continuously)
-        let (top_start, top_end) = get_edge_gradient(0.0);
-        let (right_start, right_end) = get_edge_gradient(90.0);
-        let (bottom_start, bottom_end) = get_edge_gradient(180.0);
-        let (left_start, left_end) = get_edge_gradient(270.0);
+        let (top_start, top_end) = get_card_gradient(0.0);
+        let (right_start, right_end) = get_card_gradient(90.0);
+        let (bottom_start, bottom_end) = get_card_gradient(180.0);
+        let (left_start, left_end) = get_card_gradient(270.0);
 
         {
             let width = card_width;
@@ -496,6 +562,7 @@ pub async fn ui_compositor_service(
     );
 
     let mut frame_counter = 0u32;
+    let mut snake_angle = 0.0f32; // Snake rotates at constant speed
     let mut gradient_angle = 0.0f32;
     let mut last_frame_time = Instant::now();
     let mut accumulated_time = 0.0f32;
@@ -507,7 +574,11 @@ pub async fn ui_compositor_service(
         
         accumulated_time += time_delta;
 
-        // Calculate speed with Gaussian boost
+        // Snake moves at constant speed (slow)
+        let snake_speed = 30.0; // degrees per second - slow and smooth
+        snake_angle = (snake_angle + snake_speed * time_delta) % 360.0;
+
+        // Calculate speed with Gaussian boost for small cards
         let base_speed = 100.0; // degrees per second
         let boost_peak = 800.0; // peak boost (2x total at peak)
         let cycle_period = 2.0; // 2 second period
@@ -535,6 +606,7 @@ pub async fn ui_compositor_service(
             negotiated_pixel_format,
             scale,
             &fonts,
+            snake_angle,
             gradient_angle,
         );
         let render_time = render_start.elapsed().as_micros();
