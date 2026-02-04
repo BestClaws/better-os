@@ -11,16 +11,29 @@ use crate::system::services::display::{Display, DisplayService};
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
 use gfx::primitives::font::Font;
-use gfx::primitives::{CornerRadius, FillStyle, Rectangle};
+use gfx::primitives::{CornerRadius, Edge, FillStyle, Rectangle, StrokeStyle};
 use gfx::rasterizer::RasterTarget;
 use gfx::rgb565::Rgb565Rasterizer;
 use swash::zeno::{Bounds, Point};
 
 use micromath::F32Ext;
+use swash::zeno;
+use swash::zeno::Style::Stroke;
 use crate::ui::themes::pulonia::Palette;  // adjust path if module structure is different
 
 const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/RobotoSlab-SemiBold.ttf");
 const FONT_CACHE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:/-.%+<>#'\"?&()[]{} ";
+
+// Starfield configuration
+const STAR_COUNT: usize = 80;
+
+#[derive(Copy, Clone)]
+struct Star {
+    x: f32,        // Normalized position (-1 to 1)
+    y: f32,        // Normalized position (-1 to 1)
+    z: f32,        // Depth (0 to 1, closer stars have higher z)
+    brightness: u8, // Star brightness (0-255)
+}
 
 struct UiFonts {
     title: Font,
@@ -96,6 +109,87 @@ fn draw_text<T: RasterTarget>(
     font.draw_text(rasterizer, text, xi, yi, color);
 }
 
+fn generate_stars(frame_counter: u32) -> [Star; STAR_COUNT] {
+    let mut stars = [Star { x: 0.0, y: 0.0, z: 0.0, brightness: 255 }; STAR_COUNT];
+    
+    // Smooth movement speed
+    let time = frame_counter as f32 * 0.024; // Increased for faster star movement
+    
+    for i in 0..STAR_COUNT {
+        // Use only the star index for position (not frame counter)
+        // This makes star positions persistent across frames
+        let seed = (i as u32).wrapping_mul(73856093);
+        let seed2 = (i as u32).wrapping_mul(83492791);
+        
+        // Generate fixed normalized coordinates (-1 to 1) per star
+        let x = ((seed % 2000) as f32 / 1000.0) - 1.0;
+        let y = ((seed2 % 2000) as f32 / 1000.0) - 1.0;
+        
+        // Each star has a fixed initial depth and speed offset
+        let base_z = ((seed >> 16) % 1000) as f32 / 1000.0;
+        let speed_offset = ((seed >> 8) % 100) as f32 / 100.0; // Slight speed variation per star
+        
+        // Animate depth over time (stars move toward camera)
+        let z = ((base_z + time * (0.8 + speed_offset * 0.4)) % 1.0);
+        
+        // Brightness increases as stars get closer (higher z)
+        let brightness = (50 + (z * 205.0) as u32).min(255) as u8;
+        
+        stars[i] = Star { x, y, z, brightness };
+    }
+    
+    stars
+}
+
+fn render_starfield<T: RasterTarget>(
+    rasterizer: &mut T,
+    width: u16,
+    height: u16,
+    frame_counter: u32,
+) {
+    let stars = generate_stars(frame_counter);
+    let width_f = width as f32;
+    let height_f = height as f32;
+    let center_x = width_f / 2.0;
+    let center_y = height_f / 2.0;
+    
+    for star in &stars {
+        // Project star position from center based on depth
+        // Stars further away (low z) are closer to center
+        // Stars closer (high z) are further from center
+        // Reduced perspective multiplier for slower apparent motion
+        let perspective = 1.0 + star.z * 1.5; // Reduced from 2.0 to 1.5
+        
+        let screen_x = center_x + (star.x * center_x * perspective);
+        let screen_y = center_y + (star.y * center_y * perspective);
+        
+        // Only draw stars within screen bounds
+        if screen_x >= 0.0 && screen_x < width_f && screen_y >= 0.0 && screen_y < height_f {
+            let x = screen_x as u16;
+            let y = screen_y as u16;
+            
+            // Star size increases with depth (closer stars are bigger)
+            let size = if star.z > 0.8 {
+                2 // Larger stars when very close
+            } else {
+                1 // Single pixel for distant stars
+            };
+            
+            let color = Color::rgba(star.brightness, star.brightness, star.brightness, 255);
+            
+            // Draw star pixel(s) using fill_solid_rect for single pixels
+            rasterizer.fill_solid_rect(x, y, 1, 1, color);
+            
+            if size > 1 && x > 0 && y > 0 && x < width - 1 && y < height - 1 {
+                // Draw a small cross for larger stars
+                rasterizer.fill_solid_rect(x + 1, y, 1, 1, color);
+                rasterizer.fill_solid_rect(x, y + 1, 1, 1, color);
+            }
+        }
+    }
+}
+
+
 fn render_ui(
     frame_buffer: &mut [u8],
     width: u16,
@@ -127,6 +221,9 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     frame_counter: u32,
     fonts: &UiFonts,
 ) {
+    // Render starfield background
+    render_starfield(rasterizer, width, height, frame_counter);
+    
     let width_f  = width  as f32;
     let height_f = height as f32;
     let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(width_f, height_f));
@@ -292,8 +389,12 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
             let height = card_height;
             if width > 0.0 && height > 0.0 {
                 let mut rect = Rectangle::new()
+                    .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
+                    .edge(Edge::Top, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
+                    .edge(Edge::Bottom, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
+                    .edge(Edge::Right, StrokeStyle::from_stroke(zeno::Stroke::new(2.0)).solid(Color::rgba(255, 255, 255, 255)))
+                    .corner_radii(CornerRadius::new(10., 10.))
                     .bounds(Bounds::new(Point::new(card_x, card_y), Point::new(card_x + width, card_y + height)))
-                    .fill(FillStyle::Solid(Palette::BACKGROUND_SOFT))
                     .clip(clip);
                 let radius = 6.0 * scale;
                 if radius > 0.0 {
@@ -303,27 +404,8 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
             }
         }
 
-        // Left accent line
-        {
-            let x = card_x + 6.0 * scale;
-            let y = card_y + 6.0 * scale;
-            let width  = 3.0 * scale;
-            let height = card_height - 12.0 * scale;
-            if width > 0.0 && height > 0.0 {
-                let mut rect = Rectangle::new()
-                    .bounds(Bounds::new(Point::new(x, y), Point::new(x + width, y + height)))
-                    .fill(FillStyle::solid(if idx == 0 { Palette::ACCENT_GOLD } else { Palette::ACCENT_UMBER }))
-                    .clip(clip);
-                let radius = 1.5 * scale;
-                if radius > 0.0 {
-                    rect = rect.corner_radii(CornerRadius::new(radius, radius));
-                }
-                rect.draw(rasterizer);
-            }
-        }
-
-        draw_text(&fonts.body,  rasterizer, label,    card_x + 12.0 * scale, card_y +  6.0 * scale, Palette::TEXT_DARK);
-        draw_text(&fonts.small, rasterizer, subtitle, card_x + 12.0 * scale, card_y + 17.0 * scale, Palette::TEXT_DARK);
+        draw_text(&fonts.body,  rasterizer, label,    card_x + 12.0 * scale, card_y +  6.0 * scale, Palette::BACKGROUND_LIGHT);
+        draw_text(&fonts.small, rasterizer, subtitle, card_x + 12.0 * scale, card_y + 17.0 * scale, Palette::BACKGROUND_LIGHT);
     }
 
 
@@ -396,6 +478,6 @@ pub async fn ui_compositor_service(
         );
 
         frame_counter = frame_counter.wrapping_add(1);
-        Timer::after(Duration::from_millis(33)).await;   // ~30 fps target
+        Timer::after(Duration::from_millis(16)).await;   
     }
 }
