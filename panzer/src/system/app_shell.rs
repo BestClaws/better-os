@@ -39,8 +39,12 @@ pub trait App: Send {
     /// Initialize the app with its assigned surface
     fn init(&mut self, surface: &mut Surface);
 
-    /// Update the app (called each frame)
+    /// Update the app UI (called only when window is visible)
     fn update(&mut self, surface: &mut Surface, delta_ms: u32);
+
+    /// Update background services (called every frame regardless of visibility)
+    /// Use this for processing data, timers, sensors, network events, etc.
+    fn service_update(&mut self, _delta_ms: u32) {}
 
     /// Handle app suspension (when window is hidden/backgrounded)
     fn suspend(&mut self) {}
@@ -59,20 +63,24 @@ pub struct AppInstance {
     pub active: bool,
 }
 
+use crate::system::surface::DisplayInfo;
+
 /// The app shell manages application lifecycle
 pub struct AppShell {
     apps: Vec<AppInstance>,
     next_id: u32,
     window_format: u8, // 0 = LUMA4, 2 = RGB565
+    display_info: DisplayInfo,
 }
 
 impl AppShell {
-    /// Create a new app shell with the specified window format
-    pub fn new(window_format: u8) -> Self {
+    /// Create a new app shell with the specified window format and display info
+    pub fn new(window_format: u8, display_info: DisplayInfo) -> Self {
         Self {
             apps: Vec::new(),
             next_id: 1,
             window_format,
+            display_info,
         }
     }
 
@@ -101,12 +109,14 @@ impl AppShell {
                     &mut window.frame_buffer,
                     geometry.width,
                     geometry.height,
+                    self.display_info,
                 )
             } else {
                 Surface::new_luma4(
                     &mut window.frame_buffer,
                     geometry.width,
                     geometry.height,
+                    self.display_info,
                 )
             };
             
@@ -155,13 +165,17 @@ impl AppShell {
         }
     }
 
-    /// Update all active apps
+    /// Update all active apps: background services always run, UI only when visible
     pub fn update_apps(&mut self, window_manager: &mut WindowManager, delta_ms: u32) {
         for app_instance in &mut self.apps {
             if !app_instance.active {
                 continue;
             }
 
+            // Always run background services
+            app_instance.app.service_update(delta_ms);
+
+            // Only update UI if window is visible
             if let Some(window_id) = app_instance.info.window_id {
                 if let Some(window) = window_manager.get_window_mut(window_id) {
                     if window.info.visible {
@@ -170,12 +184,14 @@ impl AppShell {
                                 &mut window.frame_buffer,
                                 window.info.geometry.width,
                                 window.info.geometry.height,
+                                self.display_info,
                             )
                         } else {
                             Surface::new_luma4(
                                 &mut window.frame_buffer,
                                 window.info.geometry.width,
                                 window.info.geometry.height,
+                                self.display_info,
                             )
                         };
                         app_instance.app.update(&mut surface, delta_ms);

@@ -11,6 +11,7 @@ use crate::system::window_manager::{WindowManager, WindowGeometry};
 use crate::system::app_shell::AppShell;
 use crate::system::compositor::{Compositor, TransitionType, Easing};
 use crate::system::demo_apps::{ShapesDemo, GradientDemo, InfoDemo};
+use crate::system::surface::DisplayInfo;
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
 use gfx::rgb565::Rgb565Rasterizer;
@@ -29,10 +30,13 @@ pub async fn window_compositor_service(
     let height_u16 = display_facade.height() as u16;
     let negotiated_pixel_format = display_facade.pixel_format();
     let buffer_size = display_facade.framebuffer_size(width_u16 as u32, height_u16 as u32);
+    let resolution = display_facade.resolution();
+    let display_info = DisplayInfo::new(resolution.dpi as f32);
 
     info!(
-        "Display initialized: {}x{} {:?} (buffer {} bytes)",
-        width_u16, height_u16, negotiated_pixel_format, buffer_size
+        "Display initialized: {}x{} {:?} DPI={} (buffer {} bytes)",
+        width_u16, height_u16, negotiated_pixel_format, 
+        display_info.dpi as u32, buffer_size
     );
 
     // Allocate main display buffer
@@ -48,7 +52,7 @@ pub async fn window_compositor_service(
 
     // Initialize window manager, app shell, and compositor
     let mut window_manager = WindowManager::new();
-    let mut app_shell = AppShell::new(window_format);
+    let mut app_shell = AppShell::new(window_format, display_info);
     let mut compositor = Compositor::new();
     compositor.set_background_color(Color::rgba(20, 20, 30, 255));
 

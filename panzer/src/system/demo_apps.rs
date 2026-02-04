@@ -16,11 +16,12 @@ use crate::system::surface::Surface;
 pub struct ShapesDemo {
     name: String,
     time: f32,
+    service_timer: u32,
 }
 
 impl ShapesDemo {
     pub fn new(name: String) -> Self {
-        Self { name, time: 0.0 }
+        Self { name, time: 0.0, service_timer: 0 }
     }
 }
 
@@ -36,12 +37,16 @@ impl App for ShapesDemo {
         // Clear background
         surface.clear(Color::rgba(20, 20, 30, 255));
 
+        // Get display info for resolution-independent sizing
+        let display_info = surface.display_info();
+        let scale = |px: f32| display_info.scale(px);
+
         let mut rasterizer = surface.rasterizer();
         let width = rasterizer.width();
         let height = rasterizer.height();
 
-        // Animated bouncing rectangle
-        let rect_size = 40.0;
+        // Animated bouncing rectangle - sizes scale with DPI
+        let rect_size = scale(40.0);
         let x = ((self.time * 60.0).sin() * 0.4 + 0.5) * (width as f32 - rect_size);
         let y = ((self.time * 40.0).cos() * 0.4 + 0.5) * (height as f32 - rect_size);
 
@@ -52,10 +57,10 @@ impl App for ShapesDemo {
             .corner_radii(CornerRadius::new(8.0, 8.0))
             .draw(&mut rasterizer);
 
-        // Rotating square in center
+        // Rotating square in center - size scales with DPI
         let center_x = width as f32 / 2.0;
         let center_y = height as f32 / 2.0;
-        let size = 50.0;
+        let size = scale(50.0);
         
         let angle = self.time;
         let cos_a = angle.cos();
@@ -83,32 +88,42 @@ impl App for ShapesDemo {
             .fill(FillStyle::Solid(line_color))
             .draw(&mut rasterizer);
 
-        // Border rectangles
+        // Border rectangles - width scales with DPI
         let border_color = Color::rgba(100, 100, 255, 255);
+        let border_width = scale(3.0);
+        let margin = scale(10.0);
         
         // Top border
         Rectangle::new()
-            .bounds(Bounds::new(Point::new(10.0, 10.0), Point::new(width as f32 - 10.0, 13.0)))
+            .bounds(Bounds::new(Point::new(margin, margin), Point::new(width as f32 - margin, margin + border_width)))
             .fill(FillStyle::Solid(border_color))
             .draw(&mut rasterizer);
         
         // Bottom border
         Rectangle::new()
-            .bounds(Bounds::new(Point::new(10.0, height as f32 - 13.0), Point::new(width as f32 - 10.0, height as f32 - 10.0)))
+            .bounds(Bounds::new(Point::new(margin, height as f32 - margin - border_width), Point::new(width as f32 - margin, height as f32 - margin)))
             .fill(FillStyle::Solid(border_color))
             .draw(&mut rasterizer);
         
         // Left border
         Rectangle::new()
-            .bounds(Bounds::new(Point::new(10.0, 10.0), Point::new(13.0, height as f32 - 10.0)))
+            .bounds(Bounds::new(Point::new(margin, margin), Point::new(margin + border_width, height as f32 - margin)))
             .fill(FillStyle::Solid(border_color))
             .draw(&mut rasterizer);
         
         // Right border
         Rectangle::new()
-            .bounds(Bounds::new(Point::new(width as f32 - 13.0, 10.0), Point::new(width as f32 - 10.0, height as f32 - 10.0)))
+            .bounds(Bounds::new(Point::new(width as f32 - margin - border_width, margin), Point::new(width as f32 - margin, height as f32 - margin)))
             .fill(FillStyle::Solid(border_color))
             .draw(&mut rasterizer);
+    }
+
+    fn service_update(&mut self, delta_ms: u32) {
+        self.service_timer += delta_ms;
+        if self.service_timer >= 1000 {
+            defmt::info!("[Service] {}", self.name.as_str());
+            self.service_timer = 0;
+        }
     }
 
     fn name(&self) -> &str {
@@ -120,11 +135,12 @@ impl App for ShapesDemo {
 pub struct GradientDemo {
     name: String,
     offset: f32,
+    service_timer: u32,
 }
 
 impl GradientDemo {
     pub fn new(name: String) -> Self {
-        Self { name, offset: 0.0 }
+        Self { name, offset: 0.0, service_timer: 0 }
     }
 }
 
@@ -166,6 +182,14 @@ impl App for GradientDemo {
             .draw(&mut rasterizer);
     }
 
+    fn service_update(&mut self, delta_ms: u32) {
+        self.service_timer += delta_ms;
+        if self.service_timer >= 1000 {
+            defmt::info!("[Service] {}", self.name.as_str());
+            self.service_timer = 0;
+        }
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -175,6 +199,7 @@ impl App for GradientDemo {
 pub struct InfoDemo {
     name: String,
     frame_count: u32,
+    service_timer: u32,
 }
 
 impl InfoDemo {
@@ -182,6 +207,7 @@ impl InfoDemo {
         Self {
             name,
             frame_count: 0,
+            service_timer: 0,
         }
     }
 }
@@ -241,6 +267,14 @@ impl App for InfoDemo {
             .fill(FillStyle::Solid(progress_color))
             .corner_radii(CornerRadius::new(10.0, 10.0))
             .draw(&mut rasterizer);
+    }
+
+    fn service_update(&mut self, delta_ms: u32) {
+        self.service_timer += delta_ms;
+        if self.service_timer >= 1000 {
+            defmt::info!("[Service] {}", self.name.as_str());
+            self.service_timer = 0;
+        }
     }
 
     fn name(&self) -> &str {

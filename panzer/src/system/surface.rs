@@ -15,38 +15,72 @@ pub enum PixelFormat {
     Luma4,
 }
 
+/// Display metadata for resolution-independent rendering
+#[derive(Debug, Clone, Copy)]
+pub struct DisplayInfo {
+    /// Actual DPI of the display
+    pub dpi: f32,
+    /// Device pixel ratio (actual_dpi / 160.0)
+    pub device_pixel_ratio: f32,
+}
+
+impl DisplayInfo {
+    /// Baseline DPI for 1:1 device pixel ratio (CSS reference pixel density)
+    pub const BASELINE_DPI: f32 = 160.0;
+
+    pub fn new(dpi: f32) -> Self {
+        Self {
+            dpi,
+            device_pixel_ratio: dpi / Self::BASELINE_DPI,
+        }
+    }
+
+    /// Scale a value by device pixel ratio for resolution-independent sizing
+    pub fn scale(&self, logical_pixels: f32) -> f32 {
+        logical_pixels * self.device_pixel_ratio
+    }
+}
+
 /// A drawing surface backed by a frame buffer
 pub struct Surface<'a> {
     buffer: &'a mut [u8],
     width: u16,
     height: u16,
     format: PixelFormat,
+    display_info: DisplayInfo,
 }
 
 impl<'a> Surface<'a> {
     /// Create a new RGB565 surface
-    pub fn new_rgb565(buffer: &'a mut [u8], width: u16, height: u16) -> Self {
+    pub fn new_rgb565(buffer: &'a mut [u8], width: u16, height: u16, display_info: DisplayInfo) -> Self {
         Self {
             buffer,
             width,
             height,
             format: PixelFormat::Rgb565,
+            display_info,
         }
     }
 
     /// Create a new LUMA4 surface
-    pub fn new_luma4(buffer: &'a mut [u8], width: u16, height: u16) -> Self {
+    pub fn new_luma4(buffer: &'a mut [u8], width: u16, height: u16, display_info: DisplayInfo) -> Self {
         Self {
             buffer,
             width,
             height,
             format: PixelFormat::Luma4,
+            display_info,
         }
     }
 
     /// Get the pixel format
     pub fn format(&self) -> PixelFormat {
         self.format
+    }
+
+    /// Get display information for resolution-independent rendering
+    pub fn display_info(&self) -> DisplayInfo {
+        self.display_info
     }
 
     /// Get a rasterizer for this surface
