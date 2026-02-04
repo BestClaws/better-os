@@ -9,7 +9,7 @@ use gfx::rasterizer::RasterTarget;
 use gfx::rgb565::Rgb565Rasterizer;
 
 /// Embedded pixel font
-const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/pixel.ttf");
+const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/Endfield.ttf");
 
 /// Run font rendering demonstration
 pub fn run_font_demo(

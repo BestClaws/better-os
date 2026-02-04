@@ -24,7 +24,7 @@ use crate::ui::themes::pulonia::Palette;  // adjust path if module structure is 
 /// Baseline DPI for 1:1 device pixel ratio (CSS reference pixel density)
 const BASELINE_DPI: f32 = 160.0;
 
-const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/RobotoSlab-SemiBold.ttf");
+const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/Endfield.ttf");
 const FONT_CACHE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:/-.%+<>#'\"?&()[]{} ";
 
 // Starfield configuration
