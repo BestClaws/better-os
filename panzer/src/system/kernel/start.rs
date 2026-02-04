@@ -7,7 +7,7 @@ use embassy_time::Instant;
 use crate::system::hal::display::PixelFormat;
 use crate::system::kernel::platforms;
 
-use crate::system::tasks::compositor_srv::ui_compositor_service;
+use crate::system::tasks::compositor_srv::window_compositor_service;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
 
@@ -26,9 +26,9 @@ pub(crate) fn start(spawner: Spawner) {
         }
     };
 
-    if let Err(err) = spawner.spawn(ui_compositor_service(display)) {
+    if let Err(err) = spawner.spawn(window_compositor_service(display)) {
         error!(
-            "Failed to spawn compositor service: {:?}",
+            "Failed to spawn window compositor service: {:?}",
             Debug2Format(&err)
         );
         return;
