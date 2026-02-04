@@ -116,6 +116,7 @@ fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]
     let mut dst_ptr = dst.as_mut_ptr();
     let mut remaining = width;
 
+    // Handle odd start pixel
     if (start_pixel & 1) != 0 {
         let current_byte = unsafe { *src.get_unchecked(byte_idx) };
         let nibble = current_byte & 0x0F;
@@ -126,7 +127,6 @@ fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]
             );
             dst_ptr = dst_ptr.add(4);
         }
-
         byte_idx += 1;
         remaining = remaining.saturating_sub(1);
         if byte_idx >= src.len() {
@@ -134,6 +134,43 @@ fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]
         }
     }
 
+    // Process 4 bytes (8 pixels) at a time for better performance
+    while remaining >= 8 && byte_idx + 3 < src.len() {
+        unsafe {
+            let b0 = *src.get_unchecked(byte_idx) as usize;
+            let b1 = *src.get_unchecked(byte_idx + 1) as usize;
+            let b2 = *src.get_unchecked(byte_idx + 2) as usize;
+            let b3 = *src.get_unchecked(byte_idx + 3) as usize;
+            
+            // Process first byte
+            let hi0 = GRAY4_TO_RGB565_DOUBLE[b0 >> 4] as u64;
+            let lo0 = GRAY4_TO_RGB565_DOUBLE[b0 & 0x0F] as u64;
+            core::ptr::write_unaligned(dst_ptr as *mut u64, hi0 | (lo0 << 32));
+            dst_ptr = dst_ptr.add(8);
+            
+            // Process second byte
+            let hi1 = GRAY4_TO_RGB565_DOUBLE[b1 >> 4] as u64;
+            let lo1 = GRAY4_TO_RGB565_DOUBLE[b1 & 0x0F] as u64;
+            core::ptr::write_unaligned(dst_ptr as *mut u64, hi1 | (lo1 << 32));
+            dst_ptr = dst_ptr.add(8);
+            
+            // Process third byte
+            let hi2 = GRAY4_TO_RGB565_DOUBLE[b2 >> 4] as u64;
+            let lo2 = GRAY4_TO_RGB565_DOUBLE[b2 & 0x0F] as u64;
+            core::ptr::write_unaligned(dst_ptr as *mut u64, hi2 | (lo2 << 32));
+            dst_ptr = dst_ptr.add(8);
+            
+            // Process fourth byte
+            let hi3 = GRAY4_TO_RGB565_DOUBLE[b3 >> 4] as u64;
+            let lo3 = GRAY4_TO_RGB565_DOUBLE[b3 & 0x0F] as u64;
+            core::ptr::write_unaligned(dst_ptr as *mut u64, hi3 | (lo3 << 32));
+            dst_ptr = dst_ptr.add(8);
+        }
+        byte_idx += 4;
+        remaining -= 8;
+    }
+
+    // Process 2 pixels at a time
     while remaining >= 2 && byte_idx < src.len() {
         let packed = unsafe { *src.get_unchecked(byte_idx) } as usize;
         let hi = GRAY4_TO_RGB565_DOUBLE[packed >> 4] as u64;
@@ -149,6 +186,7 @@ fn expand_gray4_row(src: &[u8], start_pixel: usize, width: usize, dst: &mut [u8]
         remaining -= 2;
     }
 
+    // Handle remaining single pixel
     if remaining == 1 && byte_idx < src.len() {
         let current_byte = unsafe { *src.get_unchecked(byte_idx) };
         let nibble = current_byte >> 4;
@@ -411,15 +449,18 @@ where
     /// Send pixel data to display RAM
     ///
     /// Automatically chunks large transfers to stay within DMA limits.
-    /// First chunk uses RAMWR, subsequent chunks use RAMWRC.
+    ///
+    /// # Parameters
+    /// - `is_first_chunk`: If true, uses RAMWR (0x2C) to start new write sequence.
+    ///   If false, uses RAMWRC (0x3C) to continue previous write sequence.
     ///
     /// # Protocol Details
     /// - Uses Quad-SPI mode (4x bandwidth vs Single-SPI)
-    /// - RAMWR: Starts a new write sequence
+    /// - RAMWR: Starts a new write sequence  
     /// - RAMWRC: Continues the previous write sequence
-    async fn send_pixels(&mut self, pixels: &[u8]) -> Result<(), esp_hal::spi::Error> {
+    async fn send_pixels(&mut self, pixels: &[u8], is_first_chunk: bool) -> Result<(), esp_hal::spi::Error> {
         for (index, chunk) in pixels.chunks(DMA_CHUNK_SIZE).enumerate() {
-            let cmd = if index == 0 { CMD_RAMWR } else { CMD_RAMWRC };
+            let cmd = if is_first_chunk && index == 0 { CMD_RAMWR } else { CMD_RAMWRC };
 
             self.qspi.half_duplex_write(
                 DataMode::Quad,
@@ -590,7 +631,7 @@ where
         }
 
         let t0 = Instant::now();
-        if self.send_pixels(buffer).await.is_err() {
+        if self.send_pixels(buffer, true).await.is_err() {
             error!("Pixel transfer failed (unscaled)");
             return;
         }
@@ -632,25 +673,26 @@ where
         let mut total_transfer_us = 0u64;
         let mut total_window_us = 0u64;
 
-        // Process in horizontal strips
-        for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
-            let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
+        // Set window once for entire scaled display area
+        let t_window = Instant::now();
+        if self
+            .set_window(
+                display_x,
+                display_y,
+                display_x + scaled_w,
+                display_y + scaled_h,
+            )
+            .await
+            .is_err()
+        {
+            error!("set_window failed");
+            return;
+        }
+        total_window_us = t_window.elapsed().as_micros();
 
-            let t_window = Instant::now();
-            if self
-                .set_window(
-                    display_x,
-                    display_y + y_chunk,
-                    display_x + scaled_w,
-                    display_y + y_chunk + chunk_h,
-                )
-                .await
-                .is_err()
-            {
-                error!("set_window failed");
-                return;
-            }
-            total_window_us += t_window.elapsed().as_micros();
+        // Process in horizontal strips
+        for (chunk_index, y_chunk) in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize).enumerate() {
+            let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
 
             // Scale pixels for this chunk
             let t_scale = Instant::now();
@@ -674,7 +716,8 @@ where
 
             // Transfer scaled chunk
             let t_tx = Instant::now();
-            if self.send_pixels(&chunk).await.is_err() {
+            // Use RAMWR for first chunk, RAMWRC for subsequent chunks
+            if self.send_pixels(&chunk, chunk_index == 0).await.is_err() {
                 error!("Pixel transfer failed (scale {})", scale);
                 return;
             }
@@ -713,52 +756,55 @@ where
         let display_x = x * 2;
         let display_y = y * 2;
 
-        let mut chunk = vec![0u8; (scaled_w * SCALING_CHUNK_HEIGHT * 2) as usize]; // RGB565 = 2 bytes per pixel
+        // Allocate chunk buffer once outside loop
+        let max_chunk_bytes = (scaled_w * SCALING_CHUNK_HEIGHT * 2) as usize;
+        let mut chunk = vec![0u8; max_chunk_bytes];
 
         let t0 = Instant::now();
         let mut total_scaling_us = 0u64;
         let mut total_transfer_us = 0u64;
         let mut total_window_us = 0u64;
-        let mut total_prep_us = 0u64;
 
-        for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
-            let t_prep = Instant::now();
+        let scaled_row_bytes = scaled_w as usize * 2; // RGB565 bytes per scaled row
+        let w_usize = w as usize;
+
+        // Set window once for entire scaled display area
+        let t_window = Instant::now();
+        if self
+            .set_window(
+                display_x,
+                display_y,
+                display_x + scaled_w,
+                display_y + scaled_h,
+            )
+            .await
+            .is_err()
+        {
+            error!("set_window failed");
+            return;
+        }
+        total_window_us = t_window.elapsed().as_micros();
+
+        for (chunk_index, y_chunk) in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize).enumerate() {
             let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
-            total_prep_us += t_prep.elapsed().as_micros();
-
-            let t_window = Instant::now();
-            if self
-                .set_window(
-                    display_x,
-                    display_y + y_chunk,
-                    display_x + scaled_w,
-                    display_y + y_chunk + chunk_h,
-                )
-                .await
-                .is_err()
-            {
-                error!("set_window failed");
-                return;
-            }
-            total_window_us += t_window.elapsed().as_micros();
 
             let t_scale = Instant::now();
-            let scaled_row_bytes = scaled_w as usize * 2; // RGB565 bytes per scaled row
-            let mut row_offset = 0usize;
-
-            while row_offset < chunk_h as usize {
+            
+            // Process rows in pairs for 2x vertical scaling
+            let rows_to_process = chunk_h as usize;
+            let mut row_offset = 0;
+            
+            while row_offset < rows_to_process {
                 let src_row = (y_chunk as usize + row_offset) / 2;
-                let start_pixel = src_row * w as usize;
+                let start_pixel = src_row * w_usize;
                 let dst0 = row_offset * scaled_row_bytes;
 
-                {
-                    let row_slice = &mut chunk[dst0..dst0 + scaled_row_bytes];
-                    expand_gray4_row(buffer, start_pixel, w as usize, row_slice);
-                }
+                // Expand first row
+                expand_gray4_row(buffer, start_pixel, w_usize, &mut chunk[dst0..dst0 + scaled_row_bytes]);
 
-                let next = row_offset + 1;
-                if next < chunk_h as usize {
-                    let dst1 = next * scaled_row_bytes;
+                // Duplicate row for 2x vertical scaling
+                if row_offset + 1 < rows_to_process {
+                    let dst1 = dst0 + scaled_row_bytes;
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             chunk.as_ptr().add(dst0),
@@ -767,17 +813,16 @@ where
                         );
                     }
                 }
-
+                
                 row_offset += 2;
             }
             total_scaling_us += t_scale.elapsed().as_micros();
 
-            let t_prep2 = Instant::now();
-            let chunk_bytes = &chunk[0..(scaled_w * chunk_h * 2) as usize]; // RGB565 = 2 bytes/pixel
-            total_prep_us += t_prep2.elapsed().as_micros();
+            let chunk_bytes = (scaled_w * chunk_h * 2) as usize;
 
             let t_tx = Instant::now();
-            if self.send_pixels(chunk_bytes).await.is_err() {
+            // Use RAMWR for first chunk, RAMWRC for subsequent chunks
+            if self.send_pixels(&chunk[..chunk_bytes], chunk_index == 0).await.is_err() {
                 error!("Pixel transfer failed (scale 2x Gray4)");
                 return;
             }
@@ -785,18 +830,17 @@ where
         }
 
         let total_us = t0.elapsed().as_micros() as u64;
-        let accounted_us = total_window_us + total_scaling_us + total_transfer_us + total_prep_us;
+        let accounted_us = total_window_us + total_scaling_us + total_transfer_us;
         let overhead_us = total_us.saturating_sub(accounted_us);
 
         info!(
-            "draw_scale2_gray4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, prep:{}us, overhead:{}us)",
+            "draw_scale2_gray4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us)",
             w,
             h,
             total_us,
             total_window_us,
             total_scaling_us,
             total_transfer_us,
-            total_prep_us,
             overhead_us
         );
     }
@@ -839,24 +883,25 @@ where
         let mut total_transfer_us = 0u64;
         let mut total_window_us = 0u64;
 
-        for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
-            let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
+        // Set window once for entire scaled display area
+        let t_window = Instant::now();
+        if self
+            .set_window(
+                display_x,
+                display_y,
+                display_x + scaled_w,
+                display_y + scaled_h,
+            )
+            .await
+            .is_err()
+        {
+            error!("set_window failed");
+            return;
+        }
+        total_window_us = t_window.elapsed().as_micros();
 
-            let t_window = Instant::now();
-            if self
-                .set_window(
-                    display_x,
-                    display_y + y_chunk,
-                    display_x + scaled_w,
-                    display_y + y_chunk + chunk_h,
-                )
-                .await
-                .is_err()
-            {
-                error!("set_window failed");
-                return;
-            }
-            total_window_us += t_window.elapsed().as_micros();
+        for (chunk_index, y_chunk) in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize).enumerate() {
+            let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
 
             let t_scale = Instant::now();
             unsafe {
@@ -906,7 +951,8 @@ where
                 )
             };
 
-            if self.send_pixels(chunk_bytes).await.is_err() {
+            // Use RAMWR for first chunk, RAMWRC for subsequent chunks
+            if self.send_pixels(chunk_bytes, chunk_index == 0).await.is_err() {
                 error!("Pixel transfer failed (scale 4)");
                 return;
             }
