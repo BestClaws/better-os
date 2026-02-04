@@ -630,11 +630,13 @@ where
         let t0 = Instant::now();
         let mut total_scaling_us = 0u64;
         let mut total_transfer_us = 0u64;
+        let mut total_window_us = 0u64;
 
         // Process in horizontal strips
         for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
             let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
 
+            let t_window = Instant::now();
             if self
                 .set_window(
                     display_x,
@@ -648,6 +650,7 @@ where
                 error!("set_window failed");
                 return;
             }
+            total_window_us += t_window.elapsed().as_micros();
 
             // Scale pixels for this chunk
             let t_scale = Instant::now();
@@ -678,12 +681,13 @@ where
             total_transfer_us += t_tx.elapsed().as_micros();
         }
 
-        debug!(
-            "draw_scale{}: {}×{} in {}ms (scale:{}ms, tx:{}ms)",
+        info!(
+            "draw_scale{}: {}×{} in {}ms (window:{}ms, scale:{}ms, tx:{}ms)",
             scale,
             w,
             h,
             t0.elapsed().as_millis(),
+            total_window_us / 1000,
             total_scaling_us / 1000,
             total_transfer_us / 1000
         );
@@ -714,10 +718,15 @@ where
         let t0 = Instant::now();
         let mut total_scaling_us = 0u64;
         let mut total_transfer_us = 0u64;
+        let mut total_window_us = 0u64;
+        let mut total_prep_us = 0u64;
 
         for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
+            let t_prep = Instant::now();
             let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
+            total_prep_us += t_prep.elapsed().as_micros();
 
+            let t_window = Instant::now();
             if self
                 .set_window(
                     display_x,
@@ -731,6 +740,7 @@ where
                 error!("set_window failed");
                 return;
             }
+            total_window_us += t_window.elapsed().as_micros();
 
             let t_scale = Instant::now();
             let scaled_row_bytes = scaled_w as usize * 2; // RGB565 bytes per scaled row
@@ -762,7 +772,9 @@ where
             }
             total_scaling_us += t_scale.elapsed().as_micros();
 
+            let t_prep2 = Instant::now();
             let chunk_bytes = &chunk[0..(scaled_w * chunk_h * 2) as usize]; // RGB565 = 2 bytes/pixel
+            total_prep_us += t_prep2.elapsed().as_micros();
 
             let t_tx = Instant::now();
             if self.send_pixels(chunk_bytes).await.is_err() {
@@ -772,13 +784,20 @@ where
             total_transfer_us += t_tx.elapsed().as_micros();
         }
 
+        let total_us = t0.elapsed().as_micros() as u64;
+        let accounted_us = total_window_us + total_scaling_us + total_transfer_us + total_prep_us;
+        let overhead_us = total_us.saturating_sub(accounted_us);
+
         info!(
-            "draw_scaled_2x_gray4: {}x{} in {}ms (scale:{}ms, tx:{}ms)",
+            "draw_scale2_gray4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, prep:{}us, overhead:{}us)",
             w,
             h,
-            t0.elapsed().as_millis(),
-            total_scaling_us / 1000,
-            total_transfer_us / 1000
+            total_us,
+            total_window_us,
+            total_scaling_us,
+            total_transfer_us,
+            total_prep_us,
+            overhead_us
         );
     }
 
@@ -818,10 +837,12 @@ where
         let t0 = Instant::now();
         let mut total_scaling_us = 0u64;
         let mut total_transfer_us = 0u64;
+        let mut total_window_us = 0u64;
 
         for y_chunk in (0..scaled_h).step_by(SCALING_CHUNK_HEIGHT as usize) {
             let chunk_h = core::cmp::min(SCALING_CHUNK_HEIGHT, scaled_h - y_chunk);
 
+            let t_window = Instant::now();
             if self
                 .set_window(
                     display_x,
@@ -835,6 +856,7 @@ where
                 error!("set_window failed");
                 return;
             }
+            total_window_us += t_window.elapsed().as_micros();
 
             let t_scale = Instant::now();
             unsafe {
@@ -891,13 +913,19 @@ where
             total_transfer_us += t_tx.elapsed().as_micros();
         }
 
-        debug!(
-            "draw_scale4: {}×{} in {}ms (scale:{}ms, tx:{}ms)",
+        let total_us = t0.elapsed().as_micros() as u64;
+        let accounted_us = total_window_us + total_scaling_us + total_transfer_us;
+        let overhead_us = total_us.saturating_sub(accounted_us);
+
+        info!(
+            "draw_scale4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us)",
             w,
             h,
-            t0.elapsed().as_millis(),
-            total_scaling_us / 1000,
-            total_transfer_us / 1000
+            total_us,
+            total_window_us,
+            total_scaling_us,
+            total_transfer_us,
+            overhead_us
         );
     }
 }
