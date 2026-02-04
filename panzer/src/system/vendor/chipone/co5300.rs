@@ -37,13 +37,13 @@
 //! └─────────────────────────────────────┘
 //! ```
 
-#![no_std]
+
 extern crate alloc;
 
 use crate::system::hal::display::{
     AsyncDisplay, DisplayCapabilities, DisplayResolution, DisplaySize, Orientation, PixelFormat,
 };
-use crate::system::kernel::config::resources::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
+use crate::system::kernel::config::resources::{PANEL_HEIGHT, PANEL_SIZE_DIAG, PANEL_WIDTH};
 use crate::util::math::primitives::{Point, Rect, Size};
 use alloc::boxed::Box;
 use alloc::vec;
@@ -53,7 +53,7 @@ use defmt::{debug, error, info};
 use embassy_time::{Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
 use esp_hal::spi::master::{Address, Command, DataMode, SpiDmaBus};
-
+use math::integer_sqrt;
 // ═══════════════════════════════════════════════════════════════════════════
 // Hardware Configuration & Constants
 // ═══════════════════════════════════════════════════════════════════════════
@@ -290,31 +290,55 @@ const fn calculate_offsets_const(
 /// Each entry: (hardware_x, hardware_y, centering_x, centering_y)
 const RESOLUTION_OFFSETS: [(u16, u16, u16, u16); 3] = [
     // Scale 1: 410×502 (full resolution, no scaling)
-    calculate_offsets_const(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, 410, 502, 1),
+    calculate_offsets_const(PANEL_WIDTH as u16, PANEL_HEIGHT as u16, 410, 502, 1),
     // Scale 2: 205×251 → 410×502 (2x2 blocks)
-    calculate_offsets_const(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, 205, 251, 2),
+    calculate_offsets_const(PANEL_WIDTH as u16, PANEL_HEIGHT as u16, 205, 251, 2),
     // Scale 4: 102×125 → 408×500 (4x4 blocks, optimized, default)
-    calculate_offsets_const(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, 102, 125, 4),
+    calculate_offsets_const(PANEL_WIDTH as u16, PANEL_HEIGHT as u16, 102, 125, 4),
 ];
+
+
+const fn calculate_dpi(px_width: u32, px_height: u32, inch_diagonal: f32) -> u16 {
+    let diagonal_pixels = integer_sqrt(px_width * px_width + px_height * px_height);
+    let dpi = diagonal_pixels as f32 / inch_diagonal;
+    dpi as u16
+}
 
 /// Supported display resolution modes
 const SUPPORTED_RESOLUTIONS: [DisplayResolution; 3] = [
     DisplayResolution {
         logical: DisplaySize::new(410, 502),
-        physical: DisplaySize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT),
-        scale: 1,
+        physical: DisplaySize::new(PANEL_WIDTH, PANEL_HEIGHT),
+        dpi: calculate_dpi(410, 502, PANEL_SIZE_DIAG),
     },
     DisplayResolution {
         logical: DisplaySize::new(205, 251),
-        physical: DisplaySize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT),
-        scale: 2,
+        physical: DisplaySize::new(PANEL_WIDTH, PANEL_HEIGHT),
+        dpi: calculate_dpi(205, 251, PANEL_SIZE_DIAG),
     },
     DisplayResolution {
         logical: DisplaySize::new(102, 125),
-        physical: DisplaySize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT),
-        scale: 4,
-    },
+        physical: DisplaySize::new(PANEL_WIDTH, PANEL_HEIGHT),
+        dpi: calculate_dpi(102, 125, PANEL_SIZE_DIAG),
+    }
 ];
+
+/// Get the scale factor for a given resolution using lookup table
+#[inline]
+const fn get_scale(resolution: DisplayResolution) -> u8 {
+    let w = resolution.logical.width;
+    let h = resolution.logical.height;
+    
+    if w == 410 && h == 502 {
+        1
+    } else if w == 205 && h == 251 {
+        2
+    } else if w == 102 && h == 125 {
+        4
+    } else {
+        panic!("Unsupported resolution");
+    }
+}
 
 /// Default resolution mode (index into SUPPORTED_RESOLUTIONS)
 ///
@@ -373,6 +397,7 @@ pub struct Co5300<RST> {
     // Display configuration
     pixel_format: PixelFormat,
     active_resolution: DisplayResolution,
+    active_scale: u8,
 }
 
 impl<RST> Co5300<RST>
@@ -406,6 +431,7 @@ where
             center_y_offset,
             pixel_format: PixelFormat::Rgb565, // Native format
             active_resolution,
+            active_scale: get_scale(active_resolution) as u8,
         }
     }
 
@@ -1077,12 +1103,12 @@ where
     /// - Scale 2 + Gray4: Optimized Gray4→RGB565 2× scaling
     /// - Scale 4 + RGB565: Optimized u64-based 4× scaling
     async fn draw_region(&mut self, buffer: &[u8], region: Rect) {
-        match (self.active_resolution.scale as u16, self.pixel_format) {
+        match (self.active_scale as u16, self.pixel_format) {
             (2, PixelFormat::Gray4) => self.draw_scaled_2x_gray4(buffer, region).await,
             (4, PixelFormat::Rgb565) => self.draw_scaled_4x_optimized(buffer, region).await,
             _ => unimplemented!(
                 "Unsupported scale/format combination: {}× with {:?}. Only Gray4@2× and RGB565@4× are supported.",
-                self.active_resolution.scale,
+                self.active_scale,
                 self.pixel_format
             ),
         }
@@ -1100,12 +1126,9 @@ where
         self.draw_region(buffer, full_screen).await;
     }
 
-    async fn paint_screen(&mut self, _color: u8) {
-        // Could be implemented to fill screen with solid color
-    }
-
     async fn set_orientation(&mut self, _orientation: Orientation) {
         // Could be implemented via MADCTL register
+        unimplemented!()
     }
 
     fn get_width(&self) -> u32 {
@@ -1116,9 +1139,7 @@ where
         self.active_resolution.logical.height
     }
 
-    fn native_pixel_format(&self) -> PixelFormat {
-        PixelFormat::Rgb565
-    }
+
 
     fn set_pixel_format(&mut self, format: PixelFormat) {
         self.pixel_format = format;
@@ -1139,27 +1160,29 @@ where
     /// Updates active resolution and recalculates offsets from pre-computed table.
     fn set_resolution(&mut self, resolution: DisplayResolution) {
         let caps = self.capabilities();
+        let requested_scale = get_scale(resolution);
 
         // Find exact match or fallback to same scale factor
         let selected = caps
             .supported_resolutions
             .iter()
             .copied()
-            .find(|m| m.logical == resolution.logical && m.scale == resolution.scale)
+            .find(|m| m.logical == resolution.logical && get_scale(*m) == requested_scale)
             .or_else(|| {
                 caps.supported_resolutions
                     .iter()
                     .copied()
-                    .find(|m| m.scale == resolution.scale)
+                    .find(|m| get_scale(*m) == requested_scale)
             })
             .unwrap_or(caps.preferred_resolution);
 
         self.active_resolution = selected;
+        self.active_scale = get_scale(selected) as u8;
 
         // Look up pre-computed offsets
         let mode_index = SUPPORTED_RESOLUTIONS
             .iter()
-            .position(|r| r.logical == selected.logical && r.scale == selected.scale)
+            .position(|r| r.logical == selected.logical && get_scale(*r) == get_scale(selected))
             .unwrap_or(PREFERRED_MODE_INDEX);
 
         let (hw_x, hw_y, center_x, center_y) = RESOLUTION_OFFSETS[mode_index];
@@ -1170,7 +1193,7 @@ where
 
         debug!(
             "Resolution changed to {}×{} @ {}× scale",
-            selected.logical.width, selected.logical.height, selected.scale
+            selected.logical.width, selected.logical.height, self.active_scale
         );
     }
 }

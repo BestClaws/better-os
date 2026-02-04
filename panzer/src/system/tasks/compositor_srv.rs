@@ -21,6 +21,9 @@ use swash::zeno;
 use swash::zeno::Style::Stroke;
 use crate::ui::themes::pulonia::Palette;  // adjust path if module structure is different
 
+/// Baseline DPI for 1:1 device pixel ratio (CSS reference pixel density)
+const BASELINE_DPI: f32 = 160.0;
+
 const FONT_DATA_PIXEL: &[u8] = include_bytes!("../../assets/RobotoSlab-SemiBold.ttf");
 const FONT_CACHE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:/-.%+<>#'\"?&()[]{} ";
 
@@ -44,10 +47,11 @@ struct UiFonts {
 
 impl UiFonts {
     fn new(scale: f32) -> Self {
-        let title_size = (24.0 / scale).clamp(8.0, 50.0);
-        let body_size  = (20.0 / scale).clamp(8.0, 50.0);
-        let small_size = (16.0  / scale).clamp(8.0, 50.0);
-        let time_size  = (100.0 / scale).clamp(8.0, 50.0);
+        let px = |v: f32| v * scale;
+        let title_size = px(12.0);
+        let body_size  = px(10.0);
+        let small_size = px(8.0);
+        let time_size  = px(50.0);
 
         let title = Font::builder()
             .data(FONT_DATA_PIXEL)
@@ -196,7 +200,7 @@ fn render_ui(
     height: u16,
     frame_counter: u32,
     pixel_format: PixelFormat,
-    scale: u32,
+    device_pixel_ratio: f32,
     fonts: &UiFonts,
     snake_angle: f32,
     gradient_angle: f32,
@@ -206,18 +210,18 @@ fn render_ui(
     match pixel_format {
         PixelFormat::Gray4 => {
             let mut rasterizer = Luma4Rasterizer::new(frame_buffer, width, height);
-            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, snake_angle, gradient_angle);
+            render_ui_with_rasterizer(&mut rasterizer, device_pixel_ratio, width, height, frame_counter, fonts, snake_angle, gradient_angle);
         }
         PixelFormat::Rgb565 => {
             let mut rasterizer = Rgb565Rasterizer::new(frame_buffer, width, height);
-            render_ui_with_rasterizer(&mut rasterizer, scale, width, height, frame_counter, fonts, snake_angle, gradient_angle);
+            render_ui_with_rasterizer(&mut rasterizer, device_pixel_ratio, width, height, frame_counter, fonts, snake_angle, gradient_angle);
         }
     }
 }
 
 fn render_ui_with_rasterizer<T: RasterTarget>(
     rasterizer: &mut T,
-    scale: u32,
+    device_pixel_ratio: f32,
     width: u16,
     height: u16,
     frame_counter: u32,
@@ -228,7 +232,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     let width_f  = width  as f32;
     let height_f = height as f32;
     let clip = Bounds::new(Point::new(0.0, 0.0), Point::new(1000., 1000.));
-    let scale = scale as f32;
+    let px = |v: f32| v * device_pixel_ratio;
 
     // Grayscale gradient colors for better performance on gray4
     let color_white = Color::rgba(255, 255, 255, 255);      // White
@@ -311,14 +315,14 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
 
     // Render starfield background
     render_starfield(rasterizer, width, height, frame_counter);
-    let margin       = 5.0 * scale;
-    let status_height = 12.0 * scale;
-    let panel_radius  =  5.0 * scale;
+    let margin       = px(5.0);
+    let status_height = px(12.0);
+    let panel_radius  = px(5.0);
 
     // Status bar container
     let status_x = margin - 4.0;
     let status_y = margin;
-    let status_width = (width_f - 2.0 * margin).max(48.0 * scale);
+    let status_width = (width_f - 2.0 * margin).max(px(48.0));
 
 
 
@@ -327,8 +331,8 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         &fonts.title,
         rasterizer,
         "HOME",
-        status_x + 10.0 * scale,
-        status_y + 2.0 * scale,
+        status_x + px(10.0),
+        status_y + px(2.0),
         Palette::TEXT_PRIMARY,
     );
 
@@ -336,11 +340,11 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
 
 
     // Battery indicator
-    let battery_height = 7.0 * scale;
-    let battery_width  = 14.0 * scale;
+    let battery_height = px(7.0);
+    let battery_width  = px(14.0);
     let battery_x = status_x + status_width - battery_width;
     let battery_y = status_y + status_height - battery_height;
-    let border = (1.0 * scale).clamp(0.5, 1.5);
+    let border = px(1.0).clamp(0.5, 1.5);
 
     // Outer battery border
     {
@@ -351,7 +355,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
                 .bounds(Bounds::new(Point::new(battery_x, battery_y), Point::new(battery_x + width, battery_y + height)))
                 .fill(FillStyle::solid(Palette::ACCENT_UMBER))
                 .clip(clip);
-            let radius = 1.5 * scale;
+            let radius = px(1.5);
             if radius > 0.0 {
                 rect = rect.corner_radii(CornerRadius::new(radius, radius));
             }
@@ -372,7 +376,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
                 .bounds(Bounds::new(Point::new(x, y), Point::new(x + width, y + height)))
                 .fill(FillStyle::solid(Palette::BACKGROUND_SOFT))
                 .clip(clip);
-            let radius = 1.0 * scale;
+            let radius = px(1.0);
             if radius > 0.0 {
                 rect = rect.corner_radii(CornerRadius::new(radius, radius));
             }
@@ -383,16 +387,16 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     // Battery fill level
     let fill_width = inner_width * 0.78;
     {
-        let x = battery_x + border + 1.0 * scale;
-        let y = battery_y + border + 0.5 * scale;
+        let x = battery_x + border + px(1.0);
+        let y = battery_y + border + px(0.5);
         let width = fill_width.max(1.0);
-        let height = (inner_height - scale).max(1.0);
+        let height = (inner_height - px(1.0)).max(1.0);
         if width > 0.0 && height > 0.0 {
             let mut rect = Rectangle::new()
                 .bounds(Bounds::new(Point::new(x, y), Point::new(x + width, y + height)))
                 .fill(FillStyle::solid(Palette::ACCENT_GOLD))
                 .clip(clip);
-            let radius = 0.8 * scale;
+            let radius = px(0.8);
             if radius > 0.0 {
                 rect = rect.corner_radii(CornerRadius::new(radius, radius));
             }
@@ -402,16 +406,16 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
 
     // Battery nub
     {
-        let x = battery_x + battery_width + 1.0 * scale;
+        let x = battery_x + battery_width + px(1.0);
         let y = battery_y + (battery_height * 0.35);
-        let width  = (1.2 * scale).clamp(0.8, 2.0);
+        let width  = px(1.2).clamp(0.8, 2.0);
         let height = (battery_height * 0.3).max(1.0);
         if width > 0.0 && height > 0.0 {
             let mut rect = Rectangle::new()
                 .bounds(Bounds::new(Point::new(x, y), Point::new(x + width, y + height)))
                 .fill(FillStyle::solid(Palette::ACCENT_UMBER))
                 .clip(clip);
-            let radius = 0.5 * scale;
+            let radius = px(0.5);
             if radius > 0.0 {
                 rect = rect.corner_radii(CornerRadius::new(radius, radius));
             }
@@ -420,7 +424,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     }
 
     // Time display block
-    let time_y = status_y + status_height + 8.0 * scale;
+    let time_y = status_y + status_height + px(8.0);
 
     let total_seconds = frame_counter as u32;
     let hours   = (10 + (total_seconds / 3600) % 12) as u32;
@@ -437,7 +441,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         Palette::ACCENT_GOLD,
     );
 
-    let date_y = time_y + fonts.time.size() + 4.0 * scale;
+    let date_y = time_y + fonts.time.size() + px(4.0);
     draw_text(
         &fonts.body,
         rasterizer,
@@ -467,14 +471,14 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     };
 
     // Quick actions grid
-    let quick_top = date_y + fonts.body.size() + 8.0 * scale;
-    let mut quick_gap   = 10.0 * scale;
-    let mut card_height = 36.0 * scale;
+    let quick_top = date_y + fonts.body.size() + px(8.0);
+    let mut quick_gap   = px(10.0);
+    let mut card_height = px(36.0);
     if height_f <= 170.0 {
         quick_gap   *= 0.75;
         card_height *= 0.85;
     }
-    let card_width = ((width_f - 2.0 * margin) - quick_gap).max(40.0 * scale);
+    let card_width = ((width_f - 2.0 * margin) - quick_gap).max(px(40.0));
     let quick_actions = [
         ("SLEEP WELL",  "And, Eat well!"),
     ];
@@ -507,7 +511,7 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
                     .corner_radii(CornerRadius::new(10., 10.))
                     .bounds(Bounds::new(Point::new(card_x, card_y), Point::new(card_x + width, card_y + height)))
                     .clip(clip);
-                let radius = 6.0 * scale;
+                let radius = px(6.0);
                 if radius > 0.0 {
                     rect = rect.corner_radii(CornerRadius::new(radius, radius));
                 }
@@ -515,8 +519,8 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
             }
         }
 
-        draw_text(&fonts.body,  rasterizer, label,    card_x + 12.0 * scale, card_y +  6.0 * scale, Palette::BACKGROUND_LIGHT);
-        draw_text(&fonts.small, rasterizer, subtitle, card_x + 12.0 * scale, card_y + 17.0 * scale, Palette::BACKGROUND_LIGHT);
+        draw_text(&fonts.body,  rasterizer, label,    card_x + px(12.0), card_y + px(6.0), Palette::BACKGROUND_LIGHT);
+        draw_text(&fonts.small, rasterizer, subtitle, card_x + px(12.0), card_y + px(17.0), Palette::BACKGROUND_LIGHT);
     }
 
 
@@ -547,14 +551,19 @@ pub async fn ui_compositor_service(
 
     let width  = resolution.logical.width  as usize;
     let height = resolution.logical.height as usize;
-    let scale = resolution.scale;
+    // CSS-style device pixel ratio: actual DPI / baseline DPI
+    let device_pixel_ratio = resolution.dpi as f32 / BASELINE_DPI;
+    info!(
+        "Device pixel ratio: {} (DPI: {} / baseline: {})",
+        device_pixel_ratio, resolution.dpi, BASELINE_DPI
+    );
     let width_u16  = width  as u16;
     let height_u16 = height as u16;
 
     let buffer_size = negotiated_pixel_format.framebuffer_size(width as u32, height as u32);
     let mut buffer = alloc::vec![0u8; buffer_size];
 
-    let fonts = UiFonts::new(scale as f32);
+    let fonts = UiFonts::new(device_pixel_ratio);
 
     info!(
         "Compositor UI loop active {:?} @ {}x{}",
@@ -604,7 +613,7 @@ pub async fn ui_compositor_service(
             height_u16,
             frame_counter,
             negotiated_pixel_format,
-            scale,
+            device_pixel_ratio,
             &fonts,
             snake_angle,
             gradient_angle,

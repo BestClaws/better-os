@@ -1,6 +1,8 @@
 // Display panel characteristics for the Chipone CO5300 target.
-pub const DISPLAY_WIDTH: u32 = 410;
-pub const DISPLAY_HEIGHT: u32 = 502;
+pub const PANEL_WIDTH: u32 = 410;
+pub const PANEL_HEIGHT: u32 = 502;
+
+pub const PANEL_SIZE_DIAG: f32 = 2.06;
 
 // Global resource limits.
 pub const MAX_FRAME_BUFFERS: usize = 3;

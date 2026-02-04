@@ -10,7 +10,7 @@ pub fn udiv255(x: u32) -> u32 {
     (x.wrapping_mul(0x8081)) >> 23
 }
 
-pub fn integer_sqrt(value: u32) -> u32 {
+pub const fn integer_sqrt(value: u32) -> u32 {
     if value <= 1 {
         return value;
     }

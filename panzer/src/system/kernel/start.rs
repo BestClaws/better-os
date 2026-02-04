@@ -14,7 +14,7 @@ use static_cell::StaticCell;
 pub(crate) fn start(spawner: Spawner) {
     rtt_target::rtt_init_defmt!();
     // Increase heap size to account for dynamic framebuffer allocation.
-    esp_alloc::heap_allocator!(size: 207 * 1024);
+    esp_alloc::heap_allocator!(size: 190 * 1024);
 
     let mut device = platforms::ajax::device::init_device();
 

@@ -16,6 +16,7 @@ bench = false
 [dependencies]
 # Graphics library
 gfx = { path = "../gfx", default-features = false }
+math = { path = "../math"}
 
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
