@@ -1,0 +1,23 @@
+use gfx::colors::Color;
+
+pub struct Palette;
+
+impl Palette {
+    pub const BACKGROUND_DARK: Color = Color::rgba(0x1f, 0x1f, 0x1f, 0xff);
+    pub const BACKGROUND_DEEP: Color = Color::rgba(0x0f, 0x0f, 0x0f, 0xff);
+    pub const BACKGROUND_PANEL: Color = Color::rgba(0x2f, 0x2f, 0x2f, 0xff);
+    pub const BACKGROUND_SOFT: Color = Color::rgba(0xcf, 0xcf, 0xcf, 0xff);
+
+    pub const BACKGROUND_LIGHT: Color = Color::rgba(0xff, 0xff, 0xff, 0xff);
+    pub const ACCENT_GOLD:   Color = Color::rgba(0xc8, 0xa7, 0x60, 0xff);
+    pub const ACCENT_ROSE:   Color = Color::rgba(0xb8, 0x49, 0x5d, 0xff);
+    pub const ACCENT_UMBER:  Color = Color::rgba(0x8b, 0x73, 0x55, 0xff);
+    pub const ACCENT_COPPER: Color = Color::rgba(0x8b, 0x4a, 0x52, 0xff);
+
+    pub const PROGRESS_BACK: Color = Color::rgba(0x3a, 0x34, 0x2b, 0xff);
+
+    pub const TEXT_PRIMARY:   Color = Color::rgba(0xe8, 0xdc, 0xc8, 0xff);
+    pub const TEXT_DARK:   Color = Color::rgba(0x00, 0x00, 0x00, 0xff);
+    pub const TEXT_SECONDARY: Color = Color::rgba(0xa8, 0x98, 0x78, 0xff);
+    pub const TEXT_MUTED:     Color = Color::rgba(0x78, 0x68, 0x48, 0xff);
+}

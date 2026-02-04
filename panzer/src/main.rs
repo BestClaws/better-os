@@ -7,6 +7,7 @@ use embassy_time::Timer;
 mod libs;
 mod system;
 mod util;
+mod ui;
 
 extern crate alloc;
 esp_bootloader_esp_idf::esp_app_desc!();
