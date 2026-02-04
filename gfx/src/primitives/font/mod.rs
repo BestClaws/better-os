@@ -38,6 +38,7 @@ impl Font {
     }
 
     /// Draw text at the specified position with the given color
+    /// Returns (width, height) of the drawn text in pixels
     pub fn draw_text<T: RasterTarget>(
         &self,
         target: &mut T,
@@ -45,11 +46,17 @@ impl Font {
         x: i32,
         y: i32,
         color: Color,
-    ) {
+    ) -> (f32, f32) {
         let mut cursor_x = x;
+        let start_x = x as f32;
+        let mut max_height = 0.0f32;
 
         for ch in text.chars() {
             if let Some(glyph) = self.glyphs.get(&ch) {
+                // Track maximum height
+                let glyph_height = (glyph.height as i32 + glyph.top) as f32;
+                max_height = max_height.max(glyph_height);
+
                 // Draw glyph with baseline alignment using RasterTarget
                 for gy in 0..glyph.height {
                     let py = y - glyph.top + gy as i32;
@@ -84,8 +91,11 @@ impl Font {
                 cursor_x += glyph.advance;
             } else if ch == ' ' {
                 cursor_x += (self.font_size * 0.3) as i32;
+                max_height = max_height.max(self.font_size);
             }
         }
+        
+        (cursor_x as f32 - start_x, max_height)
     }
 
     /// Get the baseline offset for this font
@@ -96,6 +106,28 @@ impl Font {
     /// Get the font size
     pub fn size(&self) -> f32 {
         self.font_size
+    }
+
+    /// Calculate the width of a text string in pixels
+    pub fn text_width(&self, text: &str) -> f32 {
+        self.text_dimensions(text).0
+    }
+
+    /// Calculate the dimensions (width, height) of a text string in pixels
+    pub fn text_dimensions(&self, text: &str) -> (f32, f32) {
+        let mut width = 0.0f32;
+        let mut max_height = 0.0f32;
+        for ch in text.chars() {
+            if let Some(glyph) = self.glyphs.get(&ch) {
+                width += glyph.advance as f32;
+                let glyph_height = (glyph.height as i32 + glyph.top) as f32;
+                max_height = max_height.max(glyph_height);
+            } else if ch == ' ' {
+                width += self.font_size * 0.3;
+                max_height = max_height.max(self.font_size);
+            }
+        }
+        (width, max_height)
     }
 }
 

@@ -48,9 +48,9 @@ struct UiFonts {
 impl UiFonts {
     fn new(scale: f32) -> Self {
         let px = |v: f32| v * scale;
-        let title_size = px(12.0);
-        let body_size  = px(10.0);
-        let small_size = px(8.0);
+        let title_size = px(16.0);
+        let body_size  = px(14.0);
+        let small_size = px(12.0);
         let time_size  = px(50.0);
 
         let title = Font::builder()
@@ -235,10 +235,11 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     let px = |v: f32| v * device_pixel_ratio;
 
     // Grayscale gradient colors for better performance on gray4
-    let color_white = Color::rgba(255, 255, 255, 255);      // White
-    let color_light = Color::rgba(200, 200, 200, 255);      // Light gray
-    let color_mid = Color::rgba(128, 128, 128, 255);        // Mid gray
-    let color_dark = Color::rgba(200, 200, 200, 255);       // Light gray for cards
+    // Equal delta of 60 between each step for consistent gradient
+    let color_white = Color::rgba(255, 255, 255, 255);      // White - brightest
+    let color_light = Color::rgba(195, 195, 195, 255);      // Light gray (255 - 60)
+    let color_mid = Color::rgba(135, 135, 135, 255);        // Mid gray (195 - 60)
+    let color_dark = Color::rgba(75, 75, 75, 255);          // Dark gray (135 - 60)
     let color_black = Color::rgba(0, 0, 0, 255);            // Complete black for snake background
     let color_transparent = Color::rgba(0, 0, 0, 0);        // Transparent
     
@@ -294,6 +295,13 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     };
 
     // BORDERS RECT - Draw first before everything with snake gradient
+    // Positioned with 1% margin from top-left and 1% margin from bottom-right
+    let big_margin = 0.01; // 1% margin
+    let big_x = width_f * big_margin;
+    let big_y = height_f * big_margin;
+    let big_width = width_f * (1.0 - 2.0 * big_margin);
+    let big_height = height_f * (1.0 - 2.0 * big_margin);
+    
     let (top_start, top_end) = get_snake_edge_gradient(0.0);
     let (right_start, right_end) = get_snake_edge_gradient(90.0);
     let (bottom_start, bottom_end) = get_snake_edge_gradient(180.0);
@@ -309,41 +317,35 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(1.0))
             .vertical_gradient([(left_end, 0), (left_start, 255)]))
         .corner_radii(CornerRadius::new(64., 64.))
-        .bounds(Bounds::new(Point::new(0., 0.), Point::new(205., 251.)))
+        .bounds(Bounds::new(Point::new(big_x, big_y), Point::new(big_x + big_width, big_y + big_height)))
         .clip(clip);
     rect.draw(rasterizer);
 
     // Render starfield background
     render_starfield(rasterizer, width, height, frame_counter);
-    let margin       = px(5.0);
-    let status_height = px(12.0);
-    let panel_radius  = px(5.0);
 
-    // Status bar container
-    let status_x = margin - 4.0;
-    let status_y = margin;
-    let status_width = (width_f - 2.0 * margin).max(px(48.0));
-
-
+    // Status elements positioned at 10% from top and sides
+    let home_x = width_f * 0.10;
+    let home_y = height_f * 0.10;
 
     // Status text
     draw_text(
         &fonts.title,
         rasterizer,
         "HOME",
-        status_x + px(10.0),
-        status_y + px(2.0),
+        home_x,
+        home_y,
         Palette::TEXT_PRIMARY,
     );
 
 
 
 
-    // Battery indicator
+    // Battery indicator - positioned at top-right
     let battery_height = px(7.0);
     let battery_width  = px(14.0);
-    let battery_x = status_x + status_width - battery_width;
-    let battery_y = status_y + status_height - battery_height;
+    let battery_x = width_f * 0.90 - battery_width;
+    let battery_y = height_f * 0.10;
     let border = px(1.0).clamp(0.5, 1.5);
 
     // Outer battery border
@@ -423,8 +425,8 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         }
     }
 
-    // Time display block
-    let time_y = status_y + status_height + px(8.0);
+    // Time display block - centered at 25% viewport height
+    let time_y = height_f * 0.30;
 
     let total_seconds = frame_counter as u32;
     let hours   = (10 + (total_seconds / 3600) % 12) as u32;
@@ -432,21 +434,29 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
     let mut time_buf = String::<8>::new();
     let _ = write!(time_buf, "{:02}:{:02}", hours, minutes);
 
+    let (time_width, time_height) = fonts.time.text_dimensions(time_buf.as_str());
+    let time_x = (width_f - time_width) / 2.0;
+    let time_y_centered = time_y - time_height / 2.0;
     draw_text(
         &fonts.time,
         rasterizer,
         time_buf.as_str(),
-        status_x + status_width / 4.0,
-        time_y,
+        time_x,
+        time_y_centered,
         Palette::ACCENT_GOLD,
     );
 
-    let date_y = time_y + fonts.time.size() + px(4.0);
+    // Date just below clock, centered
+    let date_text = "TUE - FEB 04";
+    let (date_width, date_height) = fonts.body.text_dimensions(date_text);
+    let date_x = (width_f - date_width) / 2.0;
+    let date_y_top = time_y_centered + time_height + px(4.0);
+    let date_y = date_y_top - date_height / 2.0;
     draw_text(
         &fonts.body,
         rasterizer,
-        "TUE - FEB 04",   // ← updated to match "Current date is February 04, 2026"
-        status_x + status_width / 4.0,
+        date_text,
+        date_x,
         date_y,
         Palette::TEXT_SECONDARY,
     );
@@ -470,24 +480,26 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
         (start_color, end_color)
     };
 
-    // Quick actions grid
-    let quick_top = date_y + fonts.body.size() + px(8.0);
-    let mut quick_gap   = px(10.0);
-    let mut card_height = px(36.0);
-    if height_f <= 170.0 {
-        quick_gap   *= 0.75;
-        card_height *= 0.85;
-    }
-    let card_width = ((width_f - 2.0 * margin) - quick_gap).max(px(40.0));
+    // Quick actions grid - centered at 70% viewport height
     let quick_actions = [
         ("SLEEP WELL",  "And, Eat well!"),
     ];
     
     for (idx, (label, subtitle)) in quick_actions.iter().enumerate() {
-        let row = idx as f32;
-
-        let card_x = status_x + 14.0;
-        let card_y = quick_top + row * (card_height + quick_gap);
+        // Calculate text dimensions first
+        let (label_w, label_h) = fonts.body.text_dimensions(label);
+        let (sub_w, sub_h) = fonts.small.text_dimensions(subtitle);
+        
+        // Card dimensions based on content
+        let padding_x = px(12.0);
+        let padding_y = px(8.0);
+        let text_spacing = px(2.0);
+        let card_width = label_w.max(sub_w) + padding_x * 2.0;
+        let card_height = label_h + text_spacing + sub_h + padding_y * 2.0;
+        
+        let card_center_y = height_f * 0.70;
+        let card_y = card_center_y - card_height / 2.0;
+        let card_x = (width_f - card_width) / 2.0;
 
         // Get gradients for each edge (they flow continuously)
         let (top_start, top_end) = get_card_gradient(0.0);
@@ -500,13 +512,13 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
             let height = card_height;
             if width > 0.0 && height > 0.0 {
                 let mut rect = Rectangle::new()
-                    .edge(Edge::Top, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                    .edge(Edge::Top, StrokeStyle::from_stroke(zeno::Stroke::new(4.0))
                         .horizontal_gradient([(top_start, 0), (top_end, 255)]))
-                    .edge(Edge::Right, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                    .edge(Edge::Right, StrokeStyle::from_stroke(zeno::Stroke::new(4.0))
                         .vertical_gradient([(right_start, 0), (right_end, 255)]))
-                    .edge(Edge::Bottom, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                    .edge(Edge::Bottom, StrokeStyle::from_stroke(zeno::Stroke::new(4.0))
                         .horizontal_gradient([(bottom_end, 0), (bottom_start, 255)]))
-                    .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(2.0))
+                    .edge(Edge::Left, StrokeStyle::from_stroke(zeno::Stroke::new(4.0))
                         .vertical_gradient([(left_end, 0), (left_start, 255)]))
                     .corner_radii(CornerRadius::new(10., 10.))
                     .bounds(Bounds::new(Point::new(card_x, card_y), Point::new(card_x + width, card_y + height)))
@@ -519,8 +531,14 @@ fn render_ui_with_rasterizer<T: RasterTarget>(
             }
         }
 
-        draw_text(&fonts.body,  rasterizer, label,    card_x + px(12.0), card_y + px(6.0), Palette::BACKGROUND_LIGHT);
-        draw_text(&fonts.small, rasterizer, subtitle, card_x + px(12.0), card_y + px(17.0), Palette::BACKGROUND_LIGHT);
+        // Center text both horizontally and vertically in card
+        let label_x = card_x + (card_width - label_w) / 2.0;
+        let sub_x = card_x + (card_width - sub_w) / 2.0;
+        let total_text_height = label_h + text_spacing + sub_h;
+        let text_block_start = card_y + (card_height - total_text_height) / 2.0;
+        
+        draw_text(&fonts.body,  rasterizer, label,    label_x, text_block_start, Palette::BACKGROUND_LIGHT);
+        draw_text(&fonts.small, rasterizer, subtitle, sub_x, text_block_start + label_h + text_spacing, Palette::BACKGROUND_LIGHT);
     }
 
 
