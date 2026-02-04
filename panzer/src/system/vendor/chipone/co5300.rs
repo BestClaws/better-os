@@ -45,6 +45,7 @@ use crate::system::hal::display::{
 };
 use crate::system::kernel::config::resources::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use crate::util::math::primitives::{Point, Rect, Size};
+use crate::util::mem_tracker::{self, MemTracker};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -620,6 +621,8 @@ where
     /// Directly transfers the buffer to display without any processing.
     /// This is the fastest path but uses the most memory (410×502×2 = ~410KB).
     async fn draw_unscaled(&mut self, buffer: &[u8], region: Rect) {
+        mem_tracker::reset_peak();
+        
         let x = region.top_left.x as u16;
         let y = region.top_left.y as u16;
         let w = region.size.width as u16;
@@ -658,6 +661,8 @@ where
     /// Processes SCALING_CHUNK_HEIGHT rows at a time:
     /// - 2× scale, 205×50 chunk = 205 × 50 × 4 × 2 bytes = ~80KB
     async fn draw_scaled_generic(&mut self, buffer: &[u8], region: Rect, scale: u16) {
+        mem_tracker::reset_peak();
+        
         let x = region.top_left.x as u16;
         let y = region.top_left.y as u16;
         let w = region.size.width as u16;
@@ -697,6 +702,7 @@ where
             // Scale pixels for this chunk
             let t_scale = Instant::now();
             let mut chunk = vec![0u8; (scaled_w * chunk_h * 2) as usize];
+            let _chunk_alloc = MemTracker::track(chunk.capacity());
 
             for row in 0..chunk_h as usize {
                 let src_row = ((row + y_chunk as usize) / scale as usize) * w as usize;
@@ -725,14 +731,15 @@ where
         }
 
         info!(
-            "draw_scale{}: {}×{} in {}ms (window:{}ms, scale:{}ms, tx:{}ms)",
+            "draw_scale{}: {}×{} in {}ms (window:{}ms, scale:{}ms, tx:{}ms, mem:{}B)",
             scale,
             w,
             h,
             t0.elapsed().as_millis(),
             total_window_us / 1000,
             total_scaling_us / 1000,
-            total_transfer_us / 1000
+            total_transfer_us / 1000,
+            mem_tracker::peak_bytes()
         );
     }
 
@@ -746,6 +753,8 @@ where
     /// 2. Expand each 4-bit gray to RGB565 grayscale
     /// 3. Replicate each pixel 2×2 during expansion
     async fn draw_scaled_2x_gray4(&mut self, buffer: &[u8], region: Rect) {
+        mem_tracker::reset_peak();
+        
         let x = region.top_left.x as u16;
         let y = region.top_left.y as u16;
         let w = region.size.width as u16;
@@ -759,6 +768,7 @@ where
         // Allocate chunk buffer once outside loop
         let max_chunk_bytes = (scaled_w * SCALING_CHUNK_HEIGHT * 2) as usize;
         let mut chunk = vec![0u8; max_chunk_bytes];
+        let _chunk_alloc = MemTracker::track(chunk.capacity());
 
         let t0 = Instant::now();
         let mut total_scaling_us = 0u64;
@@ -834,14 +844,15 @@ where
         let overhead_us = total_us.saturating_sub(accounted_us);
 
         info!(
-            "draw_scale2_gray4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us)",
+            "draw_scale2_gray4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us, mem:{}B)",
             w,
             h,
             total_us,
             total_window_us,
             total_scaling_us,
             total_transfer_us,
-            overhead_us
+            overhead_us,
+            mem_tracker::peak_bytes()
         );
     }
 
@@ -861,6 +872,8 @@ where
     /// - Row caching eliminates redundant computations
     /// - Better memory access patterns for CPU cache
     async fn draw_scaled_4x_optimized(&mut self, buffer: &[u8], region: Rect) {
+        mem_tracker::reset_peak();
+        
         let x = region.top_left.x as u16;
         let y = region.top_left.y as u16;
         let w = region.size.width as u16;
@@ -877,6 +890,8 @@ where
 
         let mut chunk = vec![0u64; u64s_per_row * SCALING_CHUNK_HEIGHT as usize];
         let mut scaled_row_cache = vec![0u64; u64s_per_row];
+        let _chunk_alloc = MemTracker::track(chunk.capacity() * core::mem::size_of::<u64>());
+        let _cache_alloc = MemTracker::track(scaled_row_cache.capacity() * core::mem::size_of::<u64>());
 
         let t0 = Instant::now();
         let mut total_scaling_us = 0u64;
@@ -964,14 +979,15 @@ where
         let overhead_us = total_us.saturating_sub(accounted_us);
 
         info!(
-            "draw_scale4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us)",
+            "draw_scale4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us, mem:{}B)",
             w,
             h,
             total_us,
             total_window_us,
             total_scaling_us,
             total_transfer_us,
-            overhead_us
+            overhead_us,
+            mem_tracker::peak_bytes()
         );
     }
 }
