@@ -3,7 +3,7 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::kernel::platform::PlatformDevice;
 
 use crate::system::vendor::chipone::co5300::Co5300;
-use crate::system::vendor::chipone::cst816s::Cst816s;
+use crate::system::vendor::chipone::ft3x68::Ft3x68;
 use crate::system::vendor::espressif::mcu;
 use alloc::boxed::Box;
 use defmt::Format;
@@ -62,18 +62,18 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let reset_pin = Output::new(peripherals.GPIO11, Level::High, OutputConfig::default());
     let mut display = Co5300::new(lcd_spi, reset_pin);
 
-    // Initialize I2C for touch controller (GPIO6=SDA, GPIO7=SCL)
+    // Initialize I2C for touch controller (GPIO8=SDA, GPIO7=SCL)
     let i2c = I2c::new(
         peripherals.I2C0,
         I2cConfig::default().with_frequency(Rate::from_khz(400_u32)),
     )
     .unwrap()
-    .with_sda(peripherals.GPIO6)
+    .with_sda(peripherals.GPIO8)
     .with_scl(peripherals.GPIO7)
     .into_async();
 
-    // Initialize CST816S touch controller
-    let touch = Cst816s::new(i2c);
+    // Initialize FT3x68 touch controller
+    let touch = Ft3x68::new(i2c);
 
     PlatformDevice {
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),

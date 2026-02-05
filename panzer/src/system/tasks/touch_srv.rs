@@ -1,11 +1,11 @@
 //! Touch Controller Service
 //!
-//! Background task that polls the CST816S touch controller and injects
+//! Background task that polls the FT3x68 touch controller and injects
 //! touch events into the input system.
 
 use crate::system::app_shell::AppShell;
 use crate::system::input::InputEvent;
-use crate::system::vendor::chipone::cst816s::Cst816s;
+use crate::system::vendor::chipone::ft3x68::Ft3x68;
 use defmt::{debug, info};
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c::I2c;
@@ -17,7 +17,7 @@ const TOUCH_POLL_INTERVAL_MS: u64 = 10; // 100Hz polling rate
 ///
 /// Continuously polls the touch controller and injects touch events
 /// into the AppShell input queue.
-pub async fn touch_service<I2C, E>(mut touch: Cst816s<I2C>, app_shell: &mut AppShell)
+pub async fn touch_service<I2C, E>(mut touch: Ft3x68<I2C>, app_shell: &mut AppShell)
 where
     I2C: I2c<Error = E>,
     E: defmt::Format,
@@ -36,17 +36,13 @@ where
         // Poll touch controller
         match touch.read_touch().await {
             Ok(Some(point)) => {
-                // Queue touch event
+                // Queue touch event (convert to pressed boolean from TouchEvent)
+                let pressed = point.event != crate::system::vendor::chipone::ft3x68::TouchEvent::LiftUp;
                 app_shell.queue_input(InputEvent::Touch {
                     x: point.x,
                     y: point.y,
-                    pressed: point.pressed,
+                    pressed,
                 });
-
-                // Log gesture if detected
-                if point.gesture != crate::system::vendor::chipone::cst816s::Gesture::None {
-                    debug!("Touch gesture: {:?}", point.gesture);
-                }
             }
             Ok(None) => {
                 // No touch detected

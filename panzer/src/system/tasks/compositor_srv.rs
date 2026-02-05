@@ -21,7 +21,7 @@ use gfx::rgb565::Rgb565Rasterizer;
 #[embassy_executor::task]
 pub async fn window_compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
-    mut touch: Option<crate::system::vendor::chipone::cst816s::Cst816s<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
+    mut touch: Option<crate::system::vendor::chipone::ft3x68::Ft3x68<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
 ) {
     info!("Starting window compositor service");
 
@@ -167,10 +167,12 @@ pub async fn window_compositor_service(
             match touch_ctrl.read_touch().await {
                 Ok(Some(point)) => {
                     use crate::system::input::InputEvent;
+                    // Convert TouchEvent to pressed boolean
+                    let pressed = point.event != crate::system::vendor::chipone::ft3x68::TouchEvent::LiftUp;
                     app_shell.queue_input(InputEvent::Touch {
                         x: point.x,
                         y: point.y,
-                        pressed: point.pressed,
+                        pressed,
                     });
                 }
                 Ok(None) => {

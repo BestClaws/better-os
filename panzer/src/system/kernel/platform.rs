@@ -5,5 +5,5 @@ use embassy_sync::mutex::Mutex;
 
 pub(crate) struct PlatformDevice<'s> {
     pub(crate) display: Option<&'s mut Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>>,
-    pub(crate) touch: Option<crate::system::vendor::chipone::cst816s::Cst816s<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
+    pub(crate) touch: Option<crate::system::vendor::chipone::ft3x68::Ft3x68<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
 }

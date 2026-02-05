@@ -1,2 +1,2 @@
 pub(crate) mod co5300;
-pub(crate) mod cst816s;
+pub(crate) mod ft3x68;
