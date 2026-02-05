@@ -38,14 +38,14 @@ impl Label {
         self
     }
 
+    pub fn set_text(&mut self, text: String) {
+        self.text = text;
+    }
+
     pub fn with_size(mut self, width: u16, height: u16) -> Self {
         self.bounds.width = width;
         self.bounds.height = height;
         self
-    }
-
-    pub fn set_text(&mut self, text: String) {
-        self.text = text;
     }
 }
 
@@ -76,5 +76,9 @@ impl Widget for Label {
 
     fn bounds(&self) -> Rect {
         self.bounds
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn core::any::Any {
+        self
     }
 }

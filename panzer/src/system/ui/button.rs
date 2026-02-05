@@ -100,4 +100,8 @@ impl Widget for Button {
     fn bounds(&self) -> Rect {
         self.bounds
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn core::any::Any {
+        self
+    }
 }

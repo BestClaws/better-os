@@ -2,6 +2,7 @@ use crate::system::input::InputEvent;
 use crate::system::surface::Surface;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::any::Any;
 
 /// Rectangle bounds for layout
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,6 +53,9 @@ pub trait Widget: Send {
     fn contains_point(&self, x: i16, y: i16) -> bool {
         self.bounds().contains(x, y)
     }
+
+    /// Downcast to concrete type for mutation
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Container that holds multiple child widgets
@@ -98,6 +102,10 @@ impl Widget for Container {
     fn bounds(&self) -> Rect {
         self.bounds
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 /// Vertical stack layout
@@ -119,6 +127,10 @@ impl VStack {
     pub fn add_child(&mut self, child: Box<dyn Widget>) {
         self.children.push(child);
         self.layout_children();
+    }
+
+    pub fn child_mut(&mut self, index: usize) -> Option<&mut Box<dyn Widget>> {
+        self.children.get_mut(index)
     }
 
     fn layout_children(&mut self) {
@@ -157,6 +169,10 @@ impl Widget for VStack {
 
     fn bounds(&self) -> Rect {
         self.bounds
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -217,5 +233,9 @@ impl Widget for HStack {
 
     fn bounds(&self) -> Rect {
         self.bounds
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

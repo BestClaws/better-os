@@ -2,6 +2,7 @@
 //!
 //! Example applications that draw to surfaces
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use gfx::colors::Color;
 use gfx::primitives::{CornerRadius, Edge, FillStyle, Rectangle, StrokeStyle};
@@ -443,6 +444,13 @@ impl App for WidgetDemo {
             WidgetEvent::ButtonReleased => {
                 self.button_count += 1;
                 defmt::info!("[{}] Button #{}!", self.name.as_str(), self.button_count);
+                // Update counter label (it's the 4th child at index 3)
+                if let Some(counter_widget) = self.root.child_mut(3) {
+                    use crate::system::ui::Label;
+                    if let Some(label) = counter_widget.as_any_mut().downcast_mut::<Label>() {
+                        label.set_text(format!("Count: {}", self.button_count));
+                    }
+                }
                 true
             }
             _ => false

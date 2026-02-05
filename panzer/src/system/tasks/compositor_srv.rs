@@ -66,8 +66,20 @@ pub async fn window_compositor_service(
     let mut compositor = Compositor::new();
     compositor.set_background_color(Color::rgba(20, 20, 30, 255));
 
-    // Spawn demo applications with different window geometries
+    // Spawn demo applications - WidgetDemo first for immediate testing
     let app1_id = app_shell.spawn_app(
+        "Widget Demo".to_string(),
+        Box::new(WidgetDemo::new("Widgets".to_string(), AppId::new(999))), // Dummy ID
+        &mut window_manager,
+        WindowGeometry {
+            x: 0,
+            y: 0,
+            width: width_u16,
+            height: height_u16,
+        },
+    );
+
+    let app2_id = app_shell.spawn_app(
         "Shapes Demo".to_string(),
         Box::new(ShapesDemo::new("Shapes".to_string())),
         &mut window_manager,
@@ -79,21 +91,9 @@ pub async fn window_compositor_service(
         },
     );
 
-    let app2_id = app_shell.spawn_app(
+    let app3_id = app_shell.spawn_app(
         "Gradient Demo".to_string(),
         Box::new(GradientDemo::new("Gradient".to_string())),
-        &mut window_manager,
-        WindowGeometry {
-            x: 0,
-            y: 0,
-            width: width_u16,
-            height: height_u16,
-        },
-    );
-
-    let app3_id = app_shell.spawn_app(
-        "Widget Demo".to_string(),
-        Box::new(WidgetDemo::new("Widgets".to_string(), app2_id)), // Reuse app2_id since we don't actually need it
         &mut window_manager,
         WindowGeometry {
             x: 0,
@@ -129,61 +129,117 @@ pub async fn window_compositor_service(
     let mut frame_counter: u32 = 0;
     let mut last_frame_time = Instant::now();
     let mut current_window_idx = 0;
-    let mut time_since_switch = Instant::now();
-    const SWITCH_INTERVAL_MS: u64 = 3000; // Switch windows every 3 seconds
+    
+    // Simple swipe detection - just track start and end
+    let mut swipe_start_x: Option<i32> = None;
+    let mut swipe_start_y: Option<i32> = None;
+    let mut swipe_start_time: Option<Instant> = None;
+    
+    // Touch coordinate scaling: FT3x68 reports 0-410, display is 205x251
+    const TOUCH_SCALE_X: f32 = 0.5; // 410 -> 205
+    const TOUCH_SCALE_Y: f32 = 0.5; // ~502 -> 251
 
     loop {
         let frame_start = Instant::now();
         let time_delta = (frame_start - last_frame_time).as_millis() as f32 / 1000.0;
         last_frame_time = frame_start;
 
-        // Switch windows periodically with animation
-        if time_since_switch.elapsed().as_millis() > SWITCH_INTERVAL_MS && windows.len() > 1 {
-            current_window_idx = (current_window_idx + 1) % windows.len();
-            let next_window = windows[current_window_idx];
-
-            // Cycle through different transition types
-            let transition = match current_window_idx % 5 {
-                0 => TransitionType::Fade,
-                1 => TransitionType::SlideLeft,
-                2 => TransitionType::SlideRight,
-                3 => TransitionType::SlideTop,
-                _ => TransitionType::Scale,
-            };
-
-            compositor.switch_to_window(next_window, transition, 500, Easing::EaseInOut);
-            time_since_switch = Instant::now();
-            
-            // Update focus to the newly visible app
-            if current_window_idx < app_ids.len() {
-                app_shell.focus_app(app_ids[current_window_idx]);
-            }
-            
-            info!("Switching to window {} (app focused)", current_window_idx);
-        }
-
-        // Receive touch events from channel (non-blocking)
+        // Handle touch input
         if let Some(ref mut touch_ctrl) = touch {
             if let Ok(Some(point)) = touch_ctrl.read_touch().await {
                 let pressed = point.event != TouchEvent::LiftUp;
-                app_shell.queue_input(InputEvent::Touch {
-                    x: point.x,
-                    y: point.y,
-                    pressed,
-                });
+                
+                // Scale touch coordinates
+                let scaled_x = (point.x as f32 * TOUCH_SCALE_X) as i32;
+                let scaled_y = (point.y as f32 * TOUCH_SCALE_Y) as i32;
+                
+                if pressed {
+                    // Record start position
+                    if swipe_start_x.is_none() {
+                        swipe_start_x = Some(scaled_x);
+                        swipe_start_y = Some(scaled_y);
+                        swipe_start_time = Some(Instant::now());
+                    }
+                    
+                    // Always forward touch to apps
+                    app_shell.queue_input(InputEvent::Touch {
+                        x: scaled_x as u16,
+                        y: scaled_y as u16,
+                        pressed: true,
+                    });
+                } else {
+                    // Touch release - check for swipe
+                    if let (Some(start_x), Some(start_y), Some(start_time)) = 
+                        (swipe_start_x, swipe_start_y, swipe_start_time) {
+                        
+                        let dx = scaled_x - start_x;
+                        let dy = scaled_y - start_y;
+                        let elapsed_ms = start_time.elapsed().as_millis() as u64;
+                        
+                        // Simple swipe detection: horizontal movement > 80px, time < 600ms, more horizontal than vertical
+                        let is_swipe = dx.abs() > 80 && 
+                                      elapsed_ms < 600 && 
+                                      dx.abs() > dy.abs() * 2;
+                        
+                        if is_swipe {
+                            // Determine direction and switch window
+                            let target_idx = if dx > 0 {
+                                // Swipe right = previous window
+                                if current_window_idx == 0 {
+                                    windows.len() - 1
+                                } else {
+                                    current_window_idx - 1
+                                }
+                            } else {
+                                // Swipe left = next window
+                                (current_window_idx + 1) % windows.len()
+                            };
+                            
+                            let transition_type = if dx > 0 {
+                                TransitionType::SlideLeft
+                            } else {
+                                TransitionType::SlideRight
+                            };
+                            
+                            compositor.switch_to_window(
+                                windows[target_idx],
+                                transition_type,
+                                250,
+                                Easing::EaseOut,
+                            );
+                            
+                            current_window_idx = target_idx;
+                            if current_window_idx < app_ids.len() {
+                                app_shell.focus_app(app_ids[current_window_idx]);
+                            }
+                            
+                            info!("Swipe {} -> window {}", if dx > 0 { "→" } else { "←" }, current_window_idx);
+                        } else {
+                            // Not a swipe - forward touch release to app
+                            app_shell.queue_input(InputEvent::Touch {
+                                x: scaled_x as u16,
+                                y: scaled_y as u16,
+                                pressed: false,
+                            });
+                        }
+                    } else {
+                        // No start recorded - just forward release
+                        app_shell.queue_input(InputEvent::Touch {
+                            x: scaled_x as u16,
+                            y: scaled_y as u16,
+                            pressed: false,
+                        });
+                    }
+                    
+                    // Reset swipe tracking
+                    swipe_start_x = None;
+                    swipe_start_y = None;
+                    swipe_start_time = None;
+                }
             }
         }
 
-        // Test inter-app messaging every 2 seconds
-        if frame_counter % 120 == 0 {
-            // Test inter-app messaging: Send message from Shapes to Gradient
-            app_shell.send_str_message(app1_id, app2_id, "Hello from Shapes!");
-        }
-
-        // Test broadcast message every 4 seconds
-        if frame_counter == 240 {
-            app_shell.broadcast_message(app3_id, b"Broadcast from Info!".to_vec());
-        }
+        // No automatic demo messages in manual mode
 
         // Process queued input events
         app_shell.process_input();
