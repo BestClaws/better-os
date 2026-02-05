@@ -2,7 +2,7 @@
 //!
 //! Example applications that draw to surfaces
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use gfx::colors::Color;
 use gfx::primitives::{CornerRadius, Edge, FillStyle, Rectangle, StrokeStyle};
 use gfx::rasterizer::RasterTarget;
@@ -348,6 +348,109 @@ impl App for InfoDemo {
             }
             _ => false,
         }
+    }
+
+    fn on_focus(&mut self, event: FocusEvent) {
+        match event {
+            FocusEvent::Gained => defmt::info!("[{}] Focus gained", self.name.as_str()),
+            FocusEvent::Lost => defmt::info!("[{}] Focus lost", self.name.as_str()),
+        }
+    }
+
+    fn on_message(&mut self, from: AppId, data: &[u8]) {
+        if let Ok(text) = core::str::from_utf8(data) {
+            defmt::info!("[{}] Message from {:?}: {}", self.name.as_str(), from, text);
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+
+/// Widget-based demo app
+pub struct WidgetDemo {
+    name: String,
+    app_id: AppId,
+    root: crate::system::ui::VStack,
+    button_count: u32,
+}
+
+impl WidgetDemo {
+    pub fn new(name: String, app_id: AppId) -> Self {
+        use crate::system::ui::{Button, Label, TextAlign, VStack, Rect, Widget};
+        use alloc::boxed::Box;
+
+        let mut root = VStack::new(10);
+        // Set bounds BEFORE adding children so layout works correctly
+        root.set_bounds(Rect::new(10, 30, 185, 200));
+
+        let title = Label::new("Widget Demo".to_string())
+            .with_color(Color::rgba(255, 255, 0, 255))
+            .with_align(TextAlign::Center)
+            .with_size(185, 30);
+
+        let button1 = Button::new("Click Me!".to_string())
+            .with_colors(
+                Color::rgba(40, 80, 120, 255),
+                Color::rgba(255, 255, 255, 255),
+                Color::rgba(80, 120, 160, 255),
+            )
+            .with_size(185, 40);
+
+        let button2 = Button::new("Press Here".to_string())
+            .with_colors(
+                Color::rgba(120, 40, 40, 255),
+                Color::rgba(255, 255, 255, 255),
+                Color::rgba(160, 80, 80, 255),
+            )
+            .with_size(185, 40);
+
+        let counter = Label::new("Count: 0".to_string())
+            .with_color(Color::rgba(200, 200, 200, 255))
+            .with_align(TextAlign::Center)
+            .with_size(185, 25);
+
+        root.add_child(Box::new(title));
+        root.add_child(Box::new(button1));
+        root.add_child(Box::new(button2));
+        root.add_child(Box::new(counter));
+
+        Self { name, app_id, root, button_count: 0 }
+    }
+}
+
+impl App for WidgetDemo {
+    fn init(&mut self, surface: &mut Surface) {
+        surface.clear(Color::rgba(20, 20, 20, 255));
+    }
+
+    fn update(&mut self, surface: &mut Surface, _delta_ms: u32) {
+        surface.clear(Color::rgba(20, 20, 20, 255));
+        use crate::system::ui::Widget;
+        self.root.render(surface);
+    }
+
+    fn on_input(&mut self, event: InputEvent) -> bool {
+        use crate::system::ui::{Widget, WidgetEvent};
+        let result = self.root.handle_input(&event);
+        match result {
+            WidgetEvent::ButtonPressed => {
+                defmt::info!("[{}] Button pressed!", self.name.as_str());
+                true
+            }
+            WidgetEvent::ButtonReleased => {
+                self.button_count += 1;
+                defmt::info!("[{}] Button #{}!", self.name.as_str(), self.button_count);
+                true
+            }
+            _ => false
+        }
+    }
+
+    fn on_lifecycle(&mut self, event: LifecycleEvent) {
+        defmt::info!("[{}] Lifecycle: {:?}", self.name.as_str(), event);
     }
 
     fn on_focus(&mut self, event: FocusEvent) {

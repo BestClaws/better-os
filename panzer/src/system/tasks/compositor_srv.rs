@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use alloc::string::ToString;
-use defmt::info;
+use defmt::{error, info};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
@@ -8,10 +8,12 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::system::hal::display::{AsyncDisplay, PixelFormat};
 use crate::system::services::display::{Display, DisplayService};
 use crate::system::window_manager::{WindowManager, WindowGeometry};
-use crate::system::app_shell::AppShell;
+use crate::system::app_shell::{AppShell, AppId};
 use crate::system::compositor::{Compositor, TransitionType, Easing};
-use crate::system::demo_apps::{ShapesDemo, GradientDemo, InfoDemo};
+use crate::system::demo_apps::{ShapesDemo, GradientDemo, WidgetDemo};
 use crate::system::surface::DisplayInfo;
+use crate::system::vendor::chipone::ft3x68::{Ft3x68, TouchEvent};
+use crate::system::input::InputEvent;
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
 use gfx::rgb565::Rgb565Rasterizer;
@@ -21,9 +23,16 @@ use gfx::rgb565::Rgb565Rasterizer;
 #[embassy_executor::task]
 pub async fn window_compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
-    mut touch: Option<crate::system::vendor::chipone::ft3x68::Ft3x68<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
+    mut touch: Option<Ft3x68<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
 ) {
     info!("Starting window compositor service");
+
+    // Initialize touch if available
+    if let Some(ref mut t) = touch {
+        if let Err(e) = t.init().await {
+            error!("Failed to initialize touch: {:?}", e);
+        }
+    }
 
     let display_facade: Display = DisplayService::new(display).initialize().await;
 
@@ -42,15 +51,6 @@ pub async fn window_compositor_service(
 
     // Allocate main display buffer
     let mut buffer = alloc::vec![0u8; buffer_size].into_boxed_slice();
-
-    // Initialize touch controller if available
-    if let Some(ref mut touch_ctrl) = touch {
-        if let Err(e) = touch_ctrl.init().await {
-            defmt::error!("Failed to initialize touch controller: {:?}", e);
-        } else {
-            info!("Touch controller initialized");
-        }
-    }
 
     // Determine window format based on display format and available memory
     // LUMA4 (0): ~26KB per fullscreen window, grayscale
@@ -92,8 +92,8 @@ pub async fn window_compositor_service(
     );
 
     let app3_id = app_shell.spawn_app(
-        "Info Demo".to_string(),
-        Box::new(InfoDemo::new("Info".to_string())),
+        "Widget Demo".to_string(),
+        Box::new(WidgetDemo::new("Widgets".to_string(), app2_id)), // Reuse app2_id since we don't actually need it
         &mut window_manager,
         WindowGeometry {
             x: 0,
@@ -162,25 +162,15 @@ pub async fn window_compositor_service(
             info!("Switching to window {} (app focused)", current_window_idx);
         }
 
-        // Read touch input if available
+        // Receive touch events from channel (non-blocking)
         if let Some(ref mut touch_ctrl) = touch {
-            match touch_ctrl.read_touch().await {
-                Ok(Some(point)) => {
-                    use crate::system::input::InputEvent;
-                    // Convert TouchEvent to pressed boolean
-                    let pressed = point.event != crate::system::vendor::chipone::ft3x68::TouchEvent::LiftUp;
-                    app_shell.queue_input(InputEvent::Touch {
-                        x: point.x,
-                        y: point.y,
-                        pressed,
-                    });
-                }
-                Ok(None) => {
-                    // No touch
-                }
-                Err(e) => {
-                    defmt::error!("Touch read error: {:?}", e);
-                }
+            if let Ok(Some(point)) = touch_ctrl.read_touch().await {
+                let pressed = point.event != TouchEvent::LiftUp;
+                app_shell.queue_input(InputEvent::Touch {
+                    x: point.x,
+                    y: point.y,
+                    pressed,
+                });
             }
         }
 

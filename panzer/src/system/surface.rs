@@ -240,4 +240,67 @@ impl<'a> Surface<'a> {
     pub fn take_dirty_regions(&mut self) -> Vec<DirtyRegion> {
         core::mem::take(&mut self.dirty_regions)
     }
+
+    /// Fill a rectangle with a solid color
+    pub fn fill_rect(&mut self, x: i16, y: i16, width: u16, height: u16, color: Color) {
+        if x < 0 || y < 0 {
+            return;
+        }
+        match self.rasterizer() {
+            SurfaceRasterizer::Rgb565(mut rast) => {
+                rast.fill_solid_rect(x as u16, y as u16, width, height, color);
+            }
+            SurfaceRasterizer::Luma4(mut rast) => {
+                rast.fill_solid_rect(x as u16, y as u16, width, height, color);
+            }
+        }
+    }
+
+    /// Draw a rectangle outline
+    pub fn draw_rect(&mut self, x: i16, y: i16, width: u16, height: u16, color: Color) {
+        if x < 0 || y < 0 {
+            return;
+        }
+        let x = x as u16;
+        let y = y as u16;
+        match self.rasterizer() {
+            SurfaceRasterizer::Rgb565(mut rast) => {
+                // Top
+                rast.fill_solid_rect(x, y, width, 1, color);
+                // Bottom
+                rast.fill_solid_rect(x, y + height - 1, width, 1, color);
+                // Left
+                rast.fill_solid_rect(x, y, 1, height, color);
+                // Right
+                rast.fill_solid_rect(x + width - 1, y, 1, height, color);
+            }
+            SurfaceRasterizer::Luma4(mut rast) => {
+                // Top
+                rast.fill_solid_rect(x, y, width, 1, color);
+                // Bottom
+                rast.fill_solid_rect(x, y + height - 1, width, 1, color);
+                // Left
+                rast.fill_solid_rect(x, y, 1, height, color);
+                // Right
+                rast.fill_solid_rect(x + width - 1, y, 1, height, color);
+            }
+        }
+    }
+
+    /// Draw text (basic implementation - assumes 8x16 character size)
+    pub fn draw_text(&mut self, x: i16, y: i16, text: &str, color: Color) {
+        if x < 0 || y < 0 {
+            return;
+        }
+        // Simplified text rendering - just draw placeholder rectangles for now
+        // Real implementation would use font rasterization
+        let char_width = 8;
+        let char_height = 16;
+        for (i, _c) in text.chars().enumerate() {
+            let char_x = x + (i as i16 * char_width);
+            if char_x >= 0 && char_x < self.width as i16 {
+                self.draw_rect(char_x, y, char_width as u16, char_height as u16, color);
+            }
+        }
+    }
 }

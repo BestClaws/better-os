@@ -5,20 +5,24 @@
 //! - Multi-touch detection (up to 5 points)
 //! - Gesture recognition
 //! - I2C interface
-//! - Interrupt-driven or polling mode
+//! - Interrupt-driven mode (recommended)
 //!
 //! # Hardware Specifications
 //! - Interface: I2C (address 0x38)
+//! - Interrupt: Active low on touch event
 //! - Max Touch Points: 5
 //! - Resolution: Up to 410×502
 //! - Gestures: Swipe, zoom, rotate
 //!
-//! # Usage
+//! # Usage with Interrupt
 //! ```rust,no_run
-//! let touch = Ft3x68::new(i2c);
+//! let touch = Ft3x68::new(i2c, int_pin);
 //! touch.init().await?;
 //!
 //! loop {
+//!     // Wait for interrupt signal
+//!     int_pin.wait_for_low().await;
+//!     
 //!     if let Some(points) = touch.read_touches().await {
 //!         for point in points {
 //!             // handle touch

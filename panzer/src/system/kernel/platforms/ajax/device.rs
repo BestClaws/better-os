@@ -75,8 +75,13 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     // Initialize FT3x68 touch controller
     let touch = Ft3x68::new(i2c);
 
+    // Wrap display in static mutex
+    static DISPLAY_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>> =
+        StaticCell::new();
+    let display_mutex = DISPLAY_MUTEX.init(Mutex::new(Box::new(display)));
+
     PlatformDevice {
-        display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
+        display: Some(display_mutex),
         touch: Some(touch),
     }
 }

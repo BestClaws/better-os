@@ -80,4 +80,5 @@ esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal.git", rev = 
 esp-alloc = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
 esp-rtos = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
 esp-radio-rtos-driver = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-sync = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
 

@@ -1,59 +1,92 @@
-//! Touch Controller Service
+//! Touch Controller Service (Interrupt-Driven)
 //!
-//! Background task that polls the FT3x68 touch controller and injects
-//! touch events into the input system.
+//! High-priority task that responds to FT3x68 touch interrupt events
+//! and immediately injects touch events into the input system.
+//!
+//! This runs independently of the frame loop for responsive touch input.
 
-use crate::system::app_shell::AppShell;
 use crate::system::input::InputEvent;
 use crate::system::vendor::chipone::ft3x68::Ft3x68;
-use defmt::{debug, info};
-use embassy_time::{Duration, Timer};
+use defmt::{debug, error, info};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::{Channel, Sender};
+use embassy_time::Timer;
+use embedded_hal_async::digital::Wait;
 use embedded_hal_async::i2c::I2c;
 
-/// Touch service polling interval (milliseconds)
-const TOUCH_POLL_INTERVAL_MS: u64 = 10; // 100Hz polling rate
+/// Touch event channel capacity
+const TOUCH_QUEUE_SIZE: usize = 16;
 
-/// Touch service task
+/// Shared touch event channel (to be initialized once)
+pub static TOUCH_CHANNEL: Channel<CriticalSectionRawMutex, InputEvent, TOUCH_QUEUE_SIZE> =
+    Channel::new();
+
+/// Touch service task (interrupt-driven)
 ///
-/// Continuously polls the touch controller and injects touch events
-/// into the AppShell input queue.
-pub async fn touch_service<I2C, E>(mut touch: Ft3x68<I2C>, app_shell: &mut AppShell)
-where
-    I2C: I2c<Error = E>,
-    E: defmt::Format,
-{
-    info!("Starting touch service");
+/// Waits for touch interrupt, reads controller, and sends events to channel.
+/// This runs at high priority independent of frame rate.
+#[embassy_executor::task]
+pub async fn touch_service(
+    mut touch: Ft3x68<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>,
+    mut int_pin: esp_hal::gpio::Input<'static>,
+) {
+    info!("Starting interrupt-driven touch service");
 
     // Initialize touch controller
     if let Err(e) = touch.init().await {
-        defmt::error!("Failed to initialize touch controller: {:?}", e);
+        error!("Failed to initialize touch controller: {:?}", e);
         return;
     }
 
-    info!("Touch controller initialized, starting polling loop");
+    info!("Touch controller initialized, waiting for interrupts on GPIO15");
+
+    let sender = TOUCH_CHANNEL.sender();
 
     loop {
-        // Poll touch controller
+        // Wait for touch interrupt (falling edge - active low)
+        // This waits for the pin to transition from high to low, avoiding
+        // immediately triggering if the pin is already low
+        int_pin.wait_for_falling_edge().await;
+
+        // Read touch points
         match touch.read_touch().await {
             Ok(Some(point)) => {
-                // Queue touch event (convert to pressed boolean from TouchEvent)
-                let pressed = point.event != crate::system::vendor::chipone::ft3x68::TouchEvent::LiftUp;
-                app_shell.queue_input(InputEvent::Touch {
+                // Convert TouchEvent to pressed boolean
+                let pressed =
+                    point.event != crate::system::vendor::chipone::ft3x68::TouchEvent::LiftUp;
+
+                // Send to channel (non-blocking)
+                let event = InputEvent::Touch {
                     x: point.x,
                     y: point.y,
                     pressed,
-                });
+                };
+
+                // Send without blocking (drop if queue full)
+                if sender.try_send(event).is_err() {
+                    debug!("Touch event queue full, dropping event");
+                }
             }
             Ok(None) => {
                 // No touch detected
             }
             Err(e) => {
-                defmt::error!("Touch read error: {:?}", e);
-                // Continue polling despite errors
+                error!("Touch read error: {:?}", e);
+                Timer::after_millis(10).await;
             }
         }
 
-        // Wait before next poll
-        Timer::after_millis(TOUCH_POLL_INTERVAL_MS).await;
+        // Wait for interrupt line to go back high (touch released)
+        // This prevents rapid re-triggering while finger is still on screen
+        int_pin.wait_for_high().await;
+        
+        // Small debounce delay
+        Timer::after_millis(5).await;
     }
+}
+
+/// Get the touch event channel sender for use in other tasks
+pub fn get_touch_sender() -> Sender<'static, CriticalSectionRawMutex, InputEvent, TOUCH_QUEUE_SIZE>
+{
+    TOUCH_CHANNEL.sender()
 }
