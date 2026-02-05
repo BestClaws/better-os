@@ -1,6 +1,6 @@
 use super::widget::{Rect, Widget, WidgetEvent};
 use crate::system::input::InputEvent;
-use crate::system::surface::Surface;
+use crate::system::surface::{Surface, DisplayInfo};
 use alloc::string::String;
 use gfx::colors::Color;
 
@@ -11,17 +11,30 @@ pub struct Button {
     bg_color: Color,
     fg_color: Color,
     pressed_color: Color,
+    // Store logical size (in 160 DPI pixels) and scale factor
+    logical_width: f32,
+    logical_height: f32,
 }
 
 impl Button {
-    pub fn new(label: String) -> Self {
+    pub fn new(label: String, display_info: DisplayInfo) -> Self {
+        // Default logical size at baseline DPI
+        let logical_width = 100.0;
+        let logical_height = 40.0;
+        
+        // Calculate physical size based on DPI
+        let width = display_info.scale(logical_width) as u16;
+        let height = display_info.scale(logical_height) as u16;
+        
         Self {
-            bounds: Rect::new(0, 0, 100, 40),
+            bounds: Rect::new(0, 0, width, height),
             label,
             is_pressed: false,
             bg_color: Color::rgba(60, 60, 60, 255),
             fg_color: Color::rgba(255, 255, 255, 255),
             pressed_color: Color::rgba(100, 100, 100, 255),
+            logical_width,
+            logical_height,
         }
     }
 
@@ -32,9 +45,12 @@ impl Button {
         self
     }
 
-    pub fn with_size(mut self, width: u16, height: u16) -> Self {
-        self.bounds.width = width;
-        self.bounds.height = height;
+    pub fn with_logical_size(mut self, display_info: DisplayInfo, width: f32, height: f32) -> Self {
+        self.logical_width = width;
+        self.logical_height = height;
+        // Update physical bounds based on DPI
+        self.bounds.width = display_info.scale(width) as u16;
+        self.bounds.height = display_info.scale(height) as u16;
         self
     }
 }

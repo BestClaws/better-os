@@ -1,6 +1,6 @@
 use super::widget::{Rect, Widget, WidgetEvent};
 use crate::system::input::InputEvent;
-use crate::system::surface::Surface;
+use crate::system::surface::{Surface, DisplayInfo};
 use alloc::string::String;
 use gfx::colors::Color;
 
@@ -16,15 +16,27 @@ pub struct Label {
     text: String,
     color: Color,
     align: TextAlign,
+    // Store logical size
+    logical_width: f32,
+    logical_height: f32,
 }
 
 impl Label {
-    pub fn new(text: String) -> Self {
+    pub fn new(text: String, display_info: DisplayInfo) -> Self {
+        // Default logical size
+        let logical_width = 200.0;
+        let logical_height = 20.0;
+        
+        let width = display_info.scale(logical_width) as u16;
+        let height = display_info.scale(logical_height) as u16;
+        
         Self {
-            bounds: Rect::new(0, 0, 200, 20),
+            bounds: Rect::new(0, 0, width, height),
             text,
             color: Color::rgba(255, 255, 255, 255),
             align: TextAlign::Left,
+            logical_width,
+            logical_height,
         }
     }
 
@@ -42,9 +54,11 @@ impl Label {
         self.text = text;
     }
 
-    pub fn with_size(mut self, width: u16, height: u16) -> Self {
-        self.bounds.width = width;
-        self.bounds.height = height;
+    pub fn with_logical_size(mut self, display_info: DisplayInfo, width: f32, height: f32) -> Self {
+        self.logical_width = width;
+        self.logical_height = height;
+        self.bounds.width = display_info.scale(width) as u16;
+        self.bounds.height = display_info.scale(height) as u16;
         self
     }
 }

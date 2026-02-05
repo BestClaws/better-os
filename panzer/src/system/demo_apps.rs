@@ -376,49 +376,63 @@ pub struct WidgetDemo {
     app_id: AppId,
     root: crate::system::ui::VStack,
     button_count: u32,
+    display_info: crate::system::surface::DisplayInfo,
 }
 
 impl WidgetDemo {
-    pub fn new(name: String, app_id: AppId) -> Self {
+    pub fn new(name: String, app_id: AppId, display_info: crate::system::surface::DisplayInfo) -> Self {
         use crate::system::ui::{Button, Label, TextAlign, VStack, Rect, Widget};
         use alloc::boxed::Box;
 
-        let mut root = VStack::new(10);
+        let mut root = VStack::new_with_dpi(10.0, display_info);
+        
+        // Use logical coordinates (at baseline 160 DPI)
+        let logical_x = 10.0;
+        let logical_y = 30.0;
+        let logical_width = 185.0;
+        let logical_height = 200.0;
+        
+        // Scale to physical pixels
+        let x = display_info.scale(logical_x) as i16;
+        let y = display_info.scale(logical_y) as i16;
+        let width = display_info.scale(logical_width) as u16;
+        let height = display_info.scale(logical_height) as u16;
+        
         // Set bounds BEFORE adding children so layout works correctly
-        root.set_bounds(Rect::new(10, 30, 185, 200));
+        root.set_bounds(Rect::new(x, y, width, height));
 
-        let title = Label::new("Widget Demo".to_string())
+        let title = Label::new("Widget Demo".to_string(), display_info)
             .with_color(Color::rgba(255, 255, 0, 255))
             .with_align(TextAlign::Center)
-            .with_size(185, 30);
+            .with_logical_size(display_info, 185.0, 30.0);
 
-        let button1 = Button::new("Click Me!".to_string())
+        let button1 = Button::new("Click Me!".to_string(), display_info)
             .with_colors(
                 Color::rgba(40, 80, 120, 255),
                 Color::rgba(255, 255, 255, 255),
                 Color::rgba(80, 120, 160, 255),
             )
-            .with_size(185, 40);
+            .with_logical_size(display_info, 185.0, 40.0);
 
-        let button2 = Button::new("Press Here".to_string())
+        let button2 = Button::new("Press Here".to_string(), display_info)
             .with_colors(
                 Color::rgba(120, 40, 40, 255),
                 Color::rgba(255, 255, 255, 255),
                 Color::rgba(160, 80, 80, 255),
             )
-            .with_size(185, 40);
+            .with_logical_size(display_info, 185.0, 40.0);
 
-        let counter = Label::new("Count: 0".to_string())
+        let counter = Label::new("Count: 0".to_string(), display_info)
             .with_color(Color::rgba(200, 200, 200, 255))
             .with_align(TextAlign::Center)
-            .with_size(185, 25);
+            .with_logical_size(display_info, 185.0, 25.0);
 
         root.add_child(Box::new(title));
         root.add_child(Box::new(button1));
         root.add_child(Box::new(button2));
         root.add_child(Box::new(counter));
 
-        Self { name, app_id, root, button_count: 0 }
+        Self { name, app_id, root, button_count: 0, display_info }
     }
 }
 

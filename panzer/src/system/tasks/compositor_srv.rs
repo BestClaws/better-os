@@ -12,7 +12,7 @@ use crate::system::app_shell::{AppShell, AppId};
 use crate::system::compositor::{Compositor, TransitionType, Easing};
 use crate::system::demo_apps::{ShapesDemo, GradientDemo, WidgetDemo};
 use crate::system::surface::DisplayInfo;
-use crate::system::vendor::chipone::ft3x68::{Ft3x68, TouchEvent};
+use crate::system::vendor::focaltech::ft3x68::{Ft3x68, TouchEvent};
 use crate::system::input::InputEvent;
 use gfx::colors::Color;
 use gfx::luma4::Luma4Rasterizer;
@@ -69,7 +69,7 @@ pub async fn window_compositor_service(
     // Spawn demo applications - WidgetDemo first for immediate testing
     let app1_id = app_shell.spawn_app(
         "Widget Demo".to_string(),
-        Box::new(WidgetDemo::new("Widgets".to_string(), AppId::new(999))), // Dummy ID
+        Box::new(WidgetDemo::new("Widgets".to_string(), AppId::new(999), display_info)), // Pass display_info
         &mut window_manager,
         WindowGeometry {
             x: 0,
@@ -135,9 +135,10 @@ pub async fn window_compositor_service(
     let mut swipe_start_y: Option<i32> = None;
     let mut swipe_start_time: Option<Instant> = None;
     
-    // Touch coordinate scaling: FT3x68 reports 0-410, display is 205x251
-    const TOUCH_SCALE_X: f32 = 0.5; // 410 -> 205
-    const TOUCH_SCALE_Y: f32 = 0.5; // ~502 -> 251
+    // Touch coordinate scaling: FT3x68 reports 0-410 for X, ~0-502 for Y
+    // Scale dynamically based on negotiated display resolution
+    let touch_scale_x = width_u16 as f32 / 410.0;
+    let touch_scale_y = height_u16 as f32 / 502.0;
 
     loop {
         let frame_start = Instant::now();
@@ -149,9 +150,9 @@ pub async fn window_compositor_service(
             if let Ok(Some(point)) = touch_ctrl.read_touch().await {
                 let pressed = point.event != TouchEvent::LiftUp;
                 
-                // Scale touch coordinates
-                let scaled_x = (point.x as f32 * TOUCH_SCALE_X) as i32;
-                let scaled_y = (point.y as f32 * TOUCH_SCALE_Y) as i32;
+                // Scale touch coordinates based on current display resolution
+                let scaled_x = (point.x as f32 * touch_scale_x) as i32;
+                let scaled_y = (point.y as f32 * touch_scale_y) as i32;
                 
                 if pressed {
                     // Record start position

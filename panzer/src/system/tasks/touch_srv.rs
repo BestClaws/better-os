@@ -6,7 +6,7 @@
 //! This runs independently of the frame loop for responsive touch input.
 
 use crate::system::input::InputEvent;
-use crate::system::vendor::chipone::ft3x68::Ft3x68;
+use crate::system::vendor::focaltech::ft3x68::Ft3x68;
 use defmt::{debug, error, info};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
@@ -53,7 +53,7 @@ pub async fn touch_service(
             Ok(Some(point)) => {
                 // Convert TouchEvent to pressed boolean
                 let pressed =
-                    point.event != crate::system::vendor::chipone::ft3x68::TouchEvent::LiftUp;
+                    point.event != crate::system::vendor::focaltech::ft3x68::TouchEvent::LiftUp;
 
                 // Send to channel (non-blocking)
                 let event = InputEvent::Touch {

@@ -3,7 +3,7 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::kernel::platform::PlatformDevice;
 
 use crate::system::vendor::chipone::co5300::Co5300;
-use crate::system::vendor::chipone::ft3x68::Ft3x68;
+use crate::system::vendor::focaltech::ft3x68::Ft3x68;
 use crate::system::vendor::espressif::mcu;
 use alloc::boxed::Box;
 use defmt::Format;

@@ -113,6 +113,7 @@ pub struct VStack {
     bounds: Rect,
     children: Vec<Box<dyn Widget>>,
     spacing: u16,
+    logical_spacing: f32,
 }
 
 impl VStack {
@@ -121,6 +122,16 @@ impl VStack {
             bounds: Rect::new(0, 0, 0, 0),
             children: Vec::new(),
             spacing,
+            logical_spacing: spacing as f32,
+        }
+    }
+
+    pub fn new_with_dpi(logical_spacing: f32, display_info: crate::system::surface::DisplayInfo) -> Self {
+        Self {
+            bounds: Rect::new(0, 0, 0, 0),
+            children: Vec::new(),
+            spacing: display_info.scale(logical_spacing) as u16,
+            logical_spacing,
         }
     }
 
@@ -181,6 +192,7 @@ pub struct HStack {
     bounds: Rect,
     children: Vec<Box<dyn Widget>>,
     spacing: u16,
+    logical_spacing: f32,
 }
 
 impl HStack {
@@ -189,6 +201,16 @@ impl HStack {
             bounds: Rect::new(0, 0, 0, 0),
             children: Vec::new(),
             spacing,
+            logical_spacing: spacing as f32,
+        }
+    }
+
+    pub fn new_with_dpi(logical_spacing: f32, display_info: crate::system::surface::DisplayInfo) -> Self {
+        Self {
+            bounds: Rect::new(0, 0, 0, 0),
+            children: Vec::new(),
+            spacing: display_info.scale(logical_spacing) as u16,
+            logical_spacing,
         }
     }
 
