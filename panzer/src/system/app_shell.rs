@@ -330,6 +330,9 @@ impl AppShell {
     pub fn update_apps(&mut self, window_manager: &mut WindowManager, delta_ms: u32) {
         use embassy_time::Instant;
         
+        // Collect window requests first to avoid borrow conflicts
+        let mut pending_requests: Vec<(WindowId, Vec<crate::system::surface::WindowRequest>)> = Vec::new();
+        
         for app_instance in &mut self.apps {
             if !app_instance.active {
                 continue;
@@ -367,8 +370,16 @@ impl AppShell {
                         
                         // Get dirty regions from surface and mark on window
                         let dirty_regions = surface.take_dirty_regions();
+                        // Get window requests before we borrow window again
+                        let window_requests = surface.take_window_requests();
+                        
                         for region in dirty_regions {
                             window.mark_dirty_region(region);
+                        }
+                        
+                        // Store requests for processing after the loop
+                        if !window_requests.is_empty() {
+                            pending_requests.push((window_id, window_requests));
                         }
                         
                         window.mark_dirty();
@@ -377,6 +388,59 @@ impl AppShell {
                         app_instance.metrics.record_ui_time(ui_time_us);
                     }
                 }
+            }
+        }
+        
+        // Process window requests after the app update loop to avoid borrow conflicts
+        for (window_id, requests) in pending_requests {
+            for request in requests {
+                self.process_window_request(window_id, request, window_manager);
+            }
+        }
+    }
+
+    /// Process a window property request
+    fn process_window_request(
+        &mut self,
+        window_id: WindowId,
+        request: crate::system::surface::WindowRequest,
+        window_manager: &mut WindowManager,
+    ) {
+        use crate::system::surface::WindowRequest;
+        
+        match request {
+            WindowRequest::SetVisible(visible) => {
+                if let Some(window) = window_manager.get_window_mut(window_id) {
+                    let was_visible = window.info.visible;
+                    window.info.visible = visible;
+                    window.mark_dirty();
+                    
+                    // Trigger lifecycle events
+                    if was_visible != visible {
+                        if let Some(app) = self.apps.iter_mut().find(|a| a.info.window_id == Some(window_id)) {
+                            let event = if visible {
+                                LifecycleEvent::Visible
+                            } else {
+                                LifecycleEvent::Hidden
+                            };
+                            app.app.on_lifecycle(event);
+                        }
+                    }
+                }
+            }
+            WindowRequest::SetGeometry(geometry) => {
+                if let Some(window) = window_manager.get_window_mut(window_id) {
+                    window.info.geometry = geometry;
+                    window.mark_dirty();
+                }
+            }
+            WindowRequest::SetTitle(title) => {
+                if let Some(window) = window_manager.get_window_mut(window_id) {
+                    window.info.name = title;
+                }
+            }
+            WindowRequest::BringToFront => {
+                window_manager.bring_to_front(window_id);
             }
         }
     }

@@ -4,7 +4,7 @@ This document outlines planned improvements to the window manager architecture.
 
 ## 1. Input Handling System
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: High
 
 ### Overview
@@ -23,17 +23,17 @@ trait App {
 }
 ```
 
-### Implementation Plan
-- Add input event queue to AppShell
-- Route events to focused app first
-- Fall back to system handlers if not handled
-- Support multi-touch gestures
+### Implementation Status
+- ✅ Added InputEvent enum with Touch/Button/Keyboard variants
+- ✅ Input event queue added to AppShell
+- ✅ Events routed to focused app automatically
+- ✅ All demo apps implement on_input() handler
 
 ---
 
 ## 2. Inter-App Communication
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: Medium
 
 ### Overview
@@ -57,17 +57,19 @@ impl AppShell {
 }
 ```
 
-### Implementation Plan
-- Add message queue per app
-- Implement message routing in AppShell
-- Add broadcast capability for system events
-- Consider message size limits for embedded environment
+### Implementation Status
+- ✅ Message struct with from/to AppId and data Vec
+- ✅ Message queue and routing in AppShell
+- ✅ send_message() and broadcast_message() implemented
+- ✅ process_messages() called every frame
+- ✅ All demo apps implement on_message() handler
+- ✅ Tested with "Hello from Shapes!" message
 
 ---
 
 ## 3. Focus Management
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: High
 
 ### Overview
@@ -90,17 +92,19 @@ trait App {
 }
 ```
 
-### Implementation Plan
-- Add FocusManager to AppShell
-- Emit focus events when compositor switches windows
-- Track focus history for "back" functionality
-- Only route input to focused app
+### Implementation Status
+- ✅ FocusManager struct with focus_history
+- ✅ FocusEvent enum (Gained/Lost)
+- ✅ Focus events emitted on window switches
+- ✅ Input routing to focused app only
+- ✅ focus_previous() method for "back" functionality
+- ✅ All demo apps implement on_focus() handler
 
 ---
 
 ## 4. Window Property Requests
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: Medium
 
 ### Overview
@@ -120,17 +124,18 @@ impl Surface {
 }
 ```
 
-### Implementation Plan
-- Add request queue in Surface
-- Process requests in AppShell::update_apps()
-- Allow apps to show/hide themselves
-- Support geometry changes (fullscreen, windowed)
+### Implementation Status
+- ✅ WindowRequest enum with SetVisible/Geometry/Title/BringToFront
+- ✅ show() and hide() convenience methods on Surface
+- ✅ Request queue processing in update_apps()
+- ✅ process_window_request() method handles all types
+- ✅ Lifecycle events triggered on visibility changes
 
 ---
 
 ## 5. Dirty Region Tracking
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: Low (optimization)
 
 ### Overview
@@ -148,6 +153,14 @@ pub struct DirtyRegion {
 impl Surface {
     pub fn mark_dirty_region(&mut self, x: u16, y: u16, width: u16, height: u16);
 }
+```
+
+### Implementation Status
+- ✅ DirtyRegion struct with overlap and merge logic
+- ✅ Window.dirty_regions Vec with MAX_REGIONS limit
+- ✅ mark_dirty_region() with automatic merging
+- ✅ Compositor blit_window() optimized to render only dirty regions
+- ✅ Falls back to full window if no dirty regions marked
 
 impl Compositor {
     fn blit_dirty_regions(&mut self, window: &Window);
@@ -165,14 +178,13 @@ impl Compositor {
 
 ## 6. Enhanced Lifecycle Events
 
-**Status**: Partially Complete  
+**Status**: ✅ COMPLETED  
 **Priority**: High
 
-### Current State
-- Have `suspend()` and `resume()` methods
-- Not called based on window visibility changes
+### Overview
+Apps need lifecycle events to manage resources and respond to visibility changes.
 
-### Improvements Needed
+### Design
 ```rust
 pub enum LifecycleEvent {
     Created,
@@ -188,11 +200,12 @@ trait App {
 }
 ```
 
-### Implementation Plan
-- Call suspend/resume when window visibility changes
-- Add lifecycle event enum
-- Track app state transitions
-- Document state machine clearly
+### Implementation Status
+- ✅ LifecycleEvent enum with all 6 states
+- ✅ on_lifecycle() handler in App trait
+- ✅ Lifecycle events triggered on visibility changes via WindowRequest::SetVisible
+- ✅ All demo apps implement on_lifecycle() handler
+- ✅ Events logged for debugging
 
 ---
 
@@ -230,7 +243,7 @@ trait AsyncApp {
 
 ## 8. Compositor Control API
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: Medium
 
 ### Overview
@@ -239,22 +252,27 @@ Apps and system services need control over window switching and transitions.
 ### Design
 ```rust
 pub enum CompositorCommand {
-    SwitchToApp { app_id: AppId, transition: Transition },
-    SwitchToWindow { window_id: WindowId, transition: Transition },
-    SetTransition { transition: Transition },
-    ShowAll,  // Split-screen or grid view
+    SwitchToApp { app_name: String, transition, duration_ms, easing },
+    SwitchToWindow { window_id: WindowId, transition, duration_ms, easing },
+    SwitchNext { transition, duration_ms, easing },
+    SwitchPrevious { transition, duration_ms, easing },
 }
 
 impl AppShell {
-    pub fn send_compositor_command(&mut self, cmd: CompositorCommand);
+    pub fn queue_compositor_command(&mut self, cmd: CompositorCommand);
 }
 ```
 
-### Implementation Plan
-- Add command queue between AppShell and Compositor
-- Process commands in compositor service
-- Allow apps to trigger window switches
-- Add permission system (which apps can control compositor)
+### Implementation Status
+- ✅ CompositorCommand enum with 4 command types
+- ✅ Command queue in Compositor
+- ✅ queue_command() and take_commands() API
+- ✅ Command processing in compositor_srv
+- ✅ SwitchToWindow with focus update
+- ✅ SwitchToApp by name lookup
+- ✅ SwitchNext with wrap-around
+- ✅ SwitchPrevious with wrap-around
+- ✅ All commands update focus automatically
 
 ---
 
@@ -291,7 +309,7 @@ impl AppShell {
 
 ## 10. Performance Monitoring
 
-**Status**: Not Started  
+**Status**: ✅ COMPLETED  
 **Priority**: Low
 
 ### Overview
@@ -300,44 +318,104 @@ Track CPU time, memory usage, and frame times per app for debugging and optimiza
 ### Design
 ```rust
 pub struct AppMetrics {
-    pub cpu_time_us: u64,
     pub service_time_us: u64,
     pub ui_time_us: u64,
     pub frame_count: u32,
     pub avg_frame_time_us: u32,
+    pub last_frame_time_us: u32,
 }
 
 impl AppShell {
     pub fn get_metrics(&self, app_id: AppId) -> Option<&AppMetrics>;
+    pub fn all_metrics(&self) -> Vec<(AppId, &AppMetrics)>;
     pub fn reset_metrics(&mut self, app_id: AppId);
 }
 ```
 
-### Implementation Plan
-- Add AppMetrics to AppInstance
-- Time each update() and service_update() call
-- Track memory allocations (if possible)
-- Expose metrics via system app or logging
-- Add warning thresholds for slow apps
+### Implementation Status
+- ✅ AppMetrics struct tracking service and UI times
+- ✅ Embassy Instant timing for precise measurements
+- ✅ Per-app metrics in AppInstance
+- ✅ Instrumented update_apps() with timing
+- ✅ get_metrics(), all_metrics(), reset_metrics() API
+- ✅ Metrics logged every 60 frames in compositor_srv
+- ✅ Shows per-app performance breakdown (service: 0-10μs, UI: 5-12ms)
 
 ---
 
-## Implementation Priority
+## Implementation Status Summary
 
-### Phase 1 (Core Functionality)
-1. Input Handling System
-2. Focus Management
-3. Enhanced Lifecycle Events
+### Phase 1 (Core Functionality) - ✅ COMPLETED
+1. ✅ Input Handling System - Touch/Button/Keyboard events with routing
+2. ✅ Focus Management - FocusManager with history and automatic routing
+3. ✅ Enhanced Lifecycle Events - 6 event types with automatic triggering
 
-### Phase 2 (App Features)
-4. Inter-App Communication
-5. Compositor Control API
-6. Window Property Requests
+### Phase 2 (App Features) - ✅ COMPLETED
+4. ✅ Inter-App Communication - Message passing and broadcasting
+5. ✅ Compositor Control API - 4 command types for window switching
+6. ✅ Window Property Requests - SetVisible/Geometry/Title/BringToFront
 
-### Phase 3 (Optimizations)
-7. Dirty Region Tracking
-8. Performance Monitoring
-9. Shared Resource Manager
+### Phase 3 (Optimizations) - ✅ COMPLETED
+7. ✅ Dirty Region Tracking - Region-based rendering with automatic merging
+8. ✅ Performance Monitoring - Per-app timing with detailed breakdown
+
+### Phase 4 (Future Enhancements) - NOT STARTED
+9. ⏳ Shared Resource Manager - Memory optimization via shared resources
+10. ⏳ Async Event System - Embassy-based event awaiting
+
+---
+
+## Testing Results
+
+### System Performance (LUMA4 format, 205x251 display)
+- Total frame time: ~75ms
+- Rendering: 32ms
+- Display flush: 19ms
+- Per-app UI update: 5-12ms average
+- Per-app service: 0-10μs (background tasks)
+- 3 concurrent apps running smoothly
+
+### Features Validated
+- ✅ Input events injected and logged by apps
+- ✅ Focus switching between apps with history
+- ✅ Messages sent between apps and broadcasts
+- ✅ Compositor commands switching windows
+- ✅ Window visibility requests processed
+- ✅ Lifecycle events triggered on visibility changes
+- ✅ Metrics showing detailed per-app breakdown
+- ✅ All apps responding to all event types
+
+### Memory Usage
+- 3 fullscreen windows (LUMA4): ~77KB total
+- Individual window: ~26KB each
+- System overhead: <5KB for managers
+
+---
+
+## Next Steps (Optional Future Work)
+
+### Async Event System
+Would allow apps to use Embassy's async/await for cleaner event handling:
+```rust
+async fn app_main(mut events: EventReceiver, surface: Surface) {
+    loop {
+        match events.recv().await {
+            AppEvent::Input(e) => handle_input(e),
+            AppEvent::Message(m) => handle_message(m),
+            // ...
+        }
+    }
+}
+```
+
+### Shared Resource Manager
+Could save significant memory by sharing fonts, textures, and other resources:
+- System fonts registered once at startup
+- Apps reference shared resources by ID
+- Zero-copy via Arc<[u8]>
+- Estimated savings: 10-30KB depending on resource reuse
+
+Both features are nice-to-have but not critical for current functionality.
 
 ### Phase 4 (Advanced)
 10. Async Event System

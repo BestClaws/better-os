@@ -2,6 +2,7 @@
 //!
 //! Composites windows onto the display with smooth transitions between windows.
 
+use alloc::vec;
 use alloc::vec::Vec;
 use embassy_time::Instant;
 use gfx::colors::Color;
@@ -337,65 +338,84 @@ impl Compositor {
         // Detect window pixel format from bytes_per_pixel
         let is_rgb565 = window.bytes_per_pixel == 2;
 
-        for y in 0..src_height {
-            let target_y = (y as i32 + geom.y as i32 + offset_y) as u16;
-            if target_y >= target.height() {
-                continue;
-            }
+        // Determine regions to blit - use dirty regions if available, otherwise full window
+        let regions: Vec<(usize, usize, usize, usize)> = if !window.dirty_regions.is_empty() {
+            window.dirty_regions.iter().map(|r| (r.x as usize, r.y as usize, r.width as usize, r.height as usize)).collect()
+        } else {
+            // No dirty regions - blit entire window
+            vec![(0, 0, src_width, src_height)]
+        };
 
-            for x in 0..src_width {
-                let target_x = (x as i32 + geom.x as i32 + offset_x) as u16;
-                if target_x >= target.width() {
+        // Blit each region
+        for (region_x, region_y, region_width, region_height) in regions {
+            let y_end = (region_y + region_height).min(src_height);
+            let x_end = (region_x + region_width).min(src_width);
+
+            for y in region_y..y_end {
+                let target_y = (y as i32 + geom.y as i32 + offset_y) as u16;
+                if target_y >= target.height() {
                     continue;
                 }
 
-                let color = if is_rgb565 {
-                    // Read RGB565 pixel (2 bytes per pixel)
-                    let pixel_idx = (y * src_width + x) * 2;
-                    if pixel_idx + 1 >= window.frame_buffer.len() {
+                for x in region_x..x_end {
+                    let target_x = (x as i32 + geom.x as i32 + offset_x) as u16;
+                    if target_x >= target.width() {
                         continue;
                     }
-                    let pixel_bytes = [window.frame_buffer[pixel_idx], window.frame_buffer[pixel_idx + 1]];
-                    let pixel = u16::from_be_bytes(pixel_bytes);
-                    
-                    // Convert RGB565 to Color
-                    let r = ((pixel >> 11) & 0x1F) as u8;
-                    let g = ((pixel >> 5) & 0x3F) as u8;
-                    let b = (pixel & 0x1F) as u8;
-                    
-                    Color::rgba(
-                        (r << 3) | (r >> 2),
-                        (g << 2) | (g >> 4),
-                        (b << 3) | (b >> 2),
-                        (alpha * 255.0) as u8,
-                    )
-                } else {
-                    // Read LUMA4 pixel (0.5 bytes per pixel, packed)
-                    let pixel_idx = (y * src_width + x) / 2;
-                    if pixel_idx >= window.frame_buffer.len() {
-                        continue;
-                    }
-                    let byte = window.frame_buffer[pixel_idx];
-                    let nibble = if (x & 1) == 0 {
-                        byte >> 4  // Even pixel: high nibble
-                    } else {
-                        byte & 0x0F  // Odd pixel: low nibble
-                    };
-                    
-                    // Convert 4-bit grayscale to 8-bit (0-15 -> 0-255)
-                    let gray = (nibble << 4) | nibble;
-                    
-                    Color::rgba(gray, gray, gray, (alpha * 255.0) as u8)
-                };
 
-                // Blend with alpha
-                if alpha >= 0.99 {
-                    target.fill_solid_hspan(target_y, target_x, color, 1);
-                } else {
-                    target.blend_solid_hspan(target_y, target_x, color, &[(alpha * 255.0) as u8]);
+                    let color = if is_rgb565 {
+                        // Read RGB565 pixel (2 bytes per pixel)
+                        let pixel_idx = (y * src_width + x) * 2;
+                        if pixel_idx + 1 >= window.frame_buffer.len() {
+                            continue;
+                        }
+                        let pixel_bytes = [window.frame_buffer[pixel_idx], window.frame_buffer[pixel_idx + 1]];
+                        let pixel = u16::from_be_bytes(pixel_bytes);
+                        
+                        // Convert RGB565 to Color
+                        let r = ((pixel >> 11) & 0x1F) as u8;
+                        let g = ((pixel >> 5) & 0x3F) as u8;
+                        let b = (pixel & 0x1F) as u8;
+                        
+                        Color::rgba(
+                            (r << 3) | (r >> 2),
+                            (g << 2) | (g >> 4),
+                            (b << 3) | (b >> 2),
+                            (alpha * 255.0) as u8,
+                        )
+                    } else {
+                        // Read LUMA4 pixel (0.5 bytes per pixel, packed)
+                        let pixel_idx = (y * src_width + x) / 2;
+                        if pixel_idx >= window.frame_buffer.len() {
+                            continue;
+                        }
+                        let byte = window.frame_buffer[pixel_idx];
+                        let nibble = if (x & 1) == 0 {
+                            byte >> 4  // Even pixel: high nibble
+                        } else {
+                            byte & 0x0F  // Odd pixel: low nibble
+                        };
+                        
+                        // Convert 4-bit grayscale to 8-bit (0-15 -> 0-255)
+                        let gray = (nibble << 4) | nibble;
+                        
+                        Color::rgba(gray, gray, gray, (alpha * 255.0) as u8)
+                    };
+
+                    // Blend with alpha
+                    if alpha >= 0.99 {
+                        target.fill_solid_hspan(target_y, target_x, color, 1);
+                    } else {
+                        target.blend_solid_hspan(target_y, target_x, color, &[(alpha * 255.0) as u8]);
+                    }
                 }
             }
         }
+    }
+
+    /// Get the current visible window ID
+    pub fn current_window(&self) -> Option<WindowId> {
+        self.active_window
     }
 
     /// Queue a compositor command

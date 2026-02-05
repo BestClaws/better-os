@@ -199,7 +199,36 @@ pub async fn window_compositor_service(
                         }
                     }
                 }
-                _ => {} // Other commands not yet implemented
+                CompositorCommand::SwitchNext { transition, duration_ms, easing } => {
+                    // Find current window index
+                    if let Some(current_win) = compositor.current_window() {
+                        if let Some(current_idx) = windows.iter().position(|&w| w == current_win) {
+                            // Switch to next window (wrapping around)
+                            let next_idx = (current_idx + 1) % windows.len();
+                            compositor.switch_to_window(windows[next_idx], transition, duration_ms, easing);
+                            if next_idx < app_ids.len() {
+                                app_shell.focus_app(app_ids[next_idx]);
+                            }
+                        }
+                    }
+                }
+                CompositorCommand::SwitchPrevious { transition, duration_ms, easing } => {
+                    // Find current window index
+                    if let Some(current_win) = compositor.current_window() {
+                        if let Some(current_idx) = windows.iter().position(|&w| w == current_win) {
+                            // Switch to previous window (wrapping around)
+                            let prev_idx = if current_idx == 0 {
+                                windows.len() - 1
+                            } else {
+                                current_idx - 1
+                            };
+                            compositor.switch_to_window(windows[prev_idx], transition, duration_ms, easing);
+                            if prev_idx < app_ids.len() {
+                                app_shell.focus_app(app_ids[prev_idx]);
+                            }
+                        }
+                    }
+                }
             }
         }
 
