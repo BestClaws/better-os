@@ -385,12 +385,13 @@ impl Compositor {
                         )
                     } else {
                         // Read LUMA4 pixel (0.5 bytes per pixel, packed)
-                        let pixel_idx = (y * src_width + x) / 2;
-                        if pixel_idx >= window.frame_buffer.len() {
+                        let pixel_idx = y * src_width + x;
+                        let byte_idx = pixel_idx >> 1;
+                        if byte_idx >= window.frame_buffer.len() {
                             continue;
                         }
-                        let byte = window.frame_buffer[pixel_idx];
-                        let nibble = if (x & 1) == 0 {
+                        let byte = window.frame_buffer[byte_idx];
+                        let nibble = if (pixel_idx & 1) == 0 {
                             byte >> 4  // Even pixel: high nibble
                         } else {
                             byte & 0x0F  // Odd pixel: low nibble
