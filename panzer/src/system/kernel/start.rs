@@ -8,6 +8,7 @@ use crate::system::hal::display::PixelFormat;
 use crate::system::kernel::platforms;
 
 use crate::system::tasks::compositor_srv::window_compositor_service;
+use crate::system::tasks::touch_srv::touch_service;
 use panic_rtt_target as _;
 use static_cell::StaticCell;
 
@@ -26,7 +27,12 @@ pub(crate) fn start(spawner: Spawner) {
         }
     };
 
-    if let Err(err) = spawner.spawn(window_compositor_service(display)) {
+    let touch = device.touch.take();
+    if touch.is_none() {
+        warn!("No touch controller available; touch input will not be available");
+    }
+
+    if let Err(err) = spawner.spawn(window_compositor_service(display, touch)) {
         error!(
             "Failed to spawn window compositor service: {:?}",
             Debug2Format(&err)

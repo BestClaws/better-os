@@ -3,6 +3,7 @@ use crate::system::hal::display::AsyncDisplay;
 use crate::system::kernel::platform::PlatformDevice;
 
 use crate::system::vendor::chipone::co5300::Co5300;
+use crate::system::vendor::chipone::cst816s::Cst816s;
 use crate::system::vendor::espressif::mcu;
 use alloc::boxed::Box;
 use defmt::Format;
@@ -11,6 +12,7 @@ use embassy_sync::mutex::Mutex;
 use embedded_hal::digital::OutputPin;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::spi::master::{Config, Spi};
 use esp_hal::spi::Mode;
@@ -60,8 +62,22 @@ pub(crate) fn init_device() -> PlatformDevice<'static> {
     let reset_pin = Output::new(peripherals.GPIO11, Level::High, OutputConfig::default());
     let mut display = Co5300::new(lcd_spi, reset_pin);
 
+    // Initialize I2C for touch controller (GPIO6=SDA, GPIO7=SCL)
+    let i2c = I2c::new(
+        peripherals.I2C0,
+        I2cConfig::default().with_frequency(Rate::from_khz(400_u32)),
+    )
+    .unwrap()
+    .with_sda(peripherals.GPIO6)
+    .with_scl(peripherals.GPIO7)
+    .into_async();
+
+    // Initialize CST816S touch controller
+    let touch = Cst816s::new(i2c);
+
     PlatformDevice {
         display: Some(DISPLAY.init(Mutex::new(Box::new(display)))),
+        touch: Some(touch),
     }
 }
 

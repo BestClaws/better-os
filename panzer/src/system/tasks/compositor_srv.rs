@@ -21,6 +21,7 @@ use gfx::rgb565::Rgb565Rasterizer;
 #[embassy_executor::task]
 pub async fn window_compositor_service(
     display: &'static Mutex<CriticalSectionRawMutex, Box<dyn AsyncDisplay>>,
+    mut touch: Option<crate::system::vendor::chipone::cst816s::Cst816s<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>>,
 ) {
     info!("Starting window compositor service");
 
@@ -41,6 +42,15 @@ pub async fn window_compositor_service(
 
     // Allocate main display buffer
     let mut buffer = alloc::vec![0u8; buffer_size].into_boxed_slice();
+
+    // Initialize touch controller if available
+    if let Some(ref mut touch_ctrl) = touch {
+        if let Err(e) = touch_ctrl.init().await {
+            defmt::error!("Failed to initialize touch controller: {:?}", e);
+        } else {
+            info!("Touch controller initialized");
+        }
+    }
 
     // Determine window format based on display format and available memory
     // LUMA4 (0): ~26KB per fullscreen window, grayscale
@@ -152,12 +162,28 @@ pub async fn window_compositor_service(
             info!("Switching to window {} (app focused)", current_window_idx);
         }
 
-        // Inject test input events every 2 seconds
+        // Read touch input if available
+        if let Some(ref mut touch_ctrl) = touch {
+            match touch_ctrl.read_touch().await {
+                Ok(Some(point)) => {
+                    use crate::system::input::InputEvent;
+                    app_shell.queue_input(InputEvent::Touch {
+                        x: point.x,
+                        y: point.y,
+                        pressed: point.pressed,
+                    });
+                }
+                Ok(None) => {
+                    // No touch
+                }
+                Err(e) => {
+                    defmt::error!("Touch read error: {:?}", e);
+                }
+            }
+        }
+
+        // Test inter-app messaging every 2 seconds
         if frame_counter % 120 == 0 {
-            use crate::system::input::InputEvent;
-            app_shell.queue_input(InputEvent::touch(100, 100, true));
-            app_shell.queue_input(InputEvent::button_press(1));
-            
             // Test inter-app messaging: Send message from Shapes to Gradient
             app_shell.send_str_message(app1_id, app2_id, "Hello from Shapes!");
         }

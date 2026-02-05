@@ -417,8 +417,278 @@ Could save significant memory by sharing fonts, textures, and other resources:
 
 Both features are nice-to-have but not critical for current functionality.
 
-### Phase 4 (Advanced)
-10. Async Event System
+---
+
+## Phase 5: Real Applications
+
+**Status**: Not Started  
+**Priority**: High
+
+### Overview
+Build actual useful applications beyond demos to showcase the system capabilities.
+
+### Planned Applications
+
+#### 1. Settings App
+- Display settings (brightness, sleep timeout)
+- WiFi/Bluetooth configuration
+- System information display
+- About screen with version info
+- Theme/appearance settings
+
+#### 2. Clock/Watch Face
+- Current time display with large font
+- Date and day of week
+- Analog or digital face options
+- Alarms and timers
+- Stopwatch functionality
+
+#### 3. Notifications Manager
+- System notification display
+- Message inbox
+- Notification badges
+- Toast messages
+- Priority levels (info/warning/error)
+
+#### 4. App Launcher
+- Grid view of installed apps
+- App icons and names
+- Launch apps via touch
+- Recent apps list
+- App search/filter
+
+---
+
+## Phase 6: Hardware Integration
+
+**Status**: Not Started  
+**Priority**: High
+
+### Overview
+Connect real hardware inputs to replace test injection with actual device functionality.
+
+### Components
+
+#### 1. Touch Driver Integration
+- Connect CO5300 touch controller to input system
+- Convert touch reports to InputEvent::Touch
+- Multi-touch support (up to 5 points)
+- Gesture detection (swipe, pinch)
+- Debouncing and filtering
+
+**Implementation**:
+```rust
+// In touch driver task
+async fn touch_service(touch: CO5300, app_shell: &mut AppShell) {
+    loop {
+        if let Some(report) = touch.read_touch_report().await {
+            for point in report.points {
+                app_shell.queue_input(InputEvent::Touch {
+                    x: point.x,
+                    y: point.y,
+                    pressed: point.pressed,
+                });
+            }
+        }
+    }
+}
+```
+
+#### 2. Button Handler
+- Physical button press events
+- Long-press detection
+- Multi-button combinations
+- System shortcuts (home, back, menu)
+
+#### 3. Sensor Integration
+- Accelerometer for screen rotation
+- Heart rate sensor
+- Temperature/humidity sensors
+- Battery level monitoring
+- Ambient light for auto-brightness
+
+#### 4. Bluetooth Connectivity
+- BLE pairing with phone
+- Notification sync
+- Music control
+- Phone call handling
+
+---
+
+## Phase 7: UI Framework
+
+**Status**: Not Started  
+**Priority**: Medium
+
+### Overview
+Build reusable UI components for easier app development.
+
+### Components
+
+#### 1. Widget System
+```rust
+pub trait Widget {
+    fn render(&self, surface: &mut Surface);
+    fn handle_input(&mut self, event: InputEvent) -> bool;
+    fn layout(&mut self, bounds: Rectangle);
+}
+
+// Widgets
+- Button (with callback)
+- Label (text display)
+- Slider (value selection)
+- Toggle/Switch
+- List/ScrollView
+- TextInput
+- ProgressBar
+- Icon
+```
+
+#### 2. Layout Engine
+- Flexbox-style layouts
+- Grid layouts
+- Stack layouts (vertical/horizontal)
+- Absolute positioning
+- Padding and margins
+- Alignment (start/center/end)
+
+#### 3. Theme System
+```rust
+pub struct Theme {
+    primary_color: Color,
+    secondary_color: Color,
+    background_color: Color,
+    text_color: Color,
+    font: FontId,
+    border_radius: u16,
+}
+```
+
+#### 4. Touch Gestures
+- Tap detection
+- Double-tap
+- Long-press
+- Swipe (with direction and velocity)
+- Pinch-to-zoom
+- Pan/drag
+
+---
+
+## Phase 8: System Services
+
+**Status**: Not Started  
+**Priority**: Medium
+
+### Overview
+Core OS functionality and background services.
+
+### Services
+
+#### 1. Settings Service
+- Centralized configuration storage
+- Key-value store in flash
+- Settings change notifications
+- Default values
+- Validation
+
+```rust
+pub trait SettingsService {
+    fn get(&self, key: &str) -> Option<Vec<u8>>;
+    fn set(&mut self, key: &str, value: &[u8]);
+    fn subscribe(&mut self, key: &str, app_id: AppId);
+}
+```
+
+#### 2. Notification Manager
+- Toast message display
+- Notification badges
+- Priority queue
+- Timeout and dismiss
+- Action buttons
+
+#### 3. Power Management
+- Sleep/wake states
+- CPU frequency scaling
+- Display power control
+- Battery monitoring
+- Low-power mode
+
+#### 4. Storage Service
+- Flash persistence
+- File system abstraction
+- App data storage
+- Configuration backup
+
+---
+
+## Phase 9: Performance Optimization
+
+**Status**: Not Started  
+**Priority**: Low
+
+### Overview
+Optimize existing features for better performance.
+
+### Optimizations
+
+#### 1. Dirty Region Usage
+- Update demo apps to mark dirty regions
+- Profile rendering time improvements
+- Document best practices
+- Add debugging overlay showing dirty regions
+
+#### 2. Memory Profiling
+- Track allocations per app
+- Identify memory leaks
+- Optimize buffer sizes
+- Reduce fragmentation
+
+#### 3. Frame Rate Optimization
+- Target 60 FPS (16.6ms per frame)
+- Reduce rendering overhead
+- Optimize pixel format conversions
+- Batch drawing operations
+
+#### 4. Battery Life
+- Reduce display refresh when idle
+- Optimize sensor polling
+- Sleep when no activity
+- Efficient BLE usage
+
+---
+
+## Implementation Roadmap
+
+### Phase 5: Real Applications
+1. ✅ Architecture complete
+2. ⏳ Settings App
+3. ⏳ Clock/Watch Face
+4. ⏳ Notifications Manager
+5. ⏳ App Launcher
+
+### Phase 6: Hardware Integration (PRIORITY)
+1. ⏳ Touch driver integration (CO5300)
+2. ⏳ Button handler
+3. ⏳ Sensor integration
+4. ⏳ Bluetooth connectivity
+
+### Phase 7: UI Framework
+1. ⏳ Widget system
+2. ⏳ Layout engine
+3. ⏳ Theme system
+4. ⏳ Touch gestures
+
+### Phase 8: System Services
+1. ⏳ Settings service
+2. ⏳ Notification manager
+3. ⏳ Power management
+4. ⏳ Storage service
+
+### Phase 9: Performance
+1. ⏳ Dirty region optimization
+2. ⏳ Memory profiling
+3. ⏳ Frame rate optimization
+4. ⏳ Battery life improvements
 
 ---
 
