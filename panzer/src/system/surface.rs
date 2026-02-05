@@ -10,7 +10,7 @@ use gfx::rasterizer::RasterTarget;
 use gfx::rgb565::Rgb565Rasterizer;
 use gfx::luma4::Luma4Rasterizer;
 
-use crate::system::window_manager::WindowGeometry;
+use crate::system::window_manager::{WindowGeometry, DirtyRegion};
 
 /// Pixel format for surfaces
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +66,7 @@ pub struct Surface<'a> {
     format: PixelFormat,
     display_info: DisplayInfo,
     window_requests: Vec<WindowRequest>,
+    dirty_regions: Vec<DirtyRegion>,
 }
 
 impl<'a> Surface<'a> {
@@ -78,6 +79,7 @@ impl<'a> Surface<'a> {
             format: PixelFormat::Rgb565,
             display_info,
             window_requests: Vec::new(),
+            dirty_regions: Vec::new(),
         }
     }
 
@@ -90,6 +92,7 @@ impl<'a> Surface<'a> {
             format: PixelFormat::Luma4,
             display_info,
             window_requests: Vec::new(),
+            dirty_regions: Vec::new(),
         }
     }
 
@@ -220,5 +223,21 @@ impl<'a> Surface<'a> {
     /// Request window to be hidden
     pub fn hide(&mut self) {
         self.request_window_change(WindowRequest::SetVisible(false));
+    }
+
+    /// Mark a region as dirty (changed)
+    pub fn mark_dirty_region(&mut self, x: u16, y: u16, width: u16, height: u16) {
+        self.dirty_regions.push(DirtyRegion::new(x, y, width, height));
+    }
+
+    /// Mark entire surface as dirty
+    pub fn mark_dirty(&mut self) {
+        self.dirty_regions.clear();
+        self.dirty_regions.push(DirtyRegion::new(0, 0, self.width, self.height));
+    }
+
+    /// Get and clear dirty regions
+    pub fn take_dirty_regions(&mut self) -> Vec<DirtyRegion> {
+        core::mem::take(&mut self.dirty_regions)
     }
 }

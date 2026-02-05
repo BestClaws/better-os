@@ -32,6 +32,49 @@ pub struct WindowGeometry {
     pub height: u16,
 }
 
+/// A rectangular region that has been modified
+#[derive(Debug, Clone, Copy)]
+pub struct DirtyRegion {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl DirtyRegion {
+    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
+        Self { x, y, width, height }
+    }
+
+    /// Check if this region overlaps with another
+    pub fn overlaps(&self, other: &DirtyRegion) -> bool {
+        !(self.x + self.width <= other.x
+            || other.x + other.width <= self.x
+            || self.y + self.height <= other.y
+            || other.y + other.height <= self.y)
+    }
+
+    /// Merge this region with another (returns bounding box)
+    pub fn merge(&self, other: &DirtyRegion) -> DirtyRegion {
+        let x1 = self.x.min(other.x);
+        let y1 = self.y.min(other.y);
+        let x2 = (self.x + self.width).max(other.x + other.width);
+        let y2 = (self.y + self.height).max(other.y + other.height);
+        
+        DirtyRegion {
+            x: x1,
+            y: y1,
+            width: x2 - x1,
+            height: y2 - y1,
+        }
+    }
+
+    /// Check if region is empty
+    pub fn is_empty(&self) -> bool {
+        self.width == 0 || self.height == 0
+    }
+}
+
 /// Window metadata
 #[derive(Debug, Clone)]
 pub struct WindowInfo {
@@ -51,6 +94,8 @@ pub struct Window {
     pub bytes_per_pixel: u8,
     /// Whether the window has been modified since last composite
     pub dirty: bool,
+    /// List of dirty regions (changed areas)
+    pub dirty_regions: Vec<DirtyRegion>,
 }
 
 impl Window {
@@ -77,17 +122,67 @@ impl Window {
             frame_buffer,
             bytes_per_pixel,
             dirty: true,
+            dirty_regions: Vec::new(),
         }
     }
 
     /// Mark window as needing redraw
     pub fn mark_dirty(&mut self) {
         self.dirty = true;
+        // Mark entire window dirty
+        self.dirty_regions.clear();
+        self.dirty_regions.push(DirtyRegion::new(
+            0,
+            0,
+            self.info.geometry.width,
+            self.info.geometry.height,
+        ));
+    }
+
+    /// Mark a specific region as dirty
+    pub fn mark_dirty_region(&mut self, region: DirtyRegion) {
+        if region.is_empty() {
+            return;
+        }
+
+        self.dirty = true;
+
+        // If we have too many regions, just mark entire window dirty
+        const MAX_REGIONS: usize = 8;
+        if self.dirty_regions.len() >= MAX_REGIONS {
+            self.mark_dirty();
+            return;
+        }
+
+        // Try to merge with existing overlapping regions
+        let mut merged = region;
+        let mut merged_indices = Vec::new();
+
+        for (i, existing) in self.dirty_regions.iter().enumerate() {
+            if existing.overlaps(&merged) {
+                merged = merged.merge(existing);
+                merged_indices.push(i);
+            }
+        }
+
+        // Remove merged regions (in reverse order to maintain indices)
+        for &i in merged_indices.iter().rev() {
+            self.dirty_regions.swap_remove(i);
+        }
+
+        // Add the merged region
+        self.dirty_regions.push(merged);
     }
 
     /// Clear dirty flag
     pub fn clear_dirty(&mut self) {
         self.dirty = false;
+        self.dirty_regions.clear();
+    }
+
+    /// Get dirty regions
+    pub fn get_dirty_regions(&self) -> &[DirtyRegion] {
+        &self.dirty_regions
     }
 }
 

@@ -107,6 +107,53 @@ pub struct AppInstance {
     pub info: AppInfo,
     pub app: Box<dyn App>,
     pub active: bool,
+    pub metrics: AppMetrics,
+}
+
+/// Performance metrics for an application
+#[derive(Debug, Clone, Copy)]
+pub struct AppMetrics {
+    /// Total CPU time spent in service_update (microseconds)
+    pub service_time_us: u64,
+    /// Total CPU time spent in update (microseconds)
+    pub ui_time_us: u64,
+    /// Number of frames rendered
+    pub frame_count: u32,
+    /// Average frame time (microseconds)
+    pub avg_frame_time_us: u32,
+    /// Last frame time (microseconds)
+    pub last_frame_time_us: u32,
+}
+
+impl AppMetrics {
+    pub fn new() -> Self {
+        Self {
+            service_time_us: 0,
+            ui_time_us: 0,
+            frame_count: 0,
+            avg_frame_time_us: 0,
+            last_frame_time_us: 0,
+        }
+    }
+
+    pub fn record_service_time(&mut self, time_us: u32) {
+        self.service_time_us += time_us as u64;
+    }
+
+    pub fn record_ui_time(&mut self, time_us: u32) {
+        self.ui_time_us += time_us as u64;
+        self.last_frame_time_us = time_us;
+        self.frame_count += 1;
+        
+        // Update rolling average
+        if self.frame_count > 0 {
+            self.avg_frame_time_us = (self.ui_time_us / self.frame_count as u64) as u32;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::new();
+    }
 }
 
 use crate::system::surface::DisplayInfo;
@@ -241,6 +288,7 @@ impl AppShell {
                 },
                 app,
                 active: true,
+                metrics: AppMetrics::new(),
             };
 
             app_instance.app.init(&mut surface);
@@ -280,18 +328,25 @@ impl AppShell {
 
     /// Update all active apps: background services always run, UI only when visible
     pub fn update_apps(&mut self, window_manager: &mut WindowManager, delta_ms: u32) {
+        use embassy_time::Instant;
+        
         for app_instance in &mut self.apps {
             if !app_instance.active {
                 continue;
             }
 
-            // Always run background services
+            // Measure service update time
+            let service_start = Instant::now();
             app_instance.app.service_update(delta_ms);
+            let service_time_us = service_start.elapsed().as_micros() as u32;
+            app_instance.metrics.record_service_time(service_time_us);
 
             // Only update UI if window is visible
             if let Some(window_id) = app_instance.info.window_id {
                 if let Some(window) = window_manager.get_window_mut(window_id) {
                     if window.info.visible {
+                        let ui_start = Instant::now();
+                        
                         let mut surface = if window.bytes_per_pixel == 2 {
                             Surface::new_rgb565(
                                 &mut window.frame_buffer,
@@ -307,8 +362,19 @@ impl AppShell {
                                 self.display_info,
                             )
                         };
+                        
                         app_instance.app.update(&mut surface, delta_ms);
+                        
+                        // Get dirty regions from surface and mark on window
+                        let dirty_regions = surface.take_dirty_regions();
+                        for region in dirty_regions {
+                            window.mark_dirty_region(region);
+                        }
+                        
                         window.mark_dirty();
+                        
+                        let ui_time_us = ui_start.elapsed().as_micros() as u32;
+                        app_instance.metrics.record_ui_time(ui_time_us);
                     }
                 }
             }
@@ -443,5 +509,28 @@ impl AppShell {
     /// Get and clear compositor commands
     pub fn take_compositor_commands(&mut self) -> Vec<CompositorCommand> {
         core::mem::take(&mut self.compositor_commands)
+    }
+
+    /// Get app metrics by ID
+    pub fn get_metrics(&self, id: AppId) -> Option<&AppMetrics> {
+        self.apps
+            .iter()
+            .find(|a| a.info.id == id)
+            .map(|a| &a.metrics)
+    }
+
+    /// Reset metrics for an app
+    pub fn reset_metrics(&mut self, id: AppId) {
+        if let Some(app) = self.get_app_mut(id) {
+            app.metrics.reset();
+        }
+    }
+
+    /// Get all app metrics
+    pub fn all_metrics(&self) -> Vec<(AppId, &str, &AppMetrics)> {
+        self.apps
+            .iter()
+            .map(|a| (a.info.id, a.info.name.as_str(), &a.metrics))
+            .collect()
     }
 }

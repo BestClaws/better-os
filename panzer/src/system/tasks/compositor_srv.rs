@@ -240,6 +240,18 @@ pub async fn window_compositor_service(
                 frame_time,
                 window_manager.window_count()
             );
+            
+            // Log app performance metrics every 60 frames
+            for (app_id, name, metrics) in app_shell.all_metrics() {
+                info!(
+                    "App[{}] service={}us ui_avg={}us ui_last={}us frames={}",
+                    name,
+                    metrics.service_time_us,
+                    metrics.avg_frame_time_us,
+                    metrics.last_frame_time_us,
+                    metrics.frame_count
+                );
+            }
         }
 
         frame_counter = frame_counter.wrapping_add(1);
