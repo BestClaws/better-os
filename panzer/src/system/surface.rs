@@ -123,6 +123,10 @@ impl<'a> Surface<'a> {
     pub fn clear(&mut self, color: Color) {
         let width = self.width;
         let height = self.height;
+        
+        // Mark entire surface dirty when cleared
+        self.mark_dirty();
+        
         match self.rasterizer() {
             SurfaceRasterizer::Rgb565(mut rast) => {
                 rast.fill_solid_rect(0, 0, width, height, color);
@@ -247,6 +251,10 @@ impl<'a> Surface<'a> {
         if x < 0 || y < 0 {
             return;
         }
+        
+        // Automatically track dirty region
+        self.mark_dirty_region(x as u16, y as u16, width, height);
+        
         match self.rasterizer() {
             SurfaceRasterizer::Rgb565(mut rast) => {
                 rast.fill_solid_rect(x as u16, y as u16, width, height, color);
@@ -262,6 +270,10 @@ impl<'a> Surface<'a> {
         if x < 0 || y < 0 {
             return;
         }
+        
+        // Automatically track dirty region
+        self.mark_dirty_region(x as u16, y as u16, width, height);
+        
         let x = x as u16;
         let y = y as u16;
         match self.rasterizer() {
@@ -313,6 +325,11 @@ impl<'a> Surface<'a> {
             }
             FONT_CACHE.as_mut().unwrap()
         };
+
+        // Estimate text bounds for dirty region (approximate)
+        let text_height = 16; // Font size approximation
+        let text_width = (text.len() as u16 * 8).min(self.width.saturating_sub(x as u16));
+        self.mark_dirty_region(x as u16, y as u16, text_width, text_height);
 
         match self.rasterizer() {
             SurfaceRasterizer::Rgb565(mut rast) => {

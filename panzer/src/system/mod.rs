@@ -11,6 +11,6 @@ pub(crate) mod window_manager;
 pub(crate) mod surface;
 pub(crate) mod compositor;
 pub(crate) mod app_shell;
-pub(crate) mod demo_apps;
+pub(crate) mod apps;
 pub(crate) mod input;
 pub(crate) mod ui;

@@ -373,6 +373,7 @@ impl AppShell {
                         // Get window requests before we borrow window again
                         let window_requests = surface.take_window_requests();
                         
+                        // Only mark regions that were actually modified by the app
                         for region in dirty_regions {
                             window.mark_dirty_region(region);
                         }
@@ -381,8 +382,6 @@ impl AppShell {
                         if !window_requests.is_empty() {
                             pending_requests.push((window_id, window_requests));
                         }
-                        
-                        window.mark_dirty();
                         
                         let ui_time_us = ui_start.elapsed().as_micros() as u32;
                         app_instance.metrics.record_ui_time(ui_time_us);

@@ -10,7 +10,7 @@ use crate::system::services::display::{Display, DisplayService};
 use crate::system::window_manager::{WindowManager, WindowGeometry};
 use crate::system::app_shell::{AppShell, AppId};
 use crate::system::compositor::{Compositor, TransitionType, Easing};
-use crate::system::demo_apps::{ShapesDemo, GradientDemo, WidgetDemo};
+use crate::system::apps::{GradientDemo, ShapesDemo, WidgetDemo};
 use crate::system::surface::DisplayInfo;
 use crate::system::vendor::focaltech::ft3x68::{Ft3x68, TouchEvent};
 use crate::system::input::InputEvent;
