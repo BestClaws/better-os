@@ -10,7 +10,7 @@ use crate::system::services::display::{Display, DisplayService};
 use crate::system::window_manager::{WindowManager, WindowGeometry};
 use crate::system::app_shell::{AppShell, AppId};
 use crate::system::compositor::{Compositor, TransitionType, Easing};
-use crate::system::apps::{GradientDemo, ShapesDemo, WidgetDemo};
+use crate::system::apps::{GradientDemo, MinimalDemo, ShapesDemo, WidgetDemo};
 use crate::system::surface::DisplayInfo;
 use crate::system::vendor::focaltech::ft3x68::{Ft3x68, TouchEvent};
 use crate::system::input::InputEvent;
@@ -66,10 +66,10 @@ pub async fn window_compositor_service(
     let mut compositor = Compositor::new();
     compositor.set_background_color(Color::rgba(20, 20, 30, 255));
 
-    // Spawn demo applications - WidgetDemo first for immediate testing
+    // Spawn demo applications
     let app1_id = app_shell.spawn_app(
-        "Widget Demo".to_string(),
-        Box::new(WidgetDemo::new("Widgets".to_string(), AppId::new(999), display_info)), // Pass display_info
+        "Minimal Demo".to_string(),
+        Box::new(MinimalDemo::new("Minimal".to_string())),
         &mut window_manager,
         WindowGeometry {
             x: 0,
@@ -80,6 +80,18 @@ pub async fn window_compositor_service(
     );
 
     let app2_id = app_shell.spawn_app(
+        "Widget Demo".to_string(),
+        Box::new(WidgetDemo::new("Widgets".to_string(), AppId::new(999), display_info)),
+        &mut window_manager,
+        WindowGeometry {
+            x: 0,
+            y: 0,
+            width: width_u16,
+            height: height_u16,
+        },
+    );
+
+    let app3_id = app_shell.spawn_app(
         "Shapes Demo".to_string(),
         Box::new(ShapesDemo::new("Shapes".to_string())),
         &mut window_manager,
@@ -91,7 +103,7 @@ pub async fn window_compositor_service(
         },
     );
 
-    let app3_id = app_shell.spawn_app(
+    let app4_id = app_shell.spawn_app(
         "Gradient Demo".to_string(),
         Box::new(GradientDemo::new("Gradient".to_string())),
         &mut window_manager,
