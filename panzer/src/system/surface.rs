@@ -9,6 +9,7 @@ use gfx::colors::Color;
 use gfx::rasterizer::RasterTarget;
 use gfx::rgb565::Rgb565Rasterizer;
 use gfx::luma4::Luma4Rasterizer;
+use gfx::primitives::font::Font;
 
 use crate::system::window_manager::{WindowGeometry, DirtyRegion};
 
@@ -287,19 +288,38 @@ impl<'a> Surface<'a> {
         }
     }
 
-    /// Draw text (basic implementation - assumes 8x16 character size)
+    /// Draw text using embedded font with LRU cache
     pub fn draw_text(&mut self, x: i16, y: i16, text: &str, color: Color) {
         if x < 0 || y < 0 {
             return;
         }
-        // Simplified text rendering - just draw placeholder rectangles for now
-        // Real implementation would use font rasterization
-        let char_width = 8;
-        let char_height = 16;
-        for (i, _c) in text.chars().enumerate() {
-            let char_x = x + (i as i16 * char_width);
-            if char_x >= 0 && char_x < self.width as i16 {
-                self.draw_rect(char_x, y, char_width as u16, char_height as u16, color);
+
+        // Use static mut for persistent font cache (NOT thread-safe, but Surface is not Send)
+        static mut FONT_CACHE: Option<Font> = None;
+        
+        // Embedded UI font
+        const UI_FONT_DATA: &[u8] = include_bytes!("../assets/RobotoSlab-Regular.ttf");
+
+        // Initialize font if needed
+        let font = unsafe {
+            if FONT_CACHE.is_none() {
+                FONT_CACHE = Some(Font::builder()
+                    .data(UI_FONT_DATA)
+                    .size(14.0)
+                    .cache("0123456789") // Pre-cache just numbers
+                    .max_cache_size(4096)
+                    .hint(true)
+                    .build());
+            }
+            FONT_CACHE.as_mut().unwrap()
+        };
+
+        match self.rasterizer() {
+            SurfaceRasterizer::Rgb565(mut rast) => {
+                font.draw_text(&mut rast, text, x as i32, y as i32 + font.baseline(), color);
+            }
+            SurfaceRasterizer::Luma4(mut rast) => {
+                font.draw_text(&mut rast, text, x as i32, y as i32 + font.baseline(), color);
             }
         }
     }

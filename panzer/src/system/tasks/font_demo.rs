@@ -20,7 +20,7 @@ pub fn run_font_demo(
     pixel_format: PixelFormat,
 ) {
     let cache_start = Instant::now();
-    let font = Font::builder()
+    let mut font = Font::builder()
         .data(FONT_DATA_PIXEL)
         .size(8.0)
         .cache(

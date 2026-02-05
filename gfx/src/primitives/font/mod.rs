@@ -22,14 +22,25 @@ struct CachedGlyph {
     top: i32,
     /// Horizontal advance (how much to move cursor)
     advance: i32,
+    /// Last access timestamp for LRU eviction
+    last_access: u32,
 }
 
-/// Font renderer with pre-cached glyphs
+/// Font renderer with LRU-cached glyphs and kerning support
 pub struct Font {
     glyphs: BTreeMap<char, CachedGlyph>,
+    font_data: &'static [u8],
     font_size: f32,
     baseline: i32,
+    hint: bool,
+    /// Current cache size in bytes
+    cache_size: usize,
+    /// Maximum cache size (4KB)
+    max_cache_size: usize,
+    /// Timestamp counter for LRU
+    access_counter: u32,
 }
+
 
 impl Font {
     /// Create a new font builder
@@ -37,10 +48,68 @@ impl Font {
         FontBuilder::new()
     }
 
+    /// Get or cache a glyph on-demand with LRU eviction
+    fn get_or_cache_glyph(&mut self, ch: char) -> Option<&CachedGlyph> {
+        // Update timestamp and return if already cached
+        if let Some(glyph) = self.glyphs.get_mut(&ch) {
+            self.access_counter = self.access_counter.wrapping_add(1);
+            glyph.last_access = self.access_counter;
+            return self.glyphs.get(&ch);
+        }
+
+        // Need to render glyph
+        let font_ref = FontRef::from_index(self.font_data, 0).expect("Failed to load font");
+        let mut scale_context = ScaleContext::new();
+        let mut scaler = scale_context
+            .builder(font_ref)
+            .size(self.font_size)
+            .hint(self.hint)
+            .build();
+
+        let charmap = font_ref.charmap();
+        let glyph_id = charmap.map(ch);
+
+        let img = Render::new(&[Source::Outline]).render(&mut scaler, glyph_id)?;
+        if let Content::Mask = img.content {
+            let glyph_size = img.data.len() + core::mem::size_of::<CachedGlyph>();
+            
+            // LRU eviction if cache is full
+            while self.cache_size + glyph_size > self.max_cache_size && !self.glyphs.is_empty() {
+                // Find least recently used glyph
+                if let Some((&lru_char, _)) = self.glyphs.iter()
+                    .min_by_key(|(_, g)| g.last_access) {
+                    if let Some(removed) = self.glyphs.remove(&lru_char) {
+                        self.cache_size -= removed.data.len() + core::mem::size_of::<CachedGlyph>();
+                    }
+                }
+            }
+
+            // Use advance from image placement
+            let advance = img.placement.width as i32 + 1; // Add 1px spacing
+
+            self.access_counter = self.access_counter.wrapping_add(1);
+            let cached = CachedGlyph {
+                data: img.data.clone(),
+                width: img.placement.width as usize,
+                height: img.placement.height as usize,
+                left: img.placement.left,
+                top: img.placement.top,
+                advance,
+                last_access: self.access_counter,
+            };
+
+            self.cache_size += glyph_size;
+            self.glyphs.insert(ch, cached);
+            return self.glyphs.get(&ch);
+        }
+
+        None
+    }
+
     /// Draw text at the specified position with the given color
     /// Returns (width, height) of the drawn text in pixels
     pub fn draw_text<T: RasterTarget>(
-        &self,
+        &mut self,
         target: &mut T,
         text: &str,
         x: i32,
@@ -52,7 +121,7 @@ impl Font {
         let mut max_height = 0.0f32;
 
         for ch in text.chars() {
-            if let Some(glyph) = self.glyphs.get(&ch) {
+            if let Some(glyph) = self.get_or_cache_glyph(ch) {
                 // Track maximum height
                 let glyph_height = (glyph.height as i32 + glyph.top) as f32;
                 max_height = max_height.max(glyph_height);
@@ -117,6 +186,7 @@ impl Font {
     pub fn text_dimensions(&self, text: &str) -> (f32, f32) {
         let mut width = 0.0f32;
         let mut max_height = 0.0f32;
+        
         for ch in text.chars() {
             if let Some(glyph) = self.glyphs.get(&ch) {
                 width += glyph.advance as f32;
@@ -131,12 +201,13 @@ impl Font {
     }
 }
 
-/// Builder for creating fonts with pre-cached glyphs
+/// Builder for creating fonts with LRU-cached glyphs
 pub struct FontBuilder {
     font_data: Option<&'static [u8]>,
     font_size: f32,
     cache_chars: Option<&'static str>,
     hint: bool,
+    max_cache_size: usize,
 }
 
 impl FontBuilder {
@@ -146,6 +217,7 @@ impl FontBuilder {
             font_size: 12.0,
             cache_chars: None,
             hint: true,
+            max_cache_size: 4096, // 4KB default
         }
     }
 
@@ -173,6 +245,12 @@ impl FontBuilder {
         self
     }
 
+    /// Set maximum cache size in bytes (default: 4096)
+    pub fn max_cache_size(mut self, size: usize) -> Self {
+        self.max_cache_size = size;
+        self
+    }
+
     /// Build the font with the specified configuration
     pub fn build(self) -> Font {
         let font_data = self.font_data.expect("Font data is required");
@@ -191,26 +269,37 @@ impl FontBuilder {
 
         let charmap = font_ref.charmap();
         let mut glyphs = BTreeMap::new();
+        let mut cache_size = 0;
 
-        // Cache specified characters or use default set
-        let chars_to_cache = self
-            .cache_chars
-            .unwrap_or("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !?.:,'-");
+        // Pre-cache specified characters or use minimal default set
+        let chars_to_cache = self.cache_chars.unwrap_or("0123456789");
 
         for ch in chars_to_cache.chars() {
             let glyph_id = charmap.map(ch);
 
             if let Some(img) = Render::new(&[Source::Outline]).render(&mut scaler, glyph_id) {
                 if let Content::Mask = img.content {
+                    let glyph_size = img.data.len() + core::mem::size_of::<CachedGlyph>();
+                    
+                    // Respect cache size limit
+                    if cache_size + glyph_size > self.max_cache_size {
+                        break;
+                    }
+
+                    // Use advance from image placement
+                    let advance = img.placement.width as i32 + 1; // Add 1px spacing
+
                     let cached = CachedGlyph {
                         data: img.data,
                         width: img.placement.width as usize,
                         height: img.placement.height as usize,
                         left: img.placement.left,
                         top: img.placement.top,
-                        advance: img.placement.width as i32 + 2,
+                        advance,
+                        last_access: 0,
                     };
 
+                    cache_size += glyph_size;
                     glyphs.insert(ch, cached);
                 }
             }
@@ -218,8 +307,13 @@ impl FontBuilder {
 
         Font {
             glyphs,
+            font_data,
             font_size: self.font_size,
             baseline,
+            hint: self.hint,
+            cache_size,
+            max_cache_size: self.max_cache_size,
+            access_counter: 0,
         }
     }
 }
