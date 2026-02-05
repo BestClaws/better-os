@@ -750,7 +750,7 @@ where
             total_transfer_us += t_tx.elapsed().as_micros();
         }
 
-        info!(
+        debug!(
             "draw_scale{}: {}×{} in {}ms (window:{}ms, scale:{}ms, tx:{}ms)",
             scale,
             w,
@@ -859,7 +859,7 @@ where
         let accounted_us = total_window_us + total_scaling_us + total_transfer_us;
         let overhead_us = total_us.saturating_sub(accounted_us);
 
-        info!(
+        debug!(
             "draw_scale2_gray4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us)",
             w,
             h,
@@ -989,7 +989,7 @@ where
         let accounted_us = total_window_us + total_scaling_us + total_transfer_us;
         let overhead_us = total_us.saturating_sub(accounted_us);
 
-        info!(
+        debug!(
             "draw_scale4: {}×{} in {}us (window:{}us, scale:{}us, tx:{}us, overhead:{}us)",
             w,
             h,

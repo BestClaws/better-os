@@ -57,7 +57,7 @@ pub async fn window_compositor_service(
     compositor.set_background_color(Color::rgba(20, 20, 30, 255));
 
     // Spawn demo applications with different window geometries
-    let _app1_id = app_shell.spawn_app(
+    let app1_id = app_shell.spawn_app(
         "Shapes Demo".to_string(),
         Box::new(ShapesDemo::new("Shapes".to_string())),
         &mut window_manager,
@@ -69,7 +69,7 @@ pub async fn window_compositor_service(
         },
     );
 
-    let _app2_id = app_shell.spawn_app(
+    let app2_id = app_shell.spawn_app(
         "Gradient Demo".to_string(),
         Box::new(GradientDemo::new("Gradient".to_string())),
         &mut window_manager,
@@ -81,7 +81,7 @@ pub async fn window_compositor_service(
         },
     );
 
-    let _app3_id = app_shell.spawn_app(
+    let app3_id = app_shell.spawn_app(
         "Info Demo".to_string(),
         Box::new(InfoDemo::new("Info".to_string())),
         &mut window_manager,
@@ -95,15 +95,25 @@ pub async fn window_compositor_service(
 
     info!("Spawned {} demo apps", app_shell.app_count());
 
-    // Get window IDs for switching
+    // Get window IDs and app IDs for switching
     let windows: alloc::vec::Vec<_> = app_shell
         .apps()
         .iter()
         .filter_map(|app| app.info.window_id)
         .collect();
+    
+    let app_ids: alloc::vec::Vec<_> = app_shell
+        .apps()
+        .iter()
+        .map(|app| app.info.id)
+        .collect();
 
     if !windows.is_empty() {
         compositor.switch_to_window_instant(windows[0]);
+        // Set initial focus to first app
+        if !app_ids.is_empty() {
+            app_shell.focus_app(app_ids[0]);
+        }
     }
 
     let mut frame_counter: u32 = 0;
@@ -134,7 +144,63 @@ pub async fn window_compositor_service(
             compositor.switch_to_window(next_window, transition, 500, Easing::EaseInOut);
             time_since_switch = Instant::now();
             
-            info!("Switching to window {}", current_window_idx);
+            // Update focus to the newly visible app
+            if current_window_idx < app_ids.len() {
+                app_shell.focus_app(app_ids[current_window_idx]);
+            }
+            
+            info!("Switching to window {} (app focused)", current_window_idx);
+        }
+
+        // Inject test input events every 2 seconds
+        if frame_counter % 120 == 0 {
+            use crate::system::input::InputEvent;
+            app_shell.queue_input(InputEvent::touch(100, 100, true));
+            app_shell.queue_input(InputEvent::button_press(1));
+            
+            // Test inter-app messaging: Send message from Shapes to Gradient
+            app_shell.send_str_message(app1_id, app2_id, "Hello from Shapes!");
+        }
+
+        // Test broadcast message every 4 seconds
+        if frame_counter == 240 {
+            app_shell.broadcast_message(app3_id, b"Broadcast from Info!".to_vec());
+        }
+
+        // Process queued input events
+        app_shell.process_input();
+
+        // Process queued messages between apps
+        app_shell.process_messages();
+
+        // Process compositor commands from apps
+        let commands = app_shell.take_compositor_commands();
+        for command in commands {
+            use crate::system::compositor::CompositorCommand;
+            match command {
+                CompositorCommand::SwitchToWindow { window_id, transition, duration_ms, easing } => {
+                    compositor.switch_to_window(window_id, transition, duration_ms, easing);
+                    // Update focus to match window
+                    for (idx, &win_id) in windows.iter().enumerate() {
+                        if win_id == window_id && idx < app_ids.len() {
+                            app_shell.focus_app(app_ids[idx]);
+                            break;
+                        }
+                    }
+                }
+                CompositorCommand::SwitchToApp { app_name, transition, duration_ms, easing } => {
+                    if let Some(app_id) = app_shell.get_app_id_by_name(&app_name) {
+                        // Find window for this app
+                        if let Some(app) = app_shell.apps().iter().find(|a| a.info.id == app_id) {
+                            if let Some(win_id) = app.info.window_id {
+                                compositor.switch_to_window(win_id, transition, duration_ms, easing);
+                                app_shell.focus_app(app_id);
+                            }
+                        }
+                    }
+                }
+                _ => {} // Other commands not yet implemented
+            }
         }
 
         // Update compositor (handles transition progress)

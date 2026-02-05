@@ -11,6 +11,8 @@ use swash::zeno::{Bounds, Point};
 
 use crate::system::app_shell::App;
 use crate::system::surface::Surface;
+use crate::system::input::{InputEvent, FocusEvent, LifecycleEvent};
+use crate::system::app_shell::AppId;
 
 /// A simple demo app that draws animated shapes
 pub struct ShapesDemo {
@@ -126,6 +128,42 @@ impl App for ShapesDemo {
         }
     }
 
+    fn on_input(&mut self, event: InputEvent) -> bool {
+        match event {
+            InputEvent::Touch { x, y, pressed } => {
+                defmt::info!("[{}] Touch: ({}, {}) pressed={}", self.name.as_str(), x, y, pressed);
+                true
+            }
+            InputEvent::Button { id, pressed } => {
+                defmt::info!("[{}] Button {} {}", self.name.as_str(), id, if pressed { "pressed" } else { "released" });
+                true
+            }
+            InputEvent::Keyboard { key } => {
+                defmt::info!("[{}] Key: {}", self.name.as_str(), key);
+                true
+            }
+        }
+    }
+
+    fn on_focus(&mut self, event: FocusEvent) {
+        match event {
+            FocusEvent::Gained => defmt::info!("[{}] Focus gained", self.name.as_str()),
+            FocusEvent::Lost => defmt::info!("[{}] Focus lost", self.name.as_str()),
+        }
+    }
+
+    fn on_lifecycle(&mut self, event: LifecycleEvent) {
+        defmt::info!("[{}] Lifecycle: {:?}", self.name.as_str(), event);
+    }
+
+    fn on_message(&mut self, from: AppId, data: &[u8]) {
+        if let Ok(text) = core::str::from_utf8(data) {
+            defmt::info!("[{}] Message from {:?}: {}", self.name.as_str(), from, text);
+        } else {
+            defmt::info!("[{}] Binary message from {:?} ({} bytes)", self.name.as_str(), from, data.len());
+        }
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -187,6 +225,29 @@ impl App for GradientDemo {
         if self.service_timer >= 1000 {
             defmt::info!("[Service] {}", self.name.as_str());
             self.service_timer = 0;
+        }
+    }
+
+    fn on_input(&mut self, event: InputEvent) -> bool {
+        match event {
+            InputEvent::Touch { x, y, pressed } => {
+                defmt::info!("[{}] Touch: ({}, {}) pressed={}", self.name.as_str(), x, y, pressed);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn on_focus(&mut self, event: FocusEvent) {
+        match event {
+            FocusEvent::Gained => defmt::info!("[{}] Focus gained", self.name.as_str()),
+            FocusEvent::Lost => defmt::info!("[{}] Focus lost", self.name.as_str()),
+        }
+    }
+
+    fn on_message(&mut self, from: AppId, data: &[u8]) {
+        if let Ok(text) = core::str::from_utf8(data) {
+            defmt::info!("[{}] Message from {:?}: {}", self.name.as_str(), from, text);
         }
     }
 
@@ -274,6 +335,31 @@ impl App for InfoDemo {
         if self.service_timer >= 1000 {
             defmt::info!("[Service] {}", self.name.as_str());
             self.service_timer = 0;
+        }
+    }
+
+    fn on_input(&mut self, event: InputEvent) -> bool {
+        match event {
+            InputEvent::Button { id, pressed } => {
+                if pressed {
+                    defmt::info!("[{}] Button {} clicked!", self.name.as_str(), id);
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn on_focus(&mut self, event: FocusEvent) {
+        match event {
+            FocusEvent::Gained => defmt::info!("[{}] Focus gained", self.name.as_str()),
+            FocusEvent::Lost => defmt::info!("[{}] Focus lost", self.name.as_str()),
+        }
+    }
+
+    fn on_message(&mut self, from: AppId, data: &[u8]) {
+        if let Ok(text) = core::str::from_utf8(data) {
+            defmt::info!("[{}] Message from {:?}: {}", self.name.as_str(), from, text);
         }
     }
 

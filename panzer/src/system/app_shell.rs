@@ -11,9 +11,11 @@ use core::pin::Pin;
 
 use crate::system::surface::Surface;
 use crate::system::window_manager::{WindowId, WindowManager, WindowGeometry};
+use crate::system::input::{InputEvent, FocusEvent, LifecycleEvent};
+use crate::system::compositor::CompositorCommand;
 
 /// Unique identifier for an application
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, defmt::Format)]
 pub struct AppId(u32);
 
 impl AppId {
@@ -34,6 +36,35 @@ pub struct AppInfo {
     pub window_id: Option<WindowId>,
 }
 
+/// Inter-app message
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub from: AppId,
+    pub to: AppId,
+    pub data: Vec<u8>,
+}
+
+impl Message {
+    /// Create a new message
+    pub fn new(from: AppId, to: AppId, data: Vec<u8>) -> Self {
+        Self { from, to, data }
+    }
+
+    /// Create a message from string data
+    pub fn from_str(from: AppId, to: AppId, text: &str) -> Self {
+        Self {
+            from,
+            to,
+            data: text.as_bytes().to_vec(),
+        }
+    }
+
+    /// Try to interpret data as UTF-8 string
+    pub fn as_str(&self) -> Option<&str> {
+        core::str::from_utf8(&self.data).ok()
+    }
+}
+
 /// Trait that all applications must implement
 pub trait App: Send {
     /// Initialize the app with its assigned surface
@@ -45,6 +76,21 @@ pub trait App: Send {
     /// Update background services (called every frame regardless of visibility)
     /// Use this for processing data, timers, sensors, network events, etc.
     fn service_update(&mut self, _delta_ms: u32) {}
+
+    /// Handle input events (only called for focused app)
+    /// Returns true if the input was handled, false otherwise
+    fn on_input(&mut self, _event: InputEvent) -> bool {
+        false
+    }
+
+    /// Handle focus changes
+    fn on_focus(&mut self, _event: FocusEvent) {}
+
+    /// Handle lifecycle events
+    fn on_lifecycle(&mut self, _event: LifecycleEvent) {}
+
+    /// Handle inter-app messages
+    fn on_message(&mut self, _from: AppId, _data: &[u8]) {}
 
     /// Handle app suspension (when window is hidden/backgrounded)
     fn suspend(&mut self) {}
@@ -65,12 +111,75 @@ pub struct AppInstance {
 
 use crate::system::surface::DisplayInfo;
 
+/// Focus manager to track which app has input focus
+pub struct FocusManager {
+    focused_app: Option<AppId>,
+    focus_history: Vec<AppId>,
+}
+
+impl FocusManager {
+    /// Create a new focus manager
+    pub fn new() -> Self {
+        Self {
+            focused_app: None,
+            focus_history: Vec::new(),
+        }
+    }
+
+    /// Get the currently focused app
+    pub fn focused_app(&self) -> Option<AppId> {
+        self.focused_app
+    }
+
+    /// Set focus to an app
+    pub fn set_focus(&mut self, app_id: AppId) -> Option<AppId> {
+        let previous = self.focused_app;
+        
+        if previous != Some(app_id) {
+            self.focused_app = Some(app_id);
+            
+            // Add to history if not already there
+            if !self.focus_history.contains(&app_id) {
+                self.focus_history.push(app_id);
+            }
+        }
+        
+        previous
+    }
+
+    /// Clear focus
+    pub fn clear_focus(&mut self) -> Option<AppId> {
+        self.focused_app.take()
+    }
+
+    /// Focus the previous app from history
+    pub fn focus_previous(&mut self) -> Option<AppId> {
+        if self.focus_history.len() > 1 {
+            // Remove current from history
+            if let Some(current) = self.focused_app {
+                self.focus_history.retain(|&id| id != current);
+            }
+            
+            // Focus the last app in history
+            if let Some(&prev_id) = self.focus_history.last() {
+                self.focused_app = Some(prev_id);
+                return Some(prev_id);
+            }
+        }
+        None
+    }
+}
+
 /// The app shell manages application lifecycle
 pub struct AppShell {
     apps: Vec<AppInstance>,
     next_id: u32,
     window_format: u8, // 0 = LUMA4, 2 = RGB565
     display_info: DisplayInfo,
+    focus_manager: FocusManager,
+    input_queue: Vec<InputEvent>,
+    message_queue: Vec<Message>,
+    compositor_commands: Vec<CompositorCommand>,
 }
 
 impl AppShell {
@@ -81,6 +190,10 @@ impl AppShell {
             next_id: 1,
             window_format,
             display_info,
+            focus_manager: FocusManager::new(),
+            input_queue: Vec::new(),
+            message_queue: Vec::new(),
+            compositor_commands: Vec::new(),
         }
     }
 
@@ -226,5 +339,109 @@ impl AppShell {
     /// Get total number of apps
     pub fn app_count(&self) -> usize {
         self.apps.len()
+    }
+
+    /// Queue an input event to be processed
+    pub fn queue_input(&mut self, event: InputEvent) {
+        self.input_queue.push(event);
+    }
+
+    /// Process queued input events and route to focused app
+    pub fn process_input(&mut self) {
+        if let Some(focused_id) = self.focus_manager.focused_app() {
+            // Drain the queue into a temporary vector to avoid borrow conflicts
+            let events: Vec<InputEvent> = self.input_queue.drain(..).collect();
+            
+            for event in events {
+                if let Some(app) = self.get_app_mut(focused_id) {
+                    app.app.on_input(event);
+                }
+            }
+        } else {
+            // No focused app, clear queue
+            self.input_queue.clear();
+        }
+    }
+
+    /// Set focus to an app
+    pub fn focus_app(&mut self, app_id: AppId) {
+        let previous = self.focus_manager.set_focus(app_id);
+        
+        // Send focus lost to previous app
+        if let Some(prev_id) = previous {
+            if prev_id != app_id {
+                if let Some(app) = self.get_app_mut(prev_id) {
+                    app.app.on_focus(FocusEvent::Lost);
+                }
+            }
+        }
+        
+        // Send focus gained to new app
+        if let Some(app) = self.get_app_mut(app_id) {
+            app.app.on_focus(FocusEvent::Gained);
+        }
+    }
+
+    /// Clear focus from all apps
+    pub fn clear_focus(&mut self) {
+        if let Some(prev_id) = self.focus_manager.clear_focus() {
+            if let Some(app) = self.get_app_mut(prev_id) {
+                app.app.on_focus(FocusEvent::Lost);
+            }
+        }
+    }
+
+    /// Get the currently focused app ID
+    pub fn focused_app(&self) -> Option<AppId> {
+        self.focus_manager.focused_app()
+    }
+
+    /// Send a message to a specific app
+    pub fn send_message(&mut self, from: AppId, to: AppId, data: Vec<u8>) {
+        self.message_queue.push(Message::new(from, to, data));
+    }
+
+    /// Send a message with string data
+    pub fn send_str_message(&mut self, from: AppId, to: AppId, text: &str) {
+        self.message_queue.push(Message::from_str(from, to, text));
+    }
+
+    /// Broadcast a message to all apps except sender
+    pub fn broadcast_message(&mut self, from: AppId, data: Vec<u8>) {
+        for app in &self.apps {
+            if app.info.id != from {
+                self.message_queue.push(Message::new(from, app.info.id, data.clone()));
+            }
+        }
+    }
+
+    /// Process queued messages and deliver to apps
+    pub fn process_messages(&mut self) {
+        // Drain messages into temporary vector to avoid borrow conflicts
+        let messages: Vec<Message> = self.message_queue.drain(..).collect();
+        
+        for message in messages {
+            if let Some(app) = self.get_app_mut(message.to) {
+                app.app.on_message(message.from, &message.data);
+            }
+        }
+    }
+
+    /// Get app ID by name
+    pub fn get_app_id_by_name(&self, name: &str) -> Option<AppId> {
+        self.apps
+            .iter()
+            .find(|app| app.info.name == name)
+            .map(|app| app.info.id)
+    }
+
+    /// Queue a compositor command
+    pub fn queue_compositor_command(&mut self, command: CompositorCommand) {
+        self.compositor_commands.push(command);
+    }
+
+    /// Get and clear compositor commands
+    pub fn take_compositor_commands(&mut self) -> Vec<CompositorCommand> {
+        core::mem::take(&mut self.compositor_commands)
     }
 }

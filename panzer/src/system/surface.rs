@@ -3,10 +3,14 @@
 //! A Surface wraps a frame buffer and provides RasterTarget implementation,
 //! allowing applications to draw to windows without direct buffer access.
 
+use alloc::vec::Vec;
+use alloc::string::String;
 use gfx::colors::Color;
 use gfx::rasterizer::RasterTarget;
 use gfx::rgb565::Rgb565Rasterizer;
 use gfx::luma4::Luma4Rasterizer;
+
+use crate::system::window_manager::WindowGeometry;
 
 /// Pixel format for surfaces
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +45,19 @@ impl DisplayInfo {
     }
 }
 
+/// Window property change request
+#[derive(Debug, Clone)]
+pub enum WindowRequest {
+    /// Set window visibility
+    SetVisible(bool),
+    /// Change window geometry
+    SetGeometry(WindowGeometry),
+    /// Set window title
+    SetTitle(String),
+    /// Request window to front (increase z-index)
+    BringToFront,
+}
+
 /// A drawing surface backed by a frame buffer
 pub struct Surface<'a> {
     buffer: &'a mut [u8],
@@ -48,6 +65,7 @@ pub struct Surface<'a> {
     height: u16,
     format: PixelFormat,
     display_info: DisplayInfo,
+    window_requests: Vec<WindowRequest>,
 }
 
 impl<'a> Surface<'a> {
@@ -59,6 +77,7 @@ impl<'a> Surface<'a> {
             height,
             format: PixelFormat::Rgb565,
             display_info,
+            window_requests: Vec::new(),
         }
     }
 
@@ -70,6 +89,7 @@ impl<'a> Surface<'a> {
             height,
             format: PixelFormat::Luma4,
             display_info,
+            window_requests: Vec::new(),
         }
     }
 
@@ -178,5 +198,27 @@ impl<'a> RasterTarget for SurfaceRasterizer<'a> {
             SurfaceRasterizer::Rgb565(r) => r.blend_color_vspan(x, y_start, colors, coverage),
             SurfaceRasterizer::Luma4(r) => r.blend_color_vspan(x, y_start, colors, coverage),
         }
+    }
+}
+
+impl<'a> Surface<'a> {
+    /// Request a window property change
+    pub fn request_window_change(&mut self, request: WindowRequest) {
+        self.window_requests.push(request);
+    }
+
+    /// Get and clear window requests
+    pub fn take_window_requests(&mut self) -> Vec<WindowRequest> {
+        core::mem::take(&mut self.window_requests)
+    }
+
+    /// Request window to be visible
+    pub fn show(&mut self) {
+        self.request_window_change(WindowRequest::SetVisible(true));
+    }
+
+    /// Request window to be hidden
+    pub fn hide(&mut self) {
+        self.request_window_change(WindowRequest::SetVisible(false));
     }
 }

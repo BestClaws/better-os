@@ -12,3 +12,4 @@ pub(crate) mod surface;
 pub(crate) mod compositor;
 pub(crate) mod app_shell;
 pub(crate) mod demo_apps;
+pub(crate) mod input;

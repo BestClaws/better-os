@@ -2,6 +2,7 @@
 //!
 //! Composites windows onto the display with smooth transitions between windows.
 
+use alloc::vec::Vec;
 use embassy_time::Instant;
 use gfx::colors::Color;
 use gfx::rasterizer::RasterTarget;
@@ -81,6 +82,37 @@ impl Transition {
     }
 }
 
+/// Commands that can be sent to the compositor
+#[derive(Debug, Clone)]
+pub enum CompositorCommand {
+    /// Switch to a specific app's window
+    SwitchToApp { 
+        app_name: alloc::string::String,
+        transition: TransitionType,
+        duration_ms: u32,
+        easing: Easing,
+    },
+    /// Switch to a specific window
+    SwitchToWindow {
+        window_id: WindowId,
+        transition: TransitionType,
+        duration_ms: u32,
+        easing: Easing,
+    },
+    /// Switch to next window in sequence
+    SwitchNext {
+        transition: TransitionType,
+        duration_ms: u32,
+        easing: Easing,
+    },
+    /// Switch to previous window in sequence
+    SwitchPrevious {
+        transition: TransitionType,
+        duration_ms: u32,
+        easing: Easing,
+    },
+}
+
 /// The compositor combines windows and renders to the display
 pub struct Compositor {
     /// Currently active window
@@ -89,6 +121,8 @@ pub struct Compositor {
     transition: Option<Transition>,
     /// Background color
     background_color: Color,
+    /// Command queue for external control
+    command_queue: Vec<CompositorCommand>,
 }
 
 impl Compositor {
@@ -98,6 +132,7 @@ impl Compositor {
             active_window: None,
             transition: None,
             background_color: Color::rgba(0, 0, 0, 255),
+            command_queue: Vec::new(),
         }
     }
 
@@ -361,5 +396,15 @@ impl Compositor {
                 }
             }
         }
+    }
+
+    /// Queue a compositor command
+    pub fn queue_command(&mut self, command: CompositorCommand) {
+        self.command_queue.push(command);
+    }
+
+    /// Get and clear the command queue
+    pub fn take_commands(&mut self) -> Vec<CompositorCommand> {
+        core::mem::take(&mut self.command_queue)
     }
 }
