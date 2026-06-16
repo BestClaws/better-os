@@ -1,0 +1,16 @@
+[package]
+name = "gfx"
+version = "0.0.1"
+edition = "2024"
+
+[lib]
+test = true
+
+[dependencies]
+math = { path = "../math"}
+swash = { version = "0.2.6", default-features = false, features = ["scale", "render", "libm"] }
+zeno = { version = "0.3.3", default-features = false, features = ["libm", "eval"]}
+
+[features]
+default = []
+alloc = []

@@ -1,0 +1,84 @@
+[package]
+name = "panzer"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+
+
+[[bin]]
+name = "panzer"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Graphics library
+gfx = { path = "../gfx", default-features = false }
+math = { path = "../math"}
+
+embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
+embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
+
+
+# Embassy
+embassy-executor = { version = "0.9.0", features = ["defmt"] }
+embassy-time = { version = "0.5.0", features = ["generic-queue-8", "defmt"] }
+embassy-embedded-hal = { version = "0.5.0", features = ["defmt"] }
+embassy-futures = "0.1.1"
+embassy-sync = { version = "0.7.0" }
+
+
+
+
+# ESP HAL
+esp-hal = { version = "1.0.0", features = ["unstable", "esp32c6", "rt", "defmt"] }
+esp-alloc = { version = "0.9.0", features = ["defmt"] }
+esp-radio = { version = "0.17.0", features = ["unstable", "ble", "esp32c6", "defmt"] }
+esp-rtos = { version = "0.2.0", features = ["esp32c6", "esp-radio", "embassy", "defmt"] }
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c6"] }
+
+
+# Math and utilities
+micromath = "2.1.0"
+fixed = "1.28.0"
+heapless = "0.9.2"
+
+# font
+swash ={ version = "0.2.6", default-features = false, features = ["scale", "render", "libm"] }
+
+# Logging and debug
+defmt = "1.0.1"
+panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
+rtt-target = { version = "0.6.1", features = ["defmt"] }
+
+# Utilities
+static_cell = "2.1.1"
+async-trait = "0.1.88"
+
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1 # LLVM can perform better optimizations using a single thread
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+
+
+[patch.crates-io]
+esp-radio = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-radio-rtos-driver = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+esp-sync = { git = "https://github.com/esp-rs/esp-hal.git", rev = "6b735e1510d75b8620503ae6aa2f7fd6948dfa08" }
+

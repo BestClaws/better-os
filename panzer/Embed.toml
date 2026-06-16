@@ -1,0 +1,23 @@
+[default.probe]
+protocol = "Jtag"
+
+[default.flashing]
+enabled = true
+
+[default.reset]
+enabled = true
+halt_afterwards = false
+
+[default.general]
+chip = "esp32c6"
+
+[default.rtt]
+enabled = true
+up_channels = [
+    { channel = 0, format = "Defmt", socket = "127.0.0.1:12345"  }
+]
+
+# The UI configuration:
+tabs = [
+    { up_channel = 0, name = "Log" },
+]

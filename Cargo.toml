@@ -1,85 +1,19 @@
-[package]
-edition = "2021"
-name    = "better-os"
-version = "0.1.0"
-
-[[bin]]
-name = "better-os"
-path = "src/main.rs"
-test = false
-
-[dependencies]
-
-
-esp-hal = { version = "1.0.0-beta.1", features = [
-  "defmt",
-  "esp32c3",
-  "unstable",
-] }
-esp-wifi = { version = "0.14.1", features = [
-  "ble",
-  "builtin-scheduler",
-  "defmt",
-  "esp-alloc",
-  "esp32c3",
-] }
-esp-alloc = "0.8.0"
-esp-hal-embassy = { version = "0.8.1", features = ["esp32c3"] }
-
-embedded-hal = "1.0.0"
-embedded-hal-async = "1.0.0"
-
-defmt = "1.0.1"
+[workspace]
+resolver = "2"
+members = [
+    "gfx",
+    "math"
+]
+# panzer is excluded like esp-hal excludes examples/target-specific binaries
+# because it requires riscv32imac target and will fail workspace checks
+# Build it from its own directory: cd panzer && cargo build
+# sprite-generator is a standalone utility for generating test sprites
+exclude = [
+    "panzer",
+    "sprite-generator",
+]
 
 
-panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
-rtt-target = { version = "0.6.1", features = ["defmt"] }
-
-nb = "1.1.0"
-
-embassy-executor = { version = "0.7.0", features = [
-  "defmt",
-  "task-arena-size-20480",
-] }
-embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
-
-
-static_cell = { version = "2.1.0", features = [] }
-
-trouble-host = { git = "https://github.com/embassy-rs/trouble", rev = "cedb8128c09299f3e1d122104d3d344a0bb5c41a", features = [
-    "default-packet-pool-mtu-255", "derive", "scan"
-] }
-
-
-embedded-graphics = { version = "0.8.1", features = ["defmt"] }
-ssd1306 = { version = "0.10.0", features = ["async", "graphics"] }
-
-display-interface-i2c = { version = "0.5.0" }
-display-interface = "0.5.0"
-
-mpu6050-dmp = { version = "0.6.0", features = ["async", "defmt-03"] }
-embassy-embedded-hal = { version = "0.3.0", features = ["defmt"] }
-
-micromath = "2.1.0"
-
-embassy-futures = "0.1.1"
-bt-hci = "0.3.0"
-embassy-sync = { version = "0.6.2" }
-log = "0.4.27"
-
-[profile.dev]
-# Rust debug is too slow.
-# For debug builds always builds with some optimization
-opt-level = "s"
-
-[profile.release]
-codegen-units    = 1     # LLVM can perform better optimizations using a single thread
-debug            = 2
-debug-assertions = false
-incremental      = false
-lto              = 'fat'
-opt-level        = 's'
-overflow-checks  = false
 
 
 
